@@ -380,28 +380,31 @@ static inline void router_merge_mode(const input_event_t* event, output_target_t
 void __not_in_flash_func(router_submit_input)(const input_event_t* event) {
     if (!event) return;
 
-    // Determine output target based on routing mode
-    // For Phase 2, we assume single output (current behavior)
-    // Future: Support multiple outputs and routing tables
-
+    // Determine output target from routing table (configured by apps)
+    // Apps call router_add_route() during app_init() to set up routing
     output_target_t output;
 
-    // Map compile-time CONFIG to output target
-    #if defined(CONFIG_NGC)
-        output = OUTPUT_TARGET_GAMECUBE;
-    #elif defined(CONFIG_PCE)
-        output = OUTPUT_TARGET_PCENGINE;
-    #elif defined(CONFIG_3DO)
-        output = OUTPUT_TARGET_3DO;
-    #elif defined(CONFIG_NUON)
-        output = OUTPUT_TARGET_NUON;
-    #elif defined(CONFIG_XB1)
-        output = OUTPUT_TARGET_XBOXONE;
-    #elif defined(CONFIG_LOOPY)
-        output = OUTPUT_TARGET_LOOPY;
-    #else
-        #error "No console output defined!"
-    #endif
+    // Use first active route to determine output
+    // Apps are responsible for configuring at least one route
+    if (route_count > 0) {
+        // Find first active route
+        bool found = false;
+        for (uint8_t i = 0; i < MAX_ROUTES; i++) {
+            if (routing_table[i].active) {
+                output = routing_table[i].output;
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            // No active routes - this is an error, app should have configured routes
+            return;
+        }
+    } else {
+        // No routes configured - app didn't call router_add_route()
+        // This is a fatal error - app must configure routing
+        return;
+    }
 
     // Route based on mode
     switch (router_config.mode) {

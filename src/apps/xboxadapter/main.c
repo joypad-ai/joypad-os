@@ -7,7 +7,21 @@
 #include "app.h"
 #include "core/router/router.h"
 #include "core/services/players/manager.h"
+#include "common/output_interface.h"
+#include "native/device/xboxone/xboxone_device.h"
 #include <stdio.h>
+
+// ============================================================================
+// APP OUTPUT INTERFACE
+// ============================================================================
+
+// Provide output interface for firmware to use
+extern const OutputInterface xboxone_output_interface;
+
+const OutputInterface* app_get_output_interface(void)
+{
+    return &xboxone_output_interface;
+}
 
 // ============================================================================
 // APP INITIALIZATION

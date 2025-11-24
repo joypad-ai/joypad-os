@@ -79,7 +79,7 @@ set(COMMON_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/common/ws2812.c
     ${CMAKE_CURRENT_SOURCE_DIR}/common/profile_indicator.c
     ${CMAKE_CURRENT_SOURCE_DIR}/common/flash_settings.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/common/output.c
+    # output.c removed - apps now provide output interface via app_get_output_interface()
 
     # Core Services
     ${CMAKE_CURRENT_SOURCE_DIR}/core/services/players/manager.c

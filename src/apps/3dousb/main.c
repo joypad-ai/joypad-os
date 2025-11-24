@@ -8,7 +8,21 @@
 #include "core/router/router.h"
 #include "core/services/players/manager.h"
 #include "core/services/profiles/profiles.h"
+#include "common/output_interface.h"
+#include "native/device/3do/3do_device.h"
 #include <stdio.h>
+
+// ============================================================================
+// APP OUTPUT INTERFACE
+// ============================================================================
+
+// Provide output interface for firmware to use
+extern const OutputInterface threedooutput_interface;
+
+const OutputInterface* app_get_output_interface(void)
+{
+    return &threedooutput_interface;
+}
 
 // ============================================================================
 // APP INITIALIZATION

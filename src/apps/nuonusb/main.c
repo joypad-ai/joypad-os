@@ -7,7 +7,21 @@
 #include "app.h"
 #include "core/router/router.h"
 #include "core/services/players/manager.h"
+#include "common/output_interface.h"
+#include "native/device/nuon/nuon_device.h"
 #include <stdio.h>
+
+// ============================================================================
+// APP OUTPUT INTERFACE
+// ============================================================================
+
+// Provide output interface for firmware to use
+extern const OutputInterface nuon_output_interface;
+
+const OutputInterface* app_get_output_interface(void)
+{
+    return &nuon_output_interface;
+}
 
 // ============================================================================
 // APP INITIALIZATION

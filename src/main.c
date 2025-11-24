@@ -22,7 +22,9 @@ uint8_t gc_kb_led = 0;
 
 // Output interface abstraction
 #include "common/output_interface.h"
-extern const OutputInterface* active_output;
+
+// App provides output interface (replaces compile-time selection in output.c)
+extern const OutputInterface* app_get_output_interface(void);
 
 extern void hid_init(void);
 extern void hid_task(uint8_t rumble, uint8_t leds, uint8_t trigger_threshold, uint8_t test);
@@ -96,8 +98,9 @@ static void __not_in_flash_func(process_signals)(void)
 #endif
 
     // Console-specific periodic task (if needed)
-    if (active_output->task) {
-      active_output->task();
+    const OutputInterface* output = app_get_output_interface();
+    if (output->task) {
+      output->task();
     }
   }
 }
@@ -106,9 +109,10 @@ int main(void)
 {
   stdio_init_all();
 
-  printf("\nUSB_RETRO::%s\n\n", active_output->name);
+  // Get output interface from app layer (replaces compile-time CONFIG_* selection)
+  const OutputInterface* active_output = app_get_output_interface();
 
-  // board_init() removed in latest pico-sdk/TinyUSB
+  printf("\nUSB_RETRO::%s\n\n", active_output->name);
 
   // Pause briefly for stability before starting USB activity
   sleep_ms(250);
