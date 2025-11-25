@@ -39,9 +39,6 @@
 #define USBR_BUTTON_DR 0x00002 // Dpad Right
 // TODO: add A2 and make button values uniform
 
-// handles state of multi-player inputs
-extern bool update_pending;
-
 int __not_in_flash_func(find_player_index)(int dev_addr, int instance);
 int __not_in_flash_func(add_player)(int dev_addr, int instance);
 void remove_players_by_address(int dev_addr, int instance);

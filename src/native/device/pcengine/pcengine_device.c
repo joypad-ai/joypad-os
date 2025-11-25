@@ -344,7 +344,6 @@ void __not_in_flash_func(update_output)(void)
 
   codes_task();
 
-  update_pending = true;
 }
 
 

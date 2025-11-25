@@ -271,7 +271,6 @@ void __not_in_flash_func(core1_entry)(void)
 
     // Send GameCube controller button report
     GamecubeConsole_SendReport(&gc, &gc_report);
-    update_pending = false;
 
     gc_kb_counter++;
     gc_kb_counter &= 15;
@@ -648,7 +647,6 @@ void __not_in_flash_func(update_output)(void)
   // Atomically update global report (prevents Core 1 from seeing partial updates)
   gc_report = new_report;
 
-  update_pending = true;
 }
 
 // post_input_event removed - replaced by router architecture

@@ -16,8 +16,6 @@
 #include "pico/multicore.h"
 #include "core/globals.h"
 
-bool update_pending = false;
-
 // Weak functions for console-specific rumble/LED - overridden by console devices
 __attribute__((weak)) uint8_t gc_get_rumble(void) { return 0; }
 __attribute__((weak)) uint8_t gc_get_kb_led(void) { return 0; }

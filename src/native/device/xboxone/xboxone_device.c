@@ -185,7 +185,6 @@ void __not_in_flash_func(core1_entry)(void)
     gpio_put(XBOX_R3_BTN_PIN,((event->buttons & USBR_BUTTON_R3) == 0) ? 0 : 1);
     gpio_put(XBOX_L3_BTN_PIN,((event->buttons & USBR_BUTTON_L3) == 0) ? 0 : 1);
 
-    update_pending = false;
 
     update_output();
   }
@@ -218,7 +217,6 @@ void __not_in_flash_func(update_output)(void)
 
   codes_task();
 
-  update_pending = true;
 }
 
 // post_input_event removed - replaced by router architecture
