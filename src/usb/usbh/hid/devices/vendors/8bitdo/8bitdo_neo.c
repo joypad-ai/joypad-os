@@ -1,6 +1,6 @@
 // 8bitdo_neo.c
 #include "8bitdo_neo.h"
-#include "globals.h"
+#include "core/globals.h"
 #include "core/input_event.h"
 
 // check if device is 8BitDo NeoGeo gamepad

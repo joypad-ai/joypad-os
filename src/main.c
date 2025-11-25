@@ -14,7 +14,7 @@
 #include "tusb.h"
 #include "pico/stdlib.h"
 #include "pico/multicore.h"
-#include "globals.h"
+#include "core/globals.h"
 
 bool update_pending = false;
 uint8_t gc_rumble = 0;

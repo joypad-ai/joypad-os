@@ -2,9 +2,10 @@
 #ifndef GLOBALS_H
 #define GLOBALS_H
 
-#include "core/services/hotkey/hotkey.h"
 #include "core/input_event.h"
+#include "core/services/hotkey/hotkey.h"
 #include "core/services/players/manager.h"
+#include "core/router/router.h"
 
 #define UART_ID uart0
 #define BAUD_RATE 115200
@@ -44,12 +45,6 @@ extern bool update_pending;
 // GameCube rumble and keyboard LED states
 extern uint8_t gc_rumble;
 extern uint8_t gc_kb_led;
-
-// Router system (replaces post_input_event)
-#include "core/router/router.h"
-
-// OLD: Console-specific post_input_event (being replaced by router)
-// void __not_in_flash_func(post_input_event)(const input_event_t* event);
 
 int __not_in_flash_func(find_player_index)(int dev_addr, int instance);
 int __not_in_flash_func(add_player)(int dev_addr, int instance);

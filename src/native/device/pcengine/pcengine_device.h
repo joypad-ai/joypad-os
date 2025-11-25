@@ -10,7 +10,7 @@
 #include "plex.pio.h"
 #include "clock.pio.h"
 #include "select.pio.h"
-#include "globals.h"
+#include "core/globals.h"
 
 // Define constants
 #undef MAX_PLAYERS

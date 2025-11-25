@@ -1,7 +1,7 @@
 // hid_gamepad.c
 #include "hid_gamepad.h"
 #include "hid_parser.h"
-#include "globals.h"
+#include "core/globals.h"
 #include "core/input_event.h"
 
 typedef struct

@@ -1,6 +1,6 @@
 // hori_pokken.c
 #include "hori_pokken.h"
-#include "globals.h"
+#include "core/globals.h"
 #include "core/input_event.h"
 
 // check if device is HORI Pokken controller for Wii U

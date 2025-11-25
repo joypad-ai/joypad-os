@@ -1,6 +1,6 @@
 // hid.c - HID protocol handler (TinyUSB HID host callbacks)
 #include "tusb.h"
-#include "globals.h"
+#include "core/globals.h"
 #include "usb/usbh/hid/hid_utils.h"
 #include "usb/usbh/hid/hid_registry.h"
 #include "core/services/players/feedback.h"

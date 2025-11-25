@@ -4,7 +4,7 @@
 // Configurable player slot management supporting both SHIFT and FIXED modes.
 
 #include "manager.h"
-#include "globals.h"
+#include "core/globals.h"
 #include "core/input_event.h"
 #include <stdio.h>
 

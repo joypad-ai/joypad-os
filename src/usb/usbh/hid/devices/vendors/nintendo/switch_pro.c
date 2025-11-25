@@ -1,6 +1,6 @@
 // switch_pro.c
 #include "switch_pro.h"
-#include "globals.h"
+#include "core/globals.h"
 #include "core/input_event.h"
 #include "pico/time.h"
 

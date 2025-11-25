@@ -1,6 +1,6 @@
 // triple_adapter_v1.c
 #include "triple_adapter_v1.h"
-#include "globals.h"
+#include "core/globals.h"
 #include "core/input_event.h"
 
 // check if device is TripleController (Arduino based HID)

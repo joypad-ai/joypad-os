@@ -1,6 +1,6 @@
 // gamecube_adapter.c
 #include "gamecube_adapter.h"
-#include "globals.h"
+#include "core/globals.h"
 #include "core/input_event.h"
 #include "pico/time.h"
 

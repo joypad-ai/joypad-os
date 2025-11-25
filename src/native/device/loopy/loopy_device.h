@@ -8,7 +8,7 @@
 
 #include "tusb.h"
 #include "loopy.pio.h"
-#include "globals.h"
+#include "core/globals.h"
 
 // Define constants
 #undef MAX_PLAYERS

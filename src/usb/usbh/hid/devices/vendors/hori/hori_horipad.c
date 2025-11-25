@@ -1,6 +1,6 @@
 // hori_horipad.c
 #include "hori_horipad.h"
-#include "globals.h"
+#include "core/globals.h"
 #include "core/input_event.h"
 
 // check if device is HORIPAD for Nintendo Switch 
