@@ -29,7 +29,7 @@ const OutputInterface* app_get_output_interface(void)
 
 void app_init(void)
 {
-    printf("[app:xboxadapter] Initializing Xbox-Adapter v%s\n", APP_VERSION);
+    printf("[app:usb2xb1] Initializing Xbox-Adapter v%s\n", APP_VERSION);
 
     // Configure router for Xbox Adapter
     router_config_t router_cfg = {
@@ -55,10 +55,10 @@ void app_init(void)
     };
     players_init_with_config(&player_cfg);
 
-    printf("[app:xboxadapter] Initialization complete\n");
-    printf("[app:xboxadapter]   Routing: %s\n", "SIMPLE (USB → Xbox One 1:1)");
-    printf("[app:xboxadapter]   Player slots: %d (single player)\n", MAX_PLAYER_SLOTS);
-    printf("[app:xboxadapter]   Mouse support: enabled\n");
-    printf("[app:xboxadapter]   I2C passthrough: enabled (GPIO expander emulation)\n");
-    printf("[app:xboxadapter]   DAC analog: enabled (MCP4728 for sticks/triggers)\n");
+    printf("[app:usb2xb1] Initialization complete\n");
+    printf("[app:usb2xb1]   Routing: %s\n", "SIMPLE (USB → Xbox One 1:1)");
+    printf("[app:usb2xb1]   Player slots: %d (single player)\n", MAX_PLAYER_SLOTS);
+    printf("[app:usb2xb1]   Mouse support: enabled\n");
+    printf("[app:usb2xb1]   I2C passthrough: enabled (GPIO expander emulation)\n");
+    printf("[app:usb2xb1]   DAC analog: enabled (MCP4728 for sticks/triggers)\n");
 }
