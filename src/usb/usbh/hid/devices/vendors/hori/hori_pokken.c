@@ -67,8 +67,7 @@ void process_hori_pokken(uint8_t dev_addr, uint8_t instance, uint8_t const* repo
                ((update_report.start)  ? 0x00 : USBR_BUTTON_S2) |
                ((0)                    ? 0x00 : USBR_BUTTON_L3) |
                ((0)                    ? 0x00 : USBR_BUTTON_R3) |
-               ((0)                    ? 0x00 : USBR_BUTTON_A1) |
-               ((1)/*has_6btns*/       ? 0x00 : 0x800));
+               ((0)                    ? 0x00 : USBR_BUTTON_A1));
 
     // invert vertical axis
     uint8_t axis_x = (update_report.x_axis == 255) ? 255 : update_report.x_axis + 1;
@@ -86,6 +85,7 @@ void process_hori_pokken(uint8_t dev_addr, uint8_t instance, uint8_t const* repo
       .instance = instance,
       .type = INPUT_TYPE_GAMEPAD,
       .buttons = buttons,
+      .button_count = 8,  // B, A, Y, X, L, R, ZL, ZR
       .analog = {axis_x, axis_y, axis_z, axis_rz, 128, 0, 0, 128},
       .keys = 0,
     };

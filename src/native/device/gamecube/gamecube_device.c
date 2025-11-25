@@ -601,6 +601,26 @@ void __not_in_flash_func(update_output)(void)
       new_report.cstick_y   = scale_toward_center(event->analog[3], active_profile->right_stick_sensitivity, 128);
       new_report.l_analog   = event->analog[5];
       new_report.r_analog   = event->analog[6];
+
+      // Keyboard-specific transforms for GameCube
+      if (event->type == INPUT_TYPE_KEYBOARD) {
+        // Scale keyboard analog values to GameCube's smaller range
+        // Keyboard outputs 64/128 intensity, GC needs ~28/78 range
+        const float gc_kb_scale = 0.61f;  // 78/128 ≈ 0.61
+        new_report.stick_x  = scale_toward_center(new_report.stick_x, gc_kb_scale, 128);
+        new_report.stick_y  = scale_toward_center(new_report.stick_y, gc_kb_scale, 128);
+        new_report.cstick_x = scale_toward_center(new_report.cstick_x, gc_kb_scale, 128);
+        new_report.cstick_y = scale_toward_center(new_report.cstick_y, gc_kb_scale, 128);
+
+        // A1 (Home/Ctrl+Alt+Del) → gc-swiss IGR combo (Select+D-down+B+R)
+        if ((byte & USBR_BUTTON_A1) == 0) {
+          new_report.dpad_down = 1;
+          new_report.b = 1;
+          new_report.r = 1;
+          // S1 already mapped via profile, but ensure it's pressed for IGR
+          apply_button_mapping(&new_report, GC_BTN_Z, true);  // Z acts as select equivalent
+        }
+      }
     }
     else
     {

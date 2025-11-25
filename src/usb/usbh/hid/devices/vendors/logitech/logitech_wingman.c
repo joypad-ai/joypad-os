@@ -64,51 +64,32 @@ void process_logitech_wingman(uint8_t dev_addr, uint8_t instance, uint8_t const*
     bool dpad_down  = ((wingman_report.dpad >= 3 && wingman_report.dpad <= 5));
     bool dpad_left  = ((wingman_report.dpad >= 5 && wingman_report.dpad <= 7));
 
-#ifdef CONFIG_PCE
+    // WingMan Action physical layout (Genesis/Saturn style):
+    //   Top row:    [X][Y][Z]  (left to right)
+    //   Bottom row: [A][B][C]  (left to right)
+    //
+    // GP2040-CE canonical mapping (position-based):
+    //   Top row:    [B3][B4][R1]
+    //   Bottom row: [B1][B2][R2]
+    //
+    // Mapping: A→B1, B→B2, C→R2, X→B3, Y→B4, Z→R1
     buttons = (((dpad_up)          ? 0x00 : USBR_BUTTON_DU) |
                ((dpad_down)        ? 0x00 : USBR_BUTTON_DD) |
                ((dpad_left)        ? 0x00 : USBR_BUTTON_DL) |
                ((dpad_right)       ? 0x00 : USBR_BUTTON_DR) |
-               ((wingman_report.b) ? 0x00 : USBR_BUTTON_B1) | // II
-               ((wingman_report.c) ? 0x00 : USBR_BUTTON_B2) | // I
-               ((wingman_report.x) ? 0x00 : USBR_BUTTON_B3) | // IV
-               ((wingman_report.a) ? 0x00 : USBR_BUTTON_B4) | // III
-               ((wingman_report.y) ? 0x00 : USBR_BUTTON_L1) | // V
-               ((wingman_report.z) ? 0x00 : USBR_BUTTON_R1) | // VI
+               ((wingman_report.a) ? 0x00 : USBR_BUTTON_B1) |  // A = left-bottom
+               ((wingman_report.b) ? 0x00 : USBR_BUTTON_B2) |  // B = mid-bottom
+               ((wingman_report.x) ? 0x00 : USBR_BUTTON_B3) |  // X = left-top
+               ((wingman_report.y) ? 0x00 : USBR_BUTTON_B4) |  // Y = mid-top
+               ((wingman_report.l) ? 0x00 : USBR_BUTTON_L1) |  // L shoulder
+               ((wingman_report.z) ? 0x00 : USBR_BUTTON_R1) |  // Z = right-top
                ((0)                ? 0x00 : USBR_BUTTON_L2) |
-               ((0)                ? 0x00 : USBR_BUTTON_R2) |
-               ((wingman_report.r) ? 0x00 : USBR_BUTTON_S1) | // Sel
-               ((wingman_report.s) ? 0x00 : USBR_BUTTON_S2) | // Run
-               ((0)                ? 0x00 : USBR_BUTTON_L3) |
-               ((0)                ? 0x00 : USBR_BUTTON_R3) |
-               ((0)                ? 0x00 : USBR_BUTTON_A1) |
-               ((1)/*has_6btns*/   ? 0x00 : 0x800));
-#else
-    buttons = (((dpad_up)          ? 0x00 : USBR_BUTTON_DU) |
-               ((dpad_down)        ? 0x00 : USBR_BUTTON_DD) |
-               ((dpad_left)        ? 0x00 : USBR_BUTTON_DL) |
-               ((dpad_right)       ? 0x00 : USBR_BUTTON_DR) |
-               ((wingman_report.b) ? 0x00 : USBR_BUTTON_B1) |
-               ((wingman_report.a) ? 0x00 : USBR_BUTTON_B2) |
-               ((wingman_report.y) ? 0x00 : USBR_BUTTON_B3) |
-               ((wingman_report.x) ? 0x00 : USBR_BUTTON_B4) |
-               ((wingman_report.l) ? 0x00 : USBR_BUTTON_L1) |
-               ((wingman_report.r) ? 0x00 : USBR_BUTTON_R1) |
-               ((0)                ? 0x00 : USBR_BUTTON_L2) |
-               ((0)                ? 0x00 : USBR_BUTTON_R2) |
+               ((wingman_report.c) ? 0x00 : USBR_BUTTON_R2) |  // C = right-bottom
+               ((wingman_report.r) ? 0x00 : USBR_BUTTON_S1) |
                ((wingman_report.s) ? 0x00 : USBR_BUTTON_S2) |
-               ((wingman_report.z) ? 0x00 : USBR_BUTTON_S1) |
                ((0)                ? 0x00 : USBR_BUTTON_L3) |
                ((0)                ? 0x00 : USBR_BUTTON_R3) |
-               ((0)                ? 0x00 : USBR_BUTTON_A1) |
-               ((1)/*has_6btns*/   ? 0x00 : 0x800));
-
-    // C button hold swaps slider axis from horizontal to vertical
-    if (wingman_report.c) {
-        analog_x2 = 128;
-        analog_y2 = wingman_report.analog_z;
-    }
-#endif
+               ((0)                ? 0x00 : USBR_BUTTON_A1));
 
     // keep analog within range [1-255]
     ensureAllNonZero(&analog_x1, &analog_y1, &analog_x2, &analog_y2);
@@ -119,7 +100,9 @@ void process_logitech_wingman(uint8_t dev_addr, uint8_t instance, uint8_t const*
       .dev_addr = dev_addr,
       .instance = instance,
       .type = INPUT_TYPE_GAMEPAD,
+      .layout = LAYOUT_SEGA_6BUTTON,  // Genesis style: Top [X][Y][Z], Bottom [A][B][C]
       .buttons = buttons,
+      .button_count = 7,  // A, B, C, X, Y, Z, L (no R shoulder)
       .analog = {analog_x1, analog_y1, analog_x2, analog_y2, 128, 0, 0, 128},
       .keys = 0,
     };

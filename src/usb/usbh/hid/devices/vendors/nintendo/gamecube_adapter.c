@@ -75,16 +75,15 @@ void input_gamecube_adapter(uint8_t dev_addr, uint8_t instance, uint8_t const* r
                      ((gamecube_report.port[i].a)     ? 0x00 : USBR_BUTTON_B2) |
                      ((gamecube_report.port[i].y)     ? 0x00 : USBR_BUTTON_B3) |
                      ((gamecube_report.port[i].x)     ? 0x00 : USBR_BUTTON_B4) |
-                     ((gamecube_report.port[i].l)     ? 0x00 : USBR_BUTTON_L1) |
-                     ((gamecube_report.port[i].r)     ? 0x00 : USBR_BUTTON_R1) |
-                     ((0)                             ? 0x00 : USBR_BUTTON_L2) |
-                     ((0)                             ? 0x00 : USBR_BUTTON_R2) |
-                     ((gamecube_report.port[i].z)     ? 0x00 : USBR_BUTTON_S1) |
+                     ((0)                             ? 0x00 : USBR_BUTTON_L1) |
+                     ((gamecube_report.port[i].z)     ? 0x00 : USBR_BUTTON_R1) |
+                     ((gamecube_report.port[i].l)     ? 0x00 : USBR_BUTTON_L2) |
+                     ((gamecube_report.port[i].r)     ? 0x00 : USBR_BUTTON_R2) |
+                     ((0)                             ? 0x00 : USBR_BUTTON_S1) |
                      ((gamecube_report.port[i].start) ? 0x00 : USBR_BUTTON_S2) |
                      ((0)                             ? 0x00 : USBR_BUTTON_L3) |
                      ((0)                             ? 0x00 : USBR_BUTTON_R3) |
-                     ((0)                             ? 0x00 : USBR_BUTTON_A1) |
-                     ((1)/*has_6btns*/                ? 0x00 : 0x800));
+                     ((0)                             ? 0x00 : USBR_BUTTON_A1));
 
           uint8_t zl_axis = gamecube_report.port[i].zl;
           zl_axis = zl_axis > 38 ? zl_axis - 38 : 0;
@@ -96,6 +95,7 @@ void input_gamecube_adapter(uint8_t dev_addr, uint8_t instance, uint8_t const* r
             .instance = i,
             .type = INPUT_TYPE_GAMEPAD,
             .buttons = buttons,
+            .button_count = 6,  // GC: B, A, Y, X, L, R (Z is mapped to S1)
             .analog = {
               gamecube_report.port[i].x1,
               gamecube_report.port[i].y1,

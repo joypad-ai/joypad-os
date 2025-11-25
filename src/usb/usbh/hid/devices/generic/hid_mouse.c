@@ -97,13 +97,9 @@ void process_hid_mouse(uint8_t dev_addr, uint8_t instance, uint8_t const* mouse_
                 ((report->buttons & MOUSE_BUTTON_MIDDLE)  ? 0x00 : USBR_BUTTON_S2));
   }
 
-#ifdef CONFIG_PCE // mice translation
-  local_x = (0 - report->x);
-  local_y = (0 - report->y);
-#else // controllers
+  // Pass raw mouse deltas - console output layer handles any axis inversion
   local_x = report->x;
-  local_y = ((~report->y) & 0xff);
-#endif
+  local_y = report->y;
 
   // Pass raw mouse deltas (platform-agnostic)
   // Console-side decides how to interpret (e.g., Nuon converts to spinner)

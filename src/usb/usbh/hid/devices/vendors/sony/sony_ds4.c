@@ -128,8 +128,7 @@ void input_sony_ds4(uint8_t dev_addr, uint8_t instance, uint8_t const* report, u
                  ((ds4_report.l3)       ? 0x00 : USBR_BUTTON_L3) |
                  ((ds4_report.r3)       ? 0x00 : USBR_BUTTON_R3) |
                  ((ds4_report.ps)       ? 0x00 : USBR_BUTTON_A1) |
-                 ((ds4_report.tpad)     ? 0x00 : USBR_BUTTON_A2) |
-                 ((1)/*has_6btns*/      ? 0x00 : 0x800));
+                 ((ds4_report.tpad)     ? 0x00 : USBR_BUTTON_A2));
 
       uint8_t analog_1x = ds4_report.x;
       uint8_t analog_1y = 255 - ds4_report.y;
@@ -178,6 +177,7 @@ void input_sony_ds4(uint8_t dev_addr, uint8_t instance, uint8_t const* report, u
         .instance = instance,
         .type = INPUT_TYPE_GAMEPAD,
         .buttons = buttons,
+        .button_count = 10,  // PS4: Cross, Circle, Square, Triangle, L1, R1, L2, R2, L3, R3
         .analog = {analog_1x, analog_1y, analog_2x, analog_2y, 128, analog_l, analog_r, 128},
         .delta_x = touchpad_delta_x,  // Touchpad horizontal swipe as mouse-like delta
         .keys = 0

@@ -63,8 +63,7 @@ void process_8bitdo_pce(uint8_t dev_addr, uint8_t instance, uint8_t const* repor
                ((pce_report.run) ? 0x00 : USBR_BUTTON_S2) |
                ((0)              ? 0x00 : USBR_BUTTON_R3) |
                ((0)              ? 0x00 : USBR_BUTTON_L3) |
-               ((0)              ? 0x00 : USBR_BUTTON_A1) |
-               ((0)/*has_6btns*/ ? 0x00 : 0x800));
+               ((0)              ? 0x00 : USBR_BUTTON_A1));
 
     // add to accumulator and post to the state machine
     // if a scan from the host machine is ongoing, wait
@@ -73,6 +72,7 @@ void process_8bitdo_pce(uint8_t dev_addr, uint8_t instance, uint8_t const* repor
       .instance = instance,
       .type = INPUT_TYPE_GAMEPAD,
       .buttons = buttons,
+      .button_count = 2,  // PCEngine 2-button: I, II
       .analog = {128, 128, 128, 128, 128, 0, 0, 128},
       .keys = 0,
     };

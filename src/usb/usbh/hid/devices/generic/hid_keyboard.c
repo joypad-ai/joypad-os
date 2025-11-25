@@ -4,13 +4,9 @@
 #include "input_event.h"
 #include "pico/time.h"
 
-#ifdef CONFIG_NGC
-#define KB_ANALOG_MID 28
-#define KB_ANALOG_MAX 78
-#else
+// Analog stick intensity values (canonical - console layer can scale if needed)
 #define KB_ANALOG_MID 64
 #define KB_ANALOG_MAX 128
-#endif
 
 // DualSense instance state
 typedef struct TU_ATTR_PACKED
@@ -291,24 +287,15 @@ void process_hid_keyboard(uint8_t dev_addr, uint8_t instance, uint8_t const* hid
     if ( report->keycode[i] )
     {
       if (report->keycode[i] == HID_KEY_ESCAPE || report->keycode[i] == HID_KEY_EQUAL) btns_run = true; // Start
-      if (report->keycode[i] == HID_KEY_P || report->keycode[i] == HID_KEY_MINUS) btns_sel = true; // Select / Z
-#ifdef CONFIG_PCE
-      // more ideal PCE enter button for SuperSD3 Menu
-      if (report->keycode[i] == HID_KEY_J || report->keycode[i] == HID_KEY_ENTER) btns_b1 = true; // II
-      if (report->keycode[i] == HID_KEY_K || report->keycode[i] == HID_KEY_BACKSPACE) btns_b2 = true; // I
-#else
-      if (report->keycode[i] == HID_KEY_J || report->keycode[i] == HID_KEY_ENTER) btns_b2 = true; // A
-      if (report->keycode[i] == HID_KEY_K || report->keycode[i] == HID_KEY_BACKSPACE) btns_b1 = true; // B
-#endif
-      if (report->keycode[i] == HID_KEY_L) btns_b4 = true; // X
-      if (report->keycode[i] == HID_KEY_SEMICOLON) btns_b3 = true; // Y
-      if (report->keycode[i] == HID_KEY_U || report->keycode[i] == HID_KEY_PAGE_UP) btns_l1 = true; // L
-      if (report->keycode[i] == HID_KEY_I || report->keycode[i] == HID_KEY_PAGE_DOWN) btns_r1 = true; // R
+      if (report->keycode[i] == HID_KEY_P || report->keycode[i] == HID_KEY_MINUS) btns_sel = true; // Select
 
-#ifdef CONFIG_NGC
-      // light shield
-      if (report->keycode[i] == HID_KEY_O) analog_r = 63; // R at 25%
-#endif
+      // Canonical button mapping (console layer handles any reordering)
+      if (report->keycode[i] == HID_KEY_J || report->keycode[i] == HID_KEY_ENTER) btns_b1 = true;
+      if (report->keycode[i] == HID_KEY_K || report->keycode[i] == HID_KEY_BACKSPACE) btns_b2 = true;
+      if (report->keycode[i] == HID_KEY_L) btns_b4 = true;
+      if (report->keycode[i] == HID_KEY_SEMICOLON) btns_b3 = true;
+      if (report->keycode[i] == HID_KEY_U || report->keycode[i] == HID_KEY_PAGE_UP) btns_l1 = true;
+      if (report->keycode[i] == HID_KEY_I || report->keycode[i] == HID_KEY_PAGE_DOWN) btns_r1 = true;
       // HAT SWITCH
       switch (report->keycode[i])
       {
@@ -382,21 +369,10 @@ void process_hid_keyboard(uint8_t dev_addr, uint8_t instance, uint8_t const* hid
           break;
       }
 
+      // Ctrl+Alt+Delete -> Home/Guide button (console layer can map to IGR if needed)
       if (is_ctrl && is_alt && report->keycode[i] == HID_KEY_DELETE)
       {
-      #ifdef CONFIG_XB1
         btns_a1 = true;
-      #elif CONFIG_NGC
-        // gc-swiss irg
-        btns_sel = true;
-        dpad_down = true;
-        btns_b1 = true;
-        btns_r1 = true;
-      #elif CONFIG_PCE
-        // SSDS3 igr
-        btns_sel = true;
-        btns_run = true;
-      #endif
       }
 
       if ( find_key_in_report(&prev_report, report->keycode[i]) )
@@ -416,7 +392,7 @@ void process_hid_keyboard(uint8_t dev_addr, uint8_t instance, uint8_t const* hid
     }
   }
 
-  // calculate left stick angle degrees
+  // calculate left stick angle degrees (console layer can scale if needed)
   if (leftStickKeys) {
     int leftIntensity = is_shift ? KB_ANALOG_MID : KB_ANALOG_MAX;
     calculate_coordinates(leftStickKeys, leftIntensity, &analog_left_x, &analog_left_y);
@@ -452,8 +428,7 @@ void process_hid_keyboard(uint8_t dev_addr, uint8_t instance, uint8_t const* hid
              ((btns_run)   ? 0x00 : USBR_BUTTON_S2) |
              ((0)          ? 0x00 : USBR_BUTTON_L3) |
              ((0)          ? 0x00 : USBR_BUTTON_R3) |
-             ((btns_a1)    ? 0x00 : USBR_BUTTON_A1) |
-             ((1)/*has_6btns*/ ? 0x00 : 0x800));
+             ((btns_a1)    ? 0x00 : USBR_BUTTON_A1));
 
   // TODO: map L2/R2/L3/R3 buttons
 
@@ -462,6 +437,7 @@ void process_hid_keyboard(uint8_t dev_addr, uint8_t instance, uint8_t const* hid
     .instance = instance,
     .type = INPUT_TYPE_KEYBOARD,
     .buttons = buttons,
+    .button_count = 6,  // Keyboard maps to 6 face buttons (B1-B4, L1, R1)
     .analog = {analog_left_x, analog_left_y, analog_right_x, analog_right_y, 128, analog_l, analog_r, 128},
     .keys = reportKeys
   };

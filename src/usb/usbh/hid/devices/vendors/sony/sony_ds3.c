@@ -127,8 +127,7 @@ void input_sony_ds3(uint8_t dev_addr, uint8_t instance, uint8_t const* report, u
                  ((ds3_report.start)    ? 0x00 : USBR_BUTTON_S2) |
                  ((ds3_report.l3)       ? 0x00 : USBR_BUTTON_L3) |
                  ((ds3_report.r3)       ? 0x00 : USBR_BUTTON_R3) |
-                 ((ds3_report.ps)       ? 0x00 : USBR_BUTTON_A1) |
-                 ((1)/*has_6btns*/      ? 0x00 : 0x800));
+                 ((ds3_report.ps)       ? 0x00 : USBR_BUTTON_A1));
 
       // keep analog within range [1-255]
       ensureAllNonZero(&analog_1x, &analog_1y, &analog_2x, &analog_2y);
@@ -140,6 +139,7 @@ void input_sony_ds3(uint8_t dev_addr, uint8_t instance, uint8_t const* report, u
         .instance = instance,
         .type = INPUT_TYPE_GAMEPAD,
         .buttons = buttons,
+        .button_count = 10,  // PS3: Cross, Circle, Square, Triangle, L1, R1, L2, R2, L3, R3
         .analog = {analog_1x, analog_1y, analog_2x, analog_2y, 128, analog_l, analog_r, 128},
         .keys = 0,
       };

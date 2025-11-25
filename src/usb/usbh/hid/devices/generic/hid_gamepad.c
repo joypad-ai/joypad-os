@@ -466,7 +466,6 @@ void process_hid_gamepad(uint8_t dev_addr, uint8_t instance, uint8_t const* repo
     bool buttonVIII = buttonCount >=10 ? current.button8 : 0;
     bool buttonIX = buttonCount >=11 ? current.button9 : 0;
     bool buttonX = buttonCount >=12 ? current.button10 : 0;
-    bool has_6btns = buttonCount >= 6;
 
     // assume DirectInput mapping
     if (buttonCount >= 10) {
@@ -494,8 +493,7 @@ void process_hid_gamepad(uint8_t dev_addr, uint8_t instance, uint8_t const* repo
                ((current.button11) ? 0x00 : USBR_BUTTON_L3) |
                ((current.button12) ? 0x00 : USBR_BUTTON_R3) |
                ((0)                ? 0x00 : USBR_BUTTON_A1) | // 13
-               ((0)                ? 0x00 : USBR_BUTTON_A2) | // 14
-               ((has_6btns)        ? 0x00 : 0x800));
+               ((0)                ? 0x00 : USBR_BUTTON_A2)); // 14
 
     // invert vertical axis
     uint8_t axis_x = current.x;
@@ -511,6 +509,7 @@ void process_hid_gamepad(uint8_t dev_addr, uint8_t instance, uint8_t const* repo
       .instance = instance,
       .type = INPUT_TYPE_GAMEPAD,
       .buttons = buttons,
+      .button_count = buttonCount,
       .analog = {axis_x, axis_y, axis_z, axis_rz, 128, current.rx, current.ry, 128},
       .keys = 0,
     };

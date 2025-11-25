@@ -49,6 +49,7 @@ int state = 0; // countdown sequence for shift-register position
 
 // Console-local state (not input data)
 #include "core/router/router.h"
+#include "common/input_event.h"
 
 static struct {
     int button_mode[MAX_PLAYERS];  // Button mode per player (6-button, 2-button, etc.)
@@ -227,6 +228,14 @@ void __not_in_flash_func(update_output)(void)
     // base controller/mouse buttons
     int8_t byte = (event->buttons & 0xff);
 
+    // Keyboard-specific transforms for PCEngine
+    if (event->type == INPUT_TYPE_KEYBOARD) {
+      // A1 (Home/Ctrl+Alt+Delete) → SSDS3 IGR combo (Select+Run)
+      if ((event->buttons & USBR_BUTTON_A1) == 0) {
+        byte &= ~(USBR_BUTTON_S1 | USBR_BUTTON_S2);  // Clear Select and Run bits (0 = pressed)
+      }
+    }
+
     // check for 6-button enable/disable hotkeys
     if (!(event->buttons & (USBR_BUTTON_S2 | USBR_BUTTON_DU)))
       pce_state.button_mode[i] = BUTTON_MODE_6;
@@ -250,8 +259,8 @@ void __not_in_flash_func(update_output)(void)
       else if(btns == 0x84) hotkey = ~0x84; // RUN + DOWN
     }
 
-    bool has6Btn = !(event->buttons & 0x800);
-    bool isMouse = !(event->buttons & 0x0f);
+    bool has6Btn = (event->button_count >= 6);
+    bool isMouse = (event->type == INPUT_TYPE_MOUSE);
     bool is6btn = has6Btn && pce_state.button_mode[i] == BUTTON_MODE_6;
     bool is3btnSel = has6Btn && pce_state.button_mode[i] == BUTTON_MODE_3_SEL;
     bool is3btnRun = has6Btn && pce_state.button_mode[i] == BUTTON_MODE_3_RUN;
@@ -302,21 +311,24 @@ void __not_in_flash_func(update_output)(void)
     }
 
     // mouse x/y states
+    // PCEngine mouse expects inverted axes (0 - value)
     if (isMouse)
     {
+      uint8_t mouse_x = (0 - event->analog[0]) & 0xff;  // Invert X for PCE
+      uint8_t mouse_y = (0 - event->analog[1]) & 0xff;  // Invert Y for PCE
       switch (state)
       {
         case 3: // state 3: x most significant nybble
-          byte |= (((event->analog[0]>>1) & 0xf0) >> 4);  // ANALOG_X
+          byte |= (((mouse_x>>1) & 0xf0) >> 4);
         break;
         case 2: // state 2: x least significant nybble
-          byte |= (((event->analog[0]>>1) & 0x0f));  // ANALOG_X
+          byte |= (((mouse_x>>1) & 0x0f));
         break;
         case 1: // state 1: y most significant nybble
-          byte |= (((event->analog[1]>>1) & 0xf0) >> 4);  // ANALOG_Y
+          byte |= (((mouse_y>>1) & 0xf0) >> 4);
         break;
         case 0: // state 0: y least significant nybble
-          byte |= (((event->analog[1]>>1) & 0x0f));  // ANALOG_Y
+          byte |= (((mouse_y>>1) & 0x0f));
         break;
       }
     }

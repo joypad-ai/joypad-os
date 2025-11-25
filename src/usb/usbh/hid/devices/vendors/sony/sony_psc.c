@@ -64,8 +64,7 @@ void process_sony_psc(uint8_t dev_addr, uint8_t instance, uint8_t const* report,
                ((psc_report.option)   ? 0x00 : USBR_BUTTON_S2) |
                ((0)                   ? 0x00 : USBR_BUTTON_L3) |
                ((0)                   ? 0x00 : USBR_BUTTON_R3) |
-               ((psc_report.ps)       ? 0x00 : USBR_BUTTON_A1) |
-               ((1)/*has_6btns*/      ? 0x00 : 0x800));
+               ((psc_report.ps)       ? 0x00 : USBR_BUTTON_A1));
 
     // add to accumulator and post to the state machine
     // if a scan from the host machine is ongoing, wait
@@ -74,6 +73,7 @@ void process_sony_psc(uint8_t dev_addr, uint8_t instance, uint8_t const* report,
       .instance = instance,
       .type = INPUT_TYPE_GAMEPAD,
       .buttons = buttons,
+      .button_count = 8,  // PSC: Cross, Circle, Square, Triangle, L1, R1, L2, R2
       .analog = {128, 128, 128, 128, 128, 0, 0, 128},
       .keys = 0,
     };

@@ -77,14 +77,14 @@ void process_triple_adapter_v2(uint8_t dev_addr, uint8_t instance, uint8_t const
                ((update_report.x)      ? 0x00 : USBR_BUTTON_B4) |
                ((update_report.select) ? 0x00 : USBR_BUTTON_S1) |
                ((update_report.start)  ? 0x00 : USBR_BUTTON_S2) |
-               ((0)                    ? 0x00 : USBR_BUTTON_L3) |
-               ((0)                    ? 0x00 : USBR_BUTTON_R3) |
+               ((update_report.ntt_0)  ? 0x00 : USBR_BUTTON_L3) |
+               ((update_report.ntt_1)  ? 0x00 : USBR_BUTTON_R3) |
                ((update_report.l)      ? 0x00 : USBR_BUTTON_L1) |
                ((update_report.r)      ? 0x00 : USBR_BUTTON_R1) |
-               ((0)                    ? 0x00 : USBR_BUTTON_L2) |
-               ((0)                    ? 0x00 : USBR_BUTTON_R2) |
-               ((0)                    ? 0x00 : USBR_BUTTON_A1) |
-               ((1)/*has_6btns*/       ? 0x00 : 0x800));
+               ((update_report.ntt_2)  ? 0x00 : USBR_BUTTON_L2) |
+               ((update_report.ntt_3)  ? 0x00 : USBR_BUTTON_R2) |
+               ((update_report.ntt_4)  ? 0x00 : USBR_BUTTON_A1) |
+               ((update_report.ntt_5)  ? 0x00 : USBR_BUTTON_A2));
 
     // add to accumulator and post to the state machine
     // if a scan from the host machine is ongoing, wait
@@ -93,6 +93,7 @@ void process_triple_adapter_v2(uint8_t dev_addr, uint8_t instance, uint8_t const
       .instance = instance,
       .type = INPUT_TYPE_GAMEPAD,
       .buttons = buttons,
+      .button_count = 6,  // B, A, Y, X, L, R (SNES-style)
       .analog = {128, 128, 128, 128, 128, 0, 0, 128},
       .keys = 0,
     };

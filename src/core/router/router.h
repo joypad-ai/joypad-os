@@ -42,7 +42,8 @@ typedef enum {
 } input_source_t;
 
 typedef enum {
-    OUTPUT_TARGET_GAMECUBE,
+    OUTPUT_TARGET_NONE = -1,        // No output configured
+    OUTPUT_TARGET_GAMECUBE = 0,
     OUTPUT_TARGET_PCENGINE,
     OUTPUT_TARGET_3DO,
     OUTPUT_TARGET_NUON,
@@ -173,6 +174,10 @@ void router_set_merge_mode(output_target_t output, merge_mode_t mode);
 
 // Set active outputs (for broadcast mode)
 void router_set_active_outputs(output_target_t* outputs, uint8_t count);
+
+// Get primary active output (first in active outputs list)
+// Returns OUTPUT_TARGET_NONE if no outputs configured
+output_target_t router_get_primary_output(void);
 
 // ============================================================================
 // INTERNAL STATE (exposed for debugging, don't modify directly)

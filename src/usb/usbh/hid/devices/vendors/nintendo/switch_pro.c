@@ -242,8 +242,7 @@ void input_report_switch_pro(uint8_t dev_addr, uint8_t instance, uint8_t const* 
                  ((bttn_s2)              ? 0x00 : USBR_BUTTON_S2) |
                  ((update_report.lstick) ? 0x00 : USBR_BUTTON_L3) |
                  ((update_report.rstick) ? 0x00 : USBR_BUTTON_R3) |
-                 ((bttn_a1)              ? 0x00 : USBR_BUTTON_A1) |
-                 ((1)/*has_6btns*/       ? 0x00 : 0x800));
+                 ((bttn_a1)              ? 0x00 : USBR_BUTTON_A1));
 
       // Joy-Con Grip merging: combine both Joy-Con inputs into one controller
       if (switch_devices[dev_addr].instance_count > 1) {
@@ -311,6 +310,7 @@ void input_report_switch_pro(uint8_t dev_addr, uint8_t instance, uint8_t const* 
           .instance = instance,
           .type = INPUT_TYPE_GAMEPAD,
           .buttons = buttons,
+          .button_count = 10,  // B, A, Y, X, L, R, ZL, ZR, L3, R3
           .analog = {leftX, leftY, rightX, rightY, 128, 0, 0, 128},
           .keys = 0,
         };
@@ -396,8 +396,7 @@ void input_report_switch_pro(uint8_t dev_addr, uint8_t instance, uint8_t const* 
                ((bttn_s2)              ? 0x00 : USBR_BUTTON_S2) |
                ((pro2_report.lstick)   ? 0x00 : USBR_BUTTON_L3) |
                ((pro2_report.rstick)   ? 0x00 : USBR_BUTTON_R3) |
-               ((bttn_a1)              ? 0x00 : USBR_BUTTON_A1) |
-               ((1)/*has_6btns*/       ? 0x00 : 0x800));
+               ((bttn_a1)              ? 0x00 : USBR_BUTTON_A1));
 
     bool is_root = instance == switch_devices[dev_addr].instance_root;
     input_event_t event = {
@@ -405,6 +404,7 @@ void input_report_switch_pro(uint8_t dev_addr, uint8_t instance, uint8_t const* 
       .instance = is_root ? instance : -1,
       .type = INPUT_TYPE_GAMEPAD,
       .buttons = buttons,
+      .button_count = 10,  // B, A, Y, X, L, R, ZL, ZR, L3, R3
       .analog = {leftX, leftY, rightX, rightY, 128, 0, 0, 128},
       .keys = 0,
     };

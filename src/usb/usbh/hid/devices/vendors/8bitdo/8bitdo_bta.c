@@ -85,7 +85,7 @@ void process_8bitdo_bta(uint8_t dev_addr, uint8_t instance, uint8_t const* repor
                ((input_report.l3)     ? 0x00 : USBR_BUTTON_L3) |
                ((input_report.r3)     ? 0x00 : USBR_BUTTON_R3) |
                ((input_report.home)   ? 0x00 : USBR_BUTTON_A1) |
-               ((1)/*has_6btns*/      ? 0x00 : 0x800));
+               ((input_report.cap)    ? 0x00 : USBR_BUTTON_A2));
 
     uint8_t analog_1x = input_report.x1;
     uint8_t analog_1y = (input_report.y1 == 0) ? 255 : 256 - input_report.y1;
@@ -104,6 +104,7 @@ void process_8bitdo_bta(uint8_t dev_addr, uint8_t instance, uint8_t const* repor
       .instance = instance,
       .type = INPUT_TYPE_GAMEPAD,
       .buttons = buttons,
+      .button_count = 10,  // A, B, X, Y, L, R, L2, R2, L3, R3
       .analog = {analog_1x, analog_1y, analog_2x, analog_2y, 128, l2_trigger, r2_trigger, 128},
       .keys = 0,
     };

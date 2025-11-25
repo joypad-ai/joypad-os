@@ -57,46 +57,34 @@ void process_hori_horipad(uint8_t dev_addr, uint8_t instance, uint8_t const* rep
     bool dpad_down  = (input_report.dpad >= 3 && input_report.dpad <= 5);
     bool dpad_left  = (input_report.dpad >= 5 && input_report.dpad <= 7);
 
-#ifdef CONFIG_PCE
+    // HORI Fighting Commander physical layout (6-button for Switch):
+    //   Top row:    [Y][X][R]   (left to right)
+    //   Bottom row: [B][A][ZR]  (left to right)
+    //
+    // GP2040-CE canonical mapping (position-based):
+    //   Top row:    [B3][B4][R1]
+    //   Bottom row: [B1][B2][R2]
+    //
+    // Mapping: B→B1, A→B2, ZR(r2)→R2, Y→B3, X→B4, R(r1)→R1
+    // L1/L2 are shoulder buttons (not part of 6-button face layout)
     buttons = (((dpad_up)         ? 0x00 : USBR_BUTTON_DU) |
                ((dpad_down)       ? 0x00 : USBR_BUTTON_DD) |
                ((dpad_left)       ? 0x00 : USBR_BUTTON_DL) |
                ((dpad_right)      ? 0x00 : USBR_BUTTON_DR) |
-               ((input_report.b)  ? 0x00 : USBR_BUTTON_B1) | // II
-               ((input_report.r2) ? 0x00 : USBR_BUTTON_B2) | // I
-               ((input_report.x || input_report.r1) ? 0x00 : USBR_BUTTON_B3) | // IV
-               ((input_report.a)  ? 0x00 : USBR_BUTTON_B4) | // III
-               ((input_report.y)  ? 0x00 : USBR_BUTTON_L1) | // V
-               ((input_report.l2 || input_report.l1)? 0x00 : USBR_BUTTON_R1) | // VI
-               ((0)               ? 0x00 : USBR_BUTTON_L2) |
-               ((0)               ? 0x00 : USBR_BUTTON_R2) |
-               ((input_report.s1) ? 0x00 : USBR_BUTTON_S1) | // Sel
-               ((input_report.s2) ? 0x00 : USBR_BUTTON_S2) | // Run
-               ((0)               ? 0x00 : USBR_BUTTON_L3) |
-               ((0)               ? 0x00 : USBR_BUTTON_R3) |
-               ((input_report.a1) ? 0x00 : USBR_BUTTON_A1) |
-               ((1)/*has_6btns*/  ? 0x00 : 0x800));
-#else
-    buttons = (((dpad_up)         ? 0x00 : USBR_BUTTON_DU) |
-               ((dpad_down)       ? 0x00 : USBR_BUTTON_DD) |
-               ((dpad_left)       ? 0x00 : USBR_BUTTON_DL) |
-               ((dpad_right)      ? 0x00 : USBR_BUTTON_DR) |
-               ((input_report.b)  ? 0x00 : USBR_BUTTON_B1) |
-               ((input_report.a)  ? 0x00 : USBR_BUTTON_B2) |
-               ((input_report.y)  ? 0x00 : USBR_BUTTON_B3) |
-               ((input_report.x)  ? 0x00 : USBR_BUTTON_B4) |
-               ((input_report.l1) ? 0x00 : USBR_BUTTON_L1) |
-               ((input_report.r1) ? 0x00 : USBR_BUTTON_R1) |
-               ((input_report.l2) ? 0x00 : USBR_BUTTON_L2) |
-               ((input_report.r2) ? 0x00 : USBR_BUTTON_R2) |
+               ((input_report.b)  ? 0x00 : USBR_BUTTON_B1) |  // B = left-bottom
+               ((input_report.a)  ? 0x00 : USBR_BUTTON_B2) |  // A = mid-bottom
+               ((input_report.y)  ? 0x00 : USBR_BUTTON_B3) |  // Y = left-top
+               ((input_report.x)  ? 0x00 : USBR_BUTTON_B4) |  // X = mid-top
+               ((input_report.l1) ? 0x00 : USBR_BUTTON_L1) |  // L shoulder
+               ((input_report.r1) ? 0x00 : USBR_BUTTON_R1) |  // R = right-top
+               ((input_report.l2) ? 0x00 : USBR_BUTTON_L2) |  // ZL shoulder
+               ((input_report.r2) ? 0x00 : USBR_BUTTON_R2) |  // ZR = right-bottom
                ((input_report.s1) ? 0x00 : USBR_BUTTON_S1) |
                ((input_report.s2) ? 0x00 : USBR_BUTTON_S2) |
                ((input_report.l3) ? 0x00 : USBR_BUTTON_L3) |
                ((input_report.r3) ? 0x00 : USBR_BUTTON_R3) |
                ((input_report.a1) ? 0x00 : USBR_BUTTON_A1) |
-               ((input_report.a2) ? 0x00 : USBR_BUTTON_A2) |
-               ((1)/*has_6btns*/  ? 0x00 : 0x800));
-#endif
+               ((input_report.a2) ? 0x00 : USBR_BUTTON_A2));
     // invert vertical axis
     uint8_t axis_x = input_report.axis_x;
     uint8_t axis_y = (input_report.axis_y == 0) ? 255 : 256 - input_report.axis_y;
@@ -112,7 +100,9 @@ void process_hori_horipad(uint8_t dev_addr, uint8_t instance, uint8_t const* rep
       .dev_addr = dev_addr,
       .instance = instance,
       .type = INPUT_TYPE_GAMEPAD,
+      .layout = LAYOUT_SEGA_6BUTTON,  // Switch 6-btn layout matches Genesis: Top [Y][X][R], Bottom [B][A][ZR]
       .buttons = buttons,
+      .button_count = 10,  // B, A, Y, X, L, R, ZL, ZR, L3, R3
       .analog = {axis_x, axis_y, axis_z, axis_rz, 128, 0, 0, 128},
       .keys = 0,
     };

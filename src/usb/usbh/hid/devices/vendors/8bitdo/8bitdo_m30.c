@@ -50,45 +50,34 @@ void process_8bitdo_m30(uint8_t dev_addr, uint8_t instance, uint8_t const* repor
     bool dpad_down  = (input_report.dpad >= 3 && input_report.dpad <= 5);
     bool dpad_left  = (input_report.dpad >= 5 && input_report.dpad <= 7);
 
-#ifdef CONFIG_PCE
+    // M30 physical layout (Genesis/Saturn style):
+    //   Top row:    [X][Y][Z(L)]  (left to right)
+    //   Bottom row: [A][B][C(R)]  (left to right)
+    //
+    // GP2040-CE canonical mapping (position-based):
+    //   Top row:    [B3][B4][R1]
+    //   Bottom row: [B1][B2][R2]
+    //
+    // Mapping: A→B1, B→B2, C(R)→R2, X→B3, Y→B4, Z(L)→R1
+    // Physical layout: 6 face + L2/R2 shoulders + L3/R3 sticks + Capture
     buttons = (((dpad_up)             ? 0x00 : USBR_BUTTON_DU) |
                ((dpad_down)           ? 0x00 : USBR_BUTTON_DD) |
                ((dpad_left)           ? 0x00 : USBR_BUTTON_DL) |
                ((dpad_right)          ? 0x00 : USBR_BUTTON_DR) |
-               ((input_report.b)      ? 0x00 : USBR_BUTTON_B1) |
-               ((input_report.r)      ? 0x00 : USBR_BUTTON_B2) |
-               ((input_report.x)      ? 0x00 : USBR_BUTTON_B3) |
-               ((input_report.a)      ? 0x00 : USBR_BUTTON_B4) |
-               ((input_report.r2 || input_report.y) ? 0x00 : USBR_BUTTON_L1) |
-               ((input_report.l2 || input_report.l) ? 0x00 : USBR_BUTTON_R1) |
-               ((input_report.l2)     ? 0x00 : USBR_BUTTON_L2) |
-               ((input_report.r2)     ? 0x00 : USBR_BUTTON_R2) |
+               ((input_report.a)      ? 0x00 : USBR_BUTTON_B1) |  // A = left-bottom
+               ((input_report.b)      ? 0x00 : USBR_BUTTON_B2) |  // B = mid-bottom
+               ((input_report.x)      ? 0x00 : USBR_BUTTON_B3) |  // X = left-top
+               ((input_report.y)      ? 0x00 : USBR_BUTTON_B4) |  // Y = mid-top
+               ((input_report.l)      ? 0x00 : USBR_BUTTON_L1) |  // Z(L) = right-top (L1 position)
+               ((input_report.r)      ? 0x00 : USBR_BUTTON_R1) |  // C(R) = right-bottom (R1 position)
+               ((input_report.l2)     ? 0x00 : USBR_BUTTON_L2) |  // L2 shoulder
+               ((input_report.r2)     ? 0x00 : USBR_BUTTON_R2) |  // R2 shoulder
                ((input_report.select) ? 0x00 : USBR_BUTTON_S1) |
                ((input_report.start)  ? 0x00 : USBR_BUTTON_S2) |
-               ((0)                   ? 0x00 : USBR_BUTTON_L3) |
-               ((0)                   ? 0x00 : USBR_BUTTON_R3) |
+               ((input_report.l3)     ? 0x00 : USBR_BUTTON_L3) |  // L3 stick click
+               ((input_report.r3)     ? 0x00 : USBR_BUTTON_R3) |  // R3 stick click
                ((input_report.home)   ? 0x00 : USBR_BUTTON_A1) |
-               ((1)/*has_6btns*/      ? 0x00 : 0x800));
-#else
-    buttons = (((dpad_up)             ? 0x00 : USBR_BUTTON_DU) |
-               ((dpad_down)           ? 0x00 : USBR_BUTTON_DD) |
-               ((dpad_left)           ? 0x00 : USBR_BUTTON_DL) |
-               ((dpad_right)          ? 0x00 : USBR_BUTTON_DR) |
-               ((input_report.a)      ? 0x00 : USBR_BUTTON_B1) |
-               ((input_report.b)      ? 0x00 : USBR_BUTTON_B2) |
-               ((input_report.x)      ? 0x00 : USBR_BUTTON_B3) |
-               ((input_report.y)      ? 0x00 : USBR_BUTTON_B4) |
-               ((input_report.l)      ? 0x00 : USBR_BUTTON_L1) |
-               ((input_report.r)      ? 0x00 : USBR_BUTTON_R1) |
-               ((input_report.l2)     ? 0x00 : USBR_BUTTON_L2) |
-               ((input_report.r2)     ? 0x00 : USBR_BUTTON_R2) |
-               ((input_report.select) ? 0x00 : USBR_BUTTON_S1) |
-               ((input_report.start)  ? 0x00 : USBR_BUTTON_S2) |
-               ((0)                   ? 0x00 : USBR_BUTTON_L3) |
-               ((0)                   ? 0x00 : USBR_BUTTON_R3) |
-               ((input_report.home)   ? 0x00 : USBR_BUTTON_A1) |
-               ((1)/*has_6btns*/      ? 0x00 : 0x800));
-#endif
+               ((input_report.cap)    ? 0x00 : USBR_BUTTON_A2));  // Capture button
 
     uint8_t analog_1x = input_report.x1;
     uint8_t analog_1y = (input_report.y1 == 0) ? 255 : 256 - input_report.y1;
@@ -104,7 +93,9 @@ void process_8bitdo_m30(uint8_t dev_addr, uint8_t instance, uint8_t const* repor
       .dev_addr = dev_addr,
       .instance = instance,
       .type = INPUT_TYPE_GAMEPAD,
+      .layout = LAYOUT_SEGA_6BUTTON,  // Genesis/Saturn: Top [X][Y][Z], Bottom [A][B][C]
       .buttons = buttons,
+      .button_count = 10,  // A, B, C, X, Y, Z (6 face) + L2, R2, L3, R3
       .analog = {analog_1x, analog_1y, analog_2x, analog_2y, 128, 0, 0, 128},
       .keys = 0,
     };

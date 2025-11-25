@@ -507,6 +507,11 @@ void router_set_active_outputs(output_target_t* outputs, uint8_t count) {
     printf("[router] Active outputs set: count=%d\n", count);
 }
 
+output_target_t router_get_primary_output(void) {
+    if (active_output_count == 0) return OUTPUT_TARGET_NONE;
+    return active_outputs[0];
+}
+
 // ============================================================================
 // DEBUG/TESTING
 // ============================================================================
