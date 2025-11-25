@@ -7,7 +7,7 @@
 #include "app.h"
 #include "core/router/router.h"
 #include "core/services/players/manager.h"
-#include "common/output_interface.h"
+#include "core/output_interface.h"
 #include "native/device/pcengine/pcengine_device.h"
 #include <stdio.h>
 

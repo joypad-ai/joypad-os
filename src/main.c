@@ -21,7 +21,7 @@ uint8_t gc_rumble = 0;
 uint8_t gc_kb_led = 0;
 
 // Output interface abstraction
-#include "common/output_interface.h"
+#include "core/output_interface.h"
 
 // App provides output interface (replaces compile-time selection in output.c)
 extern const OutputInterface* app_get_output_interface(void);

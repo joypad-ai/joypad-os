@@ -1055,7 +1055,7 @@ void __not_in_flash_func(update_3do_report)(uint8_t player_index) {
 // OUTPUT INTERFACE
 // ============================================================================
 
-#include "common/output_interface.h"
+#include "core/output_interface.h"
 
 const OutputInterface threedooutput_interface = {
     .name = "3DO",

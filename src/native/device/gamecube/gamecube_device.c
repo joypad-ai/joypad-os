@@ -651,7 +651,7 @@ void __not_in_flash_func(update_output)(void)
 // OUTPUT INTERFACE
 // ============================================================================
 
-#include "common/output_interface.h"
+#include "core/output_interface.h"
 
 // Get adaptive trigger threshold for DualSense L2/R2
 

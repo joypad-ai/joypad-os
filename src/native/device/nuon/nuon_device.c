@@ -475,7 +475,7 @@ void __not_in_flash_func(update_output)(void)
 // OUTPUT INTERFACE
 // ============================================================================
 
-#include "common/output_interface.h"
+#include "core/output_interface.h"
 
 const OutputInterface nuon_output_interface = {
     .name = "Nuon",
