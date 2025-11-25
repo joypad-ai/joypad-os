@@ -11,3 +11,6 @@
 [submodule "src/lib/tinyusb"]
 	path = src/lib/tinyusb
 	url = https://github.com/hathach/tinyusb.git
+[submodule "src/lib/SNESpad"]
+	path = src/lib/SNESpad
+	url = https://github.com/RobertDaleSmith/SNESpad.git

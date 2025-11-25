@@ -48,6 +48,7 @@ CONSOLE_ngc := usbretro_ngc
 CONSOLE_xb1 := usbretro_xb1
 CONSOLE_nuon := usbretro_nuon
 CONSOLE_loopy := usbretro_loopy
+CONSOLE_snes3do := usbretro_snes3do
 
 # App definitions: APP_name = board console output_name
 # Naming convention: usb2<console> for all apps
@@ -57,9 +58,10 @@ APP_usb2nuon := kb2040 nuon usb2nuon
 APP_usb2xb1 := qtpy xb1 usb2xb1
 APP_usb2loopy := kb2040 loopy usb2loopy
 APP_usb23do := rp2040zero 3do usb23do
+APP_snes23do := rp2040zero snes3do snes23do
 
 # All apps
-APPS := usb2pce usb2gc usb2nuon usb2xb1 usb2loopy usb23do
+APPS := usb2pce usb2gc usb2nuon usb2xb1 usb2loopy usb23do snes23do
 
 # Stable apps for release (mature enough for public release)
 RELEASE_APPS := usb2pce usb2gc usb2nuon
@@ -91,6 +93,7 @@ help:
 	@echo "  make usb2xb1       - Build usb2xb1 (QT Py + Xbox One)"
 	@echo "  make usb2loopy     - Build usb2loopy (KB2040 + Loopy)"
 	@echo "  make usb23do       - Build usb23do (RP2040 Zero + 3DO)"
+	@echo "  make snes23do      - Build snes23do (RP2040 Zero + SNES->3DO)"
 	@echo ""
 	@echo "$(GREEN)Convenience Targets:$(NC)"
 	@echo "  make all           - Build all apps"
@@ -106,6 +109,7 @@ help:
 	@echo "  make flash-usb2xb1 - Flash usb2xb1 firmware"
 	@echo "  make flash-usb2loopy - Flash usb2loopy firmware"
 	@echo "  make flash-usb23do - Flash usb23do firmware"
+	@echo "  make flash-snes23do - Flash snes23do firmware"
 	@echo ""
 	@echo "$(GREEN)Console-Only Targets (uses KB2040):$(NC)"
 	@echo "  make pce           - Build PCEngine firmware"
@@ -177,6 +181,10 @@ usb2loopy:
 .PHONY: usb23do
 usb23do:
 	$(call build_app,usb23do)
+
+.PHONY: snes23do
+snes23do:
+	$(call build_app,snes23do)
 
 # Legacy aliases for backward compatibility
 .PHONY: gcusb nuonusb xboxadapter 3dousb
@@ -312,6 +320,10 @@ flash-usb2loopy:
 .PHONY: flash-usb23do
 flash-usb23do:
 	@$(MAKE) --no-print-directory _flash FLASH_FILE=$(RELEASE_DIR)/$(word 3,$(APP_usb23do))_$(CONSOLE_$(word 2,$(APP_usb23do))).uf2
+
+.PHONY: flash-snes23do
+flash-snes23do:
+	@$(MAKE) --no-print-directory _flash FLASH_FILE=$(RELEASE_DIR)/$(word 3,$(APP_snes23do))_$(CONSOLE_$(word 2,$(APP_snes23do))).uf2
 
 # Legacy flash aliases
 .PHONY: flash-gcusb flash-nuonusb flash-xboxadapter flash-3dousb
