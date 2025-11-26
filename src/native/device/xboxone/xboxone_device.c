@@ -1,12 +1,14 @@
 // xboxone.c
 
 #include "xboxone_device.h"
+#include "xboxone_buttons.h"
 #include "pico/stdlib.h"
 #include "tusb.h"
 
 // Console-local state (not input data)
 #include "core/router/router.h"
 #include "core/services/hotkey/hotkey.h"
+#include "core/services/profile/profile.h"
 
 // init for xboxone communication
 void xb1_init()
@@ -161,16 +163,25 @@ void __not_in_flash_func(core1_entry)(void)
     const input_event_t* event = router_get_output(OUTPUT_TARGET_XBOXONE, 0);
     if (!event || playersCount == 0) continue;
 
-    // Analog outputs
-    uint16_t x1Val = ((event->analog[0] * 2047)/255);  // ANALOG_X
-    uint16_t y1Val = ((event->analog[1] * 2047)/255);  // ANALOG_Y
+    // Apply profile mapping
+    const profile_t* profile = profile_get_active(OUTPUT_TARGET_XBOXONE);
+    profile_output_t mapped;
+    profile_apply(profile, event->buttons,
+                  event->analog[0], event->analog[1],
+                  event->analog[2], event->analog[3],
+                  event->analog[5], event->analog[6],
+                  &mapped);
+
+    // Analog outputs (use mapped values)
+    uint16_t x1Val = ((mapped.left_x * 2047)/255);     // ANALOG_X
+    uint16_t y1Val = ((mapped.left_y * 2047)/255);     // ANALOG_Y
              y1Val = (y1Val - 2047) * -1;
-    uint16_t x2Val = ((event->analog[2] * 2047)/255);  // ANALOG_Z
-    uint16_t y2Val = ((event->analog[3] * 2047)/255);  // ANALOG_RX
+    uint16_t x2Val = ((mapped.right_x * 2047)/255);    // ANALOG_Z
+    uint16_t y2Val = ((mapped.right_y * 2047)/255);    // ANALOG_RX
              y2Val = (y2Val - 2047) * -1;
-    uint16_t lVal = ((event->analog[5] * 2047)/255);   // ANALOG_RZ
+    uint16_t lVal = ((mapped.l2_analog * 2047)/255);   // ANALOG_RZ
              lVal = (lVal - 2047) * -1;
-    uint16_t rVal = ((event->analog[6] * 2047)/255);   // ANALOG_SLIDER
+    uint16_t rVal = ((mapped.r2_analog * 2047)/255);   // ANALOG_SLIDER
              rVal = (rVal - 2047) * -1;
 
     mcp4728_write_dac(I2C_DAC_PORT, MCP4728_I2C_ADDR0, 0, x1Val);
@@ -180,11 +191,11 @@ void __not_in_flash_func(core1_entry)(void)
     mcp4728_write_dac(I2C_DAC_PORT, MCP4728_I2C_ADDR1, 0, lVal);
     mcp4728_write_dac(I2C_DAC_PORT, MCP4728_I2C_ADDR1, 1, rVal);
 
-    // Individual buttons
-    gpio_put(XBOX_B_BTN_PIN, ((event->buttons & USBR_BUTTON_B2) == 0) ? 0 : 1);
-    gpio_put(XBOX_GUIDE_PIN, ((event->buttons & USBR_BUTTON_A1) == 0) ? 0 : 1);
-    gpio_put(XBOX_R3_BTN_PIN,((event->buttons & USBR_BUTTON_R3) == 0) ? 0 : 1);
-    gpio_put(XBOX_L3_BTN_PIN,((event->buttons & USBR_BUTTON_L3) == 0) ? 0 : 1);
+    // Individual buttons (use mapped values)
+    gpio_put(XBOX_B_BTN_PIN, ((mapped.buttons & XB1_BUTTON_B) == 0) ? 0 : 1);
+    gpio_put(XBOX_GUIDE_PIN, ((mapped.buttons & XB1_BUTTON_GUIDE) == 0) ? 0 : 1);
+    gpio_put(XBOX_R3_BTN_PIN,((mapped.buttons & XB1_BUTTON_R3) == 0) ? 0 : 1);
+    gpio_put(XBOX_L3_BTN_PIN,((mapped.buttons & XB1_BUTTON_L3) == 0) ? 0 : 1);
 
 
     update_output();
@@ -199,22 +210,31 @@ void __not_in_flash_func(update_output)(void)
   const input_event_t* event = router_get_output(OUTPUT_TARGET_XBOXONE, 0);
   if (!event || playersCount == 0) return;
 
-  // base controller buttons
-  int16_t byte = (event->buttons & 0xffff);
+  // Apply profile mapping
+  const profile_t* profile = profile_get_active(OUTPUT_TARGET_XBOXONE);
+  profile_output_t mapped;
+  profile_apply(profile, event->buttons,
+                event->analog[0], event->analog[1],
+                event->analog[2], event->analog[3],
+                event->analog[5], event->analog[6],
+                &mapped);
+
+  // base controller buttons (use mapped values)
+  int16_t byte = (mapped.buttons & 0xffff);
   i2c_slave_read_buffer[0] = 0xFA;
-  i2c_slave_read_buffer[0] ^= ((byte & USBR_BUTTON_B3) == 0) ? 0x02 : 0; // X
-  i2c_slave_read_buffer[0] ^= ((byte & USBR_BUTTON_B4) == 0) ? 0x08 : 0; // Y
-  i2c_slave_read_buffer[0] ^= ((byte & USBR_BUTTON_R1) == 0) ? 0x10 : 0; // R
-  i2c_slave_read_buffer[0] ^= ((byte & USBR_BUTTON_L1) == 0) ? 0x20 : 0; // L
-  i2c_slave_read_buffer[0] ^= ((byte & USBR_BUTTON_S2) == 0) ? 0x80 : 0; // MENU
+  i2c_slave_read_buffer[0] ^= ((byte & XB1_BUTTON_X) == 0) ? 0x02 : 0;    // X
+  i2c_slave_read_buffer[0] ^= ((byte & XB1_BUTTON_Y) == 0) ? 0x08 : 0;    // Y
+  i2c_slave_read_buffer[0] ^= ((byte & XB1_BUTTON_RB) == 0) ? 0x10 : 0;   // R
+  i2c_slave_read_buffer[0] ^= ((byte & XB1_BUTTON_LB) == 0) ? 0x20 : 0;   // L
+  i2c_slave_read_buffer[0] ^= ((byte & XB1_BUTTON_MENU) == 0) ? 0x80 : 0; // MENU
 
   i2c_slave_read_buffer[1] = 0xFF;
-  i2c_slave_read_buffer[1] ^= ((byte & USBR_BUTTON_DU) == 0) ? 0x02 : 0; // UP
-  i2c_slave_read_buffer[1] ^= ((byte & USBR_BUTTON_DR) == 0) ? 0x04 : 0; // RIGHT
-  i2c_slave_read_buffer[1] ^= ((byte & USBR_BUTTON_DD) == 0) ? 0x10 : 0; // DOWN
-  i2c_slave_read_buffer[1] ^= ((byte & USBR_BUTTON_DL) == 0) ? 0x08 : 0; // LEFT
-  i2c_slave_read_buffer[1] ^= ((byte & USBR_BUTTON_S1) == 0) ? 0x20 : 0; // VIEW
-  i2c_slave_read_buffer[1] ^= ((byte & USBR_BUTTON_B1) == 0) ? 0x80 : 0; // A
+  i2c_slave_read_buffer[1] ^= ((byte & XB1_BUTTON_DU) == 0) ? 0x02 : 0;   // UP
+  i2c_slave_read_buffer[1] ^= ((byte & XB1_BUTTON_DR) == 0) ? 0x04 : 0;   // RIGHT
+  i2c_slave_read_buffer[1] ^= ((byte & XB1_BUTTON_DD) == 0) ? 0x10 : 0;   // DOWN
+  i2c_slave_read_buffer[1] ^= ((byte & XB1_BUTTON_DL) == 0) ? 0x08 : 0;   // LEFT
+  i2c_slave_read_buffer[1] ^= ((byte & XB1_BUTTON_VIEW) == 0) ? 0x20 : 0; // VIEW
+  i2c_slave_read_buffer[1] ^= ((byte & XB1_BUTTON_A) == 0) ? 0x80 : 0;    // A
 
   codes_task();
 
@@ -229,6 +249,23 @@ void __not_in_flash_func(update_output)(void)
 
 #include "core/output_interface.h"
 
+// Profile accessor functions for OutputInterface
+static uint8_t xb1_get_profile_count(void) {
+    return profile_get_count(OUTPUT_TARGET_XBOXONE);
+}
+
+static uint8_t xb1_get_active_profile(void) {
+    return profile_get_active_index(OUTPUT_TARGET_XBOXONE);
+}
+
+static void xb1_set_active_profile(uint8_t index) {
+    profile_set_active(OUTPUT_TARGET_XBOXONE, index);
+}
+
+static const char* xb1_get_profile_name(uint8_t index) {
+    return profile_get_name(OUTPUT_TARGET_XBOXONE, index);
+}
+
 const OutputInterface xboxone_output_interface = {
     .name = "Xbox One",
     .init = xb1_init,
@@ -236,10 +273,9 @@ const OutputInterface xboxone_output_interface = {
     .task = NULL,  // Xbox One doesn't need periodic task
     .get_rumble = NULL,
     .get_player_led = NULL,
-    // No profile system - Xbox One uses fixed button mapping
-    .get_profile_count = NULL,
-    .get_active_profile = NULL,
-    .set_active_profile = NULL,
-    .get_profile_name = NULL,
+    .get_profile_count = xb1_get_profile_count,
+    .get_active_profile = xb1_get_active_profile,
+    .set_active_profile = xb1_set_active_profile,
+    .get_profile_name = xb1_get_profile_name,
     .get_trigger_threshold = NULL,
 };

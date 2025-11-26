@@ -35,7 +35,7 @@
 // ============================================================================
 #define ROUTING_MODE ROUTING_MODE_SIMPLE   // Simple 1:1 routing (USB → Loopy ports)
 #define MERGE_MODE MERGE_ALL
-#define MAX_ROUTES 4
+#define APP_MAX_ROUTES 4                   // App-specific route limit (router uses MAX_ROUTES)
 
 // Input transformations
 #define TRANSFORM_FLAGS 0  // No transformations needed

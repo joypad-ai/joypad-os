@@ -1,6 +1,7 @@
 // loopy.c
 
 #include "loopy_device.h"
+#include "loopy_buttons.h"
 
 #include "pico/stdlib.h"
 #include "hardware/uart.h"
@@ -9,6 +10,7 @@
 // Console-local state (not input data)
 #include "core/router/router.h"
 #include "core/services/hotkey/hotkey.h"
+#include "core/services/profile/profile.h"
 #include "core/uart.h"
 
 PIO pio;
@@ -96,10 +98,39 @@ void __not_in_flash_func(core1_entry)(void)
     const input_event_t* event3 = router_get_output(OUTPUT_TARGET_LOOPY, 2);
     const input_event_t* event4 = router_get_output(OUTPUT_TARGET_LOOPY, 3);
 
-    int16_t player_1 = (event1 && playersCount >= 1) ? (event1->buttons & 0xffff) : 0xffff;
-    int16_t player_2 = (event2 && playersCount >= 2) ? (event2->buttons & 0xffff) : 0xffff;
-    int16_t player_3 = (event3 && playersCount >= 3) ? (event3->buttons & 0xffff) : 0xffff;
-    int16_t player_4 = (event4 && playersCount >= 4) ? (event4->buttons & 0xffff) : 0xffff;
+    // Apply profile mapping to each player's input
+    const profile_t* profile = profile_get_active(OUTPUT_TARGET_LOOPY);
+    profile_output_t mapped1, mapped2, mapped3, mapped4;
+
+    if (event1 && playersCount >= 1) {
+      profile_apply(profile, event1->buttons,
+                    event1->analog[0], event1->analog[1],
+                    event1->analog[2], event1->analog[3],
+                    event1->analog[5], event1->analog[6], &mapped1);
+    }
+    if (event2 && playersCount >= 2) {
+      profile_apply(profile, event2->buttons,
+                    event2->analog[0], event2->analog[1],
+                    event2->analog[2], event2->analog[3],
+                    event2->analog[5], event2->analog[6], &mapped2);
+    }
+    if (event3 && playersCount >= 3) {
+      profile_apply(profile, event3->buttons,
+                    event3->analog[0], event3->analog[1],
+                    event3->analog[2], event3->analog[3],
+                    event3->analog[5], event3->analog[6], &mapped3);
+    }
+    if (event4 && playersCount >= 4) {
+      profile_apply(profile, event4->buttons,
+                    event4->analog[0], event4->analog[1],
+                    event4->analog[2], event4->analog[3],
+                    event4->analog[5], event4->analog[6], &mapped4);
+    }
+
+    int16_t player_1 = (event1 && playersCount >= 1) ? (mapped1.buttons & 0xffff) : 0xffff;
+    int16_t player_2 = (event2 && playersCount >= 2) ? (mapped2.buttons & 0xffff) : 0xffff;
+    int16_t player_3 = (event3 && playersCount >= 3) ? (mapped3.buttons & 0xffff) : 0xffff;
+    int16_t player_4 = (event4 && playersCount >= 4) ? (mapped4.buttons & 0xffff) : 0xffff;
     bool is_mouse = !(player_1 & 0x0f);
     // TODO: properly handle mouse detection at boot
 
@@ -282,6 +313,23 @@ void __not_in_flash_func(update_output)(void)
 
 #include "core/output_interface.h"
 
+// Profile accessor functions for OutputInterface
+static uint8_t loopy_get_profile_count(void) {
+    return profile_get_count(OUTPUT_TARGET_LOOPY);
+}
+
+static uint8_t loopy_get_active_profile(void) {
+    return profile_get_active_index(OUTPUT_TARGET_LOOPY);
+}
+
+static void loopy_set_active_profile(uint8_t index) {
+    profile_set_active(OUTPUT_TARGET_LOOPY, index);
+}
+
+static const char* loopy_get_profile_name(uint8_t index) {
+    return profile_get_name(OUTPUT_TARGET_LOOPY, index);
+}
+
 const OutputInterface loopy_output_interface = {
     .name = "Loopy",
     .init = loopy_init,
@@ -289,10 +337,9 @@ const OutputInterface loopy_output_interface = {
     .task = NULL,  // Loopy doesn't need periodic task
     .get_rumble = NULL,
     .get_player_led = NULL,
-    // No profile system - Loopy uses fixed button mapping
-    .get_profile_count = NULL,
-    .get_active_profile = NULL,
-    .set_active_profile = NULL,
-    .get_profile_name = NULL,
+    .get_profile_count = loopy_get_profile_count,
+    .get_active_profile = loopy_get_active_profile,
+    .set_active_profile = loopy_set_active_profile,
+    .get_profile_name = loopy_get_profile_name,
     .get_trigger_threshold = NULL,
 };

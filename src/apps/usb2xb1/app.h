@@ -35,7 +35,7 @@
 // ============================================================================
 #define ROUTING_MODE ROUTING_MODE_SIMPLE   // Simple 1:1 routing (USB → Xbox One)
 #define MERGE_MODE MERGE_ALL
-#define MAX_ROUTES 1
+#define APP_MAX_ROUTES 1                   // App-specific route limit (router uses MAX_ROUTES)
 
 // Input transformations
 #define TRANSFORM_FLAGS (TRANSFORM_MOUSE_TO_ANALOG)  // Mouse → analog stick

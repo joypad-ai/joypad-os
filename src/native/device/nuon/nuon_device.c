@@ -1,7 +1,9 @@
 // nuon.c
 
 #include "nuon_device.h"
+#include "nuon_buttons.h"
 #include "core/services/hotkey/hotkey.h"
+#include "core/services/profile/profile.h"
 #include <math.h>
 
 PIO pio;
@@ -448,17 +450,23 @@ void __not_in_flash_func(update_output)(void)
   const input_event_t* event = router_get_output(OUTPUT_TARGET_NUON, 0);
   if (!event || playersCount == 0) return;
 
-  // Calculate and set Nuon output packet values here.
-  int32_t buttons = (event->buttons & 0xffff);
+  // Apply profile remapping
+  const profile_t* profile = profile_get_active(OUTPUT_TARGET_NUON);
+  profile_output_t mapped;
+  profile_apply(profile, event->buttons,
+                event->analog[0], event->analog[1],
+                event->analog[2], event->analog[3],
+                event->analog[5], event->analog[6],  // ANALOG_RZ, ANALOG_SLIDER for L2/R2
+                &mapped);
 
-  // Joy-Con Grip merging now handled at device driver level (switch_pro.c)
-  // Router receives unified input from merged Joy-Cons automatically
+  // Map USBR buttons to Nuon button format
+  int32_t nuon_buttons = map_nuon_buttons(mapped.buttons);
 
-  output_buttons_0 = crc_data_packet(buttons, 2);
-  output_analog_1x = crc_data_packet(event->analog[0], 1);  // ANALOG_X
-  output_analog_1y = crc_data_packet(event->analog[1], 1);  // ANALOG_Y
-  output_analog_2x = crc_data_packet(event->analog[2], 1);  // ANALOG_Z
-  output_analog_2y = crc_data_packet(event->analog[3], 1);  // ANALOG_RX
+  output_buttons_0 = crc_data_packet(nuon_buttons, 2);
+  output_analog_1x = crc_data_packet(mapped.left_x, 1);
+  output_analog_1y = crc_data_packet(mapped.left_y, 1);
+  output_analog_2x = crc_data_packet(mapped.right_x, 1);
+  output_analog_2y = crc_data_packet(mapped.right_y, 1);
 
   // TODO Phase 5: Re-implement spinner/mouse wheel support
   // output_quad_x was accumulated in post_input_event() - need console-local accumulator
@@ -470,6 +478,26 @@ void __not_in_flash_func(update_output)(void)
 
 // post_input_event removed - replaced by router architecture
 // Input flow: USB drivers → router_submit_input() → router → router_get_output() → update_output()
+
+// ============================================================================
+// PROFILE SYSTEM (Delegates to core profile service)
+// ============================================================================
+
+static uint8_t nuon_get_profile_count(void) {
+    return profile_get_count(OUTPUT_TARGET_NUON);
+}
+
+static uint8_t nuon_get_active_profile(void) {
+    return profile_get_active_index(OUTPUT_TARGET_NUON);
+}
+
+static void nuon_set_active_profile(uint8_t index) {
+    profile_set_active(OUTPUT_TARGET_NUON, index);
+}
+
+static const char* nuon_get_profile_name(uint8_t index) {
+    return profile_get_name(OUTPUT_TARGET_NUON, index);
+}
 
 // ============================================================================
 // OUTPUT INTERFACE
@@ -484,10 +512,10 @@ const OutputInterface nuon_output_interface = {
     .task = nuon_task,  // Nuon needs periodic soft reset task
     .get_rumble = NULL,
     .get_player_led = NULL,
-    // No profile system - Nuon uses fixed button mapping
-    .get_profile_count = NULL,
-    .get_active_profile = NULL,
-    .set_active_profile = NULL,
-    .get_profile_name = NULL,
+    // Profile system
+    .get_profile_count = nuon_get_profile_count,
+    .get_active_profile = nuon_get_active_profile,
+    .set_active_profile = nuon_set_active_profile,
+    .get_profile_name = nuon_get_profile_name,
     .get_trigger_threshold = NULL,
 };

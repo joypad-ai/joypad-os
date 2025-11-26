@@ -5,11 +5,24 @@
 // The firmware calls app_init() after core system initialization.
 
 #include "app.h"
+#include "profiles.h"
 #include "core/router/router.h"
 #include "core/services/players/manager.h"
+#include "core/services/profile/profile.h"
 #include "core/output_interface.h"
 #include "native/device/xboxone/xboxone_device.h"
 #include <stdio.h>
+
+// ============================================================================
+// APP PROFILE CONFIGURATION
+// ============================================================================
+
+static const profile_config_t app_profile_config = {
+    .output_profiles = {
+        [OUTPUT_TARGET_XBOXONE] = &xb1_profile_set,
+    },
+    .shared_profiles = NULL,
+};
 
 // ============================================================================
 // APP OUTPUT INTERFACE
@@ -55,9 +68,17 @@ void app_init(void)
     };
     players_init_with_config(&player_cfg);
 
+    // Initialize profile system with app-defined profiles
+    profile_init(&app_profile_config);
+
+    uint8_t profile_count = profile_get_count(OUTPUT_TARGET_XBOXONE);
+    const char* active_name = profile_get_name(OUTPUT_TARGET_XBOXONE,
+                                                profile_get_active_index(OUTPUT_TARGET_XBOXONE));
+
     printf("[app:usb2xb1] Initialization complete\n");
     printf("[app:usb2xb1]   Routing: %s\n", "SIMPLE (USB → Xbox One 1:1)");
     printf("[app:usb2xb1]   Player slots: %d (single player)\n", MAX_PLAYER_SLOTS);
+    printf("[app:usb2xb1]   Profiles: %d (active: %s)\n", profile_count, active_name ? active_name : "none");
     printf("[app:usb2xb1]   Mouse support: enabled\n");
     printf("[app:usb2xb1]   I2C passthrough: enabled (GPIO expander emulation)\n");
     printf("[app:usb2xb1]   DAC analog: enabled (MCP4728 for sticks/triggers)\n");
