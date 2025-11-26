@@ -1,0 +1,88 @@
+; 3DO Controller Host PIO Program
+; Master mode - generates CLK and reads DATA from 3DO controllers
+;
+; Unlike the device-mode output.pio which waits for console CLK,
+; this program generates CLK pulses and reads data on each falling edge.
+;
+; 3DO PBUS protocol: Data is valid on falling edge of CLK
+; We generate ~500kHz clock (conservative, 3DO runs at ~1MHz)
+
+.program tdo_host_read
+
+; Sideset: CLK pin (directly controlled)
+; In: DATA pin
+
+.side_set 1
+
+public entry_point:
+    ; Start with CLK low, wait for pull to get bit count
+    pull block          side 0      ; Get number of bits to read from TX FIFO
+    mov x, osr          side 0      ; Move to X as loop counter
+
+read_loop:
+    ; CLK high - controller latches data
+    nop                 side 1  [7] ; CLK high, hold for ~8 cycles
+
+    ; CLK low - read data bit
+    in pins, 1          side 0  [7] ; CLK low, read DATA, hold for ~8 cycles
+
+    ; Loop until done
+    jmp x-- read_loop   side 0
+
+    ; Push result to RX FIFO
+    push block          side 0
+
+    ; Jump back to start for next read
+    jmp entry_point     side 0
+
+% c-sdk {
+
+#include "pico/stdlib.h"
+#include "hardware/pio.h"
+
+// Initialize 3DO host read program
+// clk_pin: GPIO for CLK output
+// data_pin: GPIO for DATA input
+static inline void tdo_host_read_program_init(PIO pio, uint sm, uint offset,
+                                               uint clk_pin, uint data_pin) {
+    pio_sm_config c = tdo_host_read_program_get_default_config(offset);
+
+    // CLK is sideset output
+    sm_config_set_sideset_pins(&c, clk_pin);
+
+    // DATA is input
+    sm_config_set_in_pins(&c, data_pin);
+
+    // Shift in LSB first, autopush at 8 bits
+    sm_config_set_in_shift(&c, false, true, 8);
+
+    // Set clock divider for ~500kHz bit rate
+    // At 125MHz system clock, div=125 gives 1MHz, div=250 gives 500kHz
+    // With 16 cycles per bit (8 high + 8 low), div=16 gives ~500kHz
+    sm_config_set_clkdiv(&c, 16.0f);
+
+    // Initialize CLK pin as output (sideset)
+    pio_gpio_init(pio, clk_pin);
+    pio_sm_set_consecutive_pindirs(pio, sm, clk_pin, 1, true);  // Output
+
+    // Initialize DATA pin as input with pull-up
+    pio_gpio_init(pio, data_pin);
+    gpio_pull_up(data_pin);
+    pio_sm_set_consecutive_pindirs(pio, sm, data_pin, 1, false);  // Input
+
+    // Load configuration and start
+    pio_sm_init(pio, sm, offset, &c);
+    pio_sm_set_enabled(pio, sm, true);
+}
+
+// Read N bits from 3DO controller
+// Returns raw data shifted in from DATA pin
+static inline uint32_t tdo_host_read_bits(PIO pio, uint sm, uint bit_count) {
+    // Tell PIO how many bits to read (minus 1 for loop counter)
+    pio_sm_put_blocking(pio, sm, bit_count - 1);
+
+    // Wait for result
+    return pio_sm_get_blocking(pio, sm);
+}
+
+%}
