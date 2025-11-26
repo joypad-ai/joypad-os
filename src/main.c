@@ -42,8 +42,7 @@ int main(void)
 {
   stdio_init_all();
 
-  output = app_get_output_interface();
-  printf("\nUSB_RETRO::%s\n\n", output->name);
+  printf("\n[usbretro] Starting...\n");
 
   sleep_ms(250);  // Brief pause for stability
 
@@ -52,6 +51,8 @@ int main(void)
   storage_init();
   players_init();
   app_init();
+
+  output = app_get_output_interface();
   output->init();
 
   if (output->core1_entry) {
