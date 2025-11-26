@@ -26,11 +26,11 @@
 // App provides output interface (replaces compile-time selection in output.c)
 extern const OutputInterface* app_get_output_interface(void);
 
-extern void neopixel_init(void);
-extern void neopixel_task(int pat);
+// NeoPixel LED control
+#include "core/services/leds/ws2812.h"
 
-// Generic flash settings (profile persistence) - used by all consoles with profiles
-extern void flash_task(void);
+// Flash storage (profile persistence)
+#include "core/services/storage/flash.h"
 
 // App layer initialization (every product has an app)
 extern void app_init(void);

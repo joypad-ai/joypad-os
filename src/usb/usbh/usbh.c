@@ -7,6 +7,7 @@
 #include "tusb.h"
 #include "core/output_interface.h"
 #include "core/services/players/manager.h"
+#include "core/services/players/feedback.h"
 #include "core/services/codes/codes.h"
 
 // HID protocol handlers
@@ -15,10 +16,6 @@ extern void hid_task(uint8_t rumble, uint8_t leds, uint8_t trigger_threshold, ui
 
 // X-input protocol handlers
 extern void xinput_task(uint8_t rumble);
-
-// Feedback service
-extern uint8_t feedback_get_rumble(void);
-extern uint8_t feedback_get_player_led(uint8_t player_count);
 
 // App provides output interface
 extern const OutputInterface* app_get_output_interface(void);

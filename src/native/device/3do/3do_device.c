@@ -5,7 +5,6 @@
 #include "3do_device.h"
 #include "3do_buttons.h"
 #include "core/services/storage/flash.h"
-#include "core/services/players/feedback.h"
 #include "core/router/router.h"
 #include "core/services/profile/profile.h"
 #include "hardware/clocks.h"

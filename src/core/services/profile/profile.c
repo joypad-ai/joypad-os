@@ -9,10 +9,8 @@
 #include <string.h>
 
 // External dependencies (feedback and visual indication)
-extern void neopixel_indicate_profile(uint8_t profile_index);
-extern bool neopixel_is_indicating(void);
-extern void feedback_trigger(uint8_t profile_index, uint8_t player_count);
-extern bool feedback_is_active(void);
+#include "core/services/leds/ws2812.h"
+#include "core/services/players/feedback.h"
 
 // Flash storage
 #include "core/services/storage/flash.h"
