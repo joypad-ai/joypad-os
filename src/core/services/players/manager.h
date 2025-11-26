@@ -70,6 +70,9 @@ void players_init(void);
 // Initialize player system with custom configuration
 void players_init_with_config(const player_config_t* config);
 
+// Players task - call from main loop (handles feedback state machine)
+void players_task(void);
+
 // Get/set slot mode (for runtime changes)
 void players_set_slot_mode(player_slot_mode_t mode);
 player_slot_mode_t players_get_slot_mode(void);

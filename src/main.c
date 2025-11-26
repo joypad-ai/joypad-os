@@ -29,11 +29,6 @@ extern const OutputInterface* app_get_output_interface(void);
 extern void neopixel_init(void);
 extern void neopixel_task(int pat);
 
-extern void feedback_init(void);
-extern void feedback_task(void);
-
-extern void players_init(void);
-
 // Generic flash settings (profile persistence) - used by all consoles with profiles
 extern void flash_task(void);
 
@@ -61,11 +56,10 @@ static void __not_in_flash_func(process_signals)(void)
     // neopixel task
     neopixel_task(playersCount);
 
-    // profile indicator task (rumble and player LED patterns)
-    feedback_task();
+    // players task (feedback state machine for rumble and player LED patterns)
+    players_task();
 
     // flash settings task (debounced flash writes for profile persistence)
-    // Generic service used by all consoles with profiles (3DO, GameCube, etc.)
     flash_task();
 
     // USB host feedback task (rumble, LEDs, triggers for HID and X-input)
@@ -97,9 +91,7 @@ int main(void)
 
   neopixel_init(); // init multi-color status led
 
-  feedback_init(); // init profile indicator (rumble and player LED)
-
-  players_init(); // init multi-player management
+  players_init(); // init multi-player management (includes feedback subsystem)
 
   // Initialize app layer (Phase 5)
   // Every product MUST have an app that configures router/players/profiles

@@ -47,8 +47,10 @@ void usbh_task(void)
     // Get test mode counter (for LED test patterns)
     uint8_t test_counter = codes_get_test_counter();
 
+#if CFG_TUH_XINPUT
     // X-input rumble task (Xbox 360/One controllers)
     xinput_task(combined_rumble);
+#endif
 
 #if CFG_TUH_HID
     // HID device rumble/LED/trigger task (DualSense, DualShock, Switch Pro, etc.)

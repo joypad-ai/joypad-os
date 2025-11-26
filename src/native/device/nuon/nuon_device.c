@@ -3,6 +3,7 @@
 #include "nuon_device.h"
 #include "nuon_buttons.h"
 #include "core/services/codes/codes.h"
+#include "core/services/hotkeys/hotkeys.h"
 #include "core/services/profile/profile.h"
 #include <math.h>
 
@@ -29,9 +30,27 @@ uint32_t device_switch = 0b10000000100000110000001100000000;
 bool analog_stick_to_spinner = true;  // Enable right stick to spinner conversion
 static int16_t last_stick_angle[MAX_PLAYERS] = {0};  // Track last angle per player
 
-bool softReset = false;
-uint32_t pressTime = 0;
-const uint32_t requiredHoldDuration = 2000; // Duration in milliseconds for which the button combination must be held
+// IGR (In-Game Reset) combo button mask
+// This combo triggers GPIO pins for the Nuon internal IGR mod
+#define NUON_IGR_COMBO_MASK 0x3030  // Face buttons combo (preserved from original)
+#define NUON_IGR_HOLD_DURATION 2000 // Hold duration for power button (ms)
+
+// Forward declaration for GPIO trigger function
+static void trigger_button_press(uint8_t pin);
+
+// IGR callback for long hold (power button)
+static void nuon_igr_power_callback(uint8_t player, uint32_t held_ms) {
+    (void)player;
+    (void)held_ms;
+    trigger_button_press(POWER_PIN);
+}
+
+// IGR callback for quick tap (stop button)
+static void nuon_igr_stop_callback(uint8_t player, uint32_t held_ms) {
+    (void)player;
+    (void)held_ms;
+    trigger_button_press(STOP_PIN);
+}
 
 // init for nuon communication
 void nuon_init(void)
@@ -88,6 +107,27 @@ void nuon_init(void)
   polyface_send_program_init(pio1, sm1, offset1, DATAIO_PIN);
 
   // queue_init(&packet_queue, sizeof(int64_t), 1000);
+
+  // Register IGR hotkeys for internal Nuon reset mod
+  // Long hold (2s) triggers power button
+  HotkeyDef power_hotkey = {
+      .buttons = NUON_IGR_COMBO_MASK,
+      .duration_ms = NUON_IGR_HOLD_DURATION,
+      .trigger = HOTKEY_TRIGGER_ON_HOLD,
+      .callback = nuon_igr_power_callback,
+      .global = false
+  };
+  hotkeys_register(&power_hotkey);
+
+  // Quick tap (release before 2s) triggers stop button
+  HotkeyDef stop_hotkey = {
+      .buttons = NUON_IGR_COMBO_MASK,
+      .duration_ms = NUON_IGR_HOLD_DURATION,
+      .trigger = HOTKEY_TRIGGER_ON_TAP,
+      .callback = nuon_igr_stop_callback,
+      .global = false
+  };
+  hotkeys_register(&stop_hotkey);
 }
 
 // maps default usbretro button bit order to nuon's button packet data structure
@@ -165,7 +205,7 @@ int crc_calc(unsigned char data, int crc)
 	return(((crc_lut[((crc>>8)^data)&0xff])^(crc<<8))&0xffff);
 }
 
-void trigger_button_press(uint8_t pin)
+static void trigger_button_press(uint8_t pin)
 {
   // Configure the button pin as output
   gpio_init(pin);
@@ -187,29 +227,8 @@ void nuon_task()
   const input_event_t* event = router_get_output(OUTPUT_TARGET_NUON, 0);
   if (!event) return;
 
-  // Calculate and set Nuon output packet values here.
-  // TODO Phase 5: Re-implement merged instance support (Joy-Con Grip) if needed
-  int32_t buttons = (event->buttons & 0xffff);
-
-  // Check for button combination (Nuon + Start + L + R)
-  if ((buttons & 0x3030) == 0x3030) {
-    if (!softReset) {
-      softReset = true;
-      pressTime = to_ms_since_boot(get_absolute_time()); // Start timing when buttons are pressed
-    } else {
-      uint32_t holdDuration = to_ms_since_boot(get_absolute_time()) - pressTime;
-      if (holdDuration >= requiredHoldDuration) {
-        // long press and release
-        trigger_button_press(POWER_PIN);
-        softReset = false;
-        pressTime = 0; // Reset pressTime for next button press
-      }
-    }
-  } else if (softReset) {
-    // quick press and release
-    trigger_button_press(STOP_PIN);
-    softReset = false;
-  }
+  // Check IGR hotkeys (internal Nuon reset mod)
+  hotkeys_check(event->buttons, 0);
 }
 
 //
