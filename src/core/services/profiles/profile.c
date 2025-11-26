@@ -9,7 +9,7 @@
 #include <string.h>
 
 // External dependencies (feedback and visual indication)
-#include "core/services/leds/ws2812.h"
+#include "core/services/leds/leds.h"
 #include "core/services/profiles/profile_indicator.h"
 #include "core/services/players/feedback.h"
 
@@ -197,7 +197,7 @@ void profile_set_active(output_target_t output, uint8_t index)
     }
 
     // Trigger visual and haptic feedback
-    neopixel_indicate_profile(index);
+    leds_indicate_profile(index);
 
     uint8_t player_count = get_player_count ? get_player_count() : 0;
     profile_indicator_trigger(index, player_count);
@@ -286,7 +286,7 @@ void profile_set_player_active(output_target_t output, uint8_t player_index, uin
     feedback_set_led_player(player_index, profile_index + 1);  // LED shows profile number
 
     // Also trigger NeoPixel for visual indication (global)
-    neopixel_indicate_profile(profile_index);
+    leds_indicate_profile(profile_index);
 
     // Save to flash (for now, just save player 0's profile)
     if (player_index == 0) {
@@ -461,7 +461,7 @@ void profile_check_switch_combo(uint32_t buttons)
     }
 
     // Don't allow switching while feedback is still active
-    if (neopixel_is_indicating() || profile_indicator_is_active()) {
+    if (leds_is_indicating() || profile_indicator_is_active()) {
         return;
     }
 

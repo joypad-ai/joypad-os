@@ -25,8 +25,8 @@
 // App provides output interface (replaces compile-time selection in output.c)
 extern const OutputInterface* app_get_output_interface(void);
 
-// NeoPixel LED control
-#include "core/services/leds/ws2812.h"
+// LED subsystem
+#include "core/services/leds/leds.h"
 
 // Flash storage (profile persistence)
 #include "core/services/storage/flash.h"
@@ -49,10 +49,10 @@ static void __not_in_flash_func(process_signals)(void)
 {
   while (1)
   {
-    // neopixel task
-    neopixel_task(playersCount);
+    // LED status task
+    leds_task();
 
-    // players task (feedback state machine for rumble and player LED patterns)
+    // Player management (profile indicator animations)
     players_task();
 
     // flash settings task (debounced flash writes for profile persistence)
@@ -85,7 +85,7 @@ int main(void)
 
   tusb_init(); // init tinyusb for usb host input
 
-  neopixel_init(); // init multi-color status led
+  leds_init(); // init LED subsystem
 
   players_init(); // init multi-player management (includes feedback subsystem)
 

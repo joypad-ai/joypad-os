@@ -9,7 +9,7 @@
 #include "core/input_event.h"
 #include "core/services/profiles/profile.h"
 #include "core/services/profiles/profile_indicator.h"
-#include "core/services/leds/ws2812.h"
+#include "core/services/leds/leds.h"
 #include "hardware/clocks.h"
 #include "hardware/dma.h"
 #include "hardware/structs/bus_ctrl.h"
@@ -297,7 +297,7 @@ static bool tdo_output_mode_switch_callback(int8_t direction) {
   uint8_t mode_index = (output_mode == TDO_MODE_SILLY) ? 1 : 0;
   uint8_t player_count = router_get_player_count(OUTPUT_TARGET_3DO);
   profile_indicator_trigger(mode_index, player_count);
-  neopixel_indicate_profile(mode_index);
+  leds_indicate_profile(mode_index);
 
   return true;
 }

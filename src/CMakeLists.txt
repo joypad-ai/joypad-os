@@ -68,26 +68,27 @@ pico_add_extra_outputs(usbretro_uart)
 pico_generate_pio_header(usbretro_pce ${CMAKE_CURRENT_LIST_DIR}/native/device/pcengine/plex.pio )
 pico_generate_pio_header(usbretro_pce ${CMAKE_CURRENT_LIST_DIR}/native/device/pcengine/clock.pio )
 pico_generate_pio_header(usbretro_pce ${CMAKE_CURRENT_LIST_DIR}/native/device/pcengine/select.pio )
-pico_generate_pio_header(usbretro_pce ${CMAKE_CURRENT_LIST_DIR}/core/services/leds/ws2812.pio )
+pico_generate_pio_header(usbretro_pce ${CMAKE_CURRENT_LIST_DIR}/core/services/leds/neopixel/ws2812.pio )
 pico_generate_pio_header(usbretro_ngc ${CMAKE_CURRENT_LIST_DIR}/lib/joybus-pio/src/joybus.pio )
-pico_generate_pio_header(usbretro_ngc ${CMAKE_CURRENT_LIST_DIR}/core/services/leds/ws2812.pio )
-pico_generate_pio_header(usbretro_xb1 ${CMAKE_CURRENT_LIST_DIR}/core/services/leds/ws2812.pio )
+pico_generate_pio_header(usbretro_ngc ${CMAKE_CURRENT_LIST_DIR}/core/services/leds/neopixel/ws2812.pio )
+pico_generate_pio_header(usbretro_xb1 ${CMAKE_CURRENT_LIST_DIR}/core/services/leds/neopixel/ws2812.pio )
 pico_generate_pio_header(usbretro_nuon ${CMAKE_CURRENT_LIST_DIR}/native/device/nuon/polyface_read.pio )
 pico_generate_pio_header(usbretro_nuon ${CMAKE_CURRENT_LIST_DIR}/native/device/nuon/polyface_send.pio )
-pico_generate_pio_header(usbretro_nuon ${CMAKE_CURRENT_LIST_DIR}/core/services/leds/ws2812.pio )
+pico_generate_pio_header(usbretro_nuon ${CMAKE_CURRENT_LIST_DIR}/core/services/leds/neopixel/ws2812.pio )
 pico_generate_pio_header(usbretro_loopy ${CMAKE_CURRENT_LIST_DIR}/native/device/loopy/loopy.pio )
-pico_generate_pio_header(usbretro_loopy ${CMAKE_CURRENT_LIST_DIR}/core/services/leds/ws2812.pio )
+pico_generate_pio_header(usbretro_loopy ${CMAKE_CURRENT_LIST_DIR}/core/services/leds/neopixel/ws2812.pio )
 pico_generate_pio_header(usbretro_3do ${CMAKE_CURRENT_LIST_DIR}/native/device/3do/sampling.pio )
 pico_generate_pio_header(usbretro_3do ${CMAKE_CURRENT_LIST_DIR}/native/device/3do/output.pio )
-pico_generate_pio_header(usbretro_3do ${CMAKE_CURRENT_LIST_DIR}/core/services/leds/ws2812.pio )
+pico_generate_pio_header(usbretro_3do ${CMAKE_CURRENT_LIST_DIR}/core/services/leds/neopixel/ws2812.pio )
 pico_generate_pio_header(usbretro_snes3do ${CMAKE_CURRENT_LIST_DIR}/native/device/3do/sampling.pio )
 pico_generate_pio_header(usbretro_snes3do ${CMAKE_CURRENT_LIST_DIR}/native/device/3do/output.pio )
-pico_generate_pio_header(usbretro_snes3do ${CMAKE_CURRENT_LIST_DIR}/core/services/leds/ws2812.pio )
-pico_generate_pio_header(usbretro_uart ${CMAKE_CURRENT_LIST_DIR}/core/services/leds/ws2812.pio )
+pico_generate_pio_header(usbretro_snes3do ${CMAKE_CURRENT_LIST_DIR}/core/services/leds/neopixel/ws2812.pio )
+pico_generate_pio_header(usbretro_uart ${CMAKE_CURRENT_LIST_DIR}/core/services/leds/neopixel/ws2812.pio )
 
 ## SET TARGE SOURCES
 set(COMMON_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/core/services/leds/ws2812.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/services/leds/leds.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/services/leds/neopixel/ws2812.c
     ${CMAKE_CURRENT_SOURCE_DIR}/core/services/storage/flash.c
     # output.c removed - apps now provide output interface via app_get_output_interface()
 
