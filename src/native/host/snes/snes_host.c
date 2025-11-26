@@ -90,23 +90,34 @@ void snes_host_init_pins(uint8_t clock, uint8_t latch, uint8_t data0,
     printf("[snes_host]   CLK=%d, LATCH=%d, D0=%d, D1=%d, IOBIT=%d\n",
            clock, latch, data0, data1, iobit);
 
-    // Initialize SNESpad for each port
-    for (int i = 0; i < SNES_MAX_PORTS; i++) {
-        snespad_init(&snes_pads[i], clock, latch, data0, data1, iobit);
-        snespad_begin(&snes_pads[i]);
-        snespad_start(&snes_pads[i]);
+    // Initialize SNESpad for port 0 (direct connection or multitap port 1)
+    // TODO: Add multitap support - ports 1-3 would use different data pins
+    //   Port 0: DATA0 (controller 1 or multitap 1)
+    //   Port 1: DATA1 (controller 2 or multitap 2) - needs IOBIT toggle
+    //   Port 2: DATA0 after IOBIT toggle (multitap 3)
+    //   Port 3: DATA1 after IOBIT toggle (multitap 4)
+    snespad_init(&snes_pads[0], clock, latch, data0, data1, iobit);
+    snespad_begin(&snes_pads[0]);
+    snespad_start(&snes_pads[0]);
+    prev_buttons[0] = 0xFFFFFFFF;
+
+    // Mark other ports as not initialized until multitap support is added
+    for (int i = 1; i < SNES_MAX_PORTS; i++) {
+        snes_pads[i].type = SNESPAD_NONE;
         prev_buttons[i] = 0xFFFFFFFF;
     }
 
     initialized = true;
-    printf("[snes_host] Initialization complete\n");
+    printf("[snes_host] Initialization complete (port 0 active, ports 1-3 reserved for multitap)\n");
 }
 
 void snes_host_task(void)
 {
     if (!initialized) return;
 
-    for (int port = 0; port < SNES_MAX_PORTS; port++) {
+    // Currently only port 0 is active (direct connection)
+    // TODO: Expand when multitap support is added
+    for (int port = 0; port < 1; port++) {  // Only poll port 0 for now
         snespad_t* pad = &snes_pads[port];
 
         // Poll the controller

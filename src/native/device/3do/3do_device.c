@@ -6,6 +6,7 @@
 #include "3do_buttons.h"
 #include "core/services/storage/flash.h"
 #include "core/router/router.h"
+#include "core/input_event.h"
 #include "core/services/profile/profile.h"
 #include "core/services/players/feedback.h"
 #include "core/services/leds/ws2812.h"
@@ -63,6 +64,12 @@ static uint8_t extension_controller_count = 0;
 
 // Output mode (normal vs silly pad for arcade)
 static tdo_output_mode_t output_mode = TDO_MODE_NORMAL;
+
+// Extension mode (passthrough vs managed)
+static tdo_extension_mode_t extension_mode = TDO_EXT_PASSTHROUGH;
+
+// Previous button state for extension controllers (for change detection)
+static uint32_t ext_prev_buttons[MAX_PLAYERS] = {0};
 
 // Get total controller count (USB + extension)
 uint8_t get_total_3do_controller_count(void) {
@@ -296,6 +303,30 @@ static bool tdo_output_mode_switch_callback(int8_t direction) {
 }
 
 //-----------------------------------------------------------------------------
+// Extension Mode Management
+//-----------------------------------------------------------------------------
+
+tdo_extension_mode_t tdo_get_extension_mode(void) {
+  return extension_mode;
+}
+
+void tdo_set_extension_mode(tdo_extension_mode_t mode) {
+  extension_mode = mode;
+  #if CFG_TUSB_DEBUG >= 1
+  printf("[3DO] Extension mode set to: %s\n",
+         mode == TDO_EXT_MANAGED ? "MANAGED" : "PASSTHROUGH");
+  #endif
+}
+
+void tdo_toggle_extension_mode(void) {
+  if (extension_mode == TDO_EXT_PASSTHROUGH) {
+    tdo_set_extension_mode(TDO_EXT_MANAGED);
+  } else {
+    tdo_set_extension_mode(TDO_EXT_PASSTHROUGH);
+  }
+}
+
+//-----------------------------------------------------------------------------
 // Extension Controller Detection
 //-----------------------------------------------------------------------------
 
@@ -364,6 +395,160 @@ static uint8_t parse_extension_controllers(uint8_t* buffer, size_t buffer_size) 
     // Safety: PBUS supports max 56 devices, but we cap at MAX_PLAYERS
     if (count >= MAX_PLAYERS || offset >= buffer_size) {
       break;
+    }
+  }
+
+  return count;
+}
+
+// Parse extension controller data and submit to router (managed mode)
+// Uses dev_addr 0xE0+ range for 3DO extension controllers
+// Returns number of controllers processed
+static uint8_t parse_extension_to_router(uint8_t* buffer, size_t buffer_size) {
+  uint8_t count = 0;
+  size_t offset = 0;
+
+  while (offset < buffer_size && count < MAX_PLAYERS) {
+    uint8_t byte0 = buffer[offset];
+
+    // Check for end-of-chain
+    if (byte0 == 0x00) {
+      bool is_end = true;
+      for (size_t i = offset; i < buffer_size && i < offset + 4; i++) {
+        if (buffer[i] != 0x00) {
+          is_end = false;
+          break;
+        }
+      }
+      if (is_end) break;
+    }
+
+    input_event_t event;
+    init_input_event(&event);
+    event.dev_addr = 0xE0 + count;  // 3DO extension range
+    event.instance = 0;
+
+    uint8_t id_nibble = (byte0 >> 4) & 0x0F;
+
+    // Joypad: ID starts with 01, 10, or 11 (upper 2 bits of nibble != 00)
+    if ((id_nibble & 0b1100) != 0) {
+      if (offset + 2 > buffer_size) break;
+
+      event.type = INPUT_TYPE_GAMEPAD;
+      uint32_t buttons = 0xFFFFFFFF;  // Active-low
+
+      // Byte 0: [A][Left][Right][Up][Down][ID2][ID1][ID0]
+      // Note: 3DO is active-HIGH, we convert to active-LOW
+      if (byte0 & 0x80) buttons &= ~USBR_BUTTON_B3;  // A → B3
+      if (byte0 & 0x40) buttons &= ~USBR_BUTTON_DL;  // Left
+      if (byte0 & 0x20) buttons &= ~USBR_BUTTON_DR;  // Right
+      if (byte0 & 0x10) buttons &= ~USBR_BUTTON_DU;  // Up
+      if (byte0 & 0x08) buttons &= ~USBR_BUTTON_DD;  // Down
+
+      // Byte 1: [Tail1][Tail0][L][R][X][P][C][B]
+      uint8_t byte1 = buffer[offset + 1];
+      if (byte1 & 0x20) buttons &= ~USBR_BUTTON_L1;  // L
+      if (byte1 & 0x10) buttons &= ~USBR_BUTTON_R1;  // R
+      if (byte1 & 0x08) buttons &= ~USBR_BUTTON_S1;  // X → Select
+      if (byte1 & 0x04) buttons &= ~USBR_BUTTON_S2;  // P → Start
+      if (byte1 & 0x02) buttons &= ~USBR_BUTTON_B2;  // C → B2
+      if (byte1 & 0x01) buttons &= ~USBR_BUTTON_B1;  // B → B1
+
+      event.buttons = buttons;
+      offset += 2;
+
+      // Only submit if changed
+      if (buttons != ext_prev_buttons[count]) {
+        ext_prev_buttons[count] = buttons;
+        router_submit_input(&event);
+      }
+      count++;
+    }
+    // Joystick: 3-byte ID header (0x01, 0x7B, 0x08)
+    else if (byte0 == 0x01 && offset + 2 < buffer_size &&
+             buffer[offset + 1] == 0x7B && buffer[offset + 2] == 0x08) {
+      if (offset + 9 > buffer_size) break;
+
+      event.type = INPUT_TYPE_FLIGHTSTICK;
+      uint32_t buttons = 0xFFFFFFFF;
+
+      // Analog axes (bytes 3-6)
+      event.analog[ANALOG_X] = buffer[offset + 3];
+      event.analog[ANALOG_Y] = buffer[offset + 4];
+      event.analog[ANALOG_Z] = buffer[offset + 5];
+      event.analog[ANALOG_RX] = buffer[offset + 6];
+
+      // Byte 7: [Left][Right][Down][Up][C][B][A][FIRE]
+      uint8_t byte7 = buffer[offset + 7];
+      if (byte7 & 0x80) buttons &= ~USBR_BUTTON_DL;
+      if (byte7 & 0x40) buttons &= ~USBR_BUTTON_DR;
+      if (byte7 & 0x20) buttons &= ~USBR_BUTTON_DD;
+      if (byte7 & 0x10) buttons &= ~USBR_BUTTON_DU;
+      if (byte7 & 0x08) buttons &= ~USBR_BUTTON_B2;  // C
+      if (byte7 & 0x04) buttons &= ~USBR_BUTTON_B1;  // B
+      if (byte7 & 0x02) buttons &= ~USBR_BUTTON_B3;  // A
+      if (byte7 & 0x01) buttons &= ~USBR_BUTTON_L2;  // FIRE → L2
+
+      // Byte 8: [Tail:4][R][L][X][P]
+      uint8_t byte8 = buffer[offset + 8];
+      if (byte8 & 0x08) buttons &= ~USBR_BUTTON_R1;
+      if (byte8 & 0x04) buttons &= ~USBR_BUTTON_L1;
+      if (byte8 & 0x02) buttons &= ~USBR_BUTTON_S1;  // X
+      if (byte8 & 0x01) buttons &= ~USBR_BUTTON_S2;  // P
+
+      event.buttons = buttons;
+      offset += 9;
+
+      // Always submit joystick (analog changes)
+      router_submit_input(&event);
+      count++;
+    }
+    // Mouse: ID 0x49
+    else if (byte0 == 0x49) {
+      if (offset + 4 > buffer_size) break;
+
+      event.type = INPUT_TYPE_MOUSE;
+      uint32_t buttons = 0xFFFFFFFF;
+
+      uint8_t byte1 = buffer[offset + 1];
+      uint8_t byte2 = buffer[offset + 2];
+      uint8_t byte3 = buffer[offset + 3];
+
+      // Buttons
+      if (byte1 & 0x01) buttons &= ~USBR_BUTTON_B1;  // Left
+      if (byte1 & 0x02) buttons &= ~USBR_BUTTON_B3;  // Middle
+      if (byte1 & 0x04) buttons &= ~USBR_BUTTON_B2;  // Right
+
+      // Delta Y (10-bit signed)
+      int16_t dy = ((byte1 >> 4) & 0x0F) << 6 | (byte2 & 0x3F);
+      if (dy & 0x200) dy |= 0xFC00;
+      event.delta_y = (int8_t)(dy > 127 ? 127 : (dy < -128 ? -128 : dy));
+
+      // Delta X (10-bit signed)
+      int16_t dx = ((byte2 >> 6) & 0x03) << 8 | byte3;
+      if (dx & 0x200) dx |= 0xFC00;
+      event.delta_x = (int8_t)(dx > 127 ? 127 : (dx < -128 ? -128 : dx));
+
+      event.buttons = buttons;
+      offset += 4;
+
+      // Always submit mouse (relative motion)
+      router_submit_input(&event);
+      count++;
+    }
+    // Lightgun: ID 0x4D (skip for now)
+    else if (byte0 == 0x4D) {
+      offset += 4;
+      count++;
+    }
+    // Arcade: ID 0xC0 (skip for now)
+    else if (byte0 == 0xC0) {
+      offset += 2;
+      count++;
+    }
+    // Unknown - skip 1 byte
+    else {
+      offset++;
     }
   }
 
@@ -571,10 +756,21 @@ void _3do_task() {
 
   // Parse extension data (comes after USB reports in buffer)
   if (total_usb_size < 201) {
-    extension_controller_count = parse_extension_controllers(
-      &controller_buffer[total_usb_size],
-      201 - total_usb_size
-    );
+    if (extension_mode == TDO_EXT_MANAGED) {
+      // Managed mode: parse extension controllers and submit to router
+      // They'll be assigned player slots like any other input device
+      extension_controller_count = parse_extension_to_router(
+        &controller_buffer[total_usb_size],
+        201 - total_usb_size
+      );
+    } else {
+      // Passthrough mode: just count extension controllers for debug
+      // Data is relayed unchanged by DMA
+      extension_controller_count = parse_extension_controllers(
+        &controller_buffer[total_usb_size],
+        201 - total_usb_size
+      );
+    }
   }
 
   // Update all player reports from router

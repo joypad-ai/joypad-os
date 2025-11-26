@@ -36,8 +36,11 @@
 #define SNES_PIN_IOBIT  6   // I/O bit (for mouse/keyboard)
 #endif
 
-// Maximum number of SNES ports (for multitap support in future)
-#define SNES_MAX_PORTS 1
+// Maximum number of SNES ports
+// Port 0: DATA0 directly (single controller or multitap port 1)
+// Ports 1-3: Reserved for future multitap support
+// Note: Actual multitap support requires SNESpad library extension
+#define SNES_MAX_PORTS 4
 
 // ============================================================================
 // PUBLIC API

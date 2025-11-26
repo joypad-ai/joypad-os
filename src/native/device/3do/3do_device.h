@@ -135,6 +135,12 @@ typedef enum {
   TDO_MODE_SILLY,       // Silly control pad (arcade JAMMA)
 } tdo_output_mode_t;
 
+// 3DO extension port mode
+typedef enum {
+  TDO_EXT_PASSTHROUGH = 0,  // Relay extension data unchanged (default)
+  TDO_EXT_MANAGED,          // Parse extension controllers through player system
+} tdo_extension_mode_t;
+
 // Declaration of global variables
 extern PIO pio;
 extern uint sm_sampling, sm_output;
@@ -174,5 +180,10 @@ void update_3do_silly(_3do_silly_report report, uint8_t instance);
 tdo_output_mode_t tdo_get_output_mode(void);
 void tdo_set_output_mode(tdo_output_mode_t mode);
 void tdo_toggle_output_mode(void);
+
+// Extension mode management
+tdo_extension_mode_t tdo_get_extension_mode(void);
+void tdo_set_extension_mode(tdo_extension_mode_t mode);
+void tdo_toggle_extension_mode(void);
 
 #endif // THREEDOH

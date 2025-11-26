@@ -39,11 +39,16 @@ typedef struct {
 // ============================================================================
 // Player_t is only used for device-to-slot mapping.
 // Actual input state is stored in router_outputs[][] (see router.c).
+//
+// dev_addr ranges (must not overlap):
+//   0x01 - 0x7F : USB devices (standard USB address space)
+//   0xE0 - 0xE7 : 3DO native controllers (extension port, 8 max)
+//   0xF0 - 0xF7 : SNES native controllers (multitap, 4 used, 8 reserved)
 
 typedef struct TU_ATTR_PACKED
 {
-  int dev_addr;       // USB device address (-1 = empty slot)
-  int instance;       // USB device instance
+  int dev_addr;       // Device address (-1 = empty slot, see ranges above)
+  int instance;       // USB device instance (0 for native inputs)
   int player_number;  // 1-based player number (0 = unassigned)
 } Player_t;
 
