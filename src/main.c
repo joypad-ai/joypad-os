@@ -136,11 +136,10 @@ void tuh_umount_cb(uint8_t dev_addr)
   // application tear-down
   printf("A device with address %d is unmounted \r\n", dev_addr);
 
-  // if ((--playersCount) < 0) playersCount = 0;
   remove_players_by_address(dev_addr, -1);
 
-  // resets fun
-  is_fun = false;
+  // Reset test mode when device disconnects
+  hotkey_reset_test_mode();
 }
 
 #endif

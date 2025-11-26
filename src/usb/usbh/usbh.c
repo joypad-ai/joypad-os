@@ -42,12 +42,10 @@ void usbh_task(void)
     uint8_t player_led = feedback_get_player_led(playersCount) | console_led;
 
     // Get adaptive trigger threshold from output interface (DualSense L2/R2)
-    // Output device provides threshold from its active profile
     uint8_t trigger_threshold = (output->get_trigger_threshold) ? output->get_trigger_threshold() : 0;
 
-    // Test pattern counter (for fun mode effects)
-    static uint8_t test_counter = 0;
-    if (is_fun) test_counter++;
+    // Get test mode counter (for LED test patterns)
+    uint8_t test_counter = hotkey_get_test_counter();
 
     // X-input rumble task (Xbox 360/One controllers)
     xinput_task(combined_rumble);

@@ -1,28 +1,22 @@
-// input_codes.h
+// hotkey.h - Hotkey detection service
+//
+// Detects button sequences (e.g., Konami code) and manages test mode state.
 
-#ifndef INPUT_CODES_H
-#define INPUT_CODES_H
+#ifndef HOTKEY_H
+#define HOTKEY_H
 
 #include <stdint.h>
-#include "tusb.h"
-#include "core/buttons.h"
+#include <stdbool.h>
 
-// Define constants
+// Hotkey sequence length
 #define HOTKEY_LENGTH 10
-#ifndef KONAMI_CODE
-#define KONAMI_CODE {USBR_BUTTON_DU, USBR_BUTTON_DU, USBR_BUTTON_DD, USBR_BUTTON_DD, USBR_BUTTON_DL, USBR_BUTTON_DR, USBR_BUTTON_DL, USBR_BUTTON_DR, USBR_BUTTON_B1, USBR_BUTTON_B2}
-#endif
 
-// Declaration of global variables
-extern uint32_t code_buffer[HOTKEY_LENGTH];
-extern uint32_t konami_code[HOTKEY_LENGTH];
-extern bool is_fun;
-extern unsigned char fun_inc;
-extern unsigned char fun_player;
+// Test mode API
+bool hotkey_is_test_mode(void);
+void hotkey_reset_test_mode(void);
+uint8_t hotkey_get_test_counter(void);
 
-// Function declarations
+// Called from console update_output() to detect hotkey sequences
 void codes_task(void);
-void __not_in_flash_func(shift_buffer_and_insert)(uint32_t new_value);
-void __not_in_flash_func(check_for_konami_code)(void);
 
-#endif // INPUT_CODES_H
+#endif // HOTKEY_H
