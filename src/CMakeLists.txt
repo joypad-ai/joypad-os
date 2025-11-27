@@ -112,7 +112,6 @@ set(COMMON_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/hid/devices/generic/hid_parser.c
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/hid/devices/generic/hid_gamepad.c
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/hid/devices/vendors/8bitdo/8bitdo_bta.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/hid/devices/vendors/8bitdo/8bitdo_neo.c
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/hid/devices/vendors/8bitdo/8bitdo_m30.c
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/hid/devices/vendors/8bitdo/8bitdo_pce.c
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/hid/devices/vendors/nintendo/gamecube_adapter.c
@@ -125,9 +124,8 @@ set(COMMON_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/hid/devices/vendors/hori/hori_pokken.c
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/hid/devices/vendors/logitech/logitech_wingman.c
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/hid/devices/vendors/sega/sega_astrocity.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/hid/devices/vendors/dragonrise/dragonrise.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/hid/devices/vendors/misc/triple_adapter_v1.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/hid/devices/vendors/misc/triple_adapter_v2.c
+    # Unregistered drivers (handled by generic hid_parser):
+    # - 8bitdo_neo.c, dragonrise.c, triple_adapter_v1.c, triple_adapter_v2.c
 
     # USB Host - X-input Protocol
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/xinput/xinput.c
