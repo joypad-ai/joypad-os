@@ -20,7 +20,7 @@ typedef struct {
 static PlayerHoldState player_state[MAX_PLAYERS];
 
 // Global input state (combined from all players)
-static uint32_t global_buttons = 0xFFFFFFFF;  // Start with all released (active-low)
+static uint32_t global_buttons = 0x00000000;  // Start with all released (active-high)
 static absolute_time_t global_hold_start;
 static bool global_holding[MAX_HOTKEYS];
 static bool global_triggered[MAX_HOTKEYS];
@@ -54,7 +54,7 @@ void hotkeys_clear(void) {
 void hotkeys_reset_player(uint8_t player) {
     if (player >= MAX_PLAYERS) return;
 
-    player_state[player].held_buttons = 0xFFFFFFFF;  // All released (active-low)
+    player_state[player].held_buttons = 0x00000000;  // All released (active-high)
     player_state[player].hold_start = nil_time;
     for (int i = 0; i < MAX_HOTKEYS; i++) {
         player_state[player].holding[i] = false;
@@ -62,12 +62,10 @@ void hotkeys_reset_player(uint8_t player) {
     }
 }
 
-// Check if all required buttons are pressed (active low: 0 = pressed)
+// Check if all required buttons are pressed (active-high: 1 = pressed)
 static inline bool buttons_match(uint32_t current, uint32_t required) {
-    // In USBRetro, buttons are active-low (0 = pressed, 1 = released)
-    // So we invert and check if all required bits are set
-    uint32_t pressed = ~current;
-    return (pressed & required) == required;
+    // In USBRetro, buttons are active-high (1 = pressed, 0 = released)
+    return (current & required) == required;
 }
 
 void hotkeys_check(uint32_t buttons, uint8_t player) {
@@ -76,8 +74,8 @@ void hotkeys_check(uint32_t buttons, uint8_t player) {
     PlayerHoldState* state = &player_state[player];
     absolute_time_t now = get_absolute_time();
 
-    // Update global combined state (AND for active-low: 0 means ANY player has it pressed)
-    global_buttons &= buttons;
+    // Update global combined state (OR for active-high: 1 means ANY player has it pressed)
+    global_buttons |= buttons;
 
     for (int i = 0; i < hotkey_count; i++) {
         if (!hotkey_active[i]) continue;
@@ -197,6 +195,6 @@ void hotkeys_check_global(void) {
         }
     }
 
-    // Reset global buttons for next frame (all released = 0xFFFFFFFF for active-low)
-    global_buttons = 0xFFFFFFFF;
+    // Reset global buttons for next frame (all released = 0x00000000 for active-high)
+    global_buttons = 0x00000000;
 }

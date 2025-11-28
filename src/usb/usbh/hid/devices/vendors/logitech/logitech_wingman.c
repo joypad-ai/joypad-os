@@ -74,23 +74,23 @@ void process_logitech_wingman(uint8_t dev_addr, uint8_t instance, uint8_t const*
     //   Bottom row: [B1][B2][R2]
     //
     // Mapping: A→B1, B→B2, C→R2, X→B3, Y→B4, Z→R1
-    buttons = (((dpad_up)          ? 0x00 : USBR_BUTTON_DU) |
-               ((dpad_down)        ? 0x00 : USBR_BUTTON_DD) |
-               ((dpad_left)        ? 0x00 : USBR_BUTTON_DL) |
-               ((dpad_right)       ? 0x00 : USBR_BUTTON_DR) |
-               ((wingman_report.a) ? 0x00 : USBR_BUTTON_B1) |  // A = left-bottom
-               ((wingman_report.b) ? 0x00 : USBR_BUTTON_B2) |  // B = mid-bottom
-               ((wingman_report.x) ? 0x00 : USBR_BUTTON_B3) |  // X = left-top
-               ((wingman_report.y) ? 0x00 : USBR_BUTTON_B4) |  // Y = mid-top
-               ((wingman_report.l) ? 0x00 : USBR_BUTTON_L1) |  // L shoulder
-               ((wingman_report.z) ? 0x00 : USBR_BUTTON_R1) |  // Z = right-top
-               ((0)                ? 0x00 : USBR_BUTTON_L2) |
-               ((wingman_report.c) ? 0x00 : USBR_BUTTON_R2) |  // C = right-bottom
-               ((wingman_report.r) ? 0x00 : USBR_BUTTON_S1) |
-               ((wingman_report.s) ? 0x00 : USBR_BUTTON_S2) |
-               ((0)                ? 0x00 : USBR_BUTTON_L3) |
-               ((0)                ? 0x00 : USBR_BUTTON_R3) |
-               ((0)                ? 0x00 : USBR_BUTTON_A1));
+    buttons = (((dpad_up)          ? USBR_BUTTON_DU : 0) |
+               ((dpad_down)        ? USBR_BUTTON_DD : 0) |
+               ((dpad_left)        ? USBR_BUTTON_DL : 0) |
+               ((dpad_right)       ? USBR_BUTTON_DR : 0) |
+               ((wingman_report.a) ? USBR_BUTTON_B1 : 0) |  // A = left-bottom
+               ((wingman_report.b) ? USBR_BUTTON_B2 : 0) |  // B = mid-bottom
+               ((wingman_report.x) ? USBR_BUTTON_B3 : 0) |  // X = left-top
+               ((wingman_report.y) ? USBR_BUTTON_B4 : 0) |  // Y = mid-top
+               ((wingman_report.l) ? USBR_BUTTON_L1 : 0) |  // L shoulder
+               ((wingman_report.z) ? USBR_BUTTON_R1 : 0) |  // Z = right-top
+               ((0)                ? USBR_BUTTON_L2 : 0) |
+               ((wingman_report.c) ? USBR_BUTTON_R2 : 0) |  // C = right-bottom
+               ((wingman_report.r) ? USBR_BUTTON_S1 : 0) |
+               ((wingman_report.s) ? USBR_BUTTON_S2 : 0) |
+               ((0)                ? USBR_BUTTON_L3 : 0) |
+               ((0)                ? USBR_BUTTON_R3 : 0) |
+               ((0)                ? USBR_BUTTON_A1 : 0));
 
     // keep analog within range [1-255]
     ensureAllNonZero(&analog_x1, &analog_y1, &analog_x2, &analog_y2);

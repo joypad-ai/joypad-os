@@ -192,10 +192,12 @@ void __not_in_flash_func(core1_task)(void)
     mcp4728_write_dac(I2C_DAC_PORT, MCP4728_I2C_ADDR1, 1, rVal);
 
     // Individual buttons (use mapped values)
-    gpio_put(XBOX_B_BTN_PIN, ((mapped.buttons & XB1_BUTTON_B) == 0) ? 0 : 1);
-    gpio_put(XBOX_GUIDE_PIN, ((mapped.buttons & XB1_BUTTON_GUIDE) == 0) ? 0 : 1);
-    gpio_put(XBOX_R3_BTN_PIN,((mapped.buttons & XB1_BUTTON_R3) == 0) ? 0 : 1);
-    gpio_put(XBOX_L3_BTN_PIN,((mapped.buttons & XB1_BUTTON_L3) == 0) ? 0 : 1);
+    // USBRetro uses active-high (1 = pressed), Xbox hardware expects active-low GPIO
+    // GPIO: 1 = released, 0 = pressed
+    gpio_put(XBOX_B_BTN_PIN, (mapped.buttons & XB1_BUTTON_B) ? 0 : 1);
+    gpio_put(XBOX_GUIDE_PIN, (mapped.buttons & XB1_BUTTON_GUIDE) ? 0 : 1);
+    gpio_put(XBOX_R3_BTN_PIN,(mapped.buttons & XB1_BUTTON_R3) ? 0 : 1);
+    gpio_put(XBOX_L3_BTN_PIN,(mapped.buttons & XB1_BUTTON_L3) ? 0 : 1);
 
 
     update_output();
@@ -220,21 +222,23 @@ void __not_in_flash_func(update_output)(void)
                 &mapped);
 
   // base controller buttons (use mapped values)
+  // USBRetro uses active-high (1 = pressed)
+  // Xbox I2C GPIO expander expects: base value with bits XORed when pressed
   int16_t byte = (mapped.buttons & 0xffff);
   i2c_slave_read_buffer[0] = 0xFA;
-  i2c_slave_read_buffer[0] ^= ((byte & XB1_BUTTON_X) == 0) ? 0x02 : 0;    // X
-  i2c_slave_read_buffer[0] ^= ((byte & XB1_BUTTON_Y) == 0) ? 0x08 : 0;    // Y
-  i2c_slave_read_buffer[0] ^= ((byte & XB1_BUTTON_RB) == 0) ? 0x10 : 0;   // R
-  i2c_slave_read_buffer[0] ^= ((byte & XB1_BUTTON_LB) == 0) ? 0x20 : 0;   // L
-  i2c_slave_read_buffer[0] ^= ((byte & XB1_BUTTON_MENU) == 0) ? 0x80 : 0; // MENU
+  i2c_slave_read_buffer[0] ^= (byte & XB1_BUTTON_X) ? 0x02 : 0;    // X
+  i2c_slave_read_buffer[0] ^= (byte & XB1_BUTTON_Y) ? 0x08 : 0;    // Y
+  i2c_slave_read_buffer[0] ^= (byte & XB1_BUTTON_RB) ? 0x10 : 0;   // R
+  i2c_slave_read_buffer[0] ^= (byte & XB1_BUTTON_LB) ? 0x20 : 0;   // L
+  i2c_slave_read_buffer[0] ^= (byte & XB1_BUTTON_MENU) ? 0x80 : 0; // MENU
 
   i2c_slave_read_buffer[1] = 0xFF;
-  i2c_slave_read_buffer[1] ^= ((byte & XB1_BUTTON_DU) == 0) ? 0x02 : 0;   // UP
-  i2c_slave_read_buffer[1] ^= ((byte & XB1_BUTTON_DR) == 0) ? 0x04 : 0;   // RIGHT
-  i2c_slave_read_buffer[1] ^= ((byte & XB1_BUTTON_DD) == 0) ? 0x10 : 0;   // DOWN
-  i2c_slave_read_buffer[1] ^= ((byte & XB1_BUTTON_DL) == 0) ? 0x08 : 0;   // LEFT
-  i2c_slave_read_buffer[1] ^= ((byte & XB1_BUTTON_VIEW) == 0) ? 0x20 : 0; // VIEW
-  i2c_slave_read_buffer[1] ^= ((byte & XB1_BUTTON_A) == 0) ? 0x80 : 0;    // A
+  i2c_slave_read_buffer[1] ^= (byte & XB1_BUTTON_DU) ? 0x02 : 0;   // UP
+  i2c_slave_read_buffer[1] ^= (byte & XB1_BUTTON_DR) ? 0x04 : 0;   // RIGHT
+  i2c_slave_read_buffer[1] ^= (byte & XB1_BUTTON_DD) ? 0x10 : 0;   // DOWN
+  i2c_slave_read_buffer[1] ^= (byte & XB1_BUTTON_DL) ? 0x08 : 0;   // LEFT
+  i2c_slave_read_buffer[1] ^= (byte & XB1_BUTTON_VIEW) ? 0x20 : 0; // VIEW
+  i2c_slave_read_buffer[1] ^= (byte & XB1_BUTTON_A) ? 0x80 : 0;    // A
 
   codes_task();
 

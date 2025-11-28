@@ -29,23 +29,23 @@ static uint16_t convert_buttons(uint32_t buttons)
 {
     uint16_t hid_buttons = 0;
 
-    // USBRetro uses active-low (0 = pressed), HID uses active-high (1 = pressed)
-    uint32_t pressed = ~buttons;
+    // USBRetro uses active-high (1 = pressed), HID uses active-high (1 = pressed)
+    // No inversion needed
 
-    if (pressed & USBR_BUTTON_B1) hid_buttons |= USB_GAMEPAD_MASK_B1;
-    if (pressed & USBR_BUTTON_B2) hid_buttons |= USB_GAMEPAD_MASK_B2;
-    if (pressed & USBR_BUTTON_B3) hid_buttons |= USB_GAMEPAD_MASK_B3;
-    if (pressed & USBR_BUTTON_B4) hid_buttons |= USB_GAMEPAD_MASK_B4;
-    if (pressed & USBR_BUTTON_L1) hid_buttons |= USB_GAMEPAD_MASK_L1;
-    if (pressed & USBR_BUTTON_R1) hid_buttons |= USB_GAMEPAD_MASK_R1;
-    if (pressed & USBR_BUTTON_L2) hid_buttons |= USB_GAMEPAD_MASK_L2;
-    if (pressed & USBR_BUTTON_R2) hid_buttons |= USB_GAMEPAD_MASK_R2;
-    if (pressed & USBR_BUTTON_S1) hid_buttons |= USB_GAMEPAD_MASK_S1;
-    if (pressed & USBR_BUTTON_S2) hid_buttons |= USB_GAMEPAD_MASK_S2;
-    if (pressed & USBR_BUTTON_L3) hid_buttons |= USB_GAMEPAD_MASK_L3;
-    if (pressed & USBR_BUTTON_R3) hid_buttons |= USB_GAMEPAD_MASK_R3;
-    if (pressed & USBR_BUTTON_A1) hid_buttons |= USB_GAMEPAD_MASK_A1;
-    if (pressed & USBR_BUTTON_A2) hid_buttons |= USB_GAMEPAD_MASK_A2;
+    if (buttons & USBR_BUTTON_B1) hid_buttons |= USB_GAMEPAD_MASK_B1;
+    if (buttons & USBR_BUTTON_B2) hid_buttons |= USB_GAMEPAD_MASK_B2;
+    if (buttons & USBR_BUTTON_B3) hid_buttons |= USB_GAMEPAD_MASK_B3;
+    if (buttons & USBR_BUTTON_B4) hid_buttons |= USB_GAMEPAD_MASK_B4;
+    if (buttons & USBR_BUTTON_L1) hid_buttons |= USB_GAMEPAD_MASK_L1;
+    if (buttons & USBR_BUTTON_R1) hid_buttons |= USB_GAMEPAD_MASK_R1;
+    if (buttons & USBR_BUTTON_L2) hid_buttons |= USB_GAMEPAD_MASK_L2;
+    if (buttons & USBR_BUTTON_R2) hid_buttons |= USB_GAMEPAD_MASK_R2;
+    if (buttons & USBR_BUTTON_S1) hid_buttons |= USB_GAMEPAD_MASK_S1;
+    if (buttons & USBR_BUTTON_S2) hid_buttons |= USB_GAMEPAD_MASK_S2;
+    if (buttons & USBR_BUTTON_L3) hid_buttons |= USB_GAMEPAD_MASK_L3;
+    if (buttons & USBR_BUTTON_R3) hid_buttons |= USB_GAMEPAD_MASK_R3;
+    if (buttons & USBR_BUTTON_A1) hid_buttons |= USB_GAMEPAD_MASK_A1;
+    if (buttons & USBR_BUTTON_A2) hid_buttons |= USB_GAMEPAD_MASK_A2;
 
     return hid_buttons;
 }
@@ -53,13 +53,11 @@ static uint16_t convert_buttons(uint32_t buttons)
 // Convert input_event dpad to HID hat switch
 static uint8_t convert_dpad_to_hat(uint32_t buttons)
 {
-    // USBRetro uses active-low (0 = pressed)
-    uint32_t pressed = ~buttons;
-
-    uint8_t up = (pressed & USBR_BUTTON_DU) ? 1 : 0;
-    uint8_t down = (pressed & USBR_BUTTON_DD) ? 1 : 0;
-    uint8_t left = (pressed & USBR_BUTTON_DL) ? 1 : 0;
-    uint8_t right = (pressed & USBR_BUTTON_DR) ? 1 : 0;
+    // USBRetro uses active-high (1 = pressed)
+    uint8_t up = (buttons & USBR_BUTTON_DU) ? 1 : 0;
+    uint8_t down = (buttons & USBR_BUTTON_DD) ? 1 : 0;
+    uint8_t left = (buttons & USBR_BUTTON_DL) ? 1 : 0;
+    uint8_t right = (buttons & USBR_BUTTON_DR) ? 1 : 0;
 
     if (up && right) return HID_HAT_UP_RIGHT;
     if (up && left) return HID_HAT_UP_LEFT;
@@ -132,11 +130,11 @@ bool usbd_send_report(uint8_t player_index)
         hid_report.ry = event->analog[ANALOG_RZ];
 
         // PS3 pressure axes (0x00 = released, 0xFF = fully pressed)
-        uint32_t pressed = ~event->buttons;
-        hid_report.pressure_dpad_right = (pressed & USBR_BUTTON_DR) ? 0xFF : 0x00;
-        hid_report.pressure_dpad_left  = (pressed & USBR_BUTTON_DL) ? 0xFF : 0x00;
-        hid_report.pressure_dpad_up    = (pressed & USBR_BUTTON_DU) ? 0xFF : 0x00;
-        hid_report.pressure_dpad_down  = (pressed & USBR_BUTTON_DD) ? 0xFF : 0x00;
+        // USBRetro uses active-high (1 = pressed)
+        hid_report.pressure_dpad_right = (event->buttons & USBR_BUTTON_DR) ? 0xFF : 0x00;
+        hid_report.pressure_dpad_left  = (event->buttons & USBR_BUTTON_DL) ? 0xFF : 0x00;
+        hid_report.pressure_dpad_up    = (event->buttons & USBR_BUTTON_DU) ? 0xFF : 0x00;
+        hid_report.pressure_dpad_down  = (event->buttons & USBR_BUTTON_DD) ? 0xFF : 0x00;
         hid_report.pressure_triangle   = (buttons & USB_GAMEPAD_MASK_B4) ? 0xFF : 0x00;
         hid_report.pressure_circle     = (buttons & USB_GAMEPAD_MASK_B2) ? 0xFF : 0x00;
         hid_report.pressure_cross      = (buttons & USB_GAMEPAD_MASK_B1) ? 0xFF : 0x00;

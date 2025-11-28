@@ -68,24 +68,24 @@ void process_hori_horipad(uint8_t dev_addr, uint8_t instance, uint8_t const* rep
     //
     // Mapping: B→B1, A→B2, ZR(r2)→R2, Y→B3, X→B4, R(r1)→R1
     // L1/L2 are shoulder buttons (not part of 6-button face layout)
-    buttons = (((dpad_up)         ? 0x00 : USBR_BUTTON_DU) |
-               ((dpad_down)       ? 0x00 : USBR_BUTTON_DD) |
-               ((dpad_left)       ? 0x00 : USBR_BUTTON_DL) |
-               ((dpad_right)      ? 0x00 : USBR_BUTTON_DR) |
-               ((input_report.b)  ? 0x00 : USBR_BUTTON_B1) |  // B = left-bottom
-               ((input_report.a)  ? 0x00 : USBR_BUTTON_B2) |  // A = mid-bottom
-               ((input_report.y)  ? 0x00 : USBR_BUTTON_B3) |  // Y = left-top
-               ((input_report.x)  ? 0x00 : USBR_BUTTON_B4) |  // X = mid-top
-               ((input_report.l1) ? 0x00 : USBR_BUTTON_L1) |  // L shoulder
-               ((input_report.r1) ? 0x00 : USBR_BUTTON_R1) |  // R = right-top
-               ((input_report.l2) ? 0x00 : USBR_BUTTON_L2) |  // ZL shoulder
-               ((input_report.r2) ? 0x00 : USBR_BUTTON_R2) |  // ZR = right-bottom
-               ((input_report.s1) ? 0x00 : USBR_BUTTON_S1) |
-               ((input_report.s2) ? 0x00 : USBR_BUTTON_S2) |
-               ((input_report.l3) ? 0x00 : USBR_BUTTON_L3) |
-               ((input_report.r3) ? 0x00 : USBR_BUTTON_R3) |
-               ((input_report.a1) ? 0x00 : USBR_BUTTON_A1) |
-               ((input_report.a2) ? 0x00 : USBR_BUTTON_A2));
+    buttons = (((dpad_up)         ? USBR_BUTTON_DU : 0) |
+               ((dpad_down)       ? USBR_BUTTON_DD : 0) |
+               ((dpad_left)       ? USBR_BUTTON_DL : 0) |
+               ((dpad_right)      ? USBR_BUTTON_DR : 0) |
+               ((input_report.b)  ? USBR_BUTTON_B1 : 0) |  // B = left-bottom
+               ((input_report.a)  ? USBR_BUTTON_B2 : 0) |  // A = mid-bottom
+               ((input_report.y)  ? USBR_BUTTON_B3 : 0) |  // Y = left-top
+               ((input_report.x)  ? USBR_BUTTON_B4 : 0) |  // X = mid-top
+               ((input_report.l1) ? USBR_BUTTON_L1 : 0) |  // L shoulder
+               ((input_report.r1) ? USBR_BUTTON_R1 : 0) |  // R = right-top
+               ((input_report.l2) ? USBR_BUTTON_L2 : 0) |  // ZL shoulder
+               ((input_report.r2) ? USBR_BUTTON_R2 : 0) |  // ZR = right-bottom
+               ((input_report.s1) ? USBR_BUTTON_S1 : 0) |
+               ((input_report.s2) ? USBR_BUTTON_S2 : 0) |
+               ((input_report.l3) ? USBR_BUTTON_L3 : 0) |
+               ((input_report.r3) ? USBR_BUTTON_R3 : 0) |
+               ((input_report.a1) ? USBR_BUTTON_A1 : 0) |
+               ((input_report.a2) ? USBR_BUTTON_A2 : 0));
     // invert vertical axis
     uint8_t axis_x = input_report.axis_x;
     uint8_t axis_y = (input_report.axis_y == 0) ? 255 : 256 - input_report.axis_y;

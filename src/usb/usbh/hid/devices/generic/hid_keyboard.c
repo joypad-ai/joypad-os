@@ -414,23 +414,20 @@ void process_hid_keyboard(uint8_t dev_addr, uint8_t instance, uint8_t const* hid
     dpad_right = hat_switch_x > 128;
   }
 
-  buttons = (((dpad_up)    ? 0x00 : USBR_BUTTON_DU) |
-             ((dpad_down)  ? 0x00 : USBR_BUTTON_DD) |
-             ((dpad_left)  ? 0x00 : USBR_BUTTON_DL) |
-             ((dpad_right) ? 0x00 : USBR_BUTTON_DR) |
-             ((btns_b1)    ? 0x00 : USBR_BUTTON_B1) |
-             ((btns_b2)    ? 0x00 : USBR_BUTTON_B2) |
-             ((btns_b3)    ? 0x00 : USBR_BUTTON_B3) |
-             ((btns_b4)    ? 0x00 : USBR_BUTTON_B4) |
-             ((btns_l1)    ? 0x00 : USBR_BUTTON_L1) |
-             ((btns_r1)    ? 0x00 : USBR_BUTTON_R1) |
-             ((0)          ? 0x00 : USBR_BUTTON_L2) |
-             ((0)          ? 0x00 : USBR_BUTTON_R2) |
-             ((btns_sel)   ? 0x00 : USBR_BUTTON_S1) |
-             ((btns_run)   ? 0x00 : USBR_BUTTON_S2) |
-             ((0)          ? 0x00 : USBR_BUTTON_L3) |
-             ((0)          ? 0x00 : USBR_BUTTON_R3) |
-             ((btns_a1)    ? 0x00 : USBR_BUTTON_A1));
+  // Active-high: set bit when button is pressed
+  buttons = (((dpad_up)    ? USBR_BUTTON_DU : 0) |
+             ((dpad_down)  ? USBR_BUTTON_DD : 0) |
+             ((dpad_left)  ? USBR_BUTTON_DL : 0) |
+             ((dpad_right) ? USBR_BUTTON_DR : 0) |
+             ((btns_b1)    ? USBR_BUTTON_B1 : 0) |
+             ((btns_b2)    ? USBR_BUTTON_B2 : 0) |
+             ((btns_b3)    ? USBR_BUTTON_B3 : 0) |
+             ((btns_b4)    ? USBR_BUTTON_B4 : 0) |
+             ((btns_l1)    ? USBR_BUTTON_L1 : 0) |
+             ((btns_r1)    ? USBR_BUTTON_R1 : 0) |
+             ((btns_sel)   ? USBR_BUTTON_S1 : 0) |
+             ((btns_run)   ? USBR_BUTTON_S2 : 0) |
+             ((btns_a1)    ? USBR_BUTTON_A1 : 0));
 
   // TODO: map L2/R2/L3/R3 buttons
 

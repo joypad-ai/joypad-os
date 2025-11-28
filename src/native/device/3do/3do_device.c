@@ -435,24 +435,24 @@ static uint8_t parse_extension_to_router(uint8_t* buffer, size_t buffer_size) {
       if (offset + 2 > buffer_size) break;
 
       event.type = INPUT_TYPE_GAMEPAD;
-      uint32_t buttons = 0xFFFFFFFF;  // Active-low
+      uint32_t buttons = 0x00000000;  // Active-high
 
       // Byte 0: [A][Left][Right][Up][Down][ID2][ID1][ID0]
       // Note: 3DO is active-HIGH, we convert to active-LOW
-      if (byte0 & 0x80) buttons &= ~USBR_BUTTON_B3;  // A → B3
-      if (byte0 & 0x40) buttons &= ~USBR_BUTTON_DL;  // Left
-      if (byte0 & 0x20) buttons &= ~USBR_BUTTON_DR;  // Right
-      if (byte0 & 0x10) buttons &= ~USBR_BUTTON_DU;  // Up
-      if (byte0 & 0x08) buttons &= ~USBR_BUTTON_DD;  // Down
+      if (byte0 & 0x80) buttons |= USBR_BUTTON_B3;  // A → B3
+      if (byte0 & 0x40) buttons |= USBR_BUTTON_DL;  // Left
+      if (byte0 & 0x20) buttons |= USBR_BUTTON_DR;  // Right
+      if (byte0 & 0x10) buttons |= USBR_BUTTON_DU;  // Up
+      if (byte0 & 0x08) buttons |= USBR_BUTTON_DD;  // Down
 
       // Byte 1: [Tail1][Tail0][L][R][X][P][C][B]
       uint8_t byte1 = buffer[offset + 1];
-      if (byte1 & 0x20) buttons &= ~USBR_BUTTON_L1;  // L
-      if (byte1 & 0x10) buttons &= ~USBR_BUTTON_R1;  // R
-      if (byte1 & 0x08) buttons &= ~USBR_BUTTON_S1;  // X → Select
-      if (byte1 & 0x04) buttons &= ~USBR_BUTTON_S2;  // P → Start
-      if (byte1 & 0x02) buttons &= ~USBR_BUTTON_B2;  // C → B2
-      if (byte1 & 0x01) buttons &= ~USBR_BUTTON_B1;  // B → B1
+      if (byte1 & 0x20) buttons |= USBR_BUTTON_L1;  // L
+      if (byte1 & 0x10) buttons |= USBR_BUTTON_R1;  // R
+      if (byte1 & 0x08) buttons |= USBR_BUTTON_S1;  // X → Select
+      if (byte1 & 0x04) buttons |= USBR_BUTTON_S2;  // P → Start
+      if (byte1 & 0x02) buttons |= USBR_BUTTON_B2;  // C → B2
+      if (byte1 & 0x01) buttons |= USBR_BUTTON_B1;  // B → B1
 
       event.buttons = buttons;
       offset += 2;
@@ -470,7 +470,7 @@ static uint8_t parse_extension_to_router(uint8_t* buffer, size_t buffer_size) {
       if (offset + 9 > buffer_size) break;
 
       event.type = INPUT_TYPE_FLIGHTSTICK;
-      uint32_t buttons = 0xFFFFFFFF;
+      uint32_t buttons = 0x00000000;
 
       // Analog axes (bytes 3-6)
       event.analog[ANALOG_X] = buffer[offset + 3];
@@ -480,21 +480,21 @@ static uint8_t parse_extension_to_router(uint8_t* buffer, size_t buffer_size) {
 
       // Byte 7: [Left][Right][Down][Up][C][B][A][FIRE]
       uint8_t byte7 = buffer[offset + 7];
-      if (byte7 & 0x80) buttons &= ~USBR_BUTTON_DL;
-      if (byte7 & 0x40) buttons &= ~USBR_BUTTON_DR;
-      if (byte7 & 0x20) buttons &= ~USBR_BUTTON_DD;
-      if (byte7 & 0x10) buttons &= ~USBR_BUTTON_DU;
-      if (byte7 & 0x08) buttons &= ~USBR_BUTTON_B2;  // C
-      if (byte7 & 0x04) buttons &= ~USBR_BUTTON_B1;  // B
-      if (byte7 & 0x02) buttons &= ~USBR_BUTTON_B3;  // A
-      if (byte7 & 0x01) buttons &= ~USBR_BUTTON_L2;  // FIRE → L2
+      if (byte7 & 0x80) buttons |= USBR_BUTTON_DL;
+      if (byte7 & 0x40) buttons |= USBR_BUTTON_DR;
+      if (byte7 & 0x20) buttons |= USBR_BUTTON_DD;
+      if (byte7 & 0x10) buttons |= USBR_BUTTON_DU;
+      if (byte7 & 0x08) buttons |= USBR_BUTTON_B2;  // C
+      if (byte7 & 0x04) buttons |= USBR_BUTTON_B1;  // B
+      if (byte7 & 0x02) buttons |= USBR_BUTTON_B3;  // A
+      if (byte7 & 0x01) buttons |= USBR_BUTTON_L2;  // FIRE → L2
 
       // Byte 8: [Tail:4][R][L][X][P]
       uint8_t byte8 = buffer[offset + 8];
-      if (byte8 & 0x08) buttons &= ~USBR_BUTTON_R1;
-      if (byte8 & 0x04) buttons &= ~USBR_BUTTON_L1;
-      if (byte8 & 0x02) buttons &= ~USBR_BUTTON_S1;  // X
-      if (byte8 & 0x01) buttons &= ~USBR_BUTTON_S2;  // P
+      if (byte8 & 0x08) buttons |= USBR_BUTTON_R1;
+      if (byte8 & 0x04) buttons |= USBR_BUTTON_L1;
+      if (byte8 & 0x02) buttons |= USBR_BUTTON_S1;  // X
+      if (byte8 & 0x01) buttons |= USBR_BUTTON_S2;  // P
 
       event.buttons = buttons;
       offset += 9;
@@ -508,16 +508,16 @@ static uint8_t parse_extension_to_router(uint8_t* buffer, size_t buffer_size) {
       if (offset + 4 > buffer_size) break;
 
       event.type = INPUT_TYPE_MOUSE;
-      uint32_t buttons = 0xFFFFFFFF;
+      uint32_t buttons = 0x00000000;
 
       uint8_t byte1 = buffer[offset + 1];
       uint8_t byte2 = buffer[offset + 2];
       uint8_t byte3 = buffer[offset + 3];
 
       // Buttons
-      if (byte1 & 0x01) buttons &= ~USBR_BUTTON_B1;  // Left
-      if (byte1 & 0x02) buttons &= ~USBR_BUTTON_B3;  // Middle
-      if (byte1 & 0x04) buttons &= ~USBR_BUTTON_B2;  // Right
+      if (byte1 & 0x01) buttons |= USBR_BUTTON_B1;  // Left
+      if (byte1 & 0x02) buttons |= USBR_BUTTON_B3;  // Middle
+      if (byte1 & 0x04) buttons |= USBR_BUTTON_B2;  // Right
 
       // Delta Y (10-bit signed)
       int16_t dy = ((byte1 >> 4) & 0x0F) << 6 | (byte2 & 0x3F);
@@ -686,29 +686,29 @@ static inline void map_usbr_to_3do_joypad(_3do_joypad_report* report, uint32_t b
     //   TDO_BUTTON_X = USBR_BUTTON_S1
     //   TDO_BUTTON_P = USBR_BUTTON_S2
 
-    report->A = (buttons & TDO_BUTTON_A) == 0 ? 1 : 0;
-    report->B = (buttons & TDO_BUTTON_B) == 0 ? 1 : 0;
-    report->C = (buttons & TDO_BUTTON_C) == 0 ? 1 : 0;
-    report->L = (buttons & TDO_BUTTON_L) == 0 ? 1 : 0;
-    report->R = (buttons & TDO_BUTTON_R) == 0 ? 1 : 0;
-    report->X = (buttons & TDO_BUTTON_X) == 0 ? 1 : 0;
-    report->P = (buttons & TDO_BUTTON_P) == 0 ? 1 : 0;
+    report->A = (buttons & TDO_BUTTON_A) != 0 ? 1 : 0;
+    report->B = (buttons & TDO_BUTTON_B) != 0 ? 1 : 0;
+    report->C = (buttons & TDO_BUTTON_C) != 0 ? 1 : 0;
+    report->L = (buttons & TDO_BUTTON_L) != 0 ? 1 : 0;
+    report->R = (buttons & TDO_BUTTON_R) != 0 ? 1 : 0;
+    report->X = (buttons & TDO_BUTTON_X) != 0 ? 1 : 0;
+    report->P = (buttons & TDO_BUTTON_P) != 0 ? 1 : 0;
 }
 
 // Map USBR buttons to 3DO joystick report (includes FIRE button)
 static inline void map_usbr_to_3do_joystick(_3do_joystick_report* report, uint32_t buttons)
 {
     // Same as joypad, plus FIRE on L2
-    report->A = (buttons & TDO_BUTTON_A) == 0 ? 1 : 0;
-    report->B = (buttons & TDO_BUTTON_B) == 0 ? 1 : 0;
-    report->C = (buttons & TDO_BUTTON_C) == 0 ? 1 : 0;
-    report->L = (buttons & TDO_BUTTON_L) == 0 ? 1 : 0;
-    report->R = (buttons & TDO_BUTTON_R) == 0 ? 1 : 0;
-    report->X = (buttons & TDO_BUTTON_X) == 0 ? 1 : 0;
-    report->P = (buttons & TDO_BUTTON_P) == 0 ? 1 : 0;
+    report->A = (buttons & TDO_BUTTON_A) != 0 ? 1 : 0;
+    report->B = (buttons & TDO_BUTTON_B) != 0 ? 1 : 0;
+    report->C = (buttons & TDO_BUTTON_C) != 0 ? 1 : 0;
+    report->L = (buttons & TDO_BUTTON_L) != 0 ? 1 : 0;
+    report->R = (buttons & TDO_BUTTON_R) != 0 ? 1 : 0;
+    report->X = (buttons & TDO_BUTTON_X) != 0 ? 1 : 0;
+    report->P = (buttons & TDO_BUTTON_P) != 0 ? 1 : 0;
 
     // FIRE button mapped to L2 for joystick mode
-    report->FIRE = (buttons & USBR_BUTTON_L2) == 0 ? 1 : 0;
+    report->FIRE = (buttons & USBR_BUTTON_L2) != 0 ? 1 : 0;
 }
 
 //-----------------------------------------------------------------------------
@@ -837,13 +837,13 @@ void __not_in_flash_func(update_3do_report)(uint8_t player_index) {
     // Player 2: L1 = Coin, R1 = Start
     // Service: L1 + R1 together
     if (player_index == 0) {
-      report.p1_coin = (mapped.buttons & USBR_BUTTON_S1) == 0 ? 1 : 0;   // Select = P1 Coin
-      report.p1_start = (mapped.buttons & USBR_BUTTON_S2) == 0 ? 1 : 0;  // Start = P1 Start
-      report.p2_coin = (mapped.buttons & USBR_BUTTON_L1) == 0 ? 1 : 0;   // L1 = P2 Coin
-      report.p2_start = (mapped.buttons & USBR_BUTTON_R1) == 0 ? 1 : 0;  // R1 = P2 Start
+      report.p1_coin = (mapped.buttons & USBR_BUTTON_S1) != 0 ? 1 : 0;   // Select = P1 Coin
+      report.p1_start = (mapped.buttons & USBR_BUTTON_S2) != 0 ? 1 : 0;  // Start = P1 Start
+      report.p2_coin = (mapped.buttons & USBR_BUTTON_L1) != 0 ? 1 : 0;   // L1 = P2 Coin
+      report.p2_start = (mapped.buttons & USBR_BUTTON_R1) != 0 ? 1 : 0;  // R1 = P2 Start
       // Service = L2 + R2 together
-      bool l2_pressed = (mapped.buttons & USBR_BUTTON_L2) == 0;
-      bool r2_pressed = (mapped.buttons & USBR_BUTTON_R2) == 0;
+      bool l2_pressed = (mapped.buttons & USBR_BUTTON_L2) != 0;
+      bool r2_pressed = (mapped.buttons & USBR_BUTTON_R2) != 0;
       report.service = (l2_pressed && r2_pressed) ? 1 : 0;
     }
 
@@ -870,10 +870,10 @@ void __not_in_flash_func(update_3do_report)(uint8_t player_index) {
 
     // Map D-pad directly (D-pad passes through profile unchanged)
     // USB active-low: 0 = pressed, 3DO active-HIGH: 1 = pressed
-    report.left = (mapped.buttons & USBR_BUTTON_DL) == 0 ? 1 : 0;
-    report.right = (mapped.buttons & USBR_BUTTON_DR) == 0 ? 1 : 0;
-    report.up = (mapped.buttons & USBR_BUTTON_DU) == 0 ? 1 : 0;
-    report.down = (mapped.buttons & USBR_BUTTON_DD) == 0 ? 1 : 0;
+    report.left = (mapped.buttons & USBR_BUTTON_DL) != 0 ? 1 : 0;
+    report.right = (mapped.buttons & USBR_BUTTON_DR) != 0 ? 1 : 0;
+    report.up = (mapped.buttons & USBR_BUTTON_DU) != 0 ? 1 : 0;
+    report.down = (mapped.buttons & USBR_BUTTON_DD) != 0 ? 1 : 0;
 
     // If no digital D-pad pressed, use left analog stick
     if (report.left == 0 && report.right == 0 && report.up == 0 && report.down == 0) {
@@ -893,10 +893,10 @@ void __not_in_flash_func(update_3do_report)(uint8_t player_index) {
 
     // Map D-pad directly (D-pad passes through profile unchanged)
     // USB active-low: 0 = pressed, 3DO active-HIGH: 1 = pressed
-    report.left = (mapped.buttons & USBR_BUTTON_DL) == 0 ? 1 : 0;
-    report.right = (mapped.buttons & USBR_BUTTON_DR) == 0 ? 1 : 0;
-    report.up = (mapped.buttons & USBR_BUTTON_DU) == 0 ? 1 : 0;
-    report.down = (mapped.buttons & USBR_BUTTON_DD) == 0 ? 1 : 0;
+    report.left = (mapped.buttons & USBR_BUTTON_DL) != 0 ? 1 : 0;
+    report.right = (mapped.buttons & USBR_BUTTON_DR) != 0 ? 1 : 0;
+    report.up = (mapped.buttons & USBR_BUTTON_DU) != 0 ? 1 : 0;
+    report.down = (mapped.buttons & USBR_BUTTON_DD) != 0 ? 1 : 0;
 
     // If no digital D-pad pressed, use left analog stick
     if (report.left == 0 && report.right == 0 && report.up == 0 && report.down == 0) {

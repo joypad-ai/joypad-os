@@ -340,8 +340,8 @@ static inline void router_simple_mode(const input_event_t* event, output_target_
     int player_index = find_player_index(event->dev_addr, event->instance);
 
     if (player_index < 0) {
-        // Check if any button pressed (auto-assign on first press)
-        uint16_t buttons_pressed = (~(event->buttons | 0x800)) | event->keys;
+        // Check if any button pressed (auto-assign on first press, active-high)
+        uint32_t buttons_pressed = event->buttons | event->keys;
         if (buttons_pressed) {
             player_index = add_player(event->dev_addr, event->instance);
             if (player_index >= 0) {
@@ -375,7 +375,7 @@ static inline void router_merge_mode(const input_event_t* event, output_target_t
     // Register player if not already registered (for LED and rumble support)
     int player_index = find_player_index(event->dev_addr, event->instance);
     if (player_index < 0) {
-        uint16_t buttons_pressed = (~(event->buttons | 0x800)) | event->keys;
+        uint32_t buttons_pressed = event->buttons | event->keys;
         if (buttons_pressed || event->type == INPUT_TYPE_MOUSE) {
             player_index = add_player(event->dev_addr, event->instance);
             if (player_index >= 0) {
@@ -445,8 +445,8 @@ static inline void router_merge_mode(const input_event_t* event, output_target_t
 
                     input_event_t* dev = &blend_devices[output][i].state;
 
-                    // Buttons: AND together (active-low, 0 = pressed)
-                    out->current_state.buttons &= dev->buttons;
+                    // Buttons: OR together (active-high, 1 = pressed)
+                    out->current_state.buttons |= dev->buttons;
 
                     // Keys: OR together (active-high)
                     out->current_state.keys |= dev->keys;

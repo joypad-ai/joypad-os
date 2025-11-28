@@ -69,24 +69,24 @@ void process_8bitdo_bta(uint8_t dev_addr, uint8_t instance, uint8_t const* repor
     bool dpad_down  = (input_report.dpad >= 3 && input_report.dpad <= 5);
     bool dpad_left  = (input_report.dpad >= 5 && input_report.dpad <= 7);
 
-    buttons = (((dpad_up)             ? 0x00 : USBR_BUTTON_DU) |
-               ((dpad_down)           ? 0x00 : USBR_BUTTON_DD) |
-               ((dpad_left)           ? 0x00 : USBR_BUTTON_DL) |
-               ((dpad_right)          ? 0x00 : USBR_BUTTON_DR) |
-               ((input_report.b)      ? 0x00 : USBR_BUTTON_B1) |
-               ((input_report.a)      ? 0x00 : USBR_BUTTON_B2) |
-               ((input_report.y)      ? 0x00 : USBR_BUTTON_B3) |
-               ((input_report.x)      ? 0x00 : USBR_BUTTON_B4) |
-               ((input_report.l)      ? 0x00 : USBR_BUTTON_L1) |
-               ((input_report.r)      ? 0x00 : USBR_BUTTON_R1) |
-               ((input_report.l2)     ? 0x00 : USBR_BUTTON_L2) |
-               ((input_report.r2)     ? 0x00 : USBR_BUTTON_R2) |
-               ((input_report.select) ? 0x00 : USBR_BUTTON_S1) |
-               ((input_report.start)  ? 0x00 : USBR_BUTTON_S2) |
-               ((input_report.l3)     ? 0x00 : USBR_BUTTON_L3) |
-               ((input_report.r3)     ? 0x00 : USBR_BUTTON_R3) |
-               ((input_report.home)   ? 0x00 : USBR_BUTTON_A1) |
-               ((input_report.cap)    ? 0x00 : USBR_BUTTON_A2));
+    buttons = (((dpad_up)             ? USBR_BUTTON_DU : 0) |
+               ((dpad_down)           ? USBR_BUTTON_DD : 0) |
+               ((dpad_left)           ? USBR_BUTTON_DL : 0) |
+               ((dpad_right)          ? USBR_BUTTON_DR : 0) |
+               ((input_report.b)      ? USBR_BUTTON_B1 : 0) |
+               ((input_report.a)      ? USBR_BUTTON_B2 : 0) |
+               ((input_report.y)      ? USBR_BUTTON_B3 : 0) |
+               ((input_report.x)      ? USBR_BUTTON_B4 : 0) |
+               ((input_report.l)      ? USBR_BUTTON_L1 : 0) |
+               ((input_report.r)      ? USBR_BUTTON_R1 : 0) |
+               ((input_report.l2)     ? USBR_BUTTON_L2 : 0) |
+               ((input_report.r2)     ? USBR_BUTTON_R2 : 0) |
+               ((input_report.select) ? USBR_BUTTON_S1 : 0) |
+               ((input_report.start)  ? USBR_BUTTON_S2 : 0) |
+               ((input_report.l3)     ? USBR_BUTTON_L3 : 0) |
+               ((input_report.r3)     ? USBR_BUTTON_R3 : 0) |
+               ((input_report.home)   ? USBR_BUTTON_A1 : 0) |
+               ((input_report.cap)    ? USBR_BUTTON_A2 : 0));
 
     uint8_t analog_1x = input_report.x1;
     uint8_t analog_1y = (input_report.y1 == 0) ? 255 : 256 - input_report.y1;

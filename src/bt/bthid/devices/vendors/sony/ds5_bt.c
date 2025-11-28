@@ -244,26 +244,26 @@ static void ds5_process_report(bthid_device_t* device, const uint8_t* data, uint
     bool dpad_left  = (rpt->dpad >= 5 && rpt->dpad <= 7);
 
     // Build button state (inverted: 0 = pressed in USBR convention)
-    uint32_t buttons = 0xFFFFFFFF;
+    uint32_t buttons = 0x00000000;
 
-    if (dpad_up)       buttons &= ~USBR_BUTTON_DU;
-    if (dpad_down)     buttons &= ~USBR_BUTTON_DD;
-    if (dpad_left)     buttons &= ~USBR_BUTTON_DL;
-    if (dpad_right)    buttons &= ~USBR_BUTTON_DR;
-    if (rpt->cross)    buttons &= ~USBR_BUTTON_B1;
-    if (rpt->circle)   buttons &= ~USBR_BUTTON_B2;
-    if (rpt->square)   buttons &= ~USBR_BUTTON_B3;
-    if (rpt->triangle) buttons &= ~USBR_BUTTON_B4;
-    if (rpt->l1)       buttons &= ~USBR_BUTTON_L1;
-    if (rpt->r1)       buttons &= ~USBR_BUTTON_R1;
-    if (rpt->l2)       buttons &= ~USBR_BUTTON_L2;
-    if (rpt->r2)       buttons &= ~USBR_BUTTON_R2;
-    if (rpt->create)   buttons &= ~USBR_BUTTON_S1;
-    if (rpt->option)   buttons &= ~USBR_BUTTON_S2;
-    if (rpt->l3)       buttons &= ~USBR_BUTTON_L3;
-    if (rpt->r3)       buttons &= ~USBR_BUTTON_R3;
-    if (rpt->ps)       buttons &= ~USBR_BUTTON_A1;
-    if (rpt->tpad)     buttons &= ~USBR_BUTTON_A2;
+    if (dpad_up)       buttons |= USBR_BUTTON_DU;
+    if (dpad_down)     buttons |= USBR_BUTTON_DD;
+    if (dpad_left)     buttons |= USBR_BUTTON_DL;
+    if (dpad_right)    buttons |= USBR_BUTTON_DR;
+    if (rpt->cross)    buttons |= USBR_BUTTON_B1;
+    if (rpt->circle)   buttons |= USBR_BUTTON_B2;
+    if (rpt->square)   buttons |= USBR_BUTTON_B3;
+    if (rpt->triangle) buttons |= USBR_BUTTON_B4;
+    if (rpt->l1)       buttons |= USBR_BUTTON_L1;
+    if (rpt->r1)       buttons |= USBR_BUTTON_R1;
+    if (rpt->l2)       buttons |= USBR_BUTTON_L2;
+    if (rpt->r2)       buttons |= USBR_BUTTON_R2;
+    if (rpt->create)   buttons |= USBR_BUTTON_S1;
+    if (rpt->option)   buttons |= USBR_BUTTON_S2;
+    if (rpt->l3)       buttons |= USBR_BUTTON_L3;
+    if (rpt->r3)       buttons |= USBR_BUTTON_R3;
+    if (rpt->ps)       buttons |= USBR_BUTTON_A1;
+    if (rpt->tpad)     buttons |= USBR_BUTTON_A2;
 
     // Update event
     ds5->event.buttons = buttons;

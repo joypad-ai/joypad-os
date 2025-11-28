@@ -29,27 +29,27 @@ static uint32_t prev_buttons[SNES_MAX_PORTS] = {0};
 // Uses Switch-style layout (matches GP2040-CE Switch column)
 static uint32_t map_snes_to_usbr(const snespad_t* pad)
 {
-    uint32_t buttons = 0xFFFFFFFF;  // USBR uses active-low
+    uint32_t buttons = 0x00000000;  // USBR uses active-high
 
     // Face buttons - Switch layout
-    if (pad->button_b)      buttons &= ~USBR_BUTTON_B1;  // SNES B → B1 (Switch B)
-    if (pad->button_a)      buttons &= ~USBR_BUTTON_B2;  // SNES A → B2 (Switch A)
-    if (pad->button_y)      buttons &= ~USBR_BUTTON_B3;  // SNES Y → B3 (Switch Y)
-    if (pad->button_x)      buttons &= ~USBR_BUTTON_B4;  // SNES X → B4 (Switch X)
+    if (pad->button_b)      buttons |= USBR_BUTTON_B1;  // SNES B → B1 (Switch B)
+    if (pad->button_a)      buttons |= USBR_BUTTON_B2;  // SNES A → B2 (Switch A)
+    if (pad->button_y)      buttons |= USBR_BUTTON_B3;  // SNES Y → B3 (Switch Y)
+    if (pad->button_x)      buttons |= USBR_BUTTON_B4;  // SNES X → B4 (Switch X)
 
     // Shoulder buttons
-    if (pad->button_l)      buttons &= ~USBR_BUTTON_L1;  // SNES L → L1
-    if (pad->button_r)      buttons &= ~USBR_BUTTON_R1;  // SNES R → R1
+    if (pad->button_l)      buttons |= USBR_BUTTON_L1;  // SNES L → L1
+    if (pad->button_r)      buttons |= USBR_BUTTON_R1;  // SNES R → R1
 
     // System buttons
-    if (pad->button_start)  buttons &= ~USBR_BUTTON_S2;  // Start → S2 (Plus)
-    if (pad->button_select) buttons &= ~USBR_BUTTON_S1;  // Select → S1 (Minus)
+    if (pad->button_start)  buttons |= USBR_BUTTON_S2;  // Start → S2 (Plus)
+    if (pad->button_select) buttons |= USBR_BUTTON_S1;  // Select → S1 (Minus)
 
     // D-pad
-    if (pad->direction_up)    buttons &= ~USBR_BUTTON_DU;
-    if (pad->direction_down)  buttons &= ~USBR_BUTTON_DD;
-    if (pad->direction_left)  buttons &= ~USBR_BUTTON_DL;
-    if (pad->direction_right) buttons &= ~USBR_BUTTON_DR;
+    if (pad->direction_up)    buttons |= USBR_BUTTON_DU;
+    if (pad->direction_down)  buttons |= USBR_BUTTON_DD;
+    if (pad->direction_left)  buttons |= USBR_BUTTON_DL;
+    if (pad->direction_right) buttons |= USBR_BUTTON_DR;
 
     return buttons;
 }
@@ -58,19 +58,19 @@ static uint32_t map_snes_to_usbr(const snespad_t* pad)
 // Uses Switch-style layout (matches GP2040-CE Switch column)
 static uint32_t map_nes_to_usbr(const snespad_t* pad)
 {
-    uint32_t buttons = 0xFFFFFFFF;  // USBR uses active-low
+    uint32_t buttons = 0x00000000;  // USBR uses active-high
 
     // NES has only A, B, Start, Select, D-pad
-    if (pad->button_b)      buttons &= ~USBR_BUTTON_B1;  // NES B → B1 (Switch B)
-    if (pad->button_a)      buttons &= ~USBR_BUTTON_B2;  // NES A → B2 (Switch A)
+    if (pad->button_b)      buttons |= USBR_BUTTON_B1;  // NES B → B1 (Switch B)
+    if (pad->button_a)      buttons |= USBR_BUTTON_B2;  // NES A → B2 (Switch A)
 
-    if (pad->button_start)  buttons &= ~USBR_BUTTON_S2;
-    if (pad->button_select) buttons &= ~USBR_BUTTON_S1;
+    if (pad->button_start)  buttons |= USBR_BUTTON_S2;
+    if (pad->button_select) buttons |= USBR_BUTTON_S1;
 
-    if (pad->direction_up)    buttons &= ~USBR_BUTTON_DU;
-    if (pad->direction_down)  buttons &= ~USBR_BUTTON_DD;
-    if (pad->direction_left)  buttons &= ~USBR_BUTTON_DL;
-    if (pad->direction_right) buttons &= ~USBR_BUTTON_DR;
+    if (pad->direction_up)    buttons |= USBR_BUTTON_DU;
+    if (pad->direction_down)  buttons |= USBR_BUTTON_DD;
+    if (pad->direction_left)  buttons |= USBR_BUTTON_DL;
+    if (pad->direction_right) buttons |= USBR_BUTTON_DR;
 
     return buttons;
 }
@@ -151,9 +151,9 @@ void snes_host_task(void)
 
             case SNESPAD_MOUSE:
                 // Mouse: use mouse_x/y as analog stick position
-                buttons = 0xFFFFFFFF;
-                if (pad->button_a) buttons &= ~USBR_BUTTON_B1;
-                if (pad->button_b) buttons &= ~USBR_BUTTON_B2;
+                buttons = 0x00000000;
+                if (pad->button_a) buttons |= USBR_BUTTON_B1;
+                if (pad->button_b) buttons |= USBR_BUTTON_B2;
                 analog_1x = pad->mouse_x;
                 analog_1y = pad->mouse_y;
                 break;

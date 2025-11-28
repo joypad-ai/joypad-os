@@ -116,8 +116,8 @@ typedef struct {
 static inline void init_input_event(input_event_t* event) {
     memset(event, 0, sizeof(input_event_t));
 
-    // Buttons are active-low (0 = pressed), so 0xFFFFFFFF = all released
-    event->buttons = 0xFFFFFFFF;
+    // Buttons are active-high (1 = pressed), so 0x00000000 = all released
+    event->buttons = 0x00000000;
 
     // Set analog axes to centered position (128 = neutral)
     for (int i = 0; i < 8; i++) {
@@ -204,8 +204,8 @@ static inline void mouse_to_input_event(
 // Button masks for 6-button face buttons (excludes D-pad, Start, Select, etc.)
 #define LAYOUT_6BTN_MASK (0x0B230)  // B1|B2|B3|B4|R1|R2
 
-// Helper to extract and clear a button, returning its state
-#define EXTRACT_BTN(buttons, mask) (((buttons) & (mask)) ? 0 : 1)
+// Helper to extract a button, returning its state (active-high: 1 = pressed)
+#define EXTRACT_BTN(buttons, mask) (((buttons) & (mask)) ? 1 : 0)
 
 // Transform buttons from source layout to PCEngine 6-button layout
 // PCEngine expects: Bottom [III][II][I], Top [IV][V][VI]
@@ -216,7 +216,7 @@ static inline uint32_t transform_to_pce_layout(uint32_t buttons, controller_layo
         return buttons;
     }
 
-    // Extract 6-button states (inverted logic: 0 = pressed)
+    // Extract 6-button states (active-high: 1 = pressed)
     // GP2040-CE canonical positions:
     //   Bottom: B1 (left), B2 (mid), R2 (right)
     //   Top:    B3 (left), B4 (mid), R1 (right)

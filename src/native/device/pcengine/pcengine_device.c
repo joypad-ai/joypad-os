@@ -227,25 +227,28 @@ void __not_in_flash_func(update_output)(void)
       }
     }
 
-    // base controller/mouse buttons
-    int8_t byte = (event->buttons & 0xff);
+    // Invert buttons for PCEngine hardware (expects active-low: 0 = pressed)
+    uint32_t buttons_inverted = ~event->buttons;
+
+    // base controller/mouse buttons (lower 8 bits)
+    int8_t byte = (buttons_inverted & 0xff);
 
     // Keyboard-specific transforms for PCEngine
     if (event->type == INPUT_TYPE_KEYBOARD) {
       // A1 (Home/Ctrl+Alt+Delete) → SSDS3 IGR combo (Select+Run)
-      if ((event->buttons & USBR_BUTTON_A1) == 0) {
-        byte &= ~(USBR_BUTTON_S1 | USBR_BUTTON_S2);  // Clear Select and Run bits (0 = pressed)
+      if (event->buttons & USBR_BUTTON_A1) {
+        byte &= ~(USBR_BUTTON_S1 | USBR_BUTTON_S2);  // Clear Select and Run bits (0 = pressed in PCE)
       }
     }
 
-    // check for 6-button enable/disable hotkeys
-    if (!(event->buttons & (USBR_BUTTON_S2 | USBR_BUTTON_DU)))
+    // check for 6-button enable/disable hotkeys (active-high: check if bits are SET)
+    if ((event->buttons & (USBR_BUTTON_S2 | USBR_BUTTON_DU)) == (USBR_BUTTON_S2 | USBR_BUTTON_DU))
       pce_state.button_mode[i] = BUTTON_MODE_6;
-    else if (!(event->buttons & (USBR_BUTTON_S2 | USBR_BUTTON_DD)))
+    else if ((event->buttons & (USBR_BUTTON_S2 | USBR_BUTTON_DD)) == (USBR_BUTTON_S2 | USBR_BUTTON_DD))
       pce_state.button_mode[i] = BUTTON_MODE_2;
-    else if (!(event->buttons & (USBR_BUTTON_S2 | USBR_BUTTON_DR)))
+    else if ((event->buttons & (USBR_BUTTON_S2 | USBR_BUTTON_DR)) == (USBR_BUTTON_S2 | USBR_BUTTON_DR))
       pce_state.button_mode[i] = BUTTON_MODE_3_SEL;
-    else if (!(event->buttons & (USBR_BUTTON_S2 | USBR_BUTTON_DL)))
+    else if ((event->buttons & (USBR_BUTTON_S2 | USBR_BUTTON_DL)) == (USBR_BUTTON_S2 | USBR_BUTTON_DL))
       pce_state.button_mode[i] = BUTTON_MODE_3_RUN;
 
     // Turbo EverDrive Pro hot-key fix
@@ -255,7 +258,8 @@ void __not_in_flash_func(update_output)(void)
     }
     else if (i == 0)
     {
-      int16_t btns= (~event->buttons & 0xff);
+      // Check for hotkey combos (active-high buttons)
+      int16_t btns = (event->buttons & 0xff);
       if     (btns == 0x82) hotkey = ~0x82; // RUN + RIGHT
       else if(btns == 0x88) hotkey = ~0x88; // RUN + LEFT
       else if(btns == 0x84) hotkey = ~0x84; // RUN + DOWN
@@ -272,14 +276,16 @@ void __not_in_flash_func(update_output)(void)
     {
       if (state == 2)
       {
-        byte = ((event->buttons>>8) & 0xf0);
+        // Upper buttons inverted for PCE hardware
+        byte = ((buttons_inverted>>8) & 0xf0);
       }
     }
 
     //
     else if (is3btnSel)
     {
-      if ((~(event->buttons>>8)) & 0x30)
+      // Check if L1 or R1 pressed (active-high)
+      if ((event->buttons>>8) & 0x30)
       {
         byte &= 0b01111111;
       }
@@ -288,7 +294,8 @@ void __not_in_flash_func(update_output)(void)
     //
     else if (is3btnRun)
     {
-      if ((~(event->buttons>>8)) & 0x30)
+      // Check if L1 or R1 pressed (active-high)
+      if ((event->buttons>>8) & 0x30)
       {
         byte &= 0b10111111;
       }
@@ -299,17 +306,18 @@ void __not_in_flash_func(update_output)(void)
       // Update the button state based on the turbo_state
       if (turbo_state)
       {
-        // Set the button state as pressed
-        if ((~(event->buttons>>8)) & 0x20) byte &= 0b11011111;
-        if ((~(event->buttons>>8)) & 0x10) byte &= 0b11101111;
+        // Set the button state as pressed (active-high check)
+        if ((event->buttons>>8) & 0x20) byte &= 0b11011111;
+        if ((event->buttons>>8) & 0x10) byte &= 0b11101111;
       }
       else
       {
         // Set the button state as released
       }
 
-      if ((~(event->buttons>>8)) & 0x40) timer_threshold = timer_threshold_a;
-      if ((~(event->buttons>>8)) & 0x80) timer_threshold = timer_threshold_b;
+      // Check turbo speed (active-high)
+      if ((event->buttons>>8) & 0x40) timer_threshold = timer_threshold_a;
+      if ((event->buttons>>8) & 0x80) timer_threshold = timer_threshold_b;
     }
 
     // mouse x/y states

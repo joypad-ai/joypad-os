@@ -260,32 +260,32 @@ static void switch_process_report(bthid_device_t* device, const uint8_t* data, u
         sw->full_report_mode = true;
 
         // Build button state
-        uint32_t buttons = 0xFFFFFFFF;
+        uint32_t buttons = 0x00000000;
 
         // Face buttons
-        if (rpt->a)      buttons &= ~USBR_BUTTON_B1;
-        if (rpt->b)      buttons &= ~USBR_BUTTON_B2;
-        if (rpt->x)      buttons &= ~USBR_BUTTON_B3;
-        if (rpt->y)      buttons &= ~USBR_BUTTON_B4;
+        if (rpt->a)      buttons |= USBR_BUTTON_B1;
+        if (rpt->b)      buttons |= USBR_BUTTON_B2;
+        if (rpt->x)      buttons |= USBR_BUTTON_B3;
+        if (rpt->y)      buttons |= USBR_BUTTON_B4;
 
         // Shoulder buttons
-        if (rpt->l)      buttons &= ~USBR_BUTTON_L1;
-        if (rpt->r)      buttons &= ~USBR_BUTTON_R1;
-        if (rpt->zl)     buttons &= ~USBR_BUTTON_L2;
-        if (rpt->zr)     buttons &= ~USBR_BUTTON_R2;
+        if (rpt->l)      buttons |= USBR_BUTTON_L1;
+        if (rpt->r)      buttons |= USBR_BUTTON_R1;
+        if (rpt->zl)     buttons |= USBR_BUTTON_L2;
+        if (rpt->zr)     buttons |= USBR_BUTTON_R2;
 
         // System buttons
-        if (rpt->minus)  buttons &= ~USBR_BUTTON_S1;
-        if (rpt->plus)   buttons &= ~USBR_BUTTON_S2;
-        if (rpt->lstick) buttons &= ~USBR_BUTTON_L3;
-        if (rpt->rstick) buttons &= ~USBR_BUTTON_R3;
-        if (rpt->home)   buttons &= ~USBR_BUTTON_A1;
+        if (rpt->minus)  buttons |= USBR_BUTTON_S1;
+        if (rpt->plus)   buttons |= USBR_BUTTON_S2;
+        if (rpt->lstick) buttons |= USBR_BUTTON_L3;
+        if (rpt->rstick) buttons |= USBR_BUTTON_R3;
+        if (rpt->home)   buttons |= USBR_BUTTON_A1;
 
         // D-pad
-        if (rpt->up)     buttons &= ~USBR_BUTTON_DU;
-        if (rpt->down)   buttons &= ~USBR_BUTTON_DD;
-        if (rpt->left)   buttons &= ~USBR_BUTTON_DL;
-        if (rpt->right)  buttons &= ~USBR_BUTTON_DR;
+        if (rpt->up)     buttons |= USBR_BUTTON_DU;
+        if (rpt->down)   buttons |= USBR_BUTTON_DD;
+        if (rpt->left)   buttons |= USBR_BUTTON_DL;
+        if (rpt->right)  buttons |= USBR_BUTTON_DR;
 
         sw->event.buttons = buttons;
 
@@ -307,27 +307,27 @@ static void switch_process_report(bthid_device_t* device, const uint8_t* data, u
         // Simple HID report (0x3F) - used before full mode enabled
         const switch_simple_report_t* rpt = (const switch_simple_report_t*)data;
 
-        uint32_t buttons = 0xFFFFFFFF;
+        uint32_t buttons = 0x00000000;
 
-        if (rpt->a)      buttons &= ~USBR_BUTTON_B1;
-        if (rpt->b)      buttons &= ~USBR_BUTTON_B2;
-        if (rpt->x)      buttons &= ~USBR_BUTTON_B3;
-        if (rpt->y)      buttons &= ~USBR_BUTTON_B4;
-        if (rpt->l)      buttons &= ~USBR_BUTTON_L1;
-        if (rpt->r)      buttons &= ~USBR_BUTTON_R1;
-        if (rpt->zl)     buttons &= ~USBR_BUTTON_L2;
-        if (rpt->zr)     buttons &= ~USBR_BUTTON_R2;
-        if (rpt->minus)  buttons &= ~USBR_BUTTON_S1;
-        if (rpt->plus)   buttons &= ~USBR_BUTTON_S2;
-        if (rpt->lstick) buttons &= ~USBR_BUTTON_L3;
-        if (rpt->rstick) buttons &= ~USBR_BUTTON_R3;
-        if (rpt->home)   buttons &= ~USBR_BUTTON_A1;
+        if (rpt->a)      buttons |= USBR_BUTTON_B1;
+        if (rpt->b)      buttons |= USBR_BUTTON_B2;
+        if (rpt->x)      buttons |= USBR_BUTTON_B3;
+        if (rpt->y)      buttons |= USBR_BUTTON_B4;
+        if (rpt->l)      buttons |= USBR_BUTTON_L1;
+        if (rpt->r)      buttons |= USBR_BUTTON_R1;
+        if (rpt->zl)     buttons |= USBR_BUTTON_L2;
+        if (rpt->zr)     buttons |= USBR_BUTTON_R2;
+        if (rpt->minus)  buttons |= USBR_BUTTON_S1;
+        if (rpt->plus)   buttons |= USBR_BUTTON_S2;
+        if (rpt->lstick) buttons |= USBR_BUTTON_L3;
+        if (rpt->rstick) buttons |= USBR_BUTTON_R3;
+        if (rpt->home)   buttons |= USBR_BUTTON_A1;
 
         // Hat to D-pad
-        if (rpt->hat == 0 || rpt->hat == 1 || rpt->hat == 7) buttons &= ~USBR_BUTTON_DU;
-        if (rpt->hat >= 1 && rpt->hat <= 3) buttons &= ~USBR_BUTTON_DR;
-        if (rpt->hat >= 3 && rpt->hat <= 5) buttons &= ~USBR_BUTTON_DD;
-        if (rpt->hat >= 5 && rpt->hat <= 7) buttons &= ~USBR_BUTTON_DL;
+        if (rpt->hat == 0 || rpt->hat == 1 || rpt->hat == 7) buttons |= USBR_BUTTON_DU;
+        if (rpt->hat >= 1 && rpt->hat <= 3) buttons |= USBR_BUTTON_DR;
+        if (rpt->hat >= 3 && rpt->hat <= 5) buttons |= USBR_BUTTON_DD;
+        if (rpt->hat >= 5 && rpt->hat <= 7) buttons |= USBR_BUTTON_DL;
 
         sw->event.buttons = buttons;
         sw->event.analog[ANALOG_X] = rpt->lx;

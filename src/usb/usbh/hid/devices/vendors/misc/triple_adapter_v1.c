@@ -67,23 +67,23 @@ void process_triple_adapter_v1(uint8_t dev_addr, uint8_t instance, uint8_t const
     bool dpad_down  = update_report.axis_y ? (update_report.axis_y < (128 + threshold)) : 0;
     bool dpad_left  = update_report.axis_x ? (update_report.axis_x > (128 - threshold)) : 0;
 
-    buttons = (((dpad_up)              ? 0x00 : USBR_BUTTON_DU) |
-               ((dpad_down)            ? 0x00 : USBR_BUTTON_DD) |
-               ((dpad_left)            ? 0x00 : USBR_BUTTON_DL) |
-               ((dpad_right)           ? 0x00 : USBR_BUTTON_DR) |
-               ((update_report.b)      ? 0x00 : USBR_BUTTON_B1) |
-               ((update_report.a)      ? 0x00 : USBR_BUTTON_B2) |
-               ((update_report.y)      ? 0x00 : USBR_BUTTON_B3) |
-               ((update_report.x)      ? 0x00 : USBR_BUTTON_B4) |
-               ((update_report.l)      ? 0x00 : USBR_BUTTON_L1) |
-               ((update_report.r)      ? 0x00 : USBR_BUTTON_R1) |
-               ((0)                    ? 0x00 : USBR_BUTTON_L2) |
-               ((0)                    ? 0x00 : USBR_BUTTON_R2) |
-               ((update_report.select) ? 0x00 : USBR_BUTTON_S1) |
-               ((update_report.start)  ? 0x00 : USBR_BUTTON_S2) |
-               ((0)                    ? 0x00 : USBR_BUTTON_L3) |
-               ((0)                    ? 0x00 : USBR_BUTTON_R3) |
-               ((0)                    ? 0x00 : USBR_BUTTON_A1));
+    buttons = (((dpad_up)              ? USBR_BUTTON_DU : 0) |
+               ((dpad_down)            ? USBR_BUTTON_DD : 0) |
+               ((dpad_left)            ? USBR_BUTTON_DL : 0) |
+               ((dpad_right)           ? USBR_BUTTON_DR : 0) |
+               ((update_report.b)      ? USBR_BUTTON_B1 : 0) |
+               ((update_report.a)      ? USBR_BUTTON_B2 : 0) |
+               ((update_report.y)      ? USBR_BUTTON_B3 : 0) |
+               ((update_report.x)      ? USBR_BUTTON_B4 : 0) |
+               ((update_report.l)      ? USBR_BUTTON_L1 : 0) |
+               ((update_report.r)      ? USBR_BUTTON_R1 : 0) |
+               ((0)                    ? USBR_BUTTON_L2 : 0) |
+               ((0)                    ? USBR_BUTTON_R2 : 0) |
+               ((update_report.select) ? USBR_BUTTON_S1 : 0) |
+               ((update_report.start)  ? USBR_BUTTON_S2 : 0) |
+               ((0)                    ? USBR_BUTTON_L3 : 0) |
+               ((0)                    ? USBR_BUTTON_R3 : 0) |
+               ((0)                    ? USBR_BUTTON_A1 : 0));
 
     // add to accumulator and post to the state machine
     // if a scan from the host machine is ongoing, wait

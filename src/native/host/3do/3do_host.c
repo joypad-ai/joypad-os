@@ -294,7 +294,7 @@ static uint8_t parse_controllers(const uint8_t* buffer, uint8_t buffer_size) {
 
 // Convert 3DO controller state to USBR button format (active-low)
 static uint32_t map_3do_to_usbr(const tdo_controller_t* ctrl) {
-    uint32_t buttons = 0xFFFFFFFF;  // All released (active-low)
+    uint32_t buttons = 0x00000000;  // All released (active-high)
 
     // 3DO is active-HIGH, USBR is active-LOW
     // Clear bit = pressed
@@ -303,26 +303,26 @@ static uint32_t map_3do_to_usbr(const tdo_controller_t* ctrl) {
     // 3DO A → USBR B3 (like TDO_BUTTON_A in 3do_buttons.h)
     // 3DO B → USBR B1
     // 3DO C → USBR B2
-    if (ctrl->button_a) buttons &= ~USBR_BUTTON_B3;
-    if (ctrl->button_b) buttons &= ~USBR_BUTTON_B1;
-    if (ctrl->button_c) buttons &= ~USBR_BUTTON_B2;
+    if (ctrl->button_a) buttons |= USBR_BUTTON_B3;
+    if (ctrl->button_b) buttons |= USBR_BUTTON_B1;
+    if (ctrl->button_c) buttons |= USBR_BUTTON_B2;
 
     // Shoulder buttons
-    if (ctrl->button_l) buttons &= ~USBR_BUTTON_L1;
-    if (ctrl->button_r) buttons &= ~USBR_BUTTON_R1;
+    if (ctrl->button_l) buttons |= USBR_BUTTON_L1;
+    if (ctrl->button_r) buttons |= USBR_BUTTON_R1;
 
     // System buttons
-    if (ctrl->button_x) buttons &= ~USBR_BUTTON_S1;  // X/Stop → Select
-    if (ctrl->button_p) buttons &= ~USBR_BUTTON_S2;  // P/Play → Start
+    if (ctrl->button_x) buttons |= USBR_BUTTON_S1;  // X/Stop → Select
+    if (ctrl->button_p) buttons |= USBR_BUTTON_S2;  // P/Play → Start
 
     // D-pad
-    if (ctrl->dpad_up)    buttons &= ~USBR_BUTTON_DU;
-    if (ctrl->dpad_down)  buttons &= ~USBR_BUTTON_DD;
-    if (ctrl->dpad_left)  buttons &= ~USBR_BUTTON_DL;
-    if (ctrl->dpad_right) buttons &= ~USBR_BUTTON_DR;
+    if (ctrl->dpad_up)    buttons |= USBR_BUTTON_DU;
+    if (ctrl->dpad_down)  buttons |= USBR_BUTTON_DD;
+    if (ctrl->dpad_left)  buttons |= USBR_BUTTON_DL;
+    if (ctrl->dpad_right) buttons |= USBR_BUTTON_DR;
 
     // Joystick fire → L2
-    if (ctrl->fire) buttons &= ~USBR_BUTTON_L2;
+    if (ctrl->fire) buttons |= USBR_BUTTON_L2;
 
     return buttons;
 }

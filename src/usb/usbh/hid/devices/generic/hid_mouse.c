@@ -81,22 +81,19 @@ void process_hid_mouse(uint8_t dev_addr, uint8_t instance, uint8_t const* mouse_
     previous_middle_button = (report->buttons & MOUSE_BUTTON_MIDDLE);
   }
 
+  // Active-high: set bit when button is pressed
   if (buttons_swapped) {
-     buttons = (((0xfff00)) | // no six button controller byte
-                ((0x0000f)) | // no dpad button presses (isMouse)
-                ((report->buttons & MOUSE_BUTTON_RIGHT)   ? 0x00 : USBR_BUTTON_B1) |
-                ((report->buttons & MOUSE_BUTTON_LEFT)    ? 0x00 : USBR_BUTTON_B2) |
-                ((report->buttons & MOUSE_BUTTON_BACKWARD)? 0x00 : USBR_BUTTON_B3) |
-                ((report->buttons & MOUSE_BUTTON_FORWARD) ? 0x00 : USBR_BUTTON_S1) |
-                ((report->buttons & MOUSE_BUTTON_MIDDLE)  ? 0x00 : USBR_BUTTON_S2));
+     buttons = (((report->buttons & MOUSE_BUTTON_RIGHT)   ? USBR_BUTTON_B1 : 0) |
+                ((report->buttons & MOUSE_BUTTON_LEFT)    ? USBR_BUTTON_B2 : 0) |
+                ((report->buttons & MOUSE_BUTTON_BACKWARD)? USBR_BUTTON_B3 : 0) |
+                ((report->buttons & MOUSE_BUTTON_FORWARD) ? USBR_BUTTON_S1 : 0) |
+                ((report->buttons & MOUSE_BUTTON_MIDDLE)  ? USBR_BUTTON_S2 : 0));
   } else {
-     buttons = (((0xfff00)) |
-                ((0x0000f)) |
-                ((report->buttons & MOUSE_BUTTON_LEFT)    ? 0x00 : USBR_BUTTON_B1) |
-                ((report->buttons & MOUSE_BUTTON_RIGHT)   ? 0x00 : USBR_BUTTON_B2) |
-                ((report->buttons & MOUSE_BUTTON_BACKWARD)? 0x00 : USBR_BUTTON_B3) |
-                ((report->buttons & MOUSE_BUTTON_FORWARD) ? 0x00 : USBR_BUTTON_S1) |
-                ((report->buttons & MOUSE_BUTTON_MIDDLE)  ? 0x00 : USBR_BUTTON_S2));
+     buttons = (((report->buttons & MOUSE_BUTTON_LEFT)    ? USBR_BUTTON_B1 : 0) |
+                ((report->buttons & MOUSE_BUTTON_RIGHT)   ? USBR_BUTTON_B2 : 0) |
+                ((report->buttons & MOUSE_BUTTON_BACKWARD)? USBR_BUTTON_B3 : 0) |
+                ((report->buttons & MOUSE_BUTTON_FORWARD) ? USBR_BUTTON_S1 : 0) |
+                ((report->buttons & MOUSE_BUTTON_MIDDLE)  ? USBR_BUTTON_S2 : 0));
   }
 
   // Pass raw mouse deltas - console output layer handles any axis inversion

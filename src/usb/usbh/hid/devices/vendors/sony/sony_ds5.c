@@ -113,24 +113,24 @@ void input_sony_ds5(uint8_t dev_addr, uint8_t instance, uint8_t const* report, u
       bool dpad_down  = (ds5_report.dpad >= 3 && ds5_report.dpad <= 5);
       bool dpad_left  = (ds5_report.dpad >= 5 && ds5_report.dpad <= 7);
 
-      buttons = (((dpad_up)             ? 0x00 : USBR_BUTTON_DU) |
-                 ((dpad_down)           ? 0x00 : USBR_BUTTON_DD) |
-                 ((dpad_left)           ? 0x00 : USBR_BUTTON_DL) |
-                 ((dpad_right)          ? 0x00 : USBR_BUTTON_DR) |
-                 ((ds5_report.cross)    ? 0x00 : USBR_BUTTON_B1) |
-                 ((ds5_report.circle)   ? 0x00 : USBR_BUTTON_B2) |
-                 ((ds5_report.square)   ? 0x00 : USBR_BUTTON_B3) |
-                 ((ds5_report.triangle) ? 0x00 : USBR_BUTTON_B4) |
-                 ((ds5_report.l1)       ? 0x00 : USBR_BUTTON_L1) |
-                 ((ds5_report.r1)       ? 0x00 : USBR_BUTTON_R1) |
-                 ((ds5_report.l2)       ? 0x00 : USBR_BUTTON_L2) |
-                 ((ds5_report.r2)       ? 0x00 : USBR_BUTTON_R2) |
-                 ((ds5_report.share)    ? 0x00 : USBR_BUTTON_S1) |
-                 ((ds5_report.option)   ? 0x00 : USBR_BUTTON_S2) |
-                 ((ds5_report.l3)       ? 0x00 : USBR_BUTTON_L3) |
-                 ((ds5_report.r3)       ? 0x00 : USBR_BUTTON_R3) |
-                 ((ds5_report.ps)       ? 0x00 : USBR_BUTTON_A1) |
-                 ((ds5_report.tpad)     ? 0x00 : USBR_BUTTON_A2));
+      buttons = (((dpad_up)             ? USBR_BUTTON_DU : 0) |
+                 ((dpad_down)           ? USBR_BUTTON_DD : 0) |
+                 ((dpad_left)           ? USBR_BUTTON_DL : 0) |
+                 ((dpad_right)          ? USBR_BUTTON_DR : 0) |
+                 ((ds5_report.cross)    ? USBR_BUTTON_B1 : 0) |
+                 ((ds5_report.circle)   ? USBR_BUTTON_B2 : 0) |
+                 ((ds5_report.square)   ? USBR_BUTTON_B3 : 0) |
+                 ((ds5_report.triangle) ? USBR_BUTTON_B4 : 0) |
+                 ((ds5_report.l1)       ? USBR_BUTTON_L1 : 0) |
+                 ((ds5_report.r1)       ? USBR_BUTTON_R1 : 0) |
+                 ((ds5_report.l2)       ? USBR_BUTTON_L2 : 0) |
+                 ((ds5_report.r2)       ? USBR_BUTTON_R2 : 0) |
+                 ((ds5_report.share)    ? USBR_BUTTON_S1 : 0) |
+                 ((ds5_report.option)   ? USBR_BUTTON_S2 : 0) |
+                 ((ds5_report.l3)       ? USBR_BUTTON_L3 : 0) |
+                 ((ds5_report.r3)       ? USBR_BUTTON_R3 : 0) |
+                 ((ds5_report.ps)       ? USBR_BUTTON_A1 : 0) |
+                 ((ds5_report.tpad)     ? USBR_BUTTON_A2 : 0));
 
       // Touch Pad - provides mouse-like delta for horizontal swipes
       // Can be used for spinners, camera control, etc. (platform-agnostic)

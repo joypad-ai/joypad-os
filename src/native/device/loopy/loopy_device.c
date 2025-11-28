@@ -127,10 +127,13 @@ void __not_in_flash_func(core1_task)(void)
                     event4->analog[5], event4->analog[6], &mapped4);
     }
 
-    int16_t player_1 = (event1 && playersCount >= 1) ? (mapped1.buttons & 0xffff) : 0xffff;
-    int16_t player_2 = (event2 && playersCount >= 2) ? (mapped2.buttons & 0xffff) : 0xffff;
-    int16_t player_3 = (event3 && playersCount >= 3) ? (mapped3.buttons & 0xffff) : 0xffff;
-    int16_t player_4 = (event4 && playersCount >= 4) ? (mapped4.buttons & 0xffff) : 0xffff;
+    // Loopy hardware expects active-low (0 = pressed), so invert for output
+    // When no player, set to 0xffff (all released in active-low)
+    int16_t player_1 = (event1 && playersCount >= 1) ? (~mapped1.buttons & 0xffff) : 0xffff;
+    int16_t player_2 = (event2 && playersCount >= 2) ? (~mapped2.buttons & 0xffff) : 0xffff;
+    int16_t player_3 = (event3 && playersCount >= 3) ? (~mapped3.buttons & 0xffff) : 0xffff;
+    int16_t player_4 = (event4 && playersCount >= 4) ? (~mapped4.buttons & 0xffff) : 0xffff;
+    // Mouse detection: check if lower nybble is all 1s (active-low pressed)
     bool is_mouse = !(player_1 & 0x0f);
     // TODO: properly handle mouse detection at boot
 

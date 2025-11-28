@@ -478,24 +478,23 @@ void process_hid_gamepad(uint8_t dev_addr, uint8_t instance, uint8_t const* repo
       buttonIV = current.button1;
     }
 
-    buttons = (((current.up)       ? 0x00 : USBR_BUTTON_DU) |
-               ((current.down)     ? 0x00 : USBR_BUTTON_DD) |
-               ((current.left)     ? 0x00 : USBR_BUTTON_DL) |
-               ((current.right)    ? 0x00 : USBR_BUTTON_DR) |
-               ((current.button2)  ? 0x00 : USBR_BUTTON_B1) |
-               ((buttonI)          ? 0x00 : USBR_BUTTON_B2) |
-               ((buttonIV)         ? 0x00 : USBR_BUTTON_B3) |
-               ((buttonIII)        ? 0x00 : USBR_BUTTON_B4) |
-               ((buttonV)          ? 0x00 : USBR_BUTTON_L1) |
-               ((buttonVI)         ? 0x00 : USBR_BUTTON_R1) |
-               ((buttonVII)        ? 0x00 : USBR_BUTTON_L2) |
-               ((buttonVIII)       ? 0x00 : USBR_BUTTON_R2) |
-               ((buttonSelect)     ? 0x00 : USBR_BUTTON_S1) |
-               ((buttonStart)      ? 0x00 : USBR_BUTTON_S2) |
-               ((current.button11) ? 0x00 : USBR_BUTTON_L3) |
-               ((current.button12) ? 0x00 : USBR_BUTTON_R3) |
-               ((0)                ? 0x00 : USBR_BUTTON_A1) | // 13
-               ((0)                ? 0x00 : USBR_BUTTON_A2)); // 14
+    // Active-high: set bit when button is pressed
+    buttons = ((current.up)       ? USBR_BUTTON_DU : 0) |
+              ((current.down)     ? USBR_BUTTON_DD : 0) |
+              ((current.left)     ? USBR_BUTTON_DL : 0) |
+              ((current.right)    ? USBR_BUTTON_DR : 0) |
+              ((current.button2)  ? USBR_BUTTON_B1 : 0) |
+              ((buttonI)          ? USBR_BUTTON_B2 : 0) |
+              ((buttonIV)         ? USBR_BUTTON_B3 : 0) |
+              ((buttonIII)        ? USBR_BUTTON_B4 : 0) |
+              ((buttonV)          ? USBR_BUTTON_L1 : 0) |
+              ((buttonVI)         ? USBR_BUTTON_R1 : 0) |
+              ((buttonVII)        ? USBR_BUTTON_L2 : 0) |
+              ((buttonVIII)       ? USBR_BUTTON_R2 : 0) |
+              ((buttonSelect)     ? USBR_BUTTON_S1 : 0) |
+              ((buttonStart)      ? USBR_BUTTON_S2 : 0) |
+              ((current.button11) ? USBR_BUTTON_L3 : 0) |
+              ((current.button12) ? USBR_BUTTON_R3 : 0);
 
     // invert vertical axis
     uint8_t axis_x = current.x;

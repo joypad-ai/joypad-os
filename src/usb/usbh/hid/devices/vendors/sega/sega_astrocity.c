@@ -70,23 +70,23 @@ void process_sega_astrocity(uint8_t dev_addr, uint8_t instance, uint8_t const* r
     //   Bottom row: [B1][B2][R2]
     //
     // Mapping: D→B1, E→B2, F→R2, A→B3, B→B4, C→R1
-    buttons = (((dpad_up)             ? 0x00 : USBR_BUTTON_DU) |
-               ((dpad_down)           ? 0x00 : USBR_BUTTON_DD) |
-               ((dpad_left)           ? 0x00 : USBR_BUTTON_DL) |
-               ((dpad_right)          ? 0x00 : USBR_BUTTON_DR) |
-               ((astro_report.d)      ? 0x00 : USBR_BUTTON_B1) |  // D = left-bottom
-               ((astro_report.e)      ? 0x00 : USBR_BUTTON_B2) |  // E = mid-bottom
-               ((astro_report.a)      ? 0x00 : USBR_BUTTON_B3) |  // A = left-top
-               ((astro_report.b)      ? 0x00 : USBR_BUTTON_B4) |  // B = mid-top
-               ((astro_report.l)      ? 0x00 : USBR_BUTTON_L1) |  // L shoulder
-               ((astro_report.c)      ? 0x00 : USBR_BUTTON_R1) |  // C = right-top
-               ((0)                   ? 0x00 : USBR_BUTTON_L2) |  // No L2
-               ((astro_report.f)      ? 0x00 : USBR_BUTTON_R2) |  // F = right-bottom
-               ((astro_report.credit) ? 0x00 : USBR_BUTTON_S1) |
-               ((astro_report.start)  ? 0x00 : USBR_BUTTON_S2) |
-               ((0)                   ? 0x00 : USBR_BUTTON_L3) |
-               ((0)                   ? 0x00 : USBR_BUTTON_R3) |
-               ((0)                   ? 0x00 : USBR_BUTTON_A1));
+    buttons = (((dpad_up)             ? USBR_BUTTON_DU : 0) |
+               ((dpad_down)           ? USBR_BUTTON_DD : 0) |
+               ((dpad_left)           ? USBR_BUTTON_DL : 0) |
+               ((dpad_right)          ? USBR_BUTTON_DR : 0) |
+               ((astro_report.d)      ? USBR_BUTTON_B1 : 0) |  // D = left-bottom
+               ((astro_report.e)      ? USBR_BUTTON_B2 : 0) |  // E = mid-bottom
+               ((astro_report.a)      ? USBR_BUTTON_B3 : 0) |  // A = left-top
+               ((astro_report.b)      ? USBR_BUTTON_B4 : 0) |  // B = mid-top
+               ((astro_report.l)      ? USBR_BUTTON_L1 : 0) |  // L shoulder
+               ((astro_report.c)      ? USBR_BUTTON_R1 : 0) |  // C = right-top
+               ((0)                   ? USBR_BUTTON_L2 : 0) |  // No L2
+               ((astro_report.f)      ? USBR_BUTTON_R2 : 0) |  // F = right-bottom
+               ((astro_report.credit) ? USBR_BUTTON_S1 : 0) |
+               ((astro_report.start)  ? USBR_BUTTON_S2 : 0) |
+               ((0)                   ? USBR_BUTTON_L3 : 0) |
+               ((0)                   ? USBR_BUTTON_R3 : 0) |
+               ((0)                   ? USBR_BUTTON_A1 : 0));
 
     // add to accumulator and post to the state machine
     // if a scan from the host machine is ongoing, wait

@@ -40,7 +40,7 @@ void hotkeys_clear(void);
 
 // Check hotkeys against current input state
 // Called from update_output() or similar per-frame function
-// buttons: current button state for the player (active-low: 0 = pressed)
+// buttons: current button state for the player (active-high: 1 = pressed)
 // player: player index (0-based)
 void hotkeys_check(uint32_t buttons, uint8_t player);
 
