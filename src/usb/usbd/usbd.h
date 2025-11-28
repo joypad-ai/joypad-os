@@ -9,9 +9,9 @@
 #include <stdbool.h>
 #include "core/output_interface.h"
 
-// USB Device configuration
-#define USB_DEVICE_VENDOR_ID   0xCAFE  // TODO: Get proper VID
-#define USB_DEVICE_PRODUCT_ID  0x4001  // Generic HID gamepad
+// USB Device configuration - SHANWAN PS3-compatible controller
+#define USB_DEVICE_VENDOR_ID   0x2563  // SHANWAN
+#define USB_DEVICE_PRODUCT_ID  0x0575  // 2In1 USB Joystick
 #define USB_DEVICE_BCD_DEVICE  0x0100  // v1.0
 
 // String descriptors
