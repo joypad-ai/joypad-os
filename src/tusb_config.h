@@ -45,9 +45,10 @@
   #define CFG_TUSB_RHPORT0_MODE       OPT_MODE_DEVICE
 #elif defined(CONFIG_USB)
   // Dual-role USB configuration (host + device)
-  // Device mode on RHPORT0, Host mode on RHPORT1
+  // Device mode on RHPORT0 (native USB), Host mode on RHPORT1 (PIO USB)
   #define CFG_TUSB_RHPORT0_MODE       OPT_MODE_DEVICE
   #define CFG_TUSB_RHPORT1_MODE       OPT_MODE_HOST
+  #define CFG_TUH_RPI_PIO_USB         1  // Enable PIO USB host driver
 #else
   // Host-only mode for existing console implementations
   #if CFG_TUSB_MCU == OPT_MCU_LPC43XX || CFG_TUSB_MCU == OPT_MCU_LPC18XX || CFG_TUSB_MCU == OPT_MCU_MIMXRT10XX

@@ -18,6 +18,34 @@ set(FAMILY rp2040)
 
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/tusb_xinput xinput_host)
 
+# Pico-PIO-USB for dual USB (host on PIO, device on native)
+set(PICO_PIO_USB_PATH ${CMAKE_CURRENT_LIST_DIR}/lib/Pico-PIO-USB)
+if(EXISTS ${PICO_PIO_USB_PATH})
+    add_library(tinyusb_pico_pio_usb INTERFACE)
+    target_sources(tinyusb_pico_pio_usb INTERFACE
+        ${PICO_PIO_USB_PATH}/src/pio_usb.c
+        ${PICO_PIO_USB_PATH}/src/pio_usb_host.c
+        ${PICO_PIO_USB_PATH}/src/pio_usb_device.c
+        ${PICO_PIO_USB_PATH}/src/usb_crc.c
+        ${CMAKE_CURRENT_LIST_DIR}/lib/tinyusb/src/portable/raspberrypi/pio_usb/hcd_pio_usb.c
+    )
+    target_include_directories(tinyusb_pico_pio_usb INTERFACE
+        ${PICO_PIO_USB_PATH}/src
+    )
+    target_link_libraries(tinyusb_pico_pio_usb INTERFACE
+        hardware_pio
+        hardware_dma
+        pico_stdlib
+    )
+    target_compile_definitions(tinyusb_pico_pio_usb INTERFACE
+        PIO_USB_USE_TINYUSB=1
+        PIO_USB_DP_PIN_DEFAULT=16
+    )
+    # Generate PIO headers
+    pico_generate_pio_header(tinyusb_pico_pio_usb ${PICO_PIO_USB_PATH}/src/usb_tx.pio)
+    pico_generate_pio_header(tinyusb_pico_pio_usb ${PICO_PIO_USB_PATH}/src/usb_rx.pio)
+endif()
+
 add_executable(usbretro_pce) # For the usbretro_pce target
 add_executable(usbretro_ngc) # For the usbretro_ngc target
 add_executable(usbretro_xb1) # For the usbretro_xb1 target
@@ -42,7 +70,14 @@ target_compile_definitions(usbretro_loopy PRIVATE CONFIG_LOOPY=1)
 target_compile_definitions(usbretro_3do PRIVATE CONFIG_3DO=1)
 target_compile_definitions(usbretro_snes3do PRIVATE CONFIG_SNES3DO=1)
 target_compile_definitions(usbretro_uart PRIVATE CONFIG_UART=1)
-target_compile_definitions(usbretro_usb PRIVATE CONFIG_USB=1)
+target_compile_definitions(usbretro_usb PRIVATE
+    CONFIG_USB=1
+    # PIO USB defines for TinyUSB family.c compatibility
+    PICO_DEFAULT_PIO_USB_DP_PIN=16
+    PICO_DEFAULT_PIO_USB_VBUSEN_PIN=18
+    PICO_DEFAULT_PIO_USB_VBUSEN_STATE=1
+    BOARD_TUH_RHPORT=1
+)
 target_compile_definitions(usbretro_snes2usb PRIVATE CONFIG_SNES2USB=1 CONFIG_USB=1 DISABLE_USB_HOST=1)
 
 target_compile_options(usbretro_pce PRIVATE -O3) # Set optimization level to O3 for your_target
@@ -379,9 +414,10 @@ target_link_libraries(usbretro_uart PRIVATE # FOR UART
     hardware_uart
 )
 
-target_link_libraries(usbretro_usb PRIVATE # FOR USB (dual-role: host + device)
+target_link_libraries(usbretro_usb PRIVATE # FOR USB (dual-role: host on PIO, device on native)
     ${COMMON_LIBRARIES}
     tinyusb_device
+    tinyusb_pico_pio_usb
 )
 
 target_link_libraries(usbretro_snes2usb PRIVATE # FOR SNES2USB (SNES input, USB device output - no host)

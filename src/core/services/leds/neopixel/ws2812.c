@@ -13,7 +13,11 @@
 
 #define NUM_PIXELS 1
 
-#ifdef PICO_DEFAULT_WS2812_PIN
+// NeoPixel power control (some boards need this enabled)
+#ifdef ADAFRUIT_FEATHER_RP2040_USB_HOST
+#define WS2812_PIN 21
+#define WS2812_POWER_PIN 20
+#elif defined(PICO_DEFAULT_WS2812_PIN)
 #define WS2812_PIN PICO_DEFAULT_WS2812_PIN
 #else
 // default to pin 2 if the board doesn't have a default WS2812 pin defined
@@ -256,6 +260,14 @@ const struct {
 
 void neopixel_init()
 {
+#ifdef WS2812_POWER_PIN
+    // Enable NeoPixel power (required on some Adafruit boards)
+    gpio_init(WS2812_POWER_PIN);
+    gpio_set_dir(WS2812_POWER_PIN, GPIO_OUT);
+    gpio_put(WS2812_POWER_PIN, 1);
+#endif
+
+    // Use PIO0 for NeoPixel (PIO USB uses PIO1 when CONFIG_USB is defined)
     pio = pio0;
 
     // Load neopixel program and config state machine to run it.

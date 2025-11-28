@@ -14,3 +14,6 @@
 [submodule "src/lib/SNESpad"]
 	path = src/lib/SNESpad
 	url = https://github.com/RobertDaleSmith/SNESpad.git
+[submodule "src/lib/Pico-PIO-USB"]
+	path = src/lib/Pico-PIO-USB
+	url = https://github.com/sekigon-gonnoc/Pico-PIO-USB.git
