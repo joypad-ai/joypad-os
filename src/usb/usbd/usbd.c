@@ -81,6 +81,13 @@ void usbd_init(void)
 {
     printf("[usbd] Initializing USB device output\n");
 
+    // Initialize TinyUSB device stack
+    tusb_rhport_init_t dev_init = {
+        .role = TUSB_ROLE_DEVICE,
+        .speed = TUSB_SPEED_AUTO
+    };
+    tusb_init(0, &dev_init);
+
     // Initialize HID report to neutral state
     memset(&hid_report, 0, sizeof(usbretro_hid_report_t));
     hid_report.lx = 128;  // Center
@@ -122,10 +129,6 @@ bool usbd_send_report(uint8_t player_index)
         hid_report.ly = event->analog[ANALOG_Y];
         hid_report.rx = event->analog[ANALOG_Z];
         hid_report.ry = event->analog[ANALOG_RZ];
-
-        // Triggers
-        hid_report.lt = event->analog[ANALOG_RX];  // L2
-        hid_report.rt = event->analog[ANALOG_SLIDER];  // R2
     } else {
         // No input - send neutral state
         hid_report.buttons = 0;
@@ -134,8 +137,6 @@ bool usbd_send_report(uint8_t player_index)
         hid_report.ly = 128;
         hid_report.rx = 128;
         hid_report.ry = 128;
-        hid_report.lt = 0;
-        hid_report.rt = 0;
     }
 
     return tud_hid_report(0, &hid_report, sizeof(hid_report));

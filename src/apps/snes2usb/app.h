@@ -35,11 +35,11 @@
 // ============================================================================
 // SNES controller pins (directly from controller port)
 // These can be customized for different boards
-#define SNES_PIN_CLOCK  2   // CLK - output to controller
-#define SNES_PIN_LATCH  3   // LATCH - output to controller
-#define SNES_PIN_DATA0  4   // DATA - input from controller
-#define SNES_PIN_DATA1  5   // DATA1 - input (for multitap/keyboard)
-#define SNES_PIN_IOBIT  6   // IOBIT - output (for mouse/keyboard)
+#define SNES_PIN_CLOCK  5   // CLK - output to controller
+#define SNES_PIN_LATCH  6   // LATCH - output to controller
+#define SNES_PIN_DATA0  7   // DATA - input from controller
+#define SNES_PIN_DATA1  8   // DATA1 - input (for multitap/keyboard)
+#define SNES_PIN_IOBIT  9   // IOBIT - output (for mouse/keyboard)
 
 // ============================================================================
 // ROUTING CONFIGURATION

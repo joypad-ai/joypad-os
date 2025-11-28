@@ -384,7 +384,10 @@ target_link_libraries(usbretro_usb PRIVATE # FOR USB (dual-role: host + device)
     tinyusb_device
 )
 
-target_link_libraries(usbretro_snes2usb PRIVATE # FOR SNES2USB (SNES input, USB device output)
-    ${COMMON_LIBRARIES}
+target_link_libraries(usbretro_snes2usb PRIVATE # FOR SNES2USB (SNES input, USB device output - no host)
+    pico_stdlib
+    pico_multicore
+    hardware_pio
     tinyusb_device
+    tinyusb_board
 )

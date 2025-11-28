@@ -39,8 +39,12 @@
   #error CFG_TUSB_MCU must be defined
 #endif
 
-// Dual-role USB configuration (host + device)
-#ifdef CONFIG_USB
+// USB role configuration
+#if defined(DISABLE_USB_HOST)
+  // Device-only mode (e.g., snes2usb - no USB host needed)
+  #define CFG_TUSB_RHPORT0_MODE       OPT_MODE_DEVICE
+#elif defined(CONFIG_USB)
+  // Dual-role USB configuration (host + device)
   // Device mode on RHPORT0, Host mode on RHPORT1
   #define CFG_TUSB_RHPORT0_MODE       OPT_MODE_DEVICE
   #define CFG_TUSB_RHPORT1_MODE       OPT_MODE_HOST
@@ -107,10 +111,10 @@
 #define CFG_TUH_HID_EPOUT_BUFSIZE   64
 
 //--------------------------------------------------------------------
-// USB DEVICE CONFIGURATION (CONFIG_USB builds only)
+// USB DEVICE CONFIGURATION (CONFIG_USB or DISABLE_USB_HOST builds)
 //--------------------------------------------------------------------
 
-#ifdef CONFIG_USB
+#if defined(CONFIG_USB) || defined(DISABLE_USB_HOST)
   // Device configuration
   #define CFG_TUD_ENDPOINT0_SIZE    64
   #define CFG_TUD_HID               4   // Up to 4 HID gamepads
