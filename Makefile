@@ -76,6 +76,16 @@ RELEASE_APPS := usb2pce usb2gc usb2nuon
 # Release directory
 RELEASE_DIR := releases
 
+# Get git commit hash (short, 7 chars)
+GIT_COMMIT := $(shell git rev-parse --short=7 HEAD 2>/dev/null || echo "unknown")
+
+# Version identifier (use VERSION file if RELEASE_VERSION is set, otherwise commit hash)
+ifdef RELEASE_VERSION
+    VERSION_ID := $(RELEASE_VERSION)
+else
+    VERSION_ID := $(GIT_COMMIT)
+endif
+
 # ANSI color codes
 GREEN := \033[0;32m
 YELLOW := \033[1;33m
@@ -155,18 +165,20 @@ init:
 build: all
 
 # Generic app build function
+# Output naming: usbr_<version|commit>_<app>.uf2
 define build_app
 	@echo "$(YELLOW)Building $1...$(NC)"
 	@echo "  Board:   $(word 1,$(APP_$1))"
 	@echo "  Console: $(word 2,$(APP_$1))"
+	@echo "  Version: $(VERSION_ID)"
 	@cd src && rm -rf build
 	@cd src && sh $(BOARD_SCRIPT_$(word 1,$(APP_$1)))
 	@cd src/build && $(MAKE) --no-print-directory $(CONSOLE_$(word 2,$(APP_$1))) -j4
 	@mkdir -p $(RELEASE_DIR)
 	@cp src/build/$(CONSOLE_$(word 2,$(APP_$1))).uf2 \
-	    $(RELEASE_DIR)/$(word 3,$(APP_$1))_$(CONSOLE_$(word 2,$(APP_$1))).uf2
+	    $(RELEASE_DIR)/usbr_$(VERSION_ID)_$(word 3,$(APP_$1)).uf2
 	@echo "$(GREEN)✓ $1 built successfully$(NC)"
-	@echo "  Output: $(RELEASE_DIR)/$(word 3,$(APP_$1))_$(CONSOLE_$(word 2,$(APP_$1))).uf2"
+	@echo "  Output: $(RELEASE_DIR)/usbr_$(VERSION_ID)_$(word 3,$(APP_$1)).uf2"
 	@echo ""
 endef
 
@@ -314,64 +326,65 @@ flash:
 	echo "$(GREEN)✓ Firmware flashed successfully!$(NC)" && \
 	echo "$(GREEN)  Device will reboot automatically$(NC)"
 
-# Flash specific apps
+# Flash specific apps (finds most recent matching file)
 .PHONY: flash-usb2pce
 flash-usb2pce:
-	@$(MAKE) --no-print-directory _flash FLASH_FILE=$(RELEASE_DIR)/$(word 3,$(APP_usb2pce))_$(CONSOLE_$(word 2,$(APP_usb2pce))).uf2
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=usb2pce
 
 .PHONY: flash-usb2gc
 flash-usb2gc:
-	@$(MAKE) --no-print-directory _flash FLASH_FILE=$(RELEASE_DIR)/$(word 3,$(APP_usb2gc))_$(CONSOLE_$(word 2,$(APP_usb2gc))).uf2
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=usb2gc
 
 .PHONY: flash-usb2nuon
 flash-usb2nuon:
-	@$(MAKE) --no-print-directory _flash FLASH_FILE=$(RELEASE_DIR)/$(word 3,$(APP_usb2nuon))_$(CONSOLE_$(word 2,$(APP_usb2nuon))).uf2
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=usb2nuon
 
 .PHONY: flash-usb2xb1
 flash-usb2xb1:
-	@$(MAKE) --no-print-directory _flash FLASH_FILE=$(RELEASE_DIR)/$(word 3,$(APP_usb2xb1))_$(CONSOLE_$(word 2,$(APP_usb2xb1))).uf2
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=usb2xb1
 
 .PHONY: flash-usb2loopy
 flash-usb2loopy:
-	@$(MAKE) --no-print-directory _flash FLASH_FILE=$(RELEASE_DIR)/$(word 3,$(APP_usb2loopy))_$(CONSOLE_$(word 2,$(APP_usb2loopy))).uf2
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=usb2loopy
 
 .PHONY: flash-usb23do
 flash-usb23do:
-	@$(MAKE) --no-print-directory _flash FLASH_FILE=$(RELEASE_DIR)/$(word 3,$(APP_usb23do))_$(CONSOLE_$(word 2,$(APP_usb23do))).uf2
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=usb23do
 
 .PHONY: flash-snes23do
 flash-snes23do:
-	@$(MAKE) --no-print-directory _flash FLASH_FILE=$(RELEASE_DIR)/$(word 3,$(APP_snes23do))_$(CONSOLE_$(word 2,$(APP_snes23do))).uf2
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=snes23do
 
 .PHONY: flash-usb2uart
 flash-usb2uart:
-	@$(MAKE) --no-print-directory _flash FLASH_FILE=$(RELEASE_DIR)/$(word 3,$(APP_usb2uart))_$(CONSOLE_$(word 2,$(APP_usb2uart))).uf2
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=usb2uart
 
 .PHONY: flash-usb2usb
 flash-usb2usb:
-	@$(MAKE) --no-print-directory _flash FLASH_FILE=$(RELEASE_DIR)/$(word 3,$(APP_usb2usb))_$(CONSOLE_$(word 2,$(APP_usb2usb))).uf2
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=usb2usb
 
 .PHONY: flash-snes2usb
 flash-snes2usb:
-	@$(MAKE) --no-print-directory _flash FLASH_FILE=$(RELEASE_DIR)/$(word 3,$(APP_snes2usb))_$(CONSOLE_$(word 2,$(APP_snes2usb))).uf2
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=snes2usb
 
-# Internal flash helper
-.PHONY: _flash
-_flash:
+# Internal flash helper for specific app (finds most recent matching file)
+.PHONY: _flash_app
+_flash_app:
 	@if [ ! -d "/Volumes/RPI-RP2" ]; then \
 		echo "$(YELLOW)⚠ RPI-RP2 drive not found at /Volumes/RPI-RP2$(NC)"; \
 		echo "$(YELLOW)  Please put device in bootloader mode$(NC)"; \
 		exit 1; \
 	fi
-	@if [ ! -f "$(FLASH_FILE)" ]; then \
-		echo "$(YELLOW)⚠ File not found: $(FLASH_FILE)$(NC)"; \
-		echo "$(YELLOW)  Build the firmware first$(NC)"; \
+	@FLASH_FILE=$$(ls -t $(RELEASE_DIR)/usbr_*_$(APP_NAME).uf2 2>/dev/null | head -1); \
+	if [ -z "$$FLASH_FILE" ]; then \
+		echo "$(YELLOW)⚠ No $(APP_NAME) firmware found in $(RELEASE_DIR)$(NC)"; \
+		echo "$(YELLOW)  Build it first with 'make $(APP_NAME)'$(NC)"; \
 		exit 1; \
-	fi
-	@echo "$(YELLOW)Flashing $$(basename $(FLASH_FILE))...$(NC)"
-	@cp "$(FLASH_FILE)" /Volumes/RPI-RP2/
-	@echo "$(GREEN)✓ Firmware flashed successfully!$(NC)"
-	@echo "$(GREEN)  Device will reboot automatically$(NC)"
+	fi; \
+	echo "$(YELLOW)Flashing $$(basename $$FLASH_FILE)...$(NC)"; \
+	cp "$$FLASH_FILE" /Volumes/RPI-RP2/ && \
+	echo "$(GREEN)✓ Firmware flashed successfully!$(NC)" && \
+	echo "$(GREEN)  Device will reboot automatically$(NC)"
 
 # Clean target
 .PHONY: clean

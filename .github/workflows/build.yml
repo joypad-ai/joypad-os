@@ -170,7 +170,7 @@ jobs:
 
       - name: Rename firmware with commit hash and board
         run: |
-          COMMIT_HASH=$(echo ${{ github.sha }} | cut -c1-6)
+          COMMIT_HASH=$(echo ${{ github.sha }} | cut -c1-7)
           echo "COMMIT_HASH=${COMMIT_HASH}" >> $GITHUB_ENV
           mkdir -p artifacts
 
@@ -183,14 +183,14 @@ jobs:
           APP_NAMES[loopy]="usb2loopy"
           APP_NAMES[3do]="usb23do"
 
-          # Rename all .uf2 files to include hash, app name, and board
+          # Rename all .uf2 files: usbr_<commit>_<board>_<app>.uf2
           for file in src/build/*.uf2; do
             if [ -f "$file" ]; then
               filename=$(basename "$file" .uf2)
               # Extract console name from filename (e.g., usbretro_pce -> pce)
               console=$(echo "$filename" | sed 's/usbretro_//')
               app_name="${APP_NAMES[$console]:-$console}"
-              mv "$file" "artifacts/${app_name}_${COMMIT_HASH}_${{ matrix.board }}.uf2"
+              mv "$file" "artifacts/usbr_${COMMIT_HASH}_${{ matrix.board }}_${app_name}.uf2"
             fi
           done
 
@@ -225,14 +225,13 @@ jobs:
         run: |
           mkdir -p release
           VERSION="${{ needs.check-version.outputs.version }}"
-          COMMIT_HASH=$(echo ${{ github.sha }} | cut -c1-6)
 
           echo "📦 Preparing v${VERSION} release from kb2040 builds:"
 
-          # Find and rename the stable app firmware files (usb2pce, usb2gc, usb2nuon)
-          find artifacts -name "usb2pce_*_ada_kb2040.uf2" -exec cp {} release/usb2pce_v${VERSION}.uf2 \;
-          find artifacts -name "usb2gc_*_ada_kb2040.uf2" -exec cp {} release/usb2gc_v${VERSION}.uf2 \;
-          find artifacts -name "usb2nuon_*_ada_kb2040.uf2" -exec cp {} release/usb2nuon_v${VERSION}.uf2 \;
+          # Find and rename the stable app firmware files: usbr_<version>_<app>.uf2
+          find artifacts -name "usbr_*_ada_kb2040_usb2pce.uf2" -exec cp {} release/usbr_${VERSION}_usb2pce.uf2 \;
+          find artifacts -name "usbr_*_ada_kb2040_usb2gc.uf2" -exec cp {} release/usbr_${VERSION}_usb2gc.uf2 \;
+          find artifacts -name "usbr_*_ada_kb2040_usb2nuon.uf2" -exec cp {} release/usbr_${VERSION}_usb2nuon.uf2 \;
 
           echo ""
           echo "✅ Release package contents:"
