@@ -127,7 +127,7 @@ bool usbd_send_report(uint8_t player_index)
         hid_report.lx = event->analog[ANALOG_X];
         hid_report.ly = 255 - event->analog[ANALOG_Y];
         hid_report.rx = event->analog[ANALOG_Z];
-        hid_report.ry = 255 - event->analog[ANALOG_RZ];
+        hid_report.ry = 255 - event->analog[ANALOG_RX];  // ANALOG_RX = Right stick Y
 
         // PS3 pressure axes (0x00 = released, 0xFF = fully pressed)
         // USBRetro uses active-high (1 = pressed)
