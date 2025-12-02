@@ -126,6 +126,8 @@ void router_init(const router_config_t* config) {
             mouse_accumulators[output][player].accum_x = 0;
             mouse_accumulators[output][player].accum_y = 0;
             mouse_accumulators[output][player].drain_rate = config->mouse_drain_rate;
+            mouse_accumulators[output][player].target_x = config->mouse_target_x;
+            mouse_accumulators[output][player].target_y = config->mouse_target_y;
 
             instance_merges[output][player].active = false;
             instance_merges[output][player].instance_count = 0;
@@ -147,8 +149,10 @@ void router_init(const router_config_t* config) {
     printf("[router] Initialized successfully\n");
     if (config->transform_flags) {
         printf("[router]   Transformations enabled: 0x%02x\n", config->transform_flags);
-        if (config->transform_flags & TRANSFORM_MOUSE_TO_ANALOG)
-            printf("[router]     - Mouse-to-analog (drain_rate=%d)\n", config->mouse_drain_rate);
+        if (config->transform_flags & TRANSFORM_MOUSE_TO_ANALOG) {
+            printf("[router]     - Mouse-to-analog (target_x=%d, target_y=%d, drain=%d)\n",
+                   config->mouse_target_x, config->mouse_target_y, config->mouse_drain_rate);
+        }
         if (config->transform_flags & TRANSFORM_MERGE_INSTANCES)
             printf("[router]     - Instance merging\n");
         if (config->transform_flags & TRANSFORM_SPINNER)
@@ -161,48 +165,67 @@ void router_init(const router_config_t* config) {
 // ============================================================================
 
 // Mouse-to-analog: Accumulate mouse deltas into analog stick positions
-// This replaces the console-specific accumulator code in Xbox/PCEngine/Loopy
+// Configurable target axes and drain behavior for different use cases:
+// - Left stick (default): mouse controls movement
+// - Right stick: mouse controls camera (e.g., mouthpad for accessibility)
+// - drain_rate=0: hold position until input returns to center (no auto-drain)
 static void transform_mouse_to_analog(input_event_t* event, output_target_t output, int player_index) {
     if (event->type != INPUT_TYPE_MOUSE) return;
     if (player_index < 0 || player_index >= MAX_PLAYERS_PER_OUTPUT) return;
 
     mouse_accumulator_t* accum = &mouse_accumulators[output][player_index];
 
-    // Accumulate mouse deltas (handle signed 8-bit deltas)
-    if (event->delta_x >= 128)
-        accum->accum_x -= (256 - event->delta_x);
-    else
-        accum->accum_x += event->delta_x;
+    // Accumulate X-axis if enabled
+    if (accum->target_x != MOUSE_AXIS_DISABLED) {
+        // Handle signed 8-bit deltas
+        if (event->delta_x >= 128)
+            accum->accum_x -= (256 - event->delta_x);
+        else
+            accum->accum_x += event->delta_x;
 
-    if (event->delta_y >= 128)
-        accum->accum_y -= (256 - event->delta_y);
-    else
-        accum->accum_y += event->delta_y;
+        // Clamp to [-127, 127]
+        if (accum->accum_x > 127) accum->accum_x = 127;
+        if (accum->accum_x < -127) accum->accum_x = -127;
 
-    // Clamp accumulator to [-127, 127]
-    if (accum->accum_x > 127) accum->accum_x = 127;
-    if (accum->accum_x < -127) accum->accum_x = -127;
-    if (accum->accum_y > 127) accum->accum_y = 127;
-    if (accum->accum_y < -127) accum->accum_y = -127;
+        // Convert to analog position (centered at 128)
+        event->analog[accum->target_x] = 128 + accum->accum_x;
 
-    // Convert accumulated deltas to analog stick positions (centered at 128)
-    event->analog[ANALOG_X] = 128 + accum->accum_x;  // Left stick X
-    event->analog[ANALOG_Y] = 128 + accum->accum_y;  // Left stick Y
-
-    // Drain accumulator gradually (move back toward center)
-    if (accum->accum_x > 0) {
-        accum->accum_x -= (accum->accum_x > accum->drain_rate) ? accum->drain_rate : accum->accum_x;
-    } else if (accum->accum_x < 0) {
-        accum->accum_x += (-accum->accum_x > accum->drain_rate) ? accum->drain_rate : -accum->accum_x;
+        // Drain toward center (only if drain_rate > 0)
+        if (accum->drain_rate > 0) {
+            if (accum->accum_x > 0) {
+                accum->accum_x -= (accum->accum_x > accum->drain_rate) ? accum->drain_rate : accum->accum_x;
+            } else if (accum->accum_x < 0) {
+                accum->accum_x += (-accum->accum_x > accum->drain_rate) ? accum->drain_rate : -accum->accum_x;
+            }
+        }
     }
 
-    if (accum->accum_y > 0) {
-        accum->accum_y -= (accum->accum_y > accum->drain_rate) ? accum->drain_rate : accum->accum_y;
-    } else if (accum->accum_y < 0) {
-        accum->accum_y += (-accum->accum_y > accum->drain_rate) ? accum->drain_rate : -accum->accum_y;
+    // Accumulate Y-axis if enabled
+    if (accum->target_y != MOUSE_AXIS_DISABLED) {
+        // Handle signed 8-bit deltas
+        if (event->delta_y >= 128)
+            accum->accum_y -= (256 - event->delta_y);
+        else
+            accum->accum_y += event->delta_y;
+
+        // Clamp to [-127, 127]
+        if (accum->accum_y > 127) accum->accum_y = 127;
+        if (accum->accum_y < -127) accum->accum_y = -127;
+
+        // Convert to analog position (centered at 128)
+        event->analog[accum->target_y] = 128 + accum->accum_y;
+
+        // Drain toward center (only if drain_rate > 0)
+        if (accum->drain_rate > 0) {
+            if (accum->accum_y > 0) {
+                accum->accum_y -= (accum->accum_y > accum->drain_rate) ? accum->drain_rate : accum->accum_y;
+            } else if (accum->accum_y < 0) {
+                accum->accum_y += (-accum->accum_y > accum->drain_rate) ? accum->drain_rate : -accum->accum_y;
+            }
+        }
     }
 
-    // Clear delta fields (no longer needed, analog values now set)
+    // Clear delta fields (analog values now set)
     event->delta_x = 0;
     event->delta_y = 0;
 }

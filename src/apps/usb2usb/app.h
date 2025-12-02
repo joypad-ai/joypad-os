@@ -40,7 +40,8 @@
 #define APP_MAX_ROUTES 4
 
 // Input transformations
-#define TRANSFORM_FLAGS 0               // No transformations
+// Mouse-to-analog: Maps mouse X to right stick X for accessibility (mouthpad, head tracker)
+#define TRANSFORM_FLAGS TRANSFORM_MOUSE_TO_ANALOG
 
 // ============================================================================
 // PLAYER MANAGEMENT

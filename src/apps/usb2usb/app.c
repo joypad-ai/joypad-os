@@ -131,7 +131,11 @@ void app_init(void)
         },
         .merge_all_inputs = true,  // Merge all USB inputs to single output
         .transform_flags = TRANSFORM_FLAGS,
-        .mouse_drain_rate = 8,
+        // Mouse-to-analog: Map mouse to right stick for camera control
+        // Useful for accessibility (mouthpad, head tracker) alongside gamepad
+        .mouse_target_x = ANALOG_Z,             // Right stick X
+        .mouse_target_y = MOUSE_AXIS_DISABLED,  // Y disabled (X-only for camera pan)
+        .mouse_drain_rate = 0,                  // No drain - hold position until head returns
     };
     router_init(&router_cfg);
 
