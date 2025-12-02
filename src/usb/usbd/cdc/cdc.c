@@ -135,12 +135,14 @@ static void cdc_process_command(const char* cmd)
     // MODES - List available modes
     else if (strcmp(cmd, "MODES") == 0 || strcmp(cmd, "MODES?") == 0) {
         cdc_data_write_str("Available modes:\r\n");
-        cdc_data_write_str("  0: HID (DInput) - default\r\n");
+        cdc_data_write_str("  0: DInput - default\r\n");
         cdc_data_write_str("  1: Xbox Original (XID)\r\n");
-        cdc_data_write_str("  2: XInput (future)\r\n");
-        cdc_data_write_str("  3: PS3 (future)\r\n");
-        cdc_data_write_str("  4: PS4 (future)\r\n");
-        cdc_data_write_str("  5: Switch (future)\r\n");
+        cdc_data_write_str("  2: XInput\r\n");
+        cdc_data_write_str("  3: PS3\r\n");
+        cdc_data_write_str("  4: PS4\r\n");
+        cdc_data_write_str("  5: Switch\r\n");
+        cdc_data_write_str("  6: PS Classic\r\n");
+        cdc_data_write_str("  7: Xbox One\r\n");
     }
     // VERSION or VER? - Query firmware version
     else if (strcmp(cmd, "VERSION") == 0 || strcmp(cmd, "VER?") == 0) {

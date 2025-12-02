@@ -88,8 +88,8 @@ static flash_t flash_settings;
 
 // Mode names for display
 static const char* mode_names[] = {
-    [USB_OUTPUT_MODE_HID] = "HID (DInput)",
-    [USB_OUTPUT_MODE_XBOX_ORIGINAL] = "Xbox Original",
+    [USB_OUTPUT_MODE_HID] = "DInput",
+    [USB_OUTPUT_MODE_XBOX_ORIGINAL] = "Xbox Original (XID)",
     [USB_OUTPUT_MODE_XINPUT] = "XInput",
     [USB_OUTPUT_MODE_PS3] = "PS3",
     [USB_OUTPUT_MODE_PS4] = "PS4",
