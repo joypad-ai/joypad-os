@@ -332,36 +332,36 @@ target_sources(usbretro_controller_fisherprice PUBLIC # Controller app: Fisher P
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd/tud_xinput.c  # Xbox 360 XInput class driver
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd/tud_xbone.c  # Xbox One GIP class driver
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd/xgip_protocol.c  # Xbox One GIP protocol
-    # GPIO input driver
-    ${CMAKE_CURRENT_SOURCE_DIR}/gpio/gpio_input.c
+    # Pad input driver
+    ${CMAKE_CURRENT_SOURCE_DIR}/pad/pad_input.c
     # App layer
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/controller/app.c
 )
 
 target_sources(usbretro_controller_alpakka PUBLIC # Controller app: Alpakka
-    ${CORE_SOURCES}  # No USB host - uses GPIO input
+    ${CORE_SOURCES}  # No USB host - uses pad input
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd/usbd.c
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd/cdc/cdc.c
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd/tud_xid.c  # Xbox Original XID class driver
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd/tud_xinput.c  # Xbox 360 XInput class driver
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd/tud_xbone.c  # Xbox One GIP class driver
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd/xgip_protocol.c  # Xbox One GIP protocol
-    # GPIO input driver
-    ${CMAKE_CURRENT_SOURCE_DIR}/gpio/gpio_input.c
+    # Pad input driver
+    ${CMAKE_CURRENT_SOURCE_DIR}/pad/pad_input.c
     # App layer
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/controller/app.c
 )
 
 target_sources(usbretro_controller_macropad PUBLIC # Controller app: MacroPad
-    ${CORE_SOURCES}  # No USB host - uses GPIO input
+    ${CORE_SOURCES}  # No USB host - uses pad input
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd/usbd.c
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd/cdc/cdc.c
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd/tud_xid.c  # Xbox Original XID class driver
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd/tud_xinput.c  # Xbox 360 XInput class driver
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd/tud_xbone.c  # Xbox One GIP class driver
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd/xgip_protocol.c  # Xbox One GIP protocol
-    # GPIO input driver
-    ${CMAKE_CURRENT_SOURCE_DIR}/gpio/gpio_input.c
+    # Pad input driver
+    ${CMAKE_CURRENT_SOURCE_DIR}/pad/pad_input.c
     # App layer
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/controller/app.c
 )
@@ -447,7 +447,7 @@ target_include_directories(usbretro_controller_fisherprice PUBLIC # Controller: 
     ${CMAKE_CURRENT_SOURCE_DIR}/common
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/controller
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd
-    ${CMAKE_CURRENT_SOURCE_DIR}/gpio
+    ${CMAKE_CURRENT_SOURCE_DIR}/pad
 )
 
 target_include_directories(usbretro_controller_alpakka PUBLIC # Controller: Alpakka
@@ -455,7 +455,7 @@ target_include_directories(usbretro_controller_alpakka PUBLIC # Controller: Alpa
     ${CMAKE_CURRENT_SOURCE_DIR}/common
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/controller
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd
-    ${CMAKE_CURRENT_SOURCE_DIR}/gpio
+    ${CMAKE_CURRENT_SOURCE_DIR}/pad
 )
 
 target_include_directories(usbretro_controller_macropad PUBLIC # Controller: MacroPad
@@ -463,7 +463,7 @@ target_include_directories(usbretro_controller_macropad PUBLIC # Controller: Mac
     ${CMAKE_CURRENT_SOURCE_DIR}/common
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/controller
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd
-    ${CMAKE_CURRENT_SOURCE_DIR}/gpio
+    ${CMAKE_CURRENT_SOURCE_DIR}/pad
 )
 
 ## SET TARGET LINK LIBS

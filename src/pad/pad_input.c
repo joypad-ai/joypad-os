@@ -1,11 +1,11 @@
-// gpio_input.c - GPIO Input Interface Implementation
+// pad_input.c - Pad Input Interface Implementation
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2024 Robert Dale Smith
 //
 // Reads buttons and analog sticks wired to GPIO pins or I2C expanders.
 // Each registered config creates a controller input source.
 
-#include "gpio_input.h"
+#include "pad_input.h"
 #include "core/buttons.h"
 #include "core/input_event.h"
 #include "core/router/router.h"
@@ -33,14 +33,14 @@
 // ============================================================================
 
 // Registered device configurations
-static const gpio_device_config_t* gpio_devices[GPIO_MAX_DEVICES];
-static uint8_t gpio_device_count = 0;
+static const pad_device_config_t* pad_devices[PAD_MAX_DEVICES];
+static uint8_t pad_device_count = 0;
 
 // Current input state per device
-static input_event_t gpio_events[GPIO_MAX_DEVICES];
+static input_event_t pad_events[PAD_MAX_DEVICES];
 
 // Debounce state (simple: require 2 consecutive reads)
-static uint32_t gpio_prev_buttons[GPIO_MAX_DEVICES];
+static uint32_t pad_prev_buttons[PAD_MAX_DEVICES];
 
 // ADC initialized flag
 static bool adc_initialized = false;
@@ -60,7 +60,7 @@ static void i2c_expander_init(int8_t sda_pin, int8_t scl_pin) {
     if (i2c_initialized) return;
     if (sda_pin < 0 || scl_pin < 0) return;
 
-    printf("[gpio] Initializing I2C on SDA=%d, SCL=%d\n", sda_pin, scl_pin);
+    printf("[pad] Initializing I2C on SDA=%d, SCL=%d\n", sda_pin, scl_pin);
 
     i2c_init(i2c1, I2C_FREQ);
     gpio_set_function(sda_pin, GPIO_FUNC_I2C);
@@ -73,15 +73,15 @@ static void i2c_expander_init(int8_t sda_pin, int8_t scl_pin) {
     uint8_t pullup_data[] = {I2C_IO_REG_PULLUP, 0xFF, 0xFF};
 
     // Try to configure expander 0
-    if (i2c_write_blocking(i2c1, GPIO_I2C_EXPANDER_ADDR_0, polarity_data, 3, false) >= 0) {
-        i2c_write_blocking(i2c1, GPIO_I2C_EXPANDER_ADDR_0, pullup_data, 3, false);
-        printf("[gpio] I2C expander 0 (0x%02X) configured\n", GPIO_I2C_EXPANDER_ADDR_0);
+    if (i2c_write_blocking(i2c1, PAD_I2C_EXPANDER_ADDR_0, polarity_data, 3, false) >= 0) {
+        i2c_write_blocking(i2c1, PAD_I2C_EXPANDER_ADDR_0, pullup_data, 3, false);
+        printf("[pad] I2C expander 0 (0x%02X) configured\n", PAD_I2C_EXPANDER_ADDR_0);
     }
 
     // Try to configure expander 1
-    if (i2c_write_blocking(i2c1, GPIO_I2C_EXPANDER_ADDR_1, polarity_data, 3, false) >= 0) {
-        i2c_write_blocking(i2c1, GPIO_I2C_EXPANDER_ADDR_1, pullup_data, 3, false);
-        printf("[gpio] I2C expander 1 (0x%02X) configured\n", GPIO_I2C_EXPANDER_ADDR_1);
+    if (i2c_write_blocking(i2c1, PAD_I2C_EXPANDER_ADDR_1, polarity_data, 3, false) >= 0) {
+        i2c_write_blocking(i2c1, PAD_I2C_EXPANDER_ADDR_1, pullup_data, 3, false);
+        printf("[pad] I2C expander 1 (0x%02X) configured\n", PAD_I2C_EXPANDER_ADDR_1);
     }
 
     i2c_initialized = true;
@@ -102,8 +102,8 @@ static uint16_t i2c_expander_read(uint8_t addr) {
 static void i2c_expander_update_cache(void) {
     if (!i2c_initialized) return;
 
-    i2c_expander_cache[0] = i2c_expander_read(GPIO_I2C_EXPANDER_ADDR_0);
-    i2c_expander_cache[1] = i2c_expander_read(GPIO_I2C_EXPANDER_ADDR_1);
+    i2c_expander_cache[0] = i2c_expander_read(PAD_I2C_EXPANDER_ADDR_0);
+    i2c_expander_cache[1] = i2c_expander_read(PAD_I2C_EXPANDER_ADDR_1);
 }
 
 // ============================================================================
@@ -111,7 +111,7 @@ static void i2c_expander_update_cache(void) {
 // ============================================================================
 
 // Initialize a single GPIO pin as input with appropriate pull
-static void gpio_init_button_pin(int16_t pin, bool active_high) {
+static void pad_init_button_pin(int16_t pin, bool active_high) {
     // Only initialize direct GPIO pins (0-29)
     if (pin < 0 || pin > 29) return;
 
@@ -128,7 +128,7 @@ static void gpio_init_button_pin(int16_t pin, bool active_high) {
 
 // Read a button pin and return true if pressed
 // Supports direct GPIO (0-29) and I2C expanders (100-115, 200-215)
-static bool gpio_read_button(int16_t pin, bool active_high) {
+static bool pad_read_button(int16_t pin, bool active_high) {
     if (pin < 0) return false;
 
     bool state;
@@ -138,12 +138,12 @@ static bool gpio_read_button(int16_t pin, bool active_high) {
         state = gpio_get(pin);
     } else if (pin < 200) {
         // I2C expander 0 (pins 100-115)
-        uint8_t bit = pin - GPIO_I2C_EXPANDER_0_BASE;
+        uint8_t bit = pin - PAD_I2C_EXPANDER_0_BASE;
         if (bit > 15) return false;
         state = (i2c_expander_cache[0] >> bit) & 1;
     } else {
         // I2C expander 1 (pins 200-215)
-        uint8_t bit = pin - GPIO_I2C_EXPANDER_1_BASE;
+        uint8_t bit = pin - PAD_I2C_EXPANDER_1_BASE;
         if (bit > 15) return false;
         state = (i2c_expander_cache[1] >> bit) & 1;
     }
@@ -152,7 +152,7 @@ static bool gpio_read_button(int16_t pin, bool active_high) {
 }
 
 // Read ADC channel and return 0-255 value
-static uint8_t gpio_read_adc(int8_t channel, bool invert) {
+static uint8_t pad_read_adc(int8_t channel, bool invert) {
     if (channel < 0 || channel > 3) return 128;  // Centered
 
     adc_select_input(channel);
@@ -180,7 +180,7 @@ static uint8_t apply_deadzone(uint8_t value, uint8_t deadzone) {
 }
 
 // Check if config uses I2C expanders
-static bool config_uses_i2c(const gpio_device_config_t* config) {
+static bool config_uses_i2c(const pad_device_config_t* config) {
     return (config->dpad_up >= 100 || config->dpad_down >= 100 ||
             config->dpad_left >= 100 || config->dpad_right >= 100 ||
             config->b1 >= 100 || config->b2 >= 100 ||
@@ -194,7 +194,7 @@ static bool config_uses_i2c(const gpio_device_config_t* config) {
 }
 
 // Initialize GPIO pins for a device config
-static void gpio_init_device_pins(const gpio_device_config_t* config) {
+static void pad_init_device_pins(const pad_device_config_t* config) {
     if (!config) return;
 
     bool ah = config->active_high;
@@ -205,29 +205,29 @@ static void gpio_init_device_pins(const gpio_device_config_t* config) {
     }
 
     // Initialize direct GPIO button pins (I2C pins are handled by expander init)
-    gpio_init_button_pin(config->dpad_up, ah);
-    gpio_init_button_pin(config->dpad_down, ah);
-    gpio_init_button_pin(config->dpad_left, ah);
-    gpio_init_button_pin(config->dpad_right, ah);
+    pad_init_button_pin(config->dpad_up, ah);
+    pad_init_button_pin(config->dpad_down, ah);
+    pad_init_button_pin(config->dpad_left, ah);
+    pad_init_button_pin(config->dpad_right, ah);
 
-    gpio_init_button_pin(config->b1, ah);
-    gpio_init_button_pin(config->b2, ah);
-    gpio_init_button_pin(config->b3, ah);
-    gpio_init_button_pin(config->b4, ah);
+    pad_init_button_pin(config->b1, ah);
+    pad_init_button_pin(config->b2, ah);
+    pad_init_button_pin(config->b3, ah);
+    pad_init_button_pin(config->b4, ah);
 
-    gpio_init_button_pin(config->l1, ah);
-    gpio_init_button_pin(config->r1, ah);
-    gpio_init_button_pin(config->l2, ah);
-    gpio_init_button_pin(config->r2, ah);
+    pad_init_button_pin(config->l1, ah);
+    pad_init_button_pin(config->r1, ah);
+    pad_init_button_pin(config->l2, ah);
+    pad_init_button_pin(config->r2, ah);
 
-    gpio_init_button_pin(config->s1, ah);
-    gpio_init_button_pin(config->s2, ah);
-    gpio_init_button_pin(config->l3, ah);
-    gpio_init_button_pin(config->r3, ah);
-    gpio_init_button_pin(config->a1, ah);
-    gpio_init_button_pin(config->a2, ah);
-    gpio_init_button_pin(config->l4, ah);
-    gpio_init_button_pin(config->r4, ah);
+    pad_init_button_pin(config->s1, ah);
+    pad_init_button_pin(config->s2, ah);
+    pad_init_button_pin(config->l3, ah);
+    pad_init_button_pin(config->r3, ah);
+    pad_init_button_pin(config->a1, ah);
+    pad_init_button_pin(config->a2, ah);
+    pad_init_button_pin(config->l4, ah);
+    pad_init_button_pin(config->r4, ah);
 
     // Initialize ADC if any analog inputs are used
     bool has_analog = (config->adc_lx >= 0 || config->adc_ly >= 0 ||
@@ -252,76 +252,76 @@ static void gpio_init_device_pins(const gpio_device_config_t* config) {
         adc_gpio_init(26 + config->adc_ry);
     }
 
-    printf("[gpio] Initialized device: %s (active_%s%s)\n",
+    printf("[pad] Initialized device: %s (active_%s%s)\n",
            config->name, ah ? "high" : "low",
            config_uses_i2c(config) ? ", I2C" : "");
 }
 
 // Poll a single device and update its input event
-static void gpio_poll_device(uint8_t device_index) {
-    if (device_index >= gpio_device_count) return;
+static void pad_poll_device(uint8_t device_index) {
+    if (device_index >= pad_device_count) return;
 
-    const gpio_device_config_t* config = gpio_devices[device_index];
-    input_event_t* event = &gpio_events[device_index];
+    const pad_device_config_t* config = pad_devices[device_index];
+    input_event_t* event = &pad_events[device_index];
     bool ah = config->active_high;
 
     // Read buttons into bitmap
     uint32_t buttons = 0;
 
     // D-pad
-    if (gpio_read_button(config->dpad_up, ah))    buttons |= USBR_BUTTON_DU;
-    if (gpio_read_button(config->dpad_down, ah))  buttons |= USBR_BUTTON_DD;
-    if (gpio_read_button(config->dpad_left, ah))  buttons |= USBR_BUTTON_DL;
-    if (gpio_read_button(config->dpad_right, ah)) buttons |= USBR_BUTTON_DR;
+    if (pad_read_button(config->dpad_up, ah))    buttons |= USBR_BUTTON_DU;
+    if (pad_read_button(config->dpad_down, ah))  buttons |= USBR_BUTTON_DD;
+    if (pad_read_button(config->dpad_left, ah))  buttons |= USBR_BUTTON_DL;
+    if (pad_read_button(config->dpad_right, ah)) buttons |= USBR_BUTTON_DR;
 
     // Face buttons
-    if (gpio_read_button(config->b1, ah)) buttons |= USBR_BUTTON_B1;
-    if (gpio_read_button(config->b2, ah)) buttons |= USBR_BUTTON_B2;
-    if (gpio_read_button(config->b3, ah)) buttons |= USBR_BUTTON_B3;
-    if (gpio_read_button(config->b4, ah)) buttons |= USBR_BUTTON_B4;
+    if (pad_read_button(config->b1, ah)) buttons |= USBR_BUTTON_B1;
+    if (pad_read_button(config->b2, ah)) buttons |= USBR_BUTTON_B2;
+    if (pad_read_button(config->b3, ah)) buttons |= USBR_BUTTON_B3;
+    if (pad_read_button(config->b4, ah)) buttons |= USBR_BUTTON_B4;
 
     // Shoulders/triggers
-    if (gpio_read_button(config->l1, ah)) buttons |= USBR_BUTTON_L1;
-    if (gpio_read_button(config->r1, ah)) buttons |= USBR_BUTTON_R1;
-    if (gpio_read_button(config->l2, ah)) buttons |= USBR_BUTTON_L2;
-    if (gpio_read_button(config->r2, ah)) buttons |= USBR_BUTTON_R2;
+    if (pad_read_button(config->l1, ah)) buttons |= USBR_BUTTON_L1;
+    if (pad_read_button(config->r1, ah)) buttons |= USBR_BUTTON_R1;
+    if (pad_read_button(config->l2, ah)) buttons |= USBR_BUTTON_L2;
+    if (pad_read_button(config->r2, ah)) buttons |= USBR_BUTTON_R2;
 
     // Meta buttons
-    if (gpio_read_button(config->s1, ah)) buttons |= USBR_BUTTON_S1;
-    if (gpio_read_button(config->s2, ah)) buttons |= USBR_BUTTON_S2;
-    if (gpio_read_button(config->l3, ah)) buttons |= USBR_BUTTON_L3;
-    if (gpio_read_button(config->r3, ah)) buttons |= USBR_BUTTON_R3;
-    if (gpio_read_button(config->a1, ah)) buttons |= USBR_BUTTON_A1;
-    if (gpio_read_button(config->a2, ah)) buttons |= USBR_BUTTON_A2;
+    if (pad_read_button(config->s1, ah)) buttons |= USBR_BUTTON_S1;
+    if (pad_read_button(config->s2, ah)) buttons |= USBR_BUTTON_S2;
+    if (pad_read_button(config->l3, ah)) buttons |= USBR_BUTTON_L3;
+    if (pad_read_button(config->r3, ah)) buttons |= USBR_BUTTON_R3;
+    if (pad_read_button(config->a1, ah)) buttons |= USBR_BUTTON_A1;
+    if (pad_read_button(config->a2, ah)) buttons |= USBR_BUTTON_A2;
 
     // Extra buttons (L4/R4 mapped to L2/R2 digital for now)
     // TODO: Add proper L4/R4 button defines if needed
 
     // Simple debounce: only update if same as previous read
     // (This filters out single-sample glitches)
-    if (buttons == gpio_prev_buttons[device_index]) {
+    if (buttons == pad_prev_buttons[device_index]) {
         event->buttons = buttons;
     }
-    gpio_prev_buttons[device_index] = buttons;
+    pad_prev_buttons[device_index] = buttons;
 
     // Read analog sticks
     uint8_t dz = config->deadzone;
 
     if (config->adc_lx >= 0) {
         event->analog[ANALOG_X] = apply_deadzone(
-            gpio_read_adc(config->adc_lx, config->invert_lx), dz);
+            pad_read_adc(config->adc_lx, config->invert_lx), dz);
     }
     if (config->adc_ly >= 0) {
         event->analog[ANALOG_Y] = apply_deadzone(
-            gpio_read_adc(config->adc_ly, config->invert_ly), dz);
+            pad_read_adc(config->adc_ly, config->invert_ly), dz);
     }
     if (config->adc_rx >= 0) {
         event->analog[ANALOG_Z] = apply_deadzone(
-            gpio_read_adc(config->adc_rx, config->invert_rx), dz);
+            pad_read_adc(config->adc_rx, config->invert_rx), dz);
     }
     if (config->adc_ry >= 0) {
         event->analog[ANALOG_RX] = apply_deadzone(
-            gpio_read_adc(config->adc_ry, config->invert_ry), dz);
+            pad_read_adc(config->adc_ry, config->invert_ry), dz);
     }
 }
 
@@ -329,81 +329,81 @@ static void gpio_poll_device(uint8_t device_index) {
 // PUBLIC API
 // ============================================================================
 
-int gpio_input_add_device(const gpio_device_config_t* config) {
-    if (!config || gpio_device_count >= GPIO_MAX_DEVICES) {
+int pad_input_add_device(const pad_device_config_t* config) {
+    if (!config || pad_device_count >= PAD_MAX_DEVICES) {
         return -1;
     }
 
-    uint8_t index = gpio_device_count;
-    gpio_devices[index] = config;
+    uint8_t index = pad_device_count;
+    pad_devices[index] = config;
 
     // Initialize input event for this device
-    init_input_event(&gpio_events[index]);
-    gpio_events[index].dev_addr = 0xF0 + index;  // Virtual address for GPIO devices
-    gpio_events[index].instance = index;
-    gpio_events[index].type = INPUT_TYPE_GAMEPAD;
+    init_input_event(&pad_events[index]);
+    pad_events[index].dev_addr = 0xF0 + index;  // Virtual address for pad devices
+    pad_events[index].instance = index;
+    pad_events[index].type = INPUT_TYPE_GAMEPAD;
 
-    gpio_prev_buttons[index] = 0;
+    pad_prev_buttons[index] = 0;
 
-    gpio_device_count++;
+    pad_device_count++;
 
     return index;
 }
 
-void gpio_input_clear_devices(void) {
-    gpio_device_count = 0;
-    memset(gpio_devices, 0, sizeof(gpio_devices));
+void pad_input_clear_devices(void) {
+    pad_device_count = 0;
+    memset(pad_devices, 0, sizeof(pad_devices));
 }
 
-uint8_t gpio_input_get_device_count(void) {
-    return gpio_device_count;
+uint8_t pad_input_get_device_count(void) {
+    return pad_device_count;
 }
 
 // ============================================================================
 // INPUT INTERFACE IMPLEMENTATION
 // ============================================================================
 
-static void gpio_input_init(void) {
-    printf("[gpio] Initializing GPIO input interface\n");
+static void pad_input_init(void) {
+    printf("[pad] Initializing pad input interface\n");
 
     // Initialize pins for all registered devices
-    for (uint8_t i = 0; i < gpio_device_count; i++) {
-        gpio_init_device_pins(gpio_devices[i]);
+    for (uint8_t i = 0; i < pad_device_count; i++) {
+        pad_init_device_pins(pad_devices[i]);
     }
 
-    printf("[gpio] Initialized %d GPIO device(s)\n", gpio_device_count);
+    printf("[pad] Initialized %d pad device(s)\n", pad_device_count);
 }
 
-static void gpio_input_task(void) {
+static void pad_input_task(void) {
     // Update I2C expander cache once per cycle (more efficient than per-button)
     if (i2c_initialized) {
         i2c_expander_update_cache();
     }
 
     // Poll all registered devices
-    for (uint8_t i = 0; i < gpio_device_count; i++) {
-        gpio_poll_device(i);
+    for (uint8_t i = 0; i < pad_device_count; i++) {
+        pad_poll_device(i);
 
         // Submit to router
-        router_submit_input(&gpio_events[i]);
+        router_submit_input(&pad_events[i]);
     }
 }
 
-static bool gpio_input_is_connected(void) {
-    // GPIO devices are always "connected" if configured
-    return gpio_device_count > 0;
+static bool pad_input_is_connected(void) {
+    // Pad devices are always "connected" if configured
+    return pad_device_count > 0;
 }
 
-static uint8_t gpio_input_device_count(void) {
-    return gpio_device_count;
+static uint8_t pad_input_device_count(void) {
+    return pad_device_count;
 }
 
 // Export interface
-const InputInterface gpio_input_interface = {
-    .name = "GPIO",
+const InputInterface pad_input_interface = {
+    .name = "Pad",
     .source = INPUT_SOURCE_GPIO,
-    .init = gpio_input_init,
-    .task = gpio_input_task,
-    .is_connected = gpio_input_is_connected,
-    .get_device_count = gpio_input_device_count,
+    .init = pad_input_init,
+    .task = pad_input_task,
+    .is_connected = pad_input_is_connected,
+    .get_device_count = pad_input_device_count,
 };

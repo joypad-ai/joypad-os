@@ -1,14 +1,14 @@
-// fisherprice.h - Fisher Price Controller GPIO Configuration
+// fisherprice.h - Fisher Price Controller Pad Configuration
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2024 Robert Dale Smith
 //
-// GPIO mappings for Fisher Price controller mod using KB2040.
+// Pin mappings for Fisher Price controller mod using KB2040.
 // Based on GP2040-CE kb2040-fisher-price branch configuration.
 
-#ifndef GPIO_CONFIG_FISHERPRICE_H
-#define GPIO_CONFIG_FISHERPRICE_H
+#ifndef PAD_CONFIG_FISHERPRICE_H
+#define PAD_CONFIG_FISHERPRICE_H
 
-#include "../gpio_input.h"
+#include "../pad_input.h"
 
 // ============================================================================
 // FISHER PRICE - BUTTON ONLY (Original mod)
@@ -16,13 +16,13 @@
 // KB2040 pin mapping for Fisher Price controller button mod.
 // Active high buttons (pressed = GPIO high, button connects to 3.3V)
 
-static const gpio_device_config_t gpio_config_fisherprice = {
+static const pad_device_config_t pad_config_fisherprice = {
     .name = "Fisher Price",
     .active_high = true,
 
     // No I2C expanders
-    .i2c_sda = GPIO_PIN_DISABLED,
-    .i2c_scl = GPIO_PIN_DISABLED,
+    .i2c_sda = PAD_PIN_DISABLED,
+    .i2c_scl = PAD_PIN_DISABLED,
 
     // D-pad
     .dpad_up    = 9,
@@ -48,21 +48,21 @@ static const gpio_device_config_t gpio_config_fisherprice = {
 
     // Stick clicks
     .l3 = 18,   // L3
-    .r3 = GPIO_PIN_DISABLED,
+    .r3 = PAD_PIN_DISABLED,
 
     // Home/Capture
-    .a1 = GPIO_PIN_DISABLED,
-    .a2 = GPIO_PIN_DISABLED,
+    .a1 = PAD_PIN_DISABLED,
+    .a2 = PAD_PIN_DISABLED,
 
     // Extra paddles
-    .l4 = GPIO_PIN_DISABLED,
-    .r4 = GPIO_PIN_DISABLED,
+    .l4 = PAD_PIN_DISABLED,
+    .r4 = PAD_PIN_DISABLED,
 
     // No analog sticks
-    .adc_lx = GPIO_PIN_DISABLED,
-    .adc_ly = GPIO_PIN_DISABLED,
-    .adc_rx = GPIO_PIN_DISABLED,
-    .adc_ry = GPIO_PIN_DISABLED,
+    .adc_lx = PAD_PIN_DISABLED,
+    .adc_ly = PAD_PIN_DISABLED,
+    .adc_rx = PAD_PIN_DISABLED,
+    .adc_ry = PAD_PIN_DISABLED,
 
     .invert_lx = false,
     .invert_ly = false,
@@ -81,13 +81,13 @@ static const gpio_device_config_t gpio_config_fisherprice = {
 // KB2040 pin mapping with analog stick added.
 // Based on GP2040-CE kb2040-analog-fisher-price branch.
 
-static const gpio_device_config_t gpio_config_fisherprice_analog = {
+static const pad_device_config_t pad_config_fisherprice_analog = {
     .name = "Fisher Price Analog",
     .active_high = true,
 
     // No I2C expanders
-    .i2c_sda = GPIO_PIN_DISABLED,
-    .i2c_scl = GPIO_PIN_DISABLED,
+    .i2c_sda = PAD_PIN_DISABLED,
+    .i2c_scl = PAD_PIN_DISABLED,
 
     // D-pad
     .dpad_up    = 9,
@@ -108,27 +108,27 @@ static const gpio_device_config_t gpio_config_fisherprice_analog = {
     .r2 = 7,    // RT / R2
 
     // Meta buttons (S1 disabled, S2 moved to GPIO 18)
-    .s1 = GPIO_PIN_DISABLED,
+    .s1 = PAD_PIN_DISABLED,
     .s2 = 18,   // Start
 
     // Stick clicks
-    .l3 = GPIO_PIN_DISABLED,
-    .r3 = GPIO_PIN_DISABLED,
+    .l3 = PAD_PIN_DISABLED,
+    .r3 = PAD_PIN_DISABLED,
 
     // Home/Capture
-    .a1 = GPIO_PIN_DISABLED,
-    .a2 = GPIO_PIN_DISABLED,
+    .a1 = PAD_PIN_DISABLED,
+    .a2 = PAD_PIN_DISABLED,
 
     // Extra paddles
-    .l4 = GPIO_PIN_DISABLED,
-    .r4 = GPIO_PIN_DISABLED,
+    .l4 = PAD_PIN_DISABLED,
+    .r4 = PAD_PIN_DISABLED,
 
     // Left analog stick on ADC
     // GPIO 26 = ADC0, GPIO 27 = ADC1
     .adc_lx = 0,    // ADC channel 0 (GPIO 26)
     .adc_ly = 1,    // ADC channel 1 (GPIO 27)
-    .adc_rx = GPIO_PIN_DISABLED,
-    .adc_ry = GPIO_PIN_DISABLED,
+    .adc_rx = PAD_PIN_DISABLED,
+    .adc_ry = PAD_PIN_DISABLED,
 
     .invert_lx = false,
     .invert_ly = true,  // Y inverted per GP2040-CE config
@@ -141,4 +141,4 @@ static const gpio_device_config_t gpio_config_fisherprice_analog = {
     .led_count = 1,
 };
 
-#endif // GPIO_CONFIG_FISHERPRICE_H
+#endif // PAD_CONFIG_FISHERPRICE_H

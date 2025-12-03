@@ -1,5 +1,5 @@
 // app.c - Universal Controller App
-// GPIO buttons → USB HID Gamepad output
+// Pad buttons → USB HID Gamepad output
 //
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2024 Robert Dale Smith
@@ -10,7 +10,7 @@
 #include "core/output_interface.h"
 #include "core/services/button/button.h"
 #include "core/services/leds/neopixel/ws2812.h"
-#include "gpio/gpio_input.h"
+#include "pad/pad_input.h"
 #include "usb/usbd/usbd.h"
 #include "tusb.h"
 #include "pico/stdlib.h"
@@ -21,20 +21,20 @@
 // ============================================================================
 
 #if defined(CONTROLLER_TYPE_FISHERPRICE)
-    #include "gpio/configs/fisherprice.h"
-    #define GPIO_CONFIG gpio_config_fisherprice
+    #include "pad/configs/fisherprice.h"
+    #define PAD_CONFIG pad_config_fisherprice
     #define CONTROLLER_NAME "Fisher Price"
 #elif defined(CONTROLLER_TYPE_FISHERPRICE_ANALOG)
-    #include "gpio/configs/fisherprice.h"
-    #define GPIO_CONFIG gpio_config_fisherprice_analog
+    #include "pad/configs/fisherprice.h"
+    #define PAD_CONFIG pad_config_fisherprice_analog
     #define CONTROLLER_NAME "Fisher Price Analog"
 #elif defined(CONTROLLER_TYPE_ALPAKKA)
-    #include "gpio/configs/alpakka.h"
-    #define GPIO_CONFIG gpio_config_alpakka
+    #include "pad/configs/alpakka.h"
+    #define PAD_CONFIG pad_config_alpakka
     #define CONTROLLER_NAME "Alpakka"
 #elif defined(CONTROLLER_TYPE_MACROPAD)
-    #include "gpio/configs/macropad.h"
-    #define GPIO_CONFIG gpio_config_macropad
+    #include "pad/configs/macropad.h"
+    #define PAD_CONFIG pad_config_macropad
     #define CONTROLLER_NAME "MacroPad"
 #else
     #error "No controller type defined! Define one of: CONTROLLER_TYPE_FISHERPRICE, CONTROLLER_TYPE_ALPAKKA, etc."
@@ -100,7 +100,7 @@ static void on_button_event(button_event_t event)
 // ============================================================================
 
 static const InputInterface* input_interfaces[] = {
-    &gpio_input_interface,
+    &pad_input_interface,
 };
 
 const InputInterface** app_get_input_interfaces(uint8_t* count)
@@ -135,25 +135,25 @@ void app_init(void)
     button_init();
     button_set_callback(on_button_event);
 
-    // Register GPIO device configuration BEFORE interface init
-    int dev_idx = gpio_input_add_device(&GPIO_CONFIG);
+    // Register pad device configuration BEFORE interface init
+    int dev_idx = pad_input_add_device(&PAD_CONFIG);
 
     if (dev_idx < 0) {
-        printf("[app:controller] ERROR: Failed to register GPIO device!\n");
+        printf("[app:controller] ERROR: Failed to register pad device!\n");
         return;
     }
 
-    printf("[app:controller] GPIO config: %s\n", GPIO_CONFIG.name);
+    printf("[app:controller] Pad config: %s\n", PAD_CONFIG.name);
 
-    // Set custom LED colors from GPIO config if defined
-    if (GPIO_CONFIG.led_count > 0) {
-        neopixel_set_custom_colors(GPIO_CONFIG.led_colors, GPIO_CONFIG.led_count);
+    // Set custom LED colors from pad config if defined
+    if (PAD_CONFIG.led_count > 0) {
+        neopixel_set_custom_colors(PAD_CONFIG.led_colors, PAD_CONFIG.led_count);
         if (neopixel_has_custom_colors()) {
-            printf("[app:controller] Using custom LED colors (%d LEDs)\n", GPIO_CONFIG.led_count);
+            printf("[app:controller] Using custom LED colors (%d LEDs)\n", PAD_CONFIG.led_count);
         }
     }
 
-    // Configure router for GPIO → USB Device
+    // Configure router for Pad → USB Device
     router_config_t router_cfg = {
         .mode = ROUTING_MODE_SIMPLE,
         .merge_mode = MERGE_PRIORITY,
@@ -166,11 +166,11 @@ void app_init(void)
     };
     router_init(&router_cfg);
 
-    // Add route: GPIO → USB Device
+    // Add route: Pad → USB Device
     router_add_route(INPUT_SOURCE_GPIO, OUTPUT_TARGET_USB_DEVICE, 0);
 
     printf("[app:controller] Initialization complete\n");
-    printf("[app:controller]   Routing: GPIO → USB Device (HID Gamepad)\n");
+    printf("[app:controller]   Routing: Pad → USB Device (HID Gamepad)\n");
     printf("[app:controller]   Double-click encoder button to switch USB mode\n");
 }
 

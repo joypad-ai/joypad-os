@@ -1,15 +1,15 @@
-// alpakka.h - Alpakka Controller GPIO Configuration
+// alpakka.h - Alpakka Controller Pad Configuration
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2024 Robert Dale Smith
 //
-// GPIO mappings for Alpakka 3D printed controller.
+// Pin mappings for Alpakka 3D printed controller.
 // Based on Input Labs Alpakka firmware pin definitions.
 // https://github.com/inputlabs/alpakka_firmware
 
-#ifndef GPIO_CONFIG_ALPAKKA_H
-#define GPIO_CONFIG_ALPAKKA_H
+#ifndef PAD_CONFIG_ALPAKKA_H
+#define PAD_CONFIG_ALPAKKA_H
 
-#include "../gpio_input.h"
+#include "../pad_input.h"
 
 // ============================================================================
 // ALPAKKA - Input Labs 3D Printed Controller
@@ -22,7 +22,7 @@
 //   100-115: I2C I/O expander 0 (address 0x20)
 //   200-215: I2C I/O expander 1 (address 0x21)
 
-static const gpio_device_config_t gpio_config_alpakka = {
+static const pad_device_config_t pad_config_alpakka = {
     .name = "Alpakka",
     .active_high = false,   // Pull-up buttons (pressed = low)
 
@@ -54,11 +54,11 @@ static const gpio_device_config_t gpio_config_alpakka = {
 
     // Stick clicks
     .l3 = 112,              // Left stick click (expander 0)
-    .r3 = GPIO_PIN_DISABLED, // No right stick
+    .r3 = PAD_PIN_DISABLED, // No right stick
 
     // Home (direct GPIO)
     .a1 = 20,               // Home / Guide (PIN_HOME)
-    .a2 = GPIO_PIN_DISABLED,
+    .a2 = PAD_PIN_DISABLED,
 
     // Extra paddles
     .l4 = 109,              // Left paddle (expander 0, PIN_L4)
@@ -68,8 +68,8 @@ static const gpio_device_config_t gpio_config_alpakka = {
     // Alpakka has single thumbstick on left side
     .adc_lx = 1,            // ADC channel 1 (GPIO 27, PIN_TX)
     .adc_ly = 0,            // ADC channel 0 (GPIO 26, PIN_TY)
-    .adc_rx = GPIO_PIN_DISABLED,
-    .adc_ry = GPIO_PIN_DISABLED,
+    .adc_rx = PAD_PIN_DISABLED,
+    .adc_ry = PAD_PIN_DISABLED,
 
     .invert_lx = false,
     .invert_ly = false,
@@ -78,8 +78,8 @@ static const gpio_device_config_t gpio_config_alpakka = {
     .deadzone = 10,
 
     // No NeoPixel on standard Alpakka (uses OLED + LEDs on GPIO 2-5)
-    .led_pin = GPIO_PIN_DISABLED,
+    .led_pin = PAD_PIN_DISABLED,
     .led_count = 0,
 };
 
-#endif // GPIO_CONFIG_ALPAKKA_H
+#endif // PAD_CONFIG_ALPAKKA_H

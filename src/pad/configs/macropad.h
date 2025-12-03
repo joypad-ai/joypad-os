@@ -1,8 +1,8 @@
-// macropad.h - Adafruit MacroPad RP2040 GPIO Configuration
+// macropad.h - Adafruit MacroPad RP2040 Pad Configuration
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2024 Robert Dale Smith
 //
-// GPIO mappings for Adafruit MacroPad RP2040.
+// Pin mappings for Adafruit MacroPad RP2040.
 // 12 mechanical keys in 4x3 grid + rotary encoder with button.
 //
 // Physical layout:
@@ -12,10 +12,10 @@
 //   [10][11][12]
 //   + Rotary encoder (button on GPIO 0)
 
-#ifndef GPIO_CONFIG_MACROPAD_H
-#define GPIO_CONFIG_MACROPAD_H
+#ifndef PAD_CONFIG_MACROPAD_H
+#define PAD_CONFIG_MACROPAD_H
 
-#include "../gpio_input.h"
+#include "../pad_input.h"
 
 // User button: Rotary encoder button (GPIO 0)
 // Set via BUTTON_USER_GPIO=0 in CMakeLists.txt
@@ -33,13 +33,13 @@
 //
 // Encoder button = Mode switch (double-click to cycle USB modes)
 
-static const gpio_device_config_t gpio_config_macropad = {
+static const pad_device_config_t pad_config_macropad = {
     .name = "MacroPad",
     .active_high = false,   // Keys have pull-ups (pressed = low)
 
     // No I2C expanders
-    .i2c_sda = GPIO_PIN_DISABLED,
-    .i2c_scl = GPIO_PIN_DISABLED,
+    .i2c_sda = PAD_PIN_DISABLED,
+    .i2c_scl = PAD_PIN_DISABLED,
 
     // D-pad (keys 1, 4, 5, 7)
     .dpad_up    = 5,         // Key 5
@@ -56,30 +56,30 @@ static const gpio_device_config_t gpio_config_macropad = {
     // Shoulder buttons (keys 3, 6)
     .l1 = 3,                 // LB / L1 (Key 3)
     .r1 = 6,                 // RB / R1 (Key 6)
-    .l2 = GPIO_PIN_DISABLED,
-    .r2 = GPIO_PIN_DISABLED,
+    .l2 = PAD_PIN_DISABLED,
+    .r2 = PAD_PIN_DISABLED,
 
     // Meta buttons (key 10)
     .s1 = 2,                 // Select / Back (Key 2)
     .s2 = 10,                // Start (Key 10)
 
     // No stick clicks
-    .l3 = GPIO_PIN_DISABLED,
-    .r3 = GPIO_PIN_DISABLED,
+    .l3 = PAD_PIN_DISABLED,
+    .r3 = PAD_PIN_DISABLED,
 
     // Aux buttons (unused)
     .a1 = 0,                // Home / Guide (Encoder button)
-    .a2 = GPIO_PIN_DISABLED,
+    .a2 = PAD_PIN_DISABLED,
 
     // Extra buttons (Key 2 unused)
-    .l4 = GPIO_PIN_DISABLED,
-    .r4 = GPIO_PIN_DISABLED,
+    .l4 = PAD_PIN_DISABLED,
+    .r4 = PAD_PIN_DISABLED,
 
     // No analog sticks
-    .adc_lx = GPIO_PIN_DISABLED,
-    .adc_ly = GPIO_PIN_DISABLED,
-    .adc_rx = GPIO_PIN_DISABLED,
-    .adc_ry = GPIO_PIN_DISABLED,
+    .adc_lx = PAD_PIN_DISABLED,
+    .adc_ly = PAD_PIN_DISABLED,
+    .adc_rx = PAD_PIN_DISABLED,
+    .adc_ry = PAD_PIN_DISABLED,
 
     .invert_lx = false,
     .invert_ly = false,
@@ -115,4 +115,4 @@ static const gpio_device_config_t gpio_config_macropad = {
     },
 };
 
-#endif // GPIO_CONFIG_MACROPAD_H
+#endif // PAD_CONFIG_MACROPAD_H
