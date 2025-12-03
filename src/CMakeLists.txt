@@ -362,6 +362,8 @@ target_sources(usbretro_controller_macropad PUBLIC # Controller app: MacroPad
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd/xgip_protocol.c  # Xbox One GIP protocol
     # Pad input driver
     ${CMAKE_CURRENT_SOURCE_DIR}/pad/pad_input.c
+    # Speaker driver for rumble feedback
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/services/speaker/speaker.c
     # App layer
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/controller/app.c
 )
@@ -556,6 +558,7 @@ target_link_libraries(usbretro_controller_macropad PRIVATE # Controller: MacroPa
     hardware_pio
     hardware_adc
     hardware_i2c
+    hardware_pwm
     tinyusb_device
     tinyusb_board
 )

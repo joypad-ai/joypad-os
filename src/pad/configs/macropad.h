@@ -113,6 +113,10 @@ static const pad_device_config_t pad_config_macropad = {
         { 64,   0,   0},  // Key 11: B       - Red (Xbox B)
         { 64,  64,   0},  // Key 12: Y       - Yellow (Xbox Y)
     },
+
+    // Speaker for haptic/rumble feedback
+    .speaker_pin = 16,          // Speaker on GPIO 16
+    .speaker_enable_pin = 14,   // Speaker shutdown on GPIO 14 (active high to enable)
 };
 
 #endif // PAD_CONFIG_MACROPAD_H

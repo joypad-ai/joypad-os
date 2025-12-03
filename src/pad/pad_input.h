@@ -103,6 +103,10 @@ typedef struct {
     // Per-LED colors (RGB, up to 16 LEDs)
     // If led_colors is NULL or all zeros, uses default pattern
     uint8_t led_colors[16][3];  // [led_index][R, G, B]
+
+    // Speaker/buzzer configuration (for haptic feedback)
+    int8_t speaker_pin;         // PWM output pin (PAD_PIN_DISABLED = not used)
+    int8_t speaker_enable_pin;  // Speaker enable/shutdown pin (PAD_PIN_DISABLED = always on)
 } pad_device_config_t;
 
 // ============================================================================

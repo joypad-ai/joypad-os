@@ -7,6 +7,9 @@
 #include <string.h>
 #include <stdio.h>
 
+// Forward declaration for auth passthrough check (weak - returns false if not linked)
+__attribute__((weak)) bool xbone_auth_is_available(void) { return false; }
+
 // ============================================================================
 // CONFIGURATION
 // ============================================================================
@@ -18,7 +21,8 @@
 
 #define REPORT_QUEUE_SIZE      16
 #define REPORT_QUEUE_INTERVAL  15    // ms between queued reports
-#define ANNOUNCE_DELAY         500   // ms before sending announce
+#define ANNOUNCE_DELAY         500   // ms minimum before sending announce
+#define ANNOUNCE_MAX_WAIT      5000  // ms maximum wait for auth controller
 #define ACK_WAIT_TIMEOUT       2000  // ms to wait for ACK
 
 // Vendor request types
@@ -369,8 +373,27 @@ void tud_xbone_update(void)
 
     switch (driver_state) {
         case XBONE_STATE_READY_ANNOUNCE:
-            // Wait 500ms before announcing
+            // Wait for minimum delay AND (auth controller ready OR max wait exceeded)
             if (now - timer_announce > ANNOUNCE_DELAY) {
+                bool auth_ready = xbone_auth_is_available();
+                bool max_wait_exceeded = (now - timer_announce > ANNOUNCE_MAX_WAIT);
+
+                if (!auth_ready && !max_wait_exceeded) {
+                    // Still waiting for auth controller
+                    static uint32_t last_wait_log = 0;
+                    if (now - last_wait_log > 1000) {
+                        printf("[tud_xbone] Waiting for auth passthrough controller...\n");
+                        last_wait_log = now;
+                    }
+                    break;
+                }
+
+                if (auth_ready) {
+                    printf("[tud_xbone] Auth passthrough controller ready, announcing to console\n");
+                } else {
+                    printf("[tud_xbone] Auth passthrough timeout, announcing without controller\n");
+                }
+
                 xgip_reset(&outgoing_xgip);
                 xgip_set_attributes(&outgoing_xgip, GIP_ANNOUNCE, 1, 1, 0, 0);
 

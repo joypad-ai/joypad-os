@@ -10,6 +10,7 @@
 #include "core/output_interface.h"
 #include "core/services/button/button.h"
 #include "core/services/leds/neopixel/ws2812.h"
+#include "core/services/speaker/speaker.h"
 #include "pad/pad_input.h"
 #include "usb/usbd/usbd.h"
 #include "tusb.h"
@@ -153,6 +154,12 @@ void app_init(void)
         }
     }
 
+    // Initialize speaker for haptic/rumble feedback if configured
+    if (PAD_CONFIG.speaker_pin != PAD_PIN_DISABLED) {
+        speaker_init(PAD_CONFIG.speaker_pin, PAD_CONFIG.speaker_enable_pin);
+        printf("[app:controller] Speaker initialized for rumble feedback\n");
+    }
+
     // Configure router for Pad → USB Device
     router_config_t router_cfg = {
         .mode = ROUTING_MODE_SIMPLE,
@@ -182,4 +189,10 @@ void app_task(void)
 {
     // Process button input for mode switching
     button_task();
+
+    // Handle rumble feedback via speaker (if initialized)
+    if (speaker_is_initialized() && usbd_output_interface.get_rumble) {
+        uint8_t rumble = usbd_output_interface.get_rumble();
+        speaker_set_rumble(rumble);
+    }
 }
