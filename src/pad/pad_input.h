@@ -107,6 +107,14 @@ typedef struct {
     // Speaker/buzzer configuration (for haptic feedback)
     int8_t speaker_pin;         // PWM output pin (PAD_PIN_DISABLED = not used)
     int8_t speaker_enable_pin;  // Speaker enable/shutdown pin (PAD_PIN_DISABLED = always on)
+
+    // Display configuration (SH1106 OLED over SPI)
+    int8_t display_spi;         // SPI instance (0 or 1, -1 = disabled)
+    int8_t display_sck;         // SPI clock pin
+    int8_t display_mosi;        // SPI data out pin
+    int8_t display_cs;          // Chip select pin
+    int8_t display_dc;          // Data/Command pin
+    int8_t display_rst;         // Reset pin
 } pad_device_config_t;
 
 // ============================================================================

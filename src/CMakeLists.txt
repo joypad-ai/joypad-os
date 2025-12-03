@@ -364,6 +364,8 @@ target_sources(usbretro_controller_macropad PUBLIC # Controller app: MacroPad
     ${CMAKE_CURRENT_SOURCE_DIR}/pad/pad_input.c
     # Speaker driver for rumble feedback
     ${CMAKE_CURRENT_SOURCE_DIR}/core/services/speaker/speaker.c
+    # Display driver for OLED status
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/services/display/display.c
     # App layer
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/controller/app.c
 )
@@ -559,6 +561,7 @@ target_link_libraries(usbretro_controller_macropad PRIVATE # Controller: MacroPa
     hardware_adc
     hardware_i2c
     hardware_pwm
+    hardware_spi
     tinyusb_device
     tinyusb_board
 )
