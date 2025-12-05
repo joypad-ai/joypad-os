@@ -54,6 +54,7 @@ add_executable(usbretro_3do) # For the usbretro_3do target
 add_executable(usbretro_snes3do) # For the usbretro_snes3do target (Super3D0USB)
 add_executable(usbretro_uart) # For the usbretro_uart target (USB2UART ESP32 bridge)
 add_executable(usbretro_usb) # For the usbretro_usb target (USB2USB HID gamepad output)
+add_executable(usbretro_usb_rp2040zero) # For the usbretro_usb target on rp2040zero (RP2040-Zero, D+ on GPIO 10)
 add_executable(usbretro_snes2usb) # For the usbretro_snes2usb target (SNES→USB HID gamepad)
 add_executable(usbretro_controller_fisherprice) # Controller app: Fisher Price (KB2040)
 add_executable(usbretro_controller_fisherprice_analog) # Controller app: Fisher Price Analog (KB2040)
@@ -101,6 +102,15 @@ target_compile_definitions(usbretro_usb PRIVATE
     PICO_DEFAULT_UART_TX_PIN=0
     PICO_DEFAULT_UART_RX_PIN=1
 )
+target_compile_definitions(usbretro_usb_rp2040zero PRIVATE
+    CONFIG_USB=1
+    # OGX-Mini (RP2040-Zero) PIO USB pins: D+ on GPIO 10, D- on GPIO 11
+    CONFIG_PIO_USB_DP_PIN=10
+    PICO_DEFAULT_PIO_USB_DP_PIN=10
+    BOARD_TUH_RHPORT=1
+    # NeoPixel on GPIO 16
+    WS2812_PIN=16
+)
 target_compile_definitions(usbretro_snes2usb PRIVATE CONFIG_SNES2USB=1 CONFIG_USB=1 DISABLE_USB_HOST=1)
 target_compile_definitions(usbretro_controller_fisherprice PRIVATE CONFIG_CONTROLLER=1 CONTROLLER_TYPE_FISHERPRICE=1 DISABLE_USB_HOST=1 BUTTON_USER_GPIO=${BOARD_BUTTON_GPIO})
 target_compile_definitions(usbretro_controller_fisherprice_analog PRIVATE CONFIG_CONTROLLER=1 CONTROLLER_TYPE_FISHERPRICE_ANALOG=1 DISABLE_USB_HOST=1 BUTTON_USER_GPIO=${BOARD_BUTTON_GPIO})
@@ -115,6 +125,7 @@ target_compile_options(usbretro_3do PRIVATE -O3) # Set optimization level to O3 
 target_compile_options(usbretro_snes3do PRIVATE -O3) # Set optimization level to O3 for your_target
 target_compile_options(usbretro_uart PRIVATE -O3) # Set optimization level to O3 for your_target
 target_compile_options(usbretro_usb PRIVATE -O3) # Set optimization level to O3 for your_target
+target_compile_options(usbretro_usb_rp2040zero PRIVATE -O3)
 target_compile_options(usbretro_snes2usb PRIVATE -O3) # Set optimization level to O3 for your_target
 target_compile_options(usbretro_controller_fisherprice PRIVATE -O3) # Set optimization level to O3 for your_target
 target_compile_options(usbretro_controller_fisherprice_analog PRIVATE -O3)
@@ -135,6 +146,7 @@ pico_add_extra_outputs(usbretro_3do)
 pico_add_extra_outputs(usbretro_snes3do)
 pico_add_extra_outputs(usbretro_uart)
 pico_add_extra_outputs(usbretro_usb)
+pico_add_extra_outputs(usbretro_usb_rp2040zero)
 pico_add_extra_outputs(usbretro_snes2usb)
 pico_add_extra_outputs(usbretro_controller_fisherprice)
 pico_add_extra_outputs(usbretro_controller_fisherprice_analog)
@@ -163,6 +175,7 @@ pico_generate_pio_header(usbretro_snes3do ${CMAKE_CURRENT_LIST_DIR}/native/devic
 pico_generate_pio_header(usbretro_snes3do ${CMAKE_CURRENT_LIST_DIR}/core/services/leds/neopixel/ws2812.pio )
 pico_generate_pio_header(usbretro_uart ${CMAKE_CURRENT_LIST_DIR}/core/services/leds/neopixel/ws2812.pio )
 pico_generate_pio_header(usbretro_usb ${CMAKE_CURRENT_LIST_DIR}/core/services/leds/neopixel/ws2812.pio )
+pico_generate_pio_header(usbretro_usb_rp2040zero ${CMAKE_CURRENT_LIST_DIR}/core/services/leds/neopixel/ws2812.pio )
 pico_generate_pio_header(usbretro_snes2usb ${CMAKE_CURRENT_LIST_DIR}/core/services/leds/neopixel/ws2812.pio )
 pico_generate_pio_header(usbretro_controller_fisherprice ${CMAKE_CURRENT_LIST_DIR}/core/services/leds/neopixel/ws2812.pio )
 pico_generate_pio_header(usbretro_controller_fisherprice_analog ${CMAKE_CURRENT_LIST_DIR}/core/services/leds/neopixel/ws2812.pio )
@@ -313,6 +326,17 @@ target_sources(usbretro_usb PUBLIC # For USB (USB→USB HID gamepad)
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd/tud_xbone.c  # Xbox One GIP class driver
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd/xgip_protocol.c  # Xbox One GIP protocol
     # Phase 5: App layer
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2usb/app.c
+)
+
+target_sources(usbretro_usb_rp2040zero PUBLIC # For USB on rp2040zero (RP2040-Zero)
+    ${COMMON_SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd/usbd.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd/cdc/cdc.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd/tud_xid.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd/tud_xinput.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd/tud_xbone.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd/xgip_protocol.c
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2usb/app.c
 )
 
@@ -475,6 +499,13 @@ target_include_directories(usbretro_usb PUBLIC # FOR USB
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd
 )
 
+target_include_directories(usbretro_usb_rp2040zero PUBLIC # FOR USB on rp2040zero
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/common
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2usb
+    ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd
+)
+
 target_include_directories(usbretro_snes2usb PUBLIC # FOR SNES2USB
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/common
@@ -573,6 +604,12 @@ target_link_libraries(usbretro_uart PRIVATE # FOR UART
 )
 
 target_link_libraries(usbretro_usb PRIVATE # FOR USB (dual-role: host on PIO, device on native)
+    ${COMMON_LIBRARIES}
+    tinyusb_device
+    tinyusb_pico_pio_usb
+)
+
+target_link_libraries(usbretro_usb_rp2040zero PRIVATE # FOR USB on rp2040zero (PIO host, native device)
     ${COMMON_LIBRARIES}
     tinyusb_device
     tinyusb_pico_pio_usb

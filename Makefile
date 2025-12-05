@@ -52,6 +52,7 @@ CONSOLE_loopy := usbretro_loopy
 CONSOLE_snes3do := usbretro_snes3do
 CONSOLE_uart := usbretro_uart
 CONSOLE_usb := usbretro_usb
+CONSOLE_usb_rp2040zero := usbretro_usb_rp2040zero
 CONSOLE_snes2usb := usbretro_snes2usb
 CONSOLE_controller_fisherprice := usbretro_controller_fisherprice
 CONSOLE_controller_fisherprice_analog := usbretro_controller_fisherprice_analog
@@ -68,6 +69,7 @@ APP_usb23do := rp2040zero 3do usb23do
 APP_snes23do := rp2040zero snes3do snes23do
 APP_usb2uart := kb2040 uart usb2uart
 APP_usb2usb := feather_usbhost usb usb2usb
+APP_usb2usb_rp2040zero := rp2040zero usb_rp2040zero usb2usb_rp2040zero
 APP_snes2usb := kb2040 snes2usb snes2usb
 APP_controller_fisherprice := kb2040 controller_fisherprice controller_fisherprice
 APP_controller_fisherprice_analog := kb2040 controller_fisherprice_analog controller_fisherprice_analog
@@ -75,7 +77,7 @@ APP_controller_alpakka := pico controller_alpakka controller_alpakka
 APP_controller_macropad := macropad controller_macropad controller_macropad
 
 # All apps (note: controller_macropad not included - build explicitly with 'make controller_macropad')
-APPS := usb2pce usb2gc usb2nuon usb2loopy usb23do snes23do usb2uart usb2usb snes2usb controller_fisherprice controller_alpakka
+APPS := usb2pce usb2gc usb2nuon usb2loopy usb23do snes23do usb2uart usb2usb usb2usb_rp2040zero snes2usb controller_fisherprice controller_alpakka
 
 # Stable apps for release (mature enough for public release)
 RELEASE_APPS := usb2pce usb2gc usb2nuon
@@ -120,6 +122,7 @@ help:
 	@echo "  make snes23do      - Build snes23do (RP2040 Zero + SNES->3DO)"
 	@echo "  make usb2uart      - Build usb2uart (KB2040 + UART ESP32 bridge)"
 	@echo "  make usb2usb       - Build usb2usb (Feather USB Host + USB HID gamepad)"
+	@echo "  make usb2usb_rp2040zero - Build usb2usb for rp2040zero (RP2040-Zero + USB HID gamepad)"
 	@echo "  make snes2usb      - Build snes2usb (KB2040 + SNES→USB HID gamepad)"
 	@echo "  make controller_fisherprice - Build controller_fisherprice (KB2040 + GPIO→USB HID gamepad)"
 	@echo "  make controller_fisherprice_analog - Build controller_fisherprice_analog (KB2040 + ADC analog stick)"
@@ -227,6 +230,10 @@ usb2uart:
 .PHONY: usb2usb
 usb2usb:
 	$(call build_app,usb2usb)
+
+.PHONY: usb2usb_rp2040zero
+usb2usb_rp2040zero:
+	$(call build_app,usb2usb_rp2040zero)
 
 .PHONY: snes2usb
 snes2usb:

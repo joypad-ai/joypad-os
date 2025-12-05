@@ -26,10 +26,14 @@ extern void xinput_task(void);
 #include "btd/btd.h"
 #endif
 
-// Feather RP2040 USB Host board pin definitions
-#ifdef ADAFRUIT_FEATHER_RP2040_USB_HOST
-#define PIO_USB_VBUS_PIN    18  // VBUS enable for USB-A port
-#define PIO_USB_DP_PIN      16  // D+ pin for PIO USB
+// PIO USB pin definitions (configurable per board)
+#if defined(CONFIG_PIO_USB_DP_PIN)
+    // Use CMake-configured pin (e.g., rp2040zero, custom boards)
+    #define PIO_USB_DP_PIN      CONFIG_PIO_USB_DP_PIN
+#elif defined(ADAFRUIT_FEATHER_RP2040_USB_HOST)
+    // Feather RP2040 USB Host board
+    #define PIO_USB_VBUS_PIN    18  // VBUS enable for USB-A port
+    #define PIO_USB_DP_PIN      16  // D+ pin for PIO USB
 #endif
 
 void usbh_init(void)
