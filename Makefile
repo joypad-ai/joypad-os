@@ -145,6 +145,7 @@ help:
 	@echo "  make flash-snes23do - Flash snes23do firmware"
 	@echo "  make flash-usb2uart - Flash usb2uart firmware"
 	@echo "  make flash-usb2usb - Flash usb2usb firmware"
+	@echo "  make flash-usb2usb_rp2040zero - Flash usb2usb_rp2040zero firmware"
 	@echo "  make flash-snes2usb - Flash snes2usb firmware"
 	@echo "  make flash-controller_fisherprice - Flash controller_fisherprice firmware"
 	@echo "  make flash-controller_fisherprice_analog - Flash controller_fisherprice_analog firmware"
@@ -381,6 +382,10 @@ flash-usb2uart:
 .PHONY: flash-usb2usb
 flash-usb2usb:
 	@$(MAKE) --no-print-directory _flash_app APP_NAME=usb2usb
+
+.PHONY: flash-usb2usb_rp2040zero
+flash-usb2usb_rp2040zero:
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=usb2usb_rp2040zero
 
 .PHONY: flash-snes2usb
 flash-snes2usb:
