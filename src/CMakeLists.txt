@@ -110,6 +110,8 @@ target_compile_definitions(usbretro_usb_rp2040zero PRIVATE
     BOARD_TUH_RHPORT=1
     # NeoPixel on GPIO 16
     WS2812_PIN=16
+    # User button on GPIO 14 (active low, wire button between GPIO14 and GND)
+    BUTTON_USER_GPIO=14
 )
 target_compile_definitions(usbretro_snes2usb PRIVATE CONFIG_SNES2USB=1 CONFIG_USB=1 DISABLE_USB_HOST=1)
 target_compile_definitions(usbretro_controller_fisherprice PRIVATE CONFIG_CONTROLLER=1 CONTROLLER_TYPE_FISHERPRICE=1 DISABLE_USB_HOST=1 BUTTON_USER_GPIO=${BOARD_BUTTON_GPIO})
