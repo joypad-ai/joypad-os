@@ -7,6 +7,12 @@
 #include "hardware/gpio.h"
 #include <stdio.h>
 
+#ifdef USE_BOOTSEL_BUTTON
+#include "hardware/sync.h"
+#include "hardware/structs/ioqspi.h"
+#include "hardware/structs/sio.h"
+#endif
+
 // ============================================================================
 // STATE
 // ============================================================================
@@ -32,10 +38,46 @@ static bool double_click_fired = false; // Track if double-click was just fired
 // INTERNAL HELPERS
 // ============================================================================
 
+#ifdef USE_BOOTSEL_BUTTON
+// Read BOOTSEL button state (on QSPI CS pin)
+// Based on pico-examples/picoboard/button/button.c
+static bool __no_inline_not_in_flash_func(get_bootsel_button)(void)
+{
+    const uint CS_PIN_INDEX = 1;
+
+    // Disable interrupts - we can't access flash during this
+    uint32_t flags = save_and_disable_interrupts();
+
+    // Set chip select to Hi-Z (float)
+    hw_write_masked(&ioqspi_hw->io[CS_PIN_INDEX].ctrl,
+                    GPIO_OVERRIDE_LOW << IO_QSPI_GPIO_QSPI_SS_CTRL_OEOVER_LSB,
+                    IO_QSPI_GPIO_QSPI_SS_CTRL_OEOVER_BITS);
+
+    // Wait for pin to stabilize
+    for (volatile int i = 0; i < 1000; ++i);
+
+    // Read pin state (button pulls low when pressed)
+    bool button_state = !(sio_hw->gpio_hi_in & (1u << CS_PIN_INDEX));
+
+    // Restore chip select to normal operation
+    hw_write_masked(&ioqspi_hw->io[CS_PIN_INDEX].ctrl,
+                    GPIO_OVERRIDE_NORMAL << IO_QSPI_GPIO_QSPI_SS_CTRL_OEOVER_LSB,
+                    IO_QSPI_GPIO_QSPI_SS_CTRL_OEOVER_BITS);
+
+    restore_interrupts(flags);
+
+    return button_state;
+}
+#endif
+
 // Read debounced button state (active low - pressed = GPIO low)
 static bool read_button_debounced(void)
 {
+#ifdef USE_BOOTSEL_BUTTON
+    bool raw = get_bootsel_button();
+#else
     bool raw = !gpio_get(BUTTON_USER_GPIO);  // Active low
+#endif
     absolute_time_t now = get_absolute_time();
 
     if (raw != last_raw_state) {
@@ -79,12 +121,17 @@ static button_event_t fire_event(button_event_t event)
 
 void button_init(void)
 {
+#ifdef USE_BOOTSEL_BUTTON
+    printf("[button] Initializing BOOTSEL button\n");
+    // No GPIO init needed - BOOTSEL is on QSPI CS pin
+#else
     printf("[button] Initializing on GPIO %d\n", BUTTON_USER_GPIO);
 
     // Configure GPIO as input with pull-up (button connects to GND)
     gpio_init(BUTTON_USER_GPIO);
     gpio_set_dir(BUTTON_USER_GPIO, GPIO_IN);
     gpio_pull_up(BUTTON_USER_GPIO);
+#endif
 
     // Initialize state
     state = STATE_IDLE;
