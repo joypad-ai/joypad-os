@@ -40,27 +40,76 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Get commit hash
+        id: commit
+        run: echo "hash=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+
       - name: Build all apps
         run: |
           echo "Building all apps..."
+          COMMIT_HASH=${{ steps.commit.outputs.hash }}
 
           docker run --rm \
             -v ${{ github.workspace }}:/workspace \
             -w /workspace \
+            -e GIT_COMMIT=${COMMIT_HASH} \
             usbretro:latest /bin/bash -c "make all"
 
           # Fix permissions (Docker creates files as root)
           sudo chown -R $(id -u):$(id -g) releases/
 
-      - name: Get commit hash
-        id: commit
-        run: echo "hash=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+      - name: Organize artifacts by board
+        run: |
+          mkdir -p artifacts
+          COMMIT_HASH=${{ steps.commit.outputs.hash }}
 
-      - name: Upload build artifacts
+          # Group files by board and create zip for each
+          for board in kb2040 pico rp2040zero feather_usbhost macropad qtpy; do
+            board_files=$(ls releases/usbr_*_${board}_*.uf2 2>/dev/null || true)
+            if [ -n "$board_files" ]; then
+              mkdir -p "artifacts/${board}"
+              cp $board_files "artifacts/${board}/"
+              echo "Created ${board} artifact with: $board_files"
+            fi
+          done
+
+          echo "Artifact structure:"
+          find artifacts -type f -name "*.uf2"
+
+      - name: Upload kb2040 artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: usbretro_${{ steps.commit.outputs.hash }}
-          path: releases/*.uf2
+          name: usbretro_${{ steps.commit.outputs.hash }}_kb2040
+          path: artifacts/kb2040/*.uf2
+          if-no-files-found: ignore
+
+      - name: Upload pico artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: usbretro_${{ steps.commit.outputs.hash }}_pico
+          path: artifacts/pico/*.uf2
+          if-no-files-found: ignore
+
+      - name: Upload rp2040zero artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: usbretro_${{ steps.commit.outputs.hash }}_rp2040zero
+          path: artifacts/rp2040zero/*.uf2
+          if-no-files-found: ignore
+
+      - name: Upload feather_usbhost artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: usbretro_${{ steps.commit.outputs.hash }}_feather_usbhost
+          path: artifacts/feather_usbhost/*.uf2
+          if-no-files-found: ignore
+
+      - name: Upload macropad artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: usbretro_${{ steps.commit.outputs.hash }}_macropad
+          path: artifacts/macropad/*.uf2
+          if-no-files-found: ignore
 
       - name: Build summary
         run: |

@@ -84,7 +84,8 @@ RELEASE_APPS := usb2pce usb2gc usb2nuon
 RELEASE_DIR := releases
 
 # Get git commit hash (short, 7 chars)
-GIT_COMMIT := $(shell git rev-parse --short=7 HEAD 2>/dev/null || echo "unknown")
+# Can be overridden via environment variable for Docker/CI builds
+GIT_COMMIT ?= $(shell git rev-parse --short=7 HEAD 2>/dev/null || echo "unknown")
 
 # Version identifier (use VERSION file if RELEASE_VERSION is set, otherwise commit hash)
 ifdef RELEASE_VERSION
@@ -177,7 +178,7 @@ init:
 build: all
 
 # Generic app build function
-# Output naming: usbr_<version|commit>_<app>.uf2
+# Output naming: usbr_<version|commit>_<board>_<app>.uf2
 define build_app
 	@echo "$(YELLOW)Building $1...$(NC)"
 	@echo "  Board:   $(word 1,$(APP_$1))"
@@ -188,9 +189,9 @@ define build_app
 	@cd src/build && $(MAKE) --no-print-directory $(CONSOLE_$(word 2,$(APP_$1))) -j4
 	@mkdir -p $(RELEASE_DIR)
 	@cp src/build/$(CONSOLE_$(word 2,$(APP_$1))).uf2 \
-	    $(RELEASE_DIR)/usbr_$(VERSION_ID)_$(word 3,$(APP_$1)).uf2
+	    $(RELEASE_DIR)/usbr_$(VERSION_ID)_$(word 1,$(APP_$1))_$(word 3,$(APP_$1)).uf2
 	@echo "$(GREEN)✓ $1 built successfully$(NC)"
-	@echo "  Output: $(RELEASE_DIR)/usbr_$(VERSION_ID)_$(word 3,$(APP_$1)).uf2"
+	@echo "  Output: $(RELEASE_DIR)/usbr_$(VERSION_ID)_$(word 1,$(APP_$1))_$(word 3,$(APP_$1)).uf2"
 	@echo ""
 endef
 
