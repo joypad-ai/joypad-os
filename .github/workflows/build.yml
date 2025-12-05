@@ -2,7 +2,7 @@ name: Build & Release
 
 on:
   push:
-    branches: [main, build-matrix]
+    branches: [main]
   workflow_dispatch:
     inputs:
       bump_version:
@@ -17,8 +17,65 @@ on:
           - major
 
 jobs:
-  # Check version and optionally bump it
+  # Build all apps (runs on every push)
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code with submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and cache Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          load: true
+          tags: usbretro:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build all apps
+        run: |
+          echo "Building all apps..."
+
+          docker run --rm \
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace \
+            usbretro:latest /bin/bash -c "make all"
+
+          # Fix permissions (Docker creates files as root)
+          sudo chown -R $(id -u):$(id -g) releases/
+
+      - name: Get commit hash
+        id: commit
+        run: echo "hash=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: usbretro_${{ steps.commit.outputs.hash }}
+          path: releases/*.uf2
+
+      - name: Build summary
+        run: |
+          echo "### ✅ Build Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${{ steps.commit.outputs.hash }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Built firmware:**" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          ls -lh releases/*.uf2 >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
+  # Check version and optionally bump it (only on manual trigger)
   check-version:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -33,7 +90,7 @@ jobs:
           fetch-depth: 0
 
       - name: Bump version (if requested)
-        if: github.event_name == 'workflow_dispatch' && github.event.inputs.bump_version != 'none'
+        if: github.event.inputs.bump_version != 'none'
         id: bump
         run: |
           CURRENT_VERSION=$(cat VERSION | tr -d '[:space:]')
@@ -60,9 +117,10 @@ jobs:
           NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
           echo "New version: $NEW_VERSION"
           echo "$NEW_VERSION" > VERSION
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
 
       - name: Commit and push version bump
-        if: github.event_name == 'workflow_dispatch' && github.event.inputs.bump_version != 'none'
+        if: github.event.inputs.bump_version != 'none'
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "Bump version to ${{ steps.bump.outputs.new_version }}"
@@ -86,53 +144,20 @@ jobs:
           # Check if version tag exists
           if git rev-parse "v${VERSION}" >/dev/null 2>&1; then
             echo "⏭️  Version v${VERSION} already has a release"
-            SHOULD_RELEASE=false
+            echo "should_release=false" >> $GITHUB_OUTPUT
           else
             echo "✅ Version v${VERSION} does not have a release"
-            SHOULD_RELEASE=true
-          fi
-
-          # Only release on manual trigger AND version doesn't have tag
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ] && [ "$SHOULD_RELEASE" == "true" ]; then
             echo "should_release=true" >> $GITHUB_OUTPUT
             echo "🚀 Will create release for v${VERSION}"
-          else
-            echo "should_release=false" >> $GITHUB_OUTPUT
-            echo "⏭️  Skipping release"
           fi
 
-  # Build Docker image once (shared by all matrix jobs)
-  build-docker:
-    needs: [check-version]
+  # Create GitHub Release (only on manual trigger when version is new)
+  create-release:
+    needs: [build, check-version]
+    if: needs.check-version.outputs.should_release == 'true'
     runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code with submodules
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build and cache Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: false
-          load: true
-          tags: usbretro:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-  # Build all products (matrix: 4 boards)
-  build:
-    needs: [build-docker]
-    runs-on: ubuntu-latest
-
-    strategy:
-      matrix:
-        board: [rpi_pico, ada_qtpy, ada_kb2040, waveshare_rp2040_zero]
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout code with submodules
@@ -151,95 +176,29 @@ jobs:
           tags: usbretro:latest
           cache-from: type=gha
 
-      - name: Compile all apps for ${{ matrix.board }}
+      - name: Build release apps
         run: |
-          echo "Building all apps for ${{ matrix.board }}..."
+          VERSION="${{ needs.check-version.outputs.version }}"
+          echo "Building release apps for v${VERSION}..."
 
           docker run --rm \
-            -v ${{ github.workspace }}/src/build:/root/workspace/USBRetro/src/build \
-            usbretro:latest /bin/bash -c "
-              cd /root/workspace/USBRetro/src &&
-              sh build_${{ matrix.board }}.sh &&
-              cd build &&
-              cmake .. &&
-              make usbretro_pce usbretro_ngc usbretro_nuon usbretro_xb1 usbretro_loopy usbretro_3do -j4
-            "
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace \
+            -e RELEASE_VERSION=${VERSION} \
+            usbretro:latest /bin/bash -c "make releases"
 
-          # Fix permissions (Docker creates files as root)
-          sudo chown -R $(id -u):$(id -g) src/build/
-
-      - name: Rename firmware with commit hash and board
-        run: |
-          COMMIT_HASH=$(echo ${{ github.sha }} | cut -c1-7)
-          echo "COMMIT_HASH=${COMMIT_HASH}" >> $GITHUB_ENV
-          mkdir -p artifacts
-
-          # Map console names to app names
-          declare -A APP_NAMES
-          APP_NAMES[pce]="usb2pce"
-          APP_NAMES[ngc]="usb2gc"
-          APP_NAMES[nuon]="usb2nuon"
-          APP_NAMES[xb1]="usb2xb1"
-          APP_NAMES[loopy]="usb2loopy"
-          APP_NAMES[3do]="usb23do"
-
-          # Rename all .uf2 files: usbr_<commit>_<board>_<app>.uf2
-          for file in src/build/*.uf2; do
-            if [ -f "$file" ]; then
-              filename=$(basename "$file" .uf2)
-              # Extract console name from filename (e.g., usbretro_pce -> pce)
-              console=$(echo "$filename" | sed 's/usbretro_//')
-              app_name="${APP_NAMES[$console]:-$console}"
-              mv "$file" "artifacts/usbr_${COMMIT_HASH}_${{ matrix.board }}_${app_name}.uf2"
-            fi
-          done
-
-          echo "Renamed firmware files for ${{ matrix.board }}:"
-          ls -lh artifacts/
-
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: usbretro_${{ env.COMMIT_HASH }}_${{ matrix.board }}
-          path: artifacts/*.uf2
-
-  # Create GitHub Release (only if check-version says we should)
-  create-release:
-    needs: [check-version, build]
-    if: needs.check-version.outputs.should_release == 'true' && needs.build.result == 'success'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Download kb2040 artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern: usbretro_*_ada_kb2040
-          path: artifacts
+          # Fix permissions
+          sudo chown -R $(id -u):$(id -g) releases/
 
       - name: Prepare release package
         run: |
-          mkdir -p release
           VERSION="${{ needs.check-version.outputs.version }}"
-
-          echo "📦 Preparing v${VERSION} release from kb2040 builds:"
-
-          # Find and rename the stable app firmware files: usbr_<version>_<app>.uf2
-          find artifacts -name "usbr_*_ada_kb2040_usb2pce.uf2" -exec cp {} release/usbr_${VERSION}_usb2pce.uf2 \;
-          find artifacts -name "usbr_*_ada_kb2040_usb2gc.uf2" -exec cp {} release/usbr_${VERSION}_usb2gc.uf2 \;
-          find artifacts -name "usbr_*_ada_kb2040_usb2nuon.uf2" -exec cp {} release/usbr_${VERSION}_usb2nuon.uf2 \;
-
-          echo ""
-          echo "✅ Release package contents:"
-          ls -lh release/
+          echo "📦 Preparing v${VERSION} release:"
+          ls -lh releases/
 
           # Create checksums
-          cd release
-          sha256sum * > checksums.txt
+          cd releases
+          sha256sum *.uf2 > checksums.txt
           echo ""
           echo "🔐 Checksums:"
           cat checksums.txt
@@ -252,19 +211,21 @@ jobs:
           body: |
             ## Installation
 
-            **usb2pce / usb2nuon:**
             1. Disconnect adapter from console and all USB devices
             2. Hold BOOT button while connecting USB-C to computer
-            3. Drag & drop `.uf2` file to `RPI-RP2` drive
+               - For usb2gc: just connect USB-C (no BOOT button needed)
+            3. Drag & drop the `.uf2` file to the `RPI-RP2` drive
             4. Drive will auto-eject when complete
 
-            **usb2gc:**
-            1. Disconnect adapter from console and all USB devices
-            2. Connect USB-C to computer (no BOOT button needed)
-            3. Drag & drop `.uf2` file to `RPI-RP2` drive
-            4. Drive will auto-eject when complete
+            ## Products
+
+            | Firmware | Console | Board |
+            |----------|---------|-------|
+            | usb2pce | PC Engine / TurboGrafx-16 | KB2040 |
+            | usb2gc | Nintendo GameCube | KB2040 |
+            | usb2nuon | VM Labs Nuon | KB2040 |
           files: |
-            release/*
+            releases/*
           draft: false
           prerelease: false
         env:
@@ -276,9 +237,8 @@ jobs:
           echo "### ✅ Release v${VERSION} Created" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Version:** \`v${VERSION}\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Apps:** usb2pce, usb2gc, usb2nuon" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "📦 **Release contents:**" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          ls -lh release/ >> $GITHUB_STEP_SUMMARY
+          ls -lh releases/ >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY

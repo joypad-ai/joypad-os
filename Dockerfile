@@ -16,21 +16,7 @@ RUN apt update && \
     apt clean && \
     rm -rf /var/lib/apt/lists/*
 
-RUN mkdir -p /root/workspace/USBRetro
-WORKDIR /root/workspace/USBRetro
-
-# Copy project with submodules (pico-sdk already initialized by host)
-COPY . .
-
-# Initialize submodules and pin versions (pico-sdk 2.2.0, TinyUSB 0.19.0)
-RUN make init
-
-# Set pico-sdk path to local submodule
-ENV PICO_SDK_PATH=/root/workspace/USBRetro/src/lib/pico-sdk
-
-# Use external TinyUSB (keeps pico-sdk clean)
-ENV PICO_TINYUSB_PATH=/root/workspace/USBRetro/src/lib/tinyusb
-
-WORKDIR /root/workspace/USBRetro/src
+# Build environment only - code is mounted at runtime
+WORKDIR /workspace
 
 CMD ["/bin/bash"]
