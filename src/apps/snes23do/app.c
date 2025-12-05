@@ -84,3 +84,12 @@ void app_init(void)
            SNES_PIN_CLOCK, SNES_PIN_LATCH, SNES_PIN_DATA0,
            SNES_PIN_DATA1, SNES_PIN_IOBIT);
 }
+
+// ============================================================================
+// APP TASK (Optional - called from main loop)
+// ============================================================================
+
+void app_task(void)
+{
+    // No periodic tasks needed for SNES23DO
+}
