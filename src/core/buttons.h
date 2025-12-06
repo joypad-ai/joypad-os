@@ -18,8 +18,11 @@
 #define USBR_BUTTON_S2 0x00080 // Start/Plus/Options
 #define USBR_BUTTON_L3 0x10000 // LS/L3
 #define USBR_BUTTON_R3 0x20000 // RS/R3
-#define USBR_BUTTON_A1 0x00400 // Guide/Home/PS
-#define USBR_BUTTON_A2 0x00800 // Capture/Touchpad
+#define USBR_BUTTON_A1 0x00400  // Guide/Home/PS
+#define USBR_BUTTON_A2 0x00800  // Capture/Touchpad
+#define USBR_BUTTON_A3 0x100000 // Mute (DS5)
+#define USBR_BUTTON_L4 0x40000  // Rear Left/Paddle/Touchpad Left
+#define USBR_BUTTON_R4 0x80000  // Rear Right/Paddle/Touchpad Right
 
 // USBRetro Dpad Directions
 #define USBR_BUTTON_DU 0x00001 // Dpad Up

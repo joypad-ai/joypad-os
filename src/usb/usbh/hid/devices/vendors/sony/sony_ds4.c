@@ -164,6 +164,10 @@ void input_sony_ds4(uint8_t dev_addr, uint8_t instance, uint8_t const* report, u
       bool dpad_down  = ((ds4_report.dpad >= 3 && ds4_report.dpad <= 5));
       bool dpad_left  = ((ds4_report.dpad >= 5 && ds4_report.dpad <= 7));
 
+      // Touchpad left/right click detection (touchpad is ~1920 wide, center at 960)
+      bool tpad_left = ds4_report.tpad && !ds4_report.tpad_f1_down && tx < 960;
+      bool tpad_right = ds4_report.tpad && !ds4_report.tpad_f1_down && tx >= 960;
+
       buttons = (((dpad_up)             ? USBR_BUTTON_DU : 0) |
                  ((dpad_down)           ? USBR_BUTTON_DD : 0) |
                  ((dpad_left)           ? USBR_BUTTON_DL : 0) |
@@ -181,7 +185,9 @@ void input_sony_ds4(uint8_t dev_addr, uint8_t instance, uint8_t const* report, u
                  ((ds4_report.l3)       ? USBR_BUTTON_L3 : 0) |
                  ((ds4_report.r3)       ? USBR_BUTTON_R3 : 0) |
                  ((ds4_report.ps)       ? USBR_BUTTON_A1 : 0) |
-                 ((ds4_report.tpad)     ? USBR_BUTTON_A2 : 0));
+                 ((ds4_report.tpad)     ? USBR_BUTTON_A2 : 0) |
+                 ((tpad_left)           ? USBR_BUTTON_L4 : 0) |
+                 ((tpad_right)          ? USBR_BUTTON_R4 : 0));
 
       uint8_t analog_1x = ds4_report.x;
       uint8_t analog_1y = 255 - ds4_report.y;

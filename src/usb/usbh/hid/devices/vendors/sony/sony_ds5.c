@@ -113,6 +113,10 @@ void input_sony_ds5(uint8_t dev_addr, uint8_t instance, uint8_t const* report, u
       bool dpad_down  = (ds5_report.dpad >= 3 && ds5_report.dpad <= 5);
       bool dpad_left  = (ds5_report.dpad >= 5 && ds5_report.dpad <= 7);
 
+      // Touchpad left/right click detection (touchpad is ~1920 wide, center at 960)
+      bool tpad_left = ds5_report.tpad && !ds5_report.tpad_f1_down && tx < 960;
+      bool tpad_right = ds5_report.tpad && !ds5_report.tpad_f1_down && tx >= 960;
+
       buttons = (((dpad_up)             ? USBR_BUTTON_DU : 0) |
                  ((dpad_down)           ? USBR_BUTTON_DD : 0) |
                  ((dpad_left)           ? USBR_BUTTON_DL : 0) |
@@ -130,7 +134,10 @@ void input_sony_ds5(uint8_t dev_addr, uint8_t instance, uint8_t const* report, u
                  ((ds5_report.l3)       ? USBR_BUTTON_L3 : 0) |
                  ((ds5_report.r3)       ? USBR_BUTTON_R3 : 0) |
                  ((ds5_report.ps)       ? USBR_BUTTON_A1 : 0) |
-                 ((ds5_report.tpad)     ? USBR_BUTTON_A2 : 0));
+                 ((ds5_report.tpad)     ? USBR_BUTTON_A2 : 0) |
+                 ((ds5_report.mute)     ? USBR_BUTTON_A3 : 0) |
+                 ((tpad_left)           ? USBR_BUTTON_L4 : 0) |
+                 ((tpad_right)          ? USBR_BUTTON_R4 : 0));
 
       // Touch Pad - provides mouse-like delta for horizontal swipes
       // Can be used for spinners, camera control, etc. (platform-agnostic)
