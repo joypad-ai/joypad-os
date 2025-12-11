@@ -1617,10 +1617,23 @@ void tud_hid_set_report_cb(uint8_t itf, uint8_t report_id, hid_report_type_t rep
     (void)report_type;
 
     // PS3 output report (rumble/LED)
-    if (output_mode == USB_OUTPUT_MODE_PS3 && bufsize >= sizeof(ps3_out_report_t)) {
-        memcpy(&ps3_output, buffer, sizeof(ps3_out_report_t));
-        ps3_output_available = true;
-        return;
+    // Note: Some hosts (like WebHID) may include report ID in buffer, some don't
+    // Check if buffer starts with report ID 0x01 and skip it if so
+    if (output_mode == USB_OUTPUT_MODE_PS3) {
+        const uint8_t* data = buffer;
+        uint16_t len = bufsize;
+
+        // If buffer is 49 bytes and starts with 0x01, it includes report ID - skip it
+        if (bufsize == 49 && buffer[0] == 0x01) {
+            data = buffer + 1;
+            len = 48;
+        }
+
+        if (len >= sizeof(ps3_out_report_t)) {
+            memcpy(&ps3_output, data, sizeof(ps3_out_report_t));
+            ps3_output_available = true;
+            return;
+        }
     }
 
     // PS4 output report (rumble/LED) - Report ID 5
