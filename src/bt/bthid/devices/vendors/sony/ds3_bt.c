@@ -13,6 +13,7 @@
 #include "core/router/router.h"
 #include "core/buttons.h"
 #include "core/services/players/manager.h"
+#include "core/services/players/feedback.h"
 #include "pico/time.h"
 #include <string.h>
 #include <stdio.h>
@@ -167,10 +168,10 @@ static void ds3_send_output(bthid_device_t* device, uint8_t leds, uint8_t rumble
     report.transaction_type = 0x52;  // SET_REPORT | Output
     report.report_id = 0x01;
 
-    // Rumble
+    // Rumble - DS3 has weak (right) and strong (left) motors
     if (rumble_right) {
         report.rumble_right_duration = 0xFE;
-        report.rumble_right_force = 0xFF;
+        report.rumble_right_force = rumble_right;
     }
     if (rumble_left) {
         report.rumble_left_duration = 0xFE;
@@ -349,15 +350,28 @@ static void ds3_task(bthid_device_t* device)
             }
             break;
 
-        case 2:  // Activated - monitor player LED
+        case 2:  // Activated - monitor player LED and rumble
             {
                 int player_idx = find_player_index(ds3->event.dev_addr, ds3->event.instance);
                 if (player_idx >= 0) {
-                    // DS3 LED bits are shifted left by 1 (bits 1-4, not 0-3)
+                    feedback_state_t* fb = feedback_get_state(player_idx);
+                    bool need_update = false;
+
+                    // Check LED
                     uint8_t led = PLAYER_LEDS[player_idx + 1] << 1;
                     if (led != ds3->player_led) {
                         ds3->player_led = led;
-                        ds3_send_output(device, led, 0, 0);
+                        need_update = true;
+                    }
+
+                    // Check rumble
+                    if (fb->rumble_dirty) {
+                        need_update = true;
+                    }
+
+                    if (need_update) {
+                        ds3_send_output(device, ds3->player_led, fb->rumble.left, fb->rumble.right);
+                        feedback_clear_dirty(player_idx);
                     }
                 }
             }
