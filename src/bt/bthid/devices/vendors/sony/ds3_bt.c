@@ -13,6 +13,7 @@
 #include "core/router/router.h"
 #include "core/buttons.h"
 #include "core/services/players/manager.h"
+#include "pico/time.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -61,39 +62,41 @@ typedef struct __attribute__((packed)) {
     uint8_t reserved4[27];       // bytes 21-47 (battery, accelerometer etc)
 } ds3_bt_input_report_t;         // Total: 48 bytes
 
-// DS3 BT output report (for rumble/LED)
+// DS3 BT output report (for rumble/LED) - matches USB Host Shield PS3_REPORT_BUFFER
+// Total: 50 bytes (2 byte header + 48 byte report)
 typedef struct __attribute__((packed)) {
     uint8_t transaction_type;   // 0x52 = SET_REPORT Output
     uint8_t report_id;          // 0x01
-    uint8_t reserved1;
 
-    // Rumble
-    uint8_t rumble_right_duration;
-    uint8_t rumble_right_force;
-    uint8_t rumble_left_duration;
-    uint8_t rumble_left_force;
+    // Padding (bytes 2-11)
+    uint8_t padding1;           // byte 2
+    uint8_t rumble_right_duration;  // byte 3
+    uint8_t rumble_right_force;     // byte 4
+    uint8_t rumble_left_duration;   // byte 5
+    uint8_t rumble_left_force;      // byte 6
+    uint8_t padding2[4];        // bytes 7-10
 
-    uint8_t reserved2[4];
+    uint8_t leds_bitmap;        // byte 11 - LED bit mask (bits 1-4 for LEDs 1-4)
 
-    uint8_t leds_bitmap;        // LED bit mask (bits 1-4 for LEDs 1-4)
-
-    // LED PWM settings (4 LEDs x 4 bytes each)
+    // LED PWM settings (4 LEDs x 5 bytes each) - bytes 12-31
     struct {
-        uint8_t time_enabled;
-        uint8_t duty_length;
-        uint8_t enabled;
-        uint8_t duty_off;
+        uint8_t time_enabled;   // 0xFF = always on
+        uint8_t duty_length;    // 0x27
+        uint8_t enabled;        // 0x10
+        uint8_t duty_off;       // 0x00
+        uint8_t duty_on;        // 0x32
     } led[4];
 
-    uint8_t reserved3[5];
-} ds3_bt_output_report_t;
+    uint8_t padding3[18];       // bytes 32-49 (trailing padding)
+} ds3_bt_output_report_t;       // Total: 50 bytes
 
 // Driver instance data
 typedef struct {
     bool initialized;
     input_event_t event;
     uint8_t player_led;
-    bool activated;
+    uint8_t activation_state;  // 0=idle, 1=enabled, 2=activated
+    uint32_t activation_time;  // Time of last state change
 } ds3_bt_data_t;
 
 static ds3_bt_data_t ds3_data[BTHID_MAX_DEVICES] = {0};
@@ -133,7 +136,8 @@ static bool ds3_init(bthid_device_t* device)
         if (!ds3_data[i].initialized) {
             init_input_event(&ds3_data[i].event);
             ds3_data[i].initialized = true;
-            ds3_data[i].activated = false;
+            ds3_data[i].activation_state = 0;
+            ds3_data[i].activation_time = 0;
             ds3_data[i].player_led = 0;
 
             ds3_data[i].event.type = INPUT_TYPE_GAMEPAD;
@@ -176,12 +180,13 @@ static void ds3_send_output(bthid_device_t* device, uint8_t leds, uint8_t rumble
     // LEDs (bits 1-4)
     report.leds_bitmap = leds;
 
-    // LED PWM settings for constant on
+    // LED PWM settings for constant on (matches PS3_REPORT_BUFFER)
     for (int i = 0; i < 4; i++) {
         report.led[i].time_enabled = 0xFF;
         report.led[i].duty_length = 0x27;
         report.led[i].enabled = 0x10;
-        report.led[i].duty_off = 0x32;
+        report.led[i].duty_off = 0x00;
+        report.led[i].duty_on = 0x32;
     }
 
     printf("[DS3_BT] Sending output report (%d bytes) to conn %d\n", (int)sizeof(report), device->conn_index);
@@ -290,7 +295,7 @@ static void ds3_disconnect(bthid_device_t* device)
         // Reset state
         init_input_event(&ds3->event);
         ds3->initialized = false;
-        ds3->activated = false;
+        ds3->activation_state = 0;
         ds3->player_led = 0;
         device->driver_data = NULL;
     }
@@ -311,7 +316,6 @@ static void ds3_enable_sixaxis(bthid_device_t* device)
         0x42, 0x03, 0x00, 0x00  // Enable bytes
     };
 
-    printf("[DS3_BT] Sending enable_sixaxis command\n");
     bt_send_control(device->conn_index, enable_cmd, sizeof(enable_cmd));
 }
 
@@ -325,15 +329,39 @@ static void ds3_task(bthid_device_t* device)
     ds3_bt_data_t* ds3 = (ds3_bt_data_t*)device->driver_data;
     if (!ds3) return;
 
-    // Send activation command once
-    if (!ds3->activated) {
-        printf("[DS3_BT] Sending activation report...\n");
-        // First enable sixaxis (required for input reports)
-        ds3_enable_sixaxis(device);
-        // Then set player 1 LED
-        ds3_send_output(device, 0x02, 0, 0);  // LED 1 = bit 1
-        ds3->activated = true;
-        printf("[DS3_BT] Activation sent\n");
+    uint32_t now = to_ms_since_boot(get_absolute_time());
+
+    // State machine for activation with delays
+    switch (ds3->activation_state) {
+        case 0:  // Send enable_sixaxis
+            printf("[DS3_BT] Sending enable_sixaxis command\n");
+            ds3_enable_sixaxis(device);
+            ds3->activation_state = 1;
+            ds3->activation_time = now;
+            break;
+
+        case 1:  // Wait 150ms then send LED
+            if (now - ds3->activation_time >= 150) {
+                printf("[DS3_BT] Sending LED command\n");
+                ds3_send_output(device, 0x02, 0, 0);  // LED 1 = bit 1
+                ds3->player_led = 0x02;
+                ds3->activation_state = 2;
+            }
+            break;
+
+        case 2:  // Activated - monitor player LED
+            {
+                int player_idx = find_player_index(ds3->event.dev_addr, ds3->event.instance);
+                if (player_idx >= 0) {
+                    // DS3 LED bits are shifted left by 1 (bits 1-4, not 0-3)
+                    uint8_t led = PLAYER_LEDS[player_idx + 1] << 1;
+                    if (led != ds3->player_led) {
+                        ds3->player_led = led;
+                        ds3_send_output(device, led, 0, 0);
+                    }
+                }
+            }
+            break;
     }
 }
 
