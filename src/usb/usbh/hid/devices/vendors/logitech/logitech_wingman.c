@@ -55,8 +55,9 @@ void process_logitech_wingman(uint8_t dev_addr, uint8_t instance, uint8_t const*
     if (wingman_report.s) TU_LOG1("S ");
     TU_LOG1("\r\n");
 
+    // HID convention: 0=up, 255=down (no inversion needed)
     uint8_t analog_x1 = (wingman_report.analog_x == 255) ? 255 : wingman_report.analog_x + 1;
-    uint8_t analog_y1 = (wingman_report.analog_y == 0) ? 255 : 255 - wingman_report.analog_y;
+    uint8_t analog_y1 = (wingman_report.analog_y == 255) ? 255 : wingman_report.analog_y + 1;
     uint8_t analog_x2 = ~wingman_report.analog_z;
     uint8_t analog_y2 = 128;
 

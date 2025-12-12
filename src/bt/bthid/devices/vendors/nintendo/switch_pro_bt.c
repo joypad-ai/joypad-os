@@ -295,11 +295,11 @@ static void switch_process_report(bthid_device_t* device, const uint8_t* data, u
         uint16_t rx = unpack_stick_12bit(rpt->right_stick, false);
         uint16_t ry = unpack_stick_12bit(rpt->right_stick, true);
 
-        // Scale to 8-bit (Y-axis NOT inverted for Switch - already correct)
+        // Scale to 8-bit and invert Y (Nintendo: up=high, HID: up=low)
         sw->event.analog[ANALOG_X] = scale_12bit_to_8bit(lx);
-        sw->event.analog[ANALOG_Y] = 255 - scale_12bit_to_8bit(ly);  // Invert Y
+        sw->event.analog[ANALOG_Y] = 255 - scale_12bit_to_8bit(ly);
         sw->event.analog[ANALOG_Z] = scale_12bit_to_8bit(rx);
-        sw->event.analog[ANALOG_RX] = 255 - scale_12bit_to_8bit(ry); // Invert Y
+        sw->event.analog[ANALOG_RX] = 255 - scale_12bit_to_8bit(ry);
 
         router_submit_input(&sw->event);
 
@@ -331,9 +331,9 @@ static void switch_process_report(bthid_device_t* device, const uint8_t* data, u
 
         sw->event.buttons = buttons;
         sw->event.analog[ANALOG_X] = rpt->lx;
-        sw->event.analog[ANALOG_Y] = 255 - rpt->ly;
+        sw->event.analog[ANALOG_Y] = 255 - rpt->ly;  // Invert Y (Nintendo: up=high, HID: up=low)
         sw->event.analog[ANALOG_Z] = rpt->rx;
-        sw->event.analog[ANALOG_RX] = 255 - rpt->ry;
+        sw->event.analog[ANALOG_RX] = 255 - rpt->ry; // Invert Y (Nintendo: up=high, HID: up=low)
 
         router_submit_input(&sw->event);
 

@@ -483,9 +483,9 @@ void __not_in_flash_func(update_output)(void)
 
   output_buttons_0 = crc_data_packet(nuon_buttons, 2);
   output_analog_1x = crc_data_packet(mapped.left_x, 1);
-  output_analog_1y = crc_data_packet(mapped.left_y, 1);
+  output_analog_1y = crc_data_packet(255 - mapped.left_y, 1);   // Invert Y: HID uses 0=up
   output_analog_2x = crc_data_packet(mapped.right_x, 1);
-  output_analog_2y = crc_data_packet(mapped.right_y, 1);
+  output_analog_2y = crc_data_packet(255 - mapped.right_y, 1);  // Invert Y: HID uses 0=up
 
   // TODO Phase 5: Re-implement spinner/mouse wheel support
   // output_quad_x was accumulated in post_input_event() - need console-local accumulator

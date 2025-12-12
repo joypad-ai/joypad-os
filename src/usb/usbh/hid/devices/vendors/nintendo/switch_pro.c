@@ -198,9 +198,9 @@ void input_report_switch_pro(uint8_t dev_addr, uint8_t instance, uint8_t const* 
 
       if (switch_devices[dev_addr].is_pro) {
         leftX = scale_analog_switch_pro(update_report.left_x);
-        leftY = scale_analog_switch_pro(update_report.left_y);
+        leftY = 255 - scale_analog_switch_pro(update_report.left_y);   // Invert Y (Nintendo: up=high, HID: up=low)
         rightX = scale_analog_switch_pro(update_report.right_x);
-        rightY = scale_analog_switch_pro(update_report.right_y);
+        rightY = 255 - scale_analog_switch_pro(update_report.right_y); // Invert Y (Nintendo: up=high, HID: up=low)
       } else {
         bool is_left_joycon = (!update_report.right_x && !update_report.right_y);
         bool is_right_joycon = (!update_report.left_x && !update_report.left_y);
@@ -213,7 +213,7 @@ void input_report_switch_pro(uint8_t dev_addr, uint8_t instance, uint8_t const* 
           bttn_s2 = false;
 
           leftX = scale_analog_switch_pro(update_report.left_x + 127);
-          leftY = scale_analog_switch_pro(update_report.left_y - 127);
+          leftY = 255 - scale_analog_switch_pro(update_report.left_y - 127);  // Invert Y
         }
         else if (is_right_joycon)
         {
@@ -224,7 +224,7 @@ void input_report_switch_pro(uint8_t dev_addr, uint8_t instance, uint8_t const* 
           bttn_a1 = false;
 
           rightX = scale_analog_switch_pro(update_report.right_x);
-          rightY = scale_analog_switch_pro(update_report.right_y + 127);
+          rightY = 255 - scale_analog_switch_pro(update_report.right_y + 127);  // Invert Y
         }
       }
 

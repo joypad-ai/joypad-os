@@ -303,11 +303,11 @@ static void map_usbr_to_gc_report(const profile_output_t* output, gc_report_t* r
     // Start
     report->start = ((buttons & GC_BUTTON_START) != 0) ? 1 : 0;
 
-    // Analog sticks
+    // Analog sticks (invert Y: HID uses 0=up, GameCube uses 0=down)
     report->stick_x = output->left_x;
-    report->stick_y = output->left_y;
+    report->stick_y = 255 - output->left_y;
     report->cstick_x = output->right_x;
-    report->cstick_y = output->right_y;
+    report->cstick_y = 255 - output->right_y;
 
     // Trigger analog values
     report->l_analog = output->l2_analog;

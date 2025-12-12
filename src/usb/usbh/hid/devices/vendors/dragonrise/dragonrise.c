@@ -76,11 +76,11 @@ void process_dragonrise(uint8_t dev_addr, uint8_t instance, uint8_t const* repor
                ((0)                    ? USBR_BUTTON_R3 : 0) |
                ((0)                    ? USBR_BUTTON_A1 : 0));
 
-    // invert vertical axis
+    // HID convention: 0=up, 255=down (no inversion needed)
     uint8_t axis_1x = update_report.axis0_x;
-    uint8_t axis_1y = 255 - update_report.axis0_y;
+    uint8_t axis_1y = update_report.axis0_y;
     uint8_t axis_2x = update_report.axis1_x;
-    uint8_t axis_2y = 255 - update_report.axis1_y;
+    uint8_t axis_2y = update_report.axis1_y;
 
     // keep analog within range [1-255]
     ensureAllNonZero(&axis_1x, &axis_1y, &axis_2x, &axis_2y);

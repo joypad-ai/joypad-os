@@ -55,22 +55,19 @@ typedef enum {
 // ============================================================================
 //
 // INTERNAL Y-AXIS CONVENTION (IMPORTANT):
-// USBRetro uses gamepad convention internally: Y-axis UP = 255, DOWN = 0
-//   - 255 = stick pushed UP (positive Y)
+// USBRetro uses HID convention internally: Y-axis UP = 0, DOWN = 255
+//   - 0   = stick pushed UP
 //   - 128 = centered (neutral)
-//   - 0   = stick pushed DOWN (negative Y)
+//   - 255 = stick pushed DOWN
 //
-// This matches XInput and most gamepad APIs. Note that USB HID uses the
-// opposite convention (0 = up, 255 = down, like screen coordinates).
-//
-// Input drivers receiving HID data must INVERT Y: analog_y = 255 - hid_y
-// Output drivers sending HID data must INVERT Y: hid_y = 255 - analog_y
+// This matches USB HID and DirectInput (GP2040-CE compatible).
+// No Y-axis inversion needed between internal format and HID output.
 
 typedef enum {
     ANALOG_X = 0,       // Left stick X (0=left, 128=center, 255=right)
-    ANALOG_Y = 1,       // Left stick Y (0=down, 128=center, 255=up) [INVERTED from HID]
+    ANALOG_Y = 1,       // Left stick Y (0=up, 128=center, 255=down) [HID convention]
     ANALOG_Z = 2,       // Right stick X (0=left, 128=center, 255=right)
-    ANALOG_RX = 3,      // Right stick Y (0=down, 128=center, 255=up) [INVERTED from HID]
+    ANALOG_RX = 3,      // Right stick Y (0=up, 128=center, 255=down) [HID convention]
     ANALOG_RY = 4,      // Right stick Y (alt)
     ANALOG_RZ = 5,      // Left trigger (0=released, 255=fully pressed)
     ANALOG_SLIDER = 6,  // Right trigger (0=released, 255=fully pressed)

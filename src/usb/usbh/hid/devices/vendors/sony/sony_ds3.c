@@ -130,9 +130,9 @@ void input_sony_ds3(uint8_t dev_addr, uint8_t instance, uint8_t const* report, u
     if (has_motion || buttons_changed)
     {
       uint8_t analog_1x = ds3_report.lx;
-      uint8_t analog_1y = 255 - ds3_report.ly;
+      uint8_t analog_1y = ds3_report.ly;  // HID convention: 0=up, 255=down
       uint8_t analog_2x = ds3_report.rx;
-      uint8_t analog_2y = 255 - ds3_report.ry;
+      uint8_t analog_2y = ds3_report.ry;  // HID convention: 0=up, 255=down
 
       // Use L2/R2 pressure sensors for analog trigger values
       // DS3 has digital L2/R2 buttons, but pressure-sensitive sensors

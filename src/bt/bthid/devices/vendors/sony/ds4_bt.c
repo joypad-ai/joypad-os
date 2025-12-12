@@ -253,11 +253,11 @@ static void ds4_process_report(bthid_device_t* device, const uint8_t* data, uint
     // Update event
     ds4->event.buttons = buttons;
 
-    // Analog sticks (Y-axis inverted to match convention)
+    // Analog sticks (HID convention: 0=up, 255=down)
     ds4->event.analog[ANALOG_X] = rpt->x;
-    ds4->event.analog[ANALOG_Y] = 255 - rpt->y;
+    ds4->event.analog[ANALOG_Y] = rpt->y;
     ds4->event.analog[ANALOG_Z] = rpt->z;
-    ds4->event.analog[ANALOG_RX] = 255 - rpt->rz;
+    ds4->event.analog[ANALOG_RX] = rpt->rz;
 
     // Triggers
     ds4->event.analog[ANALOG_RZ] = rpt->l2_trigger;

@@ -190,9 +190,9 @@ void input_sony_ds4(uint8_t dev_addr, uint8_t instance, uint8_t const* report, u
                  ((tpad_right)          ? USBR_BUTTON_R4 : 0));
 
       uint8_t analog_1x = ds4_report.x;
-      uint8_t analog_1y = 255 - ds4_report.y;
+      uint8_t analog_1y = ds4_report.y;   // HID convention: 0=up, 255=down
       uint8_t analog_2x = ds4_report.z;
-      uint8_t analog_2y = 255 - ds4_report.rz;
+      uint8_t analog_2y = ds4_report.rz;  // HID convention: 0=up, 255=down
       uint8_t analog_l = ds4_report.l2_trigger;
       uint8_t analog_r = ds4_report.r2_trigger;
 

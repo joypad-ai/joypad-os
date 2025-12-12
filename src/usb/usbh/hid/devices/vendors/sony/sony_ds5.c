@@ -163,9 +163,9 @@ void input_sony_ds5(uint8_t dev_addr, uint8_t instance, uint8_t const* report, u
       }
 
       uint8_t analog_1x = ds5_report.x1;
-      uint8_t analog_1y = 255 - ds5_report.y1;
+      uint8_t analog_1y = ds5_report.y1;  // HID convention: 0=up, 255=down
       uint8_t analog_2x = ds5_report.x2;
-      uint8_t analog_2y = 255 - ds5_report.y2;
+      uint8_t analog_2y = ds5_report.y2;  // HID convention: 0=up, 255=down
       uint8_t analog_l = ds5_report.rx;
       uint8_t analog_r = ds5_report.ry;
 

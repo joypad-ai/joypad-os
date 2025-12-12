@@ -70,11 +70,12 @@ void process_hori_pokken(uint8_t dev_addr, uint8_t instance, uint8_t const* repo
                ((0)                    ? USBR_BUTTON_R3 : 0) |
                ((0)                    ? USBR_BUTTON_A1 : 0));
 
-    // invert vertical axis
+    // HID convention: 0=up, 255=down (no inversion needed)
+    // Add 1 to avoid 0 value (ensureAllNonZero handles edge cases)
     uint8_t axis_x = (update_report.x_axis == 255) ? 255 : update_report.x_axis + 1;
-    uint8_t axis_y = (update_report.y_axis == 0) ? 255 : 255 - update_report.y_axis;
+    uint8_t axis_y = (update_report.y_axis == 255) ? 255 : update_report.y_axis + 1;
     uint8_t axis_z = (update_report.z_axis == 255) ? 255 : update_report.z_axis + 1;
-    uint8_t axis_rz = (update_report.rz_axis == 0) ? 255 : 255 - update_report.rz_axis;
+    uint8_t axis_rz = (update_report.rz_axis == 255) ? 255 : update_report.rz_axis + 1;
 
     // keep analog within range [1-255]
     ensureAllNonZero(&axis_x, &axis_y, &axis_z, &axis_rz);

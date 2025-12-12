@@ -628,11 +628,11 @@ static bool usbd_send_hid_report(uint8_t player_index)
         hid_report.buttons = buttons;
         hid_report.hat = convert_dpad_to_hat(processed_buttons);
 
-        // Analog sticks (input_event uses 0-255, HID Y-axis is inverted: 0=up, 255=down)
+        // Analog sticks (HID convention: 0=up, 255=down - no inversion needed)
         hid_report.lx = profile_out.left_x;
-        hid_report.ly = 255 - profile_out.left_y;
+        hid_report.ly = profile_out.left_y;
         hid_report.rx = profile_out.right_x;
-        hid_report.ry = 255 - profile_out.right_y;
+        hid_report.ry = profile_out.right_y;
 
         // PS3 pressure axes (0x00 = released, 0xFF = fully pressed)
         hid_report.pressure_dpad_right = (processed_buttons & USBR_BUTTON_DR) ? 0xFF : 0x00;
@@ -760,11 +760,11 @@ static bool usbd_send_switch_report(uint8_t player_index)
         // D-pad as hat switch
         switch_report.hat = convert_dpad_to_hat(buttons);
 
-        // Analog sticks (0-255, inverted Y)
+        // Analog sticks (HID convention: 0=up, 255=down - no inversion needed)
         switch_report.lx = profile_out.left_x;
-        switch_report.ly = 255 - profile_out.left_y;
+        switch_report.ly = profile_out.left_y;
         switch_report.rx = profile_out.right_x;
-        switch_report.ry = 255 - profile_out.right_y;
+        switch_report.ry = profile_out.right_y;
 
         switch_report.vendor = 0;
     } else {
@@ -821,11 +821,11 @@ static bool usbd_send_ps3_report(uint8_t player_index)
         ps3_report.buttons[2] = 0;
         if (buttons & USBR_BUTTON_A1) ps3_report.buttons[2] |= PS3_BTN_PS;
 
-        // Analog sticks (0-255, Y-axis inverted: input 0=down, output 0=up)
+        // Analog sticks (HID convention: 0=up, 255=down - no inversion needed)
         ps3_report.lx = profile_out.left_x;
-        ps3_report.ly = 255 - profile_out.left_y;
+        ps3_report.ly = profile_out.left_y;
         ps3_report.rx = profile_out.right_x;
-        ps3_report.ry = 255 - profile_out.right_y;
+        ps3_report.ry = profile_out.right_y;
 
         // Pressure-sensitive buttons - use actual pressure data if available
         if (profile_out.has_pressure) {
@@ -982,11 +982,11 @@ static bool usbd_send_ps4_report(uint8_t player_index)
         // Byte 0: Report ID
         ps4_report_buffer[0] = 0x01;
 
-        // Bytes 1-4: Analog sticks (Y-axis inverted: input 0=down, output 0=up)
+        // Bytes 1-4: Analog sticks (HID convention: 0=up, 255=down - no inversion needed)
         ps4_report_buffer[1] = profile_out.left_x;          // LX
-        ps4_report_buffer[2] = 255 - profile_out.left_y;    // LY (inverted)
+        ps4_report_buffer[2] = profile_out.left_y;          // LY
         ps4_report_buffer[3] = profile_out.right_x;         // RX
-        ps4_report_buffer[4] = 255 - profile_out.right_y;   // RY (inverted)
+        ps4_report_buffer[4] = profile_out.right_y;         // RY
 
         // Byte 5: D-pad (bits 0-3) + face buttons (bits 4-7)
         uint8_t up = (buttons & USBR_BUTTON_DU) ? 1 : 0;
@@ -1134,11 +1134,11 @@ static bool usbd_send_xac_report(uint8_t player_index)
         profile_output_t profile_out;
         uint32_t buttons = apply_usbd_profile(event, &profile_out);
 
-        // Analog sticks (0-255, Y-axis inverted: input 0=down, output 0=up)
+        // Analog sticks (HID convention: 0=up, 255=down - no inversion needed)
         xac_report.lx = profile_out.left_x;
-        xac_report.ly = 255 - profile_out.left_y;
+        xac_report.ly = profile_out.left_y;
         xac_report.rx = profile_out.right_x;
-        xac_report.ry = 255 - profile_out.right_y;
+        xac_report.ry = profile_out.right_y;
 
         // D-pad as hat switch
         xac_report.hat = convert_dpad_to_hat(buttons);

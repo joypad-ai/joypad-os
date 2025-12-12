@@ -254,11 +254,11 @@ static void ds3_process_report(bthid_device_t* device, const uint8_t* data, uint
     if (rpt->r3)       buttons |= USBR_BUTTON_R3;
     if (rpt->ps)       buttons |= USBR_BUTTON_A1;
 
-    // Analog sticks (Y axes inverted)
+    // Analog sticks (HID convention: 0=up, 255=down)
     uint8_t lx = rpt->lx;
-    uint8_t ly = 255 - rpt->ly;
+    uint8_t ly = rpt->ly;
     uint8_t rx = rpt->rx;
-    uint8_t ry = 255 - rpt->ry;
+    uint8_t ry = rpt->ry;
 
     // Use pressure sensors for analog triggers
     uint8_t lt = rpt->pressure[8];  // L2 pressure

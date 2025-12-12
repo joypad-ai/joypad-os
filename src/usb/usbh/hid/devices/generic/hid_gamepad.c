@@ -496,11 +496,11 @@ void process_hid_gamepad(uint8_t dev_addr, uint8_t instance, uint8_t const* repo
               ((current.button11) ? USBR_BUTTON_L3 : 0) |
               ((current.button12) ? USBR_BUTTON_R3 : 0);
 
-    // Invert Y-axis: HID uses 0=up, USBRetro uses 0=down (255=up)
+    // HID convention: 0=up, 255=down (no inversion needed)
     uint8_t axis_x = current.x;
-    uint8_t axis_y = 255 - current.y;
+    uint8_t axis_y = current.y;
     uint8_t axis_z = current.z;
-    uint8_t axis_rz = 255 - current.rz;
+    uint8_t axis_rz = current.rz;
 
     // keep analog within range [1-255]
     ensureAllNonZero(&axis_x, &axis_y, &axis_z, &axis_rz);

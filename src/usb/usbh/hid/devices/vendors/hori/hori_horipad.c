@@ -86,11 +86,11 @@ void process_hori_horipad(uint8_t dev_addr, uint8_t instance, uint8_t const* rep
                ((input_report.r3) ? USBR_BUTTON_R3 : 0) |
                ((input_report.a1) ? USBR_BUTTON_A1 : 0) |
                ((input_report.a2) ? USBR_BUTTON_A2 : 0));
-    // invert vertical axis
+    // HID convention: 0=up, 255=down (no inversion needed)
     uint8_t axis_x = input_report.axis_x;
-    uint8_t axis_y = 255 - input_report.axis_y;
+    uint8_t axis_y = input_report.axis_y;
     uint8_t axis_z = input_report.axis_z;
-    uint8_t axis_rz = 255 - input_report.axis_rz;
+    uint8_t axis_rz = input_report.axis_rz;
 
     // keep analog within range [1-255]
     ensureAllNonZero(&axis_x, &axis_y, &axis_z, &axis_rz);

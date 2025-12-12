@@ -879,8 +879,8 @@ void __not_in_flash_func(update_3do_report)(uint8_t player_index) {
     if (report.left == 0 && report.right == 0 && report.up == 0 && report.down == 0) {
       report.left = (mapped.left_x < 64) ? 1 : 0;
       report.right = (mapped.left_x > 192) ? 1 : 0;
-      report.up = (mapped.left_y > 192) ? 1 : 0;      // Inverted Y axis
-      report.down = (mapped.left_y < 64) ? 1 : 0;     // Inverted Y axis
+      report.up = (mapped.left_y < 64) ? 1 : 0;        // HID convention: 0=up
+      report.down = (mapped.left_y > 192) ? 1 : 0;   // HID convention: 255=down
     }
 
     update_3do_joystick(report, player_index);
@@ -902,8 +902,8 @@ void __not_in_flash_func(update_3do_report)(uint8_t player_index) {
     if (report.left == 0 && report.right == 0 && report.up == 0 && report.down == 0) {
       report.left = (mapped.left_x < 64) ? 1 : 0;
       report.right = (mapped.left_x > 192) ? 1 : 0;
-      report.up = (mapped.left_y > 192) ? 1 : 0;      // Inverted Y axis
-      report.down = (mapped.left_y < 64) ? 1 : 0;     // Inverted Y axis
+      report.up = (mapped.left_y < 64) ? 1 : 0;        // HID convention: 0=up
+      report.down = (mapped.left_y > 192) ? 1 : 0;   // HID convention: 255=down
     }
 
     update_3do_joypad(report, player_index);

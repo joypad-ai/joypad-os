@@ -171,16 +171,17 @@ void calculate_coordinates(uint32_t stick_keys, int intensity, uint8_t *x_value,
     }
   }
 
+  // HID convention: Y-axis 0=up, 255=down
   switch (angle_degrees)
   {
   case 0: // Up
     *x_value = 128;
-    *y_value = 255 - offset;
+    *y_value = 1 + offset;
     break;
 
   case 45: // Up + Right
     *x_value = 245 - offset;
-    *y_value = 245 - offset;
+    *y_value = 11 + offset;
     break;
 
   case 90: // Right
@@ -190,17 +191,17 @@ void calculate_coordinates(uint32_t stick_keys, int intensity, uint8_t *x_value,
 
   case 135: // Down + Right
     *x_value = 245 - offset;
-    *y_value = 11 + offset;
+    *y_value = 245 - offset;
     break;
 
   case 180: // Down
     *x_value = 128;
-    *y_value = 1 + offset;
+    *y_value = 255 - offset;
     break;
 
   case 225: // Down + Left
     *x_value = 11 + offset;
-    *y_value = 11 + offset;
+    *y_value = 245 - offset;
     break;
 
   case 270: // Left
@@ -210,7 +211,7 @@ void calculate_coordinates(uint32_t stick_keys, int intensity, uint8_t *x_value,
 
   case 315: // Up + Left
     *x_value = 11 + offset;
-    *y_value = 245 - offset;
+    *y_value = 11 + offset;
     break;
 
   default:
