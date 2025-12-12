@@ -25,22 +25,22 @@
 
 static const button_map_entry_t nuon_default_map[] = {
     // Face buttons - PlayStation style to Nuon
-    MAP_BUTTON(USBR_BUTTON_B1, NUON_BTN_A),        // Cross → A
-    MAP_BUTTON(USBR_BUTTON_B2, NUON_BTN_C_DOWN),   // Circle → C-Down
-    MAP_BUTTON(USBR_BUTTON_B3, NUON_BTN_B),        // Square → B
-    MAP_BUTTON(USBR_BUTTON_B4, NUON_BTN_C_LEFT),   // Triangle → C-Left
+    MAP_BUTTON(JP_BUTTON_B1, NUON_BTN_A),        // Cross → A
+    MAP_BUTTON(JP_BUTTON_B2, NUON_BTN_C_DOWN),   // Circle → C-Down
+    MAP_BUTTON(JP_BUTTON_B3, NUON_BTN_B),        // Square → B
+    MAP_BUTTON(JP_BUTTON_B4, NUON_BTN_C_LEFT),   // Triangle → C-Left
 
     // Shoulders
-    MAP_BUTTON(USBR_BUTTON_L1, NUON_BTN_L),
-    MAP_BUTTON(USBR_BUTTON_R1, NUON_BTN_R),
+    MAP_BUTTON(JP_BUTTON_L1, NUON_BTN_L),
+    MAP_BUTTON(JP_BUTTON_R1, NUON_BTN_R),
 
     // Triggers to C-pad
-    MAP_BUTTON(USBR_BUTTON_L2, NUON_BTN_C_UP),
-    MAP_BUTTON(USBR_BUTTON_R2, NUON_BTN_C_RIGHT),
+    MAP_BUTTON(JP_BUTTON_L2, NUON_BTN_C_UP),
+    MAP_BUTTON(JP_BUTTON_R2, NUON_BTN_C_RIGHT),
 
     // System
-    MAP_BUTTON(USBR_BUTTON_S1, NUON_BTN_NUON),     // Select → Nuon/Z
-    MAP_BUTTON(USBR_BUTTON_S2, NUON_BTN_START),    // Start → Start
+    MAP_BUTTON(JP_BUTTON_S1, NUON_BTN_NUON),     // Select → Nuon/Z
+    MAP_BUTTON(JP_BUTTON_S2, NUON_BTN_START),    // Start → Start
 };
 
 static const profile_t nuon_profile_default = {
@@ -66,24 +66,24 @@ static const profile_t nuon_profile_default = {
 
 static const button_map_entry_t nuon_n64_map[] = {
     // A/B on lower buttons
-    MAP_BUTTON(USBR_BUTTON_B1, NUON_BTN_A),        // Cross → A
-    MAP_BUTTON(USBR_BUTTON_B3, NUON_BTN_B),        // Square → B
+    MAP_BUTTON(JP_BUTTON_B1, NUON_BTN_A),        // Cross → A
+    MAP_BUTTON(JP_BUTTON_B3, NUON_BTN_B),        // Square → B
 
     // C-buttons on upper face buttons
-    MAP_BUTTON(USBR_BUTTON_B2, NUON_BTN_C_DOWN),   // Circle → C-Down
-    MAP_BUTTON(USBR_BUTTON_B4, NUON_BTN_C_LEFT),   // Triangle → C-Left
+    MAP_BUTTON(JP_BUTTON_B2, NUON_BTN_C_DOWN),   // Circle → C-Down
+    MAP_BUTTON(JP_BUTTON_B4, NUON_BTN_C_LEFT),   // Triangle → C-Left
 
     // Shoulders as C-Up/C-Right (like Z button usage)
-    MAP_BUTTON(USBR_BUTTON_L1, NUON_BTN_C_UP),
-    MAP_BUTTON(USBR_BUTTON_R1, NUON_BTN_C_RIGHT),
+    MAP_BUTTON(JP_BUTTON_L1, NUON_BTN_C_UP),
+    MAP_BUTTON(JP_BUTTON_R1, NUON_BTN_C_RIGHT),
 
     // Triggers as L/R
-    MAP_BUTTON(USBR_BUTTON_L2, NUON_BTN_L),
-    MAP_BUTTON(USBR_BUTTON_R2, NUON_BTN_R),
+    MAP_BUTTON(JP_BUTTON_L2, NUON_BTN_L),
+    MAP_BUTTON(JP_BUTTON_R2, NUON_BTN_R),
 
     // System
-    MAP_BUTTON(USBR_BUTTON_S1, NUON_BTN_NUON),
-    MAP_BUTTON(USBR_BUTTON_S2, NUON_BTN_START),
+    MAP_BUTTON(JP_BUTTON_S1, NUON_BTN_NUON),
+    MAP_BUTTON(JP_BUTTON_S2, NUON_BTN_START),
 };
 
 static const profile_t nuon_profile_n64 = {

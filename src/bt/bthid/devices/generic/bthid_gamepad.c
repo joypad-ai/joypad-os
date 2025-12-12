@@ -114,19 +114,19 @@ static void gamepad_process_report(bthid_device_t* device, const uint8_t* data, 
     // This is a rough mapping - specific drivers should override
     uint32_t buttons = 0;
 
-    if (raw_buttons & 0x0001) buttons |= USBR_BUTTON_B1;  // A/Cross
-    if (raw_buttons & 0x0002) buttons |= USBR_BUTTON_B2;  // B/Circle
-    if (raw_buttons & 0x0004) buttons |= USBR_BUTTON_B3;  // X/Square
-    if (raw_buttons & 0x0008) buttons |= USBR_BUTTON_B4;  // Y/Triangle
-    if (raw_buttons & 0x0010) buttons |= USBR_BUTTON_L1;  // LB
-    if (raw_buttons & 0x0020) buttons |= USBR_BUTTON_R1;  // RB
-    if (raw_buttons & 0x0040) buttons |= USBR_BUTTON_L2;  // LT (digital)
-    if (raw_buttons & 0x0080) buttons |= USBR_BUTTON_R2;  // RT (digital)
-    if (raw_buttons & 0x0100) buttons |= USBR_BUTTON_S1;  // Select/Back
-    if (raw_buttons & 0x0200) buttons |= USBR_BUTTON_S2;  // Start
-    if (raw_buttons & 0x0400) buttons |= USBR_BUTTON_L3;  // LS
-    if (raw_buttons & 0x0800) buttons |= USBR_BUTTON_R3;  // RS
-    if (raw_buttons & 0x1000) buttons |= USBR_BUTTON_A1;  // Home/Guide
+    if (raw_buttons & 0x0001) buttons |= JP_BUTTON_B1;  // A/Cross
+    if (raw_buttons & 0x0002) buttons |= JP_BUTTON_B2;  // B/Circle
+    if (raw_buttons & 0x0004) buttons |= JP_BUTTON_B3;  // X/Square
+    if (raw_buttons & 0x0008) buttons |= JP_BUTTON_B4;  // Y/Triangle
+    if (raw_buttons & 0x0010) buttons |= JP_BUTTON_L1;  // LB
+    if (raw_buttons & 0x0020) buttons |= JP_BUTTON_R1;  // RB
+    if (raw_buttons & 0x0040) buttons |= JP_BUTTON_L2;  // LT (digital)
+    if (raw_buttons & 0x0080) buttons |= JP_BUTTON_R2;  // RT (digital)
+    if (raw_buttons & 0x0100) buttons |= JP_BUTTON_S1;  // Select/Back
+    if (raw_buttons & 0x0200) buttons |= JP_BUTTON_S2;  // Start
+    if (raw_buttons & 0x0400) buttons |= JP_BUTTON_L3;  // LS
+    if (raw_buttons & 0x0800) buttons |= JP_BUTTON_R3;  // RS
+    if (raw_buttons & 0x1000) buttons |= JP_BUTTON_A1;  // Home/Guide
 
     gp->event.buttons = buttons;
 

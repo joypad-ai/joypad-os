@@ -1,5 +1,5 @@
 // input_interface.h
-// Input abstraction for USBRetro - supports USB host, native, BLE, and UART inputs
+// Input abstraction for Joypad - supports USB host, native, BLE, and UART inputs
 //
 // Mirrors OutputInterface pattern - apps declare which inputs they use.
 

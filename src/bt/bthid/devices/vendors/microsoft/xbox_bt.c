@@ -185,26 +185,26 @@ static void xbox_process_report(bthid_device_t* device, const uint8_t* data, uin
 
         // Parse D-pad (hat format)
         uint8_t dpad = rpt->dpad;
-        if (dpad == 0 || dpad == 1 || dpad == 7) buttons |= USBR_BUTTON_DU;
-        if (dpad >= 1 && dpad <= 3) buttons |= USBR_BUTTON_DR;
-        if (dpad >= 3 && dpad <= 5) buttons |= USBR_BUTTON_DD;
-        if (dpad >= 5 && dpad <= 7) buttons |= USBR_BUTTON_DL;
+        if (dpad == 0 || dpad == 1 || dpad == 7) buttons |= JP_BUTTON_DU;
+        if (dpad >= 1 && dpad <= 3) buttons |= JP_BUTTON_DR;
+        if (dpad >= 3 && dpad <= 5) buttons |= JP_BUTTON_DD;
+        if (dpad >= 5 && dpad <= 7) buttons |= JP_BUTTON_DL;
 
         // Parse buttons
         uint16_t btn = rpt->buttons;
-        if (btn & XBOX_BT_A)              buttons |= USBR_BUTTON_B1;
-        if (btn & XBOX_BT_B)              buttons |= USBR_BUTTON_B2;
-        if (btn & XBOX_BT_X)              buttons |= USBR_BUTTON_B3;
-        if (btn & XBOX_BT_Y)              buttons |= USBR_BUTTON_B4;
-        if (btn & XBOX_BT_LEFT_SHOULDER)  buttons |= USBR_BUTTON_L1;
-        if (btn & XBOX_BT_RIGHT_SHOULDER) buttons |= USBR_BUTTON_R1;
-        if (lt > 100)                     buttons |= USBR_BUTTON_L2;
-        if (rt > 100)                     buttons |= USBR_BUTTON_R2;
-        if (btn & XBOX_BT_BACK)           buttons |= USBR_BUTTON_S1;
-        if (btn & XBOX_BT_START)          buttons |= USBR_BUTTON_S2;
-        if (btn & XBOX_BT_LEFT_THUMB)     buttons |= USBR_BUTTON_L3;
-        if (btn & XBOX_BT_RIGHT_THUMB)    buttons |= USBR_BUTTON_R3;
-        if (btn & XBOX_BT_GUIDE)          buttons |= USBR_BUTTON_A1;
+        if (btn & XBOX_BT_A)              buttons |= JP_BUTTON_B1;
+        if (btn & XBOX_BT_B)              buttons |= JP_BUTTON_B2;
+        if (btn & XBOX_BT_X)              buttons |= JP_BUTTON_B3;
+        if (btn & XBOX_BT_Y)              buttons |= JP_BUTTON_B4;
+        if (btn & XBOX_BT_LEFT_SHOULDER)  buttons |= JP_BUTTON_L1;
+        if (btn & XBOX_BT_RIGHT_SHOULDER) buttons |= JP_BUTTON_R1;
+        if (lt > 100)                     buttons |= JP_BUTTON_L2;
+        if (rt > 100)                     buttons |= JP_BUTTON_R2;
+        if (btn & XBOX_BT_BACK)           buttons |= JP_BUTTON_S1;
+        if (btn & XBOX_BT_START)          buttons |= JP_BUTTON_S2;
+        if (btn & XBOX_BT_LEFT_THUMB)     buttons |= JP_BUTTON_L3;
+        if (btn & XBOX_BT_RIGHT_THUMB)    buttons |= JP_BUTTON_R3;
+        if (btn & XBOX_BT_GUIDE)          buttons |= JP_BUTTON_A1;
 
     } else if (len >= sizeof(xbox_bt_input_alt_t)) {
         // Alternative format (older controllers or different firmware)
@@ -224,23 +224,23 @@ static void xbox_process_report(bthid_device_t* device, const uint8_t* data, uin
         uint16_t btn = rpt->buttons;
 
         // D-pad might be in buttons for this format
-        if (btn & XBOX_BT_DPAD_UP)        buttons |= USBR_BUTTON_DU;
-        if (btn & XBOX_BT_DPAD_DOWN)      buttons |= USBR_BUTTON_DD;
-        if (btn & XBOX_BT_DPAD_LEFT)      buttons |= USBR_BUTTON_DL;
-        if (btn & XBOX_BT_DPAD_RIGHT)     buttons |= USBR_BUTTON_DR;
-        if (btn & XBOX_BT_A)              buttons |= USBR_BUTTON_B1;
-        if (btn & XBOX_BT_B)              buttons |= USBR_BUTTON_B2;
-        if (btn & XBOX_BT_X)              buttons |= USBR_BUTTON_B3;
-        if (btn & XBOX_BT_Y)              buttons |= USBR_BUTTON_B4;
-        if (btn & XBOX_BT_LEFT_SHOULDER)  buttons |= USBR_BUTTON_L1;
-        if (btn & XBOX_BT_RIGHT_SHOULDER) buttons |= USBR_BUTTON_R1;
-        if (lt > 100)                     buttons |= USBR_BUTTON_L2;
-        if (rt > 100)                     buttons |= USBR_BUTTON_R2;
-        if (btn & XBOX_BT_BACK)           buttons |= USBR_BUTTON_S1;
-        if (btn & XBOX_BT_START)          buttons |= USBR_BUTTON_S2;
-        if (btn & XBOX_BT_LEFT_THUMB)     buttons |= USBR_BUTTON_L3;
-        if (btn & XBOX_BT_RIGHT_THUMB)    buttons |= USBR_BUTTON_R3;
-        if (btn & XBOX_BT_GUIDE)          buttons |= USBR_BUTTON_A1;
+        if (btn & XBOX_BT_DPAD_UP)        buttons |= JP_BUTTON_DU;
+        if (btn & XBOX_BT_DPAD_DOWN)      buttons |= JP_BUTTON_DD;
+        if (btn & XBOX_BT_DPAD_LEFT)      buttons |= JP_BUTTON_DL;
+        if (btn & XBOX_BT_DPAD_RIGHT)     buttons |= JP_BUTTON_DR;
+        if (btn & XBOX_BT_A)              buttons |= JP_BUTTON_B1;
+        if (btn & XBOX_BT_B)              buttons |= JP_BUTTON_B2;
+        if (btn & XBOX_BT_X)              buttons |= JP_BUTTON_B3;
+        if (btn & XBOX_BT_Y)              buttons |= JP_BUTTON_B4;
+        if (btn & XBOX_BT_LEFT_SHOULDER)  buttons |= JP_BUTTON_L1;
+        if (btn & XBOX_BT_RIGHT_SHOULDER) buttons |= JP_BUTTON_R1;
+        if (lt > 100)                     buttons |= JP_BUTTON_L2;
+        if (rt > 100)                     buttons |= JP_BUTTON_R2;
+        if (btn & XBOX_BT_BACK)           buttons |= JP_BUTTON_S1;
+        if (btn & XBOX_BT_START)          buttons |= JP_BUTTON_S2;
+        if (btn & XBOX_BT_LEFT_THUMB)     buttons |= JP_BUTTON_L3;
+        if (btn & XBOX_BT_RIGHT_THUMB)    buttons |= JP_BUTTON_R3;
+        if (btn & XBOX_BT_GUIDE)          buttons |= JP_BUTTON_A1;
 
     } else {
         // Unknown format, skip

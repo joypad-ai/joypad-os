@@ -150,7 +150,7 @@ static void cdc_process_command(const char* cmd)
     }
     // VERSION or VER? - Query firmware version
     else if (strcmp(cmd, "VERSION") == 0 || strcmp(cmd, "VER?") == 0) {
-        cdc_data_write_str("USBRetro USB Device\r\n");
+        cdc_data_write_str("Joypad USB Device\r\n");
     }
     // FLASH? - Check raw flash contents
     else if (strcmp(cmd, "FLASH?") == 0) {

@@ -1,5 +1,5 @@
 // router.c
-// USBRetro Core Router Implementation
+// Joypad Core Router Implementation
 //
 // Zero-latency event-driven routing system.
 // Replaces console-specific post_input_event() with unified routing.

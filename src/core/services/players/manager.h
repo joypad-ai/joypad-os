@@ -1,5 +1,5 @@
 // manager.h
-// USBRetro Core - Player Management System
+// Joypad Core - Player Management System
 //
 // Configurable player slot management supporting both SHIFT and FIXED modes.
 // SHIFT mode: Players shift up when one disconnects (3DO, PCEngine)

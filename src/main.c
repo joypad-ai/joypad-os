@@ -1,5 +1,5 @@
 /*
- * USBRetro - Modular controller firmware for RP2040-based devices
+ * Joypad - Modular controller firmware for RP2040-based devices
  *
  * A flexible foundation for building controller adapters, arcade sticks,
  * custom controllers, and any device that routes inputs to outputs.
@@ -15,7 +15,7 @@
  * (* planned)
  *
  * Copyright (c) 2022-2025 Robert Dale Smith
- * https://github.com/RobertDaleSmith/USBRetro
+ * https://github.com/RobertDaleSmith/Joypad
  */
 
 #include <stdio.h>
@@ -70,7 +70,7 @@ int main(void)
 {
   stdio_init_all();
 
-  printf("\n[usbretro] Starting...\n");
+  printf("\n[joypad] Starting...\n");
 
   sleep_ms(250);  // Brief pause for stability
 
@@ -83,7 +83,7 @@ int main(void)
   inputs = app_get_input_interfaces(&input_count);
   for (uint8_t i = 0; i < input_count; i++) {
     if (inputs[i] && inputs[i]->init) {
-      printf("[usbretro] Initializing input: %s\n", inputs[i]->name);
+      printf("[joypad] Initializing input: %s\n", inputs[i]->name);
       inputs[i]->init();
     }
   }
@@ -92,7 +92,7 @@ int main(void)
   outputs = app_get_output_interfaces(&output_count);
   for (uint8_t i = 0; i < output_count; i++) {
     if (outputs[i] && outputs[i]->init) {
-      printf("[usbretro] Initializing output: %s\n", outputs[i]->name);
+      printf("[joypad] Initializing output: %s\n", outputs[i]->name);
       outputs[i]->init();
     }
   }
@@ -101,7 +101,7 @@ int main(void)
   // Note: Only one output can use core1 (RP2040 has 2 cores)
   for (uint8_t i = 0; i < output_count; i++) {
     if (outputs[i] && outputs[i]->core1_task) {
-      printf("[usbretro] Launching core1 for: %s\n", outputs[i]->name);
+      printf("[joypad] Launching core1 for: %s\n", outputs[i]->name);
       multicore_launch_core1(outputs[i]->core1_task);
       break;  // Only one core1 task possible
     }

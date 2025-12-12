@@ -10,17 +10,17 @@
 // To use this driver in an app, add to CMakeLists.txt:
 //
 //   # Sources
-//   target_sources(usbretro_<app> PUBLIC
+//   target_sources(joypad_<app> PUBLIC
 //       ${CMAKE_CURRENT_SOURCE_DIR}/native/host/3do/3do_host.c
 //   )
 //
 //   # PIO header generation
-//   pico_generate_pio_header(usbretro_<app>
+//   pico_generate_pio_header(joypad_<app>
 //       ${CMAKE_CURRENT_LIST_DIR}/native/host/3do/3do_host.pio
 //   )
 //
 //   # Include directory
-//   target_include_directories(usbretro_<app> PUBLIC
+//   target_include_directories(joypad_<app> PUBLIC
 //       ${CMAKE_CURRENT_SOURCE_DIR}/native/host/3do
 //   )
 

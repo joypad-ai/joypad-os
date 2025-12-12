@@ -69,24 +69,24 @@ void process_8bitdo_bta(uint8_t dev_addr, uint8_t instance, uint8_t const* repor
     bool dpad_down  = (input_report.dpad >= 3 && input_report.dpad <= 5);
     bool dpad_left  = (input_report.dpad >= 5 && input_report.dpad <= 7);
 
-    buttons = (((dpad_up)             ? USBR_BUTTON_DU : 0) |
-               ((dpad_down)           ? USBR_BUTTON_DD : 0) |
-               ((dpad_left)           ? USBR_BUTTON_DL : 0) |
-               ((dpad_right)          ? USBR_BUTTON_DR : 0) |
-               ((input_report.b)      ? USBR_BUTTON_B1 : 0) |
-               ((input_report.a)      ? USBR_BUTTON_B2 : 0) |
-               ((input_report.y)      ? USBR_BUTTON_B3 : 0) |
-               ((input_report.x)      ? USBR_BUTTON_B4 : 0) |
-               ((input_report.l)      ? USBR_BUTTON_L1 : 0) |
-               ((input_report.r)      ? USBR_BUTTON_R1 : 0) |
-               ((input_report.l2)     ? USBR_BUTTON_L2 : 0) |
-               ((input_report.r2)     ? USBR_BUTTON_R2 : 0) |
-               ((input_report.select) ? USBR_BUTTON_S1 : 0) |
-               ((input_report.start)  ? USBR_BUTTON_S2 : 0) |
-               ((input_report.l3)     ? USBR_BUTTON_L3 : 0) |
-               ((input_report.r3)     ? USBR_BUTTON_R3 : 0) |
-               ((input_report.home)   ? USBR_BUTTON_A1 : 0) |
-               ((input_report.cap)    ? USBR_BUTTON_A2 : 0));
+    buttons = (((dpad_up)             ? JP_BUTTON_DU : 0) |
+               ((dpad_down)           ? JP_BUTTON_DD : 0) |
+               ((dpad_left)           ? JP_BUTTON_DL : 0) |
+               ((dpad_right)          ? JP_BUTTON_DR : 0) |
+               ((input_report.b)      ? JP_BUTTON_B1 : 0) |
+               ((input_report.a)      ? JP_BUTTON_B2 : 0) |
+               ((input_report.y)      ? JP_BUTTON_B3 : 0) |
+               ((input_report.x)      ? JP_BUTTON_B4 : 0) |
+               ((input_report.l)      ? JP_BUTTON_L1 : 0) |
+               ((input_report.r)      ? JP_BUTTON_R1 : 0) |
+               ((input_report.l2)     ? JP_BUTTON_L2 : 0) |
+               ((input_report.r2)     ? JP_BUTTON_R2 : 0) |
+               ((input_report.select) ? JP_BUTTON_S1 : 0) |
+               ((input_report.start)  ? JP_BUTTON_S2 : 0) |
+               ((input_report.l3)     ? JP_BUTTON_L3 : 0) |
+               ((input_report.r3)     ? JP_BUTTON_R3 : 0) |
+               ((input_report.home)   ? JP_BUTTON_A1 : 0) |
+               ((input_report.cap)    ? JP_BUTTON_A2 : 0));
 
     // HID convention: 0=up, 255=down (no inversion needed)
     uint8_t analog_1x = input_report.x1;

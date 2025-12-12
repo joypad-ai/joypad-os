@@ -83,17 +83,17 @@ void process_hid_mouse(uint8_t dev_addr, uint8_t instance, uint8_t const* mouse_
 
   // Active-high: set bit when button is pressed
   if (buttons_swapped) {
-     buttons = (((report->buttons & MOUSE_BUTTON_RIGHT)   ? USBR_BUTTON_B1 : 0) |
-                ((report->buttons & MOUSE_BUTTON_LEFT)    ? USBR_BUTTON_B2 : 0) |
-                ((report->buttons & MOUSE_BUTTON_BACKWARD)? USBR_BUTTON_B3 : 0) |
-                ((report->buttons & MOUSE_BUTTON_FORWARD) ? USBR_BUTTON_S1 : 0) |
-                ((report->buttons & MOUSE_BUTTON_MIDDLE)  ? USBR_BUTTON_S2 : 0));
+     buttons = (((report->buttons & MOUSE_BUTTON_RIGHT)   ? JP_BUTTON_B1 : 0) |
+                ((report->buttons & MOUSE_BUTTON_LEFT)    ? JP_BUTTON_B2 : 0) |
+                ((report->buttons & MOUSE_BUTTON_BACKWARD)? JP_BUTTON_B3 : 0) |
+                ((report->buttons & MOUSE_BUTTON_FORWARD) ? JP_BUTTON_S1 : 0) |
+                ((report->buttons & MOUSE_BUTTON_MIDDLE)  ? JP_BUTTON_S2 : 0));
   } else {
-     buttons = (((report->buttons & MOUSE_BUTTON_LEFT)    ? USBR_BUTTON_B1 : 0) |
-                ((report->buttons & MOUSE_BUTTON_RIGHT)   ? USBR_BUTTON_B2 : 0) |
-                ((report->buttons & MOUSE_BUTTON_BACKWARD)? USBR_BUTTON_B3 : 0) |
-                ((report->buttons & MOUSE_BUTTON_FORWARD) ? USBR_BUTTON_S1 : 0) |
-                ((report->buttons & MOUSE_BUTTON_MIDDLE)  ? USBR_BUTTON_S2 : 0));
+     buttons = (((report->buttons & MOUSE_BUTTON_LEFT)    ? JP_BUTTON_B1 : 0) |
+                ((report->buttons & MOUSE_BUTTON_RIGHT)   ? JP_BUTTON_B2 : 0) |
+                ((report->buttons & MOUSE_BUTTON_BACKWARD)? JP_BUTTON_B3 : 0) |
+                ((report->buttons & MOUSE_BUTTON_FORWARD) ? JP_BUTTON_S1 : 0) |
+                ((report->buttons & MOUSE_BUTTON_MIDDLE)  ? JP_BUTTON_S2 : 0));
   }
 
   // Pass raw mouse deltas - console output layer handles any axis inversion

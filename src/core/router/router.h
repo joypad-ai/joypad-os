@@ -1,5 +1,5 @@
 // router.h
-// USBRetro Core Router - Zero-latency N:M input/output routing
+// Joypad Core Router - Zero-latency N:M input/output routing
 //
 // Replaces console-specific post_input_event() with unified routing system.
 // Supports 4 modes: Simple (1:1), Merge (N:1), Broadcast (1:N), Configurable (N:M)

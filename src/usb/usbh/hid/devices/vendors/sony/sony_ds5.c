@@ -117,27 +117,27 @@ void input_sony_ds5(uint8_t dev_addr, uint8_t instance, uint8_t const* report, u
       bool tpad_left = ds5_report.tpad && !ds5_report.tpad_f1_down && tx < 960;
       bool tpad_right = ds5_report.tpad && !ds5_report.tpad_f1_down && tx >= 960;
 
-      buttons = (((dpad_up)             ? USBR_BUTTON_DU : 0) |
-                 ((dpad_down)           ? USBR_BUTTON_DD : 0) |
-                 ((dpad_left)           ? USBR_BUTTON_DL : 0) |
-                 ((dpad_right)          ? USBR_BUTTON_DR : 0) |
-                 ((ds5_report.cross)    ? USBR_BUTTON_B1 : 0) |
-                 ((ds5_report.circle)   ? USBR_BUTTON_B2 : 0) |
-                 ((ds5_report.square)   ? USBR_BUTTON_B3 : 0) |
-                 ((ds5_report.triangle) ? USBR_BUTTON_B4 : 0) |
-                 ((ds5_report.l1)       ? USBR_BUTTON_L1 : 0) |
-                 ((ds5_report.r1)       ? USBR_BUTTON_R1 : 0) |
-                 ((ds5_report.l2)       ? USBR_BUTTON_L2 : 0) |
-                 ((ds5_report.r2)       ? USBR_BUTTON_R2 : 0) |
-                 ((ds5_report.share)    ? USBR_BUTTON_S1 : 0) |
-                 ((ds5_report.option)   ? USBR_BUTTON_S2 : 0) |
-                 ((ds5_report.l3)       ? USBR_BUTTON_L3 : 0) |
-                 ((ds5_report.r3)       ? USBR_BUTTON_R3 : 0) |
-                 ((ds5_report.ps)       ? USBR_BUTTON_A1 : 0) |
-                 ((ds5_report.tpad)     ? USBR_BUTTON_A2 : 0) |
-                 ((ds5_report.mute)     ? USBR_BUTTON_A3 : 0) |
-                 ((tpad_left)           ? USBR_BUTTON_L4 : 0) |
-                 ((tpad_right)          ? USBR_BUTTON_R4 : 0));
+      buttons = (((dpad_up)             ? JP_BUTTON_DU : 0) |
+                 ((dpad_down)           ? JP_BUTTON_DD : 0) |
+                 ((dpad_left)           ? JP_BUTTON_DL : 0) |
+                 ((dpad_right)          ? JP_BUTTON_DR : 0) |
+                 ((ds5_report.cross)    ? JP_BUTTON_B1 : 0) |
+                 ((ds5_report.circle)   ? JP_BUTTON_B2 : 0) |
+                 ((ds5_report.square)   ? JP_BUTTON_B3 : 0) |
+                 ((ds5_report.triangle) ? JP_BUTTON_B4 : 0) |
+                 ((ds5_report.l1)       ? JP_BUTTON_L1 : 0) |
+                 ((ds5_report.r1)       ? JP_BUTTON_R1 : 0) |
+                 ((ds5_report.l2)       ? JP_BUTTON_L2 : 0) |
+                 ((ds5_report.r2)       ? JP_BUTTON_R2 : 0) |
+                 ((ds5_report.share)    ? JP_BUTTON_S1 : 0) |
+                 ((ds5_report.option)   ? JP_BUTTON_S2 : 0) |
+                 ((ds5_report.l3)       ? JP_BUTTON_L3 : 0) |
+                 ((ds5_report.r3)       ? JP_BUTTON_R3 : 0) |
+                 ((ds5_report.ps)       ? JP_BUTTON_A1 : 0) |
+                 ((ds5_report.tpad)     ? JP_BUTTON_A2 : 0) |
+                 ((ds5_report.mute)     ? JP_BUTTON_A3 : 0) |
+                 ((tpad_left)           ? JP_BUTTON_L4 : 0) |
+                 ((tpad_right)          ? JP_BUTTON_R4 : 0));
 
       // Touch Pad - provides mouse-like delta for horizontal swipes
       // Can be used for spinners, camera control, etc. (platform-agnostic)

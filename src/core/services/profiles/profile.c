@@ -336,9 +336,9 @@ void profile_check_player_switch_combo(uint8_t player_index, uint32_t buttons)
     player_combo_state_t* combo = &player_combo[player_index];
 
     // Check button states (buttons are active-high: 1 = pressed)
-    bool select_held = ((buttons & USBR_BUTTON_S1) != 0);
-    bool dpad_up_pressed = ((buttons & USBR_BUTTON_DU) != 0);
-    bool dpad_down_pressed = ((buttons & USBR_BUTTON_DD) != 0);
+    bool select_held = ((buttons & JP_BUTTON_S1) != 0);
+    bool dpad_up_pressed = ((buttons & JP_BUTTON_DU) != 0);
+    bool dpad_down_pressed = ((buttons & JP_BUTTON_DD) != 0);
 
     // Select released - reset everything for this player
     if (!select_held) {
@@ -418,11 +418,11 @@ void profile_check_switch_combo(uint32_t buttons)
     if (player_count == 0) return;  // No controllers connected
 
     // Check button states (buttons are active-high: 1 = pressed)
-    bool select_held = ((buttons & USBR_BUTTON_S1) != 0);
-    bool dpad_up_pressed = ((buttons & USBR_BUTTON_DU) != 0);
-    bool dpad_down_pressed = ((buttons & USBR_BUTTON_DD) != 0);
-    bool dpad_left_pressed = ((buttons & USBR_BUTTON_DL) != 0);
-    bool dpad_right_pressed = ((buttons & USBR_BUTTON_DR) != 0);
+    bool select_held = ((buttons & JP_BUTTON_S1) != 0);
+    bool dpad_up_pressed = ((buttons & JP_BUTTON_DU) != 0);
+    bool dpad_down_pressed = ((buttons & JP_BUTTON_DD) != 0);
+    bool dpad_left_pressed = ((buttons & JP_BUTTON_DL) != 0);
+    bool dpad_right_pressed = ((buttons & JP_BUTTON_DR) != 0);
 
     // Select released - reset everything
     if (!select_held) {
@@ -612,11 +612,11 @@ void profile_apply(const profile_t* profile,
     // Note: active-high (bit set = pressed, bit clear = released)
     if (profile_switch_combo_active()) {
         // Clear combo buttons to "released"
-        input_buttons &= ~USBR_BUTTON_S1;   // Select
-        input_buttons &= ~USBR_BUTTON_DU;   // D-pad Up
-        input_buttons &= ~USBR_BUTTON_DD;   // D-pad Down
-        input_buttons &= ~USBR_BUTTON_DL;   // D-pad Left
-        input_buttons &= ~USBR_BUTTON_DR;   // D-pad Right
+        input_buttons &= ~JP_BUTTON_S1;   // Select
+        input_buttons &= ~JP_BUTTON_DU;   // D-pad Up
+        input_buttons &= ~JP_BUTTON_DD;   // D-pad Down
+        input_buttons &= ~JP_BUTTON_DL;   // D-pad Left
+        input_buttons &= ~JP_BUTTON_DR;   // D-pad Right
     }
 
     // Initialize output with passthrough values
@@ -751,12 +751,12 @@ void profile_apply(const profile_t* profile,
                 output->l2_analog = 0;
                 break;
             case TRIGGER_FULL_PRESS:
-                if (input_buttons & USBR_BUTTON_L2) {
+                if (input_buttons & JP_BUTTON_L2) {
                     output->l2_analog = 255;
                 }
                 break;
             case TRIGGER_LIGHT_PRESS:
-                if (input_buttons & USBR_BUTTON_L2) {
+                if (input_buttons & JP_BUTTON_L2) {
                     output->l2_analog = profile->l2_analog_value;
                 }
                 break;
@@ -773,12 +773,12 @@ void profile_apply(const profile_t* profile,
                 output->r2_analog = 0;
                 break;
             case TRIGGER_FULL_PRESS:
-                if (input_buttons & USBR_BUTTON_R2) {
+                if (input_buttons & JP_BUTTON_R2) {
                     output->r2_analog = 255;
                 }
                 break;
             case TRIGGER_LIGHT_PRESS:
-                if (input_buttons & USBR_BUTTON_R2) {
+                if (input_buttons & JP_BUTTON_R2) {
                     output->r2_analog = profile->r2_analog_value;
                 }
                 break;

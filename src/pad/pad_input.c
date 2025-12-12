@@ -302,10 +302,10 @@ static void pad_poll_device(uint8_t device_index) {
 
     if (dpad_mode) {
         // D-pad mode: output as digital buttons
-        if (dpad_up)    buttons |= USBR_BUTTON_DU;
-        if (dpad_down)  buttons |= USBR_BUTTON_DD;
-        if (dpad_left)  buttons |= USBR_BUTTON_DL;
-        if (dpad_right) buttons |= USBR_BUTTON_DR;
+        if (dpad_up)    buttons |= JP_BUTTON_DU;
+        if (dpad_down)  buttons |= JP_BUTTON_DD;
+        if (dpad_left)  buttons |= JP_BUTTON_DL;
+        if (dpad_right) buttons |= JP_BUTTON_DR;
     } else {
         // Analog mode: output D-pad as right stick
         // X axis: left = 0, center = 128, right = 255
@@ -323,24 +323,24 @@ static void pad_poll_device(uint8_t device_index) {
     }
 
     // Face buttons
-    if (pad_read_button(config->b1, ah)) buttons |= USBR_BUTTON_B1;
-    if (pad_read_button(config->b2, ah)) buttons |= USBR_BUTTON_B2;
-    if (pad_read_button(config->b3, ah)) buttons |= USBR_BUTTON_B3;
-    if (pad_read_button(config->b4, ah)) buttons |= USBR_BUTTON_B4;
+    if (pad_read_button(config->b1, ah)) buttons |= JP_BUTTON_B1;
+    if (pad_read_button(config->b2, ah)) buttons |= JP_BUTTON_B2;
+    if (pad_read_button(config->b3, ah)) buttons |= JP_BUTTON_B3;
+    if (pad_read_button(config->b4, ah)) buttons |= JP_BUTTON_B4;
 
     // Shoulders/triggers
-    if (pad_read_button(config->l1, ah)) buttons |= USBR_BUTTON_L1;
-    if (pad_read_button(config->r1, ah)) buttons |= USBR_BUTTON_R1;
-    if (pad_read_button(config->l2, ah)) buttons |= USBR_BUTTON_L2;
-    if (pad_read_button(config->r2, ah)) buttons |= USBR_BUTTON_R2;
+    if (pad_read_button(config->l1, ah)) buttons |= JP_BUTTON_L1;
+    if (pad_read_button(config->r1, ah)) buttons |= JP_BUTTON_R1;
+    if (pad_read_button(config->l2, ah)) buttons |= JP_BUTTON_L2;
+    if (pad_read_button(config->r2, ah)) buttons |= JP_BUTTON_R2;
 
     // Meta buttons
-    if (pad_read_button(config->s1, ah)) buttons |= USBR_BUTTON_S1;
-    if (pad_read_button(config->s2, ah)) buttons |= USBR_BUTTON_S2;
-    if (pad_read_button(config->l3, ah)) buttons |= USBR_BUTTON_L3;
-    if (pad_read_button(config->r3, ah)) buttons |= USBR_BUTTON_R3;
-    if (pad_read_button(config->a1, ah)) buttons |= USBR_BUTTON_A1;
-    if (pad_read_button(config->a2, ah)) buttons |= USBR_BUTTON_A2;
+    if (pad_read_button(config->s1, ah)) buttons |= JP_BUTTON_S1;
+    if (pad_read_button(config->s2, ah)) buttons |= JP_BUTTON_S2;
+    if (pad_read_button(config->l3, ah)) buttons |= JP_BUTTON_L3;
+    if (pad_read_button(config->r3, ah)) buttons |= JP_BUTTON_R3;
+    if (pad_read_button(config->a1, ah)) buttons |= JP_BUTTON_A1;
+    if (pad_read_button(config->a2, ah)) buttons |= JP_BUTTON_A2;
 
     // Extra buttons (L4/R4 mapped to L2/R2 digital for now)
     // TODO: Add proper L4/R4 button defines if needed

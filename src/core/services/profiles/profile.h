@@ -1,11 +1,11 @@
 // profile.h - Universal Profile System
 //
 // Provides a standardized profile structure for button remapping across all outputs.
-// Uses USBR_BUTTON_* constants for both input and output, with console-specific
+// Uses JP_BUTTON_* constants for both input and output, with console-specific
 // aliases (GC_BUTTON_A, TDO_BUTTON_B, PCE_BUTTON_I, etc.) for readability.
 //
 // Architecture:
-//   Input Device → USBR_BUTTON_* → Profile Mapping → USBR_BUTTON_* → Output Device → Console Native
+//   Input Device → JP_BUTTON_* → Profile Mapping → JP_BUTTON_* → Output Device → Console Native
 //
 // The profile system supports:
 //   - Simple 1:1 button remapping (B1 → B2)
@@ -59,8 +59,8 @@ typedef enum {
 // Maps one input button to output(s) - supports advanced mappings
 
 typedef struct {
-    uint32_t input;             // USBR_BUTTON_* input (e.g., USBR_BUTTON_B1)
-    uint32_t output;            // USBR_BUTTON_* output(s) - can OR multiple buttons
+    uint32_t input;             // JP_BUTTON_* input (e.g., JP_BUTTON_B1)
+    uint32_t output;            // JP_BUTTON_* output(s) - can OR multiple buttons
     analog_target_t analog;     // Optional analog output (0 = none)
     uint8_t analog_value;       // Custom analog value for ANALOG_TARGET_*_CUSTOM
 } button_map_entry_t;
@@ -71,8 +71,8 @@ typedef struct {
 // Maps multiple input buttons pressed together to output(s)
 
 typedef struct {
-    uint32_t inputs;            // USBR_BUTTON_* inputs (OR'd together - all must be pressed)
-    uint32_t output;            // USBR_BUTTON_* output(s) when combo active
+    uint32_t inputs;            // JP_BUTTON_* inputs (OR'd together - all must be pressed)
+    uint32_t output;            // JP_BUTTON_* output(s) when combo active
     bool consume_inputs;        // If true, remove input buttons from output when combo fires
 } button_combo_entry_t;
 
@@ -82,7 +82,7 @@ typedef struct {
 // Button-triggered sensitivity modifier for analog sticks
 
 typedef struct {
-    uint32_t trigger;           // Button that activates modifier (e.g., USBR_BUTTON_L3)
+    uint32_t trigger;           // Button that activates modifier (e.g., JP_BUTTON_L3)
     float sensitivity;          // Sensitivity when modifier active (0.0-1.0)
     bool consume_trigger;       // If true, remove trigger button from output
 } stick_modifier_t;

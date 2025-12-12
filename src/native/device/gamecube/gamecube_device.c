@@ -283,13 +283,13 @@ static void map_usbr_to_gc_report(const profile_output_t* output, gc_report_t* r
     uint32_t buttons = output->buttons;
 
     // D-pad (always direct mapping)
-    report->dpad_up    = ((buttons & USBR_BUTTON_DU) != 0) ? 1 : 0;
-    report->dpad_down  = ((buttons & USBR_BUTTON_DD) != 0) ? 1 : 0;
-    report->dpad_left  = ((buttons & USBR_BUTTON_DL) != 0) ? 1 : 0;
-    report->dpad_right = ((buttons & USBR_BUTTON_DR) != 0) ? 1 : 0;
+    report->dpad_up    = ((buttons & JP_BUTTON_DU) != 0) ? 1 : 0;
+    report->dpad_down  = ((buttons & JP_BUTTON_DD) != 0) ? 1 : 0;
+    report->dpad_left  = ((buttons & JP_BUTTON_DL) != 0) ? 1 : 0;
+    report->dpad_right = ((buttons & JP_BUTTON_DR) != 0) ? 1 : 0;
 
     // Face buttons (USBR → GC mapping via aliases)
-    // GC_BUTTON_A = USBR_BUTTON_B1, GC_BUTTON_B = USBR_BUTTON_B2, etc.
+    // GC_BUTTON_A = JP_BUTTON_B1, GC_BUTTON_B = JP_BUTTON_B2, etc.
     report->a = ((buttons & GC_BUTTON_A) != 0) ? 1 : 0;
     report->b = ((buttons & GC_BUTTON_B) != 0) ? 1 : 0;
     report->x = ((buttons & GC_BUTTON_X) != 0) ? 1 : 0;
@@ -396,7 +396,7 @@ void __not_in_flash_func(update_output)(void)
       new_report.cstick_y = scale_toward_center(new_report.cstick_y, gc_kb_scale, 128);
 
       // A1 (Home/Ctrl+Alt+Del) → gc-swiss IGR combo (Select+D-down+B+R)
-      if ((event->buttons & USBR_BUTTON_A1) != 0) {
+      if ((event->buttons & JP_BUTTON_A1) != 0) {
         new_report.dpad_down = 1;
         new_report.b = 1;
         new_report.r = 1;

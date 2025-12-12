@@ -1,7 +1,7 @@
 // 3do.h
 // 3DO Console Protocol Header
 // Based on USBTo3DO by FCare (https://github.com/FCare/USBTo3DO)
-// Integrated into USBRetro multi-console architecture
+// Integrated into Joypad multi-console architecture
 
 #ifndef THREEDOH
 #define THREEDOH

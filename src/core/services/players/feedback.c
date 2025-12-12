@@ -1,5 +1,5 @@
 // feedback.c
-// USBRetro canonical feedback implementation
+// Joypad canonical feedback implementation
 //
 // Manages per-player feedback state that device drivers read and apply
 // to their specific hardware.

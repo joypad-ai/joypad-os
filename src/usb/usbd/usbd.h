@@ -38,7 +38,7 @@ typedef enum {
 #define USB_HID_VID            0x2563  // SHANWAN
 #define USB_HID_PID            0x0575  // 2In1 USB Joystick
 #define USB_HID_BCD            0x0100  // v1.0
-#define USB_HID_MANUFACTURER   "USBRetro"
+#define USB_HID_MANUFACTURER   "Joypad"
 #define USB_HID_PRODUCT        "USBR (DInput)"
 
 // Xbox Original Mode (XID)

@@ -48,20 +48,20 @@ void process_sony_psc(uint8_t dev_addr, uint8_t instance, uint8_t const* report,
     bool dpad_down  = (psc_report.dpad >= 8 && psc_report.dpad <= 10);
     bool dpad_left  = (psc_report.dpad == 0 || psc_report.dpad == 4 || psc_report.dpad == 8);
 
-    buttons = (((dpad_up)             ? USBR_BUTTON_DU : 0) |
-               ((dpad_down)           ? USBR_BUTTON_DD : 0) |
-               ((dpad_left)           ? USBR_BUTTON_DL : 0) |
-               ((dpad_right)          ? USBR_BUTTON_DR : 0) |
-               ((psc_report.cross)    ? USBR_BUTTON_B1 : 0) |
-               ((psc_report.circle)   ? USBR_BUTTON_B2 : 0) |
-               ((psc_report.square)   ? USBR_BUTTON_B3 : 0) |
-               ((psc_report.triangle) ? USBR_BUTTON_B4 : 0) |
-               ((psc_report.l1)       ? USBR_BUTTON_L1 : 0) |
-               ((psc_report.r1)       ? USBR_BUTTON_R1 : 0) |
-               ((psc_report.l2)       ? USBR_BUTTON_L2 : 0) |
-               ((psc_report.r2)       ? USBR_BUTTON_R2 : 0) |
-               ((psc_report.share)    ? USBR_BUTTON_S1 : 0) |
-               ((psc_report.option)   ? USBR_BUTTON_S2 : 0));
+    buttons = (((dpad_up)             ? JP_BUTTON_DU : 0) |
+               ((dpad_down)           ? JP_BUTTON_DD : 0) |
+               ((dpad_left)           ? JP_BUTTON_DL : 0) |
+               ((dpad_right)          ? JP_BUTTON_DR : 0) |
+               ((psc_report.cross)    ? JP_BUTTON_B1 : 0) |
+               ((psc_report.circle)   ? JP_BUTTON_B2 : 0) |
+               ((psc_report.square)   ? JP_BUTTON_B3 : 0) |
+               ((psc_report.triangle) ? JP_BUTTON_B4 : 0) |
+               ((psc_report.l1)       ? JP_BUTTON_L1 : 0) |
+               ((psc_report.r1)       ? JP_BUTTON_R1 : 0) |
+               ((psc_report.l2)       ? JP_BUTTON_L2 : 0) |
+               ((psc_report.r2)       ? JP_BUTTON_R2 : 0) |
+               ((psc_report.share)    ? JP_BUTTON_S1 : 0) |
+               ((psc_report.option)   ? JP_BUTTON_S2 : 0));
 
     // add to accumulator and post to the state machine
     // if a scan from the host machine is ongoing, wait

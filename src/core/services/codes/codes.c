@@ -9,9 +9,9 @@
 #define CODE_LENGTH 10
 
 // Known sequences
-#define KONAMI_CODE {USBR_BUTTON_DU, USBR_BUTTON_DU, USBR_BUTTON_DD, USBR_BUTTON_DD, \
-                     USBR_BUTTON_DL, USBR_BUTTON_DR, USBR_BUTTON_DL, USBR_BUTTON_DR, \
-                     USBR_BUTTON_B1, USBR_BUTTON_B2}
+#define KONAMI_CODE {JP_BUTTON_DU, JP_BUTTON_DU, JP_BUTTON_DD, JP_BUTTON_DD, \
+                     JP_BUTTON_DL, JP_BUTTON_DR, JP_BUTTON_DL, JP_BUTTON_DR, \
+                     JP_BUTTON_B1, JP_BUTTON_B2}
 
 // Internal state
 static uint32_t code_buffer[CODE_LENGTH] = {0};

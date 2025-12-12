@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2024 Robert Dale Smith
 //
-// Implements USB device mode for USBRetro, enabling the adapter to emulate
+// Implements USB device mode for Joypad, enabling the adapter to emulate
 // a gamepad for USB-capable consoles. Uses TinyUSB device stack.
 //
 // Supports multiple output modes:
@@ -49,7 +49,7 @@
 // ============================================================================
 
 // Current HID report (for HID mode)
-static usbretro_hid_report_t hid_report;
+static joypad_hid_report_t hid_report;
 
 // Current XID report (for Xbox OG mode)
 static xbox_og_in_report_t xid_report;
@@ -154,23 +154,23 @@ static uint16_t convert_buttons(uint32_t buttons)
 {
     uint16_t hid_buttons = 0;
 
-    // USBRetro uses active-high (1 = pressed), HID uses active-high (1 = pressed)
+    // Joypad uses active-high (1 = pressed), HID uses active-high (1 = pressed)
     // No inversion needed
 
-    if (buttons & USBR_BUTTON_B1) hid_buttons |= USB_GAMEPAD_MASK_B1;
-    if (buttons & USBR_BUTTON_B2) hid_buttons |= USB_GAMEPAD_MASK_B2;
-    if (buttons & USBR_BUTTON_B3) hid_buttons |= USB_GAMEPAD_MASK_B3;
-    if (buttons & USBR_BUTTON_B4) hid_buttons |= USB_GAMEPAD_MASK_B4;
-    if (buttons & USBR_BUTTON_L1) hid_buttons |= USB_GAMEPAD_MASK_L1;
-    if (buttons & USBR_BUTTON_R1) hid_buttons |= USB_GAMEPAD_MASK_R1;
-    if (buttons & USBR_BUTTON_L2) hid_buttons |= USB_GAMEPAD_MASK_L2;
-    if (buttons & USBR_BUTTON_R2) hid_buttons |= USB_GAMEPAD_MASK_R2;
-    if (buttons & USBR_BUTTON_S1) hid_buttons |= USB_GAMEPAD_MASK_S1;
-    if (buttons & USBR_BUTTON_S2) hid_buttons |= USB_GAMEPAD_MASK_S2;
-    if (buttons & USBR_BUTTON_L3) hid_buttons |= USB_GAMEPAD_MASK_L3;
-    if (buttons & USBR_BUTTON_R3) hid_buttons |= USB_GAMEPAD_MASK_R3;
-    if (buttons & USBR_BUTTON_A1) hid_buttons |= USB_GAMEPAD_MASK_A1;
-    if (buttons & USBR_BUTTON_A2) hid_buttons |= USB_GAMEPAD_MASK_A2;
+    if (buttons & JP_BUTTON_B1) hid_buttons |= USB_GAMEPAD_MASK_B1;
+    if (buttons & JP_BUTTON_B2) hid_buttons |= USB_GAMEPAD_MASK_B2;
+    if (buttons & JP_BUTTON_B3) hid_buttons |= USB_GAMEPAD_MASK_B3;
+    if (buttons & JP_BUTTON_B4) hid_buttons |= USB_GAMEPAD_MASK_B4;
+    if (buttons & JP_BUTTON_L1) hid_buttons |= USB_GAMEPAD_MASK_L1;
+    if (buttons & JP_BUTTON_R1) hid_buttons |= USB_GAMEPAD_MASK_R1;
+    if (buttons & JP_BUTTON_L2) hid_buttons |= USB_GAMEPAD_MASK_L2;
+    if (buttons & JP_BUTTON_R2) hid_buttons |= USB_GAMEPAD_MASK_R2;
+    if (buttons & JP_BUTTON_S1) hid_buttons |= USB_GAMEPAD_MASK_S1;
+    if (buttons & JP_BUTTON_S2) hid_buttons |= USB_GAMEPAD_MASK_S2;
+    if (buttons & JP_BUTTON_L3) hid_buttons |= USB_GAMEPAD_MASK_L3;
+    if (buttons & JP_BUTTON_R3) hid_buttons |= USB_GAMEPAD_MASK_R3;
+    if (buttons & JP_BUTTON_A1) hid_buttons |= USB_GAMEPAD_MASK_A1;
+    if (buttons & JP_BUTTON_A2) hid_buttons |= USB_GAMEPAD_MASK_A2;
 
     return hid_buttons;
 }
@@ -178,11 +178,11 @@ static uint16_t convert_buttons(uint32_t buttons)
 // Convert input_event dpad to HID hat switch
 static uint8_t convert_dpad_to_hat(uint32_t buttons)
 {
-    // USBRetro uses active-high (1 = pressed)
-    uint8_t up = (buttons & USBR_BUTTON_DU) ? 1 : 0;
-    uint8_t down = (buttons & USBR_BUTTON_DD) ? 1 : 0;
-    uint8_t left = (buttons & USBR_BUTTON_DL) ? 1 : 0;
-    uint8_t right = (buttons & USBR_BUTTON_DR) ? 1 : 0;
+    // Joypad uses active-high (1 = pressed)
+    uint8_t up = (buttons & JP_BUTTON_DU) ? 1 : 0;
+    uint8_t down = (buttons & JP_BUTTON_DD) ? 1 : 0;
+    uint8_t left = (buttons & JP_BUTTON_DL) ? 1 : 0;
+    uint8_t right = (buttons & JP_BUTTON_DR) ? 1 : 0;
 
     if (up && right) return HID_HAT_UP_RIGHT;
     if (up && left) return HID_HAT_UP_LEFT;
@@ -200,24 +200,24 @@ static uint8_t convert_dpad_to_hat(uint32_t buttons)
 // XID CONVERSION HELPERS (Xbox Original mode)
 // ============================================================================
 
-// Convert USBRetro buttons to Xbox OG digital buttons (byte 2)
+// Convert Joypad buttons to Xbox OG digital buttons (byte 2)
 static uint8_t convert_xid_digital_buttons(uint32_t buttons)
 {
     uint8_t xog_buttons = 0;
 
-    if (buttons & USBR_BUTTON_DU) xog_buttons |= XBOX_OG_BTN_DPAD_UP;
-    if (buttons & USBR_BUTTON_DD) xog_buttons |= XBOX_OG_BTN_DPAD_DOWN;
-    if (buttons & USBR_BUTTON_DL) xog_buttons |= XBOX_OG_BTN_DPAD_LEFT;
-    if (buttons & USBR_BUTTON_DR) xog_buttons |= XBOX_OG_BTN_DPAD_RIGHT;
-    if (buttons & USBR_BUTTON_S2) xog_buttons |= XBOX_OG_BTN_START;
-    if (buttons & USBR_BUTTON_S1) xog_buttons |= XBOX_OG_BTN_BACK;
-    if (buttons & USBR_BUTTON_L3) xog_buttons |= XBOX_OG_BTN_L3;
-    if (buttons & USBR_BUTTON_R3) xog_buttons |= XBOX_OG_BTN_R3;
+    if (buttons & JP_BUTTON_DU) xog_buttons |= XBOX_OG_BTN_DPAD_UP;
+    if (buttons & JP_BUTTON_DD) xog_buttons |= XBOX_OG_BTN_DPAD_DOWN;
+    if (buttons & JP_BUTTON_DL) xog_buttons |= XBOX_OG_BTN_DPAD_LEFT;
+    if (buttons & JP_BUTTON_DR) xog_buttons |= XBOX_OG_BTN_DPAD_RIGHT;
+    if (buttons & JP_BUTTON_S2) xog_buttons |= XBOX_OG_BTN_START;
+    if (buttons & JP_BUTTON_S1) xog_buttons |= XBOX_OG_BTN_BACK;
+    if (buttons & JP_BUTTON_L3) xog_buttons |= XBOX_OG_BTN_L3;
+    if (buttons & JP_BUTTON_R3) xog_buttons |= XBOX_OG_BTN_R3;
 
     return xog_buttons;
 }
 
-// Convert analog value from USBRetro (0-255, center 128) to Xbox OG signed 16-bit
+// Convert analog value from Joypad (0-255, center 128) to Xbox OG signed 16-bit
 static int16_t convert_axis_to_s16(uint8_t value)
 {
     int32_t scaled = ((int32_t)value - 128) * 256;
@@ -449,7 +449,7 @@ void usbd_init(void)
         case USB_OUTPUT_MODE_HID:
         default:
             // Initialize HID report to neutral state
-            memset(&hid_report, 0, sizeof(usbretro_hid_report_t));
+            memset(&hid_report, 0, sizeof(joypad_hid_report_t));
             hid_report.lx = 128;  // Center
             hid_report.ly = 128;
             hid_report.rx = 128;
@@ -570,19 +570,19 @@ static bool usbd_send_xid_report(uint8_t player_index)
         xid_report.buttons = convert_xid_digital_buttons(buttons);
 
         // Analog face buttons (0 = not pressed, 255 = fully pressed)
-        xid_report.a     = (buttons & USBR_BUTTON_B1) ? 0xFF : 0x00;
-        xid_report.b     = (buttons & USBR_BUTTON_B2) ? 0xFF : 0x00;
-        xid_report.x     = (buttons & USBR_BUTTON_B3) ? 0xFF : 0x00;
-        xid_report.y     = (buttons & USBR_BUTTON_B4) ? 0xFF : 0x00;
-        xid_report.black = (buttons & USBR_BUTTON_L1) ? 0xFF : 0x00;  // L1 -> Black
-        xid_report.white = (buttons & USBR_BUTTON_R1) ? 0xFF : 0x00;  // R1 -> White
+        xid_report.a     = (buttons & JP_BUTTON_B1) ? 0xFF : 0x00;
+        xid_report.b     = (buttons & JP_BUTTON_B2) ? 0xFF : 0x00;
+        xid_report.x     = (buttons & JP_BUTTON_B3) ? 0xFF : 0x00;
+        xid_report.y     = (buttons & JP_BUTTON_B4) ? 0xFF : 0x00;
+        xid_report.black = (buttons & JP_BUTTON_L1) ? 0xFF : 0x00;  // L1 -> Black
+        xid_report.white = (buttons & JP_BUTTON_R1) ? 0xFF : 0x00;  // R1 -> White
 
         // Analog triggers (0-255)
         // Use profile analog values, fall back to digital if analog is 0 but button pressed
         xid_report.trigger_l = profile_out.l2_analog;
         xid_report.trigger_r = profile_out.r2_analog;
-        if (xid_report.trigger_l == 0 && (buttons & USBR_BUTTON_L2)) xid_report.trigger_l = 0xFF;
-        if (xid_report.trigger_r == 0 && (buttons & USBR_BUTTON_R2)) xid_report.trigger_r = 0xFF;
+        if (xid_report.trigger_l == 0 && (buttons & JP_BUTTON_L2)) xid_report.trigger_l = 0xFF;
+        if (xid_report.trigger_r == 0 && (buttons & JP_BUTTON_R2)) xid_report.trigger_r = 0xFF;
 
         // Analog sticks (signed 16-bit, -32768 to +32767)
         xid_report.stick_lx = convert_axis_to_s16(profile_out.left_x);
@@ -635,10 +635,10 @@ static bool usbd_send_hid_report(uint8_t player_index)
         hid_report.ry = profile_out.right_y;
 
         // PS3 pressure axes (0x00 = released, 0xFF = fully pressed)
-        hid_report.pressure_dpad_right = (processed_buttons & USBR_BUTTON_DR) ? 0xFF : 0x00;
-        hid_report.pressure_dpad_left  = (processed_buttons & USBR_BUTTON_DL) ? 0xFF : 0x00;
-        hid_report.pressure_dpad_up    = (processed_buttons & USBR_BUTTON_DU) ? 0xFF : 0x00;
-        hid_report.pressure_dpad_down  = (processed_buttons & USBR_BUTTON_DD) ? 0xFF : 0x00;
+        hid_report.pressure_dpad_right = (processed_buttons & JP_BUTTON_DR) ? 0xFF : 0x00;
+        hid_report.pressure_dpad_left  = (processed_buttons & JP_BUTTON_DL) ? 0xFF : 0x00;
+        hid_report.pressure_dpad_up    = (processed_buttons & JP_BUTTON_DU) ? 0xFF : 0x00;
+        hid_report.pressure_dpad_down  = (processed_buttons & JP_BUTTON_DD) ? 0xFF : 0x00;
         hid_report.pressure_triangle   = (buttons & USB_GAMEPAD_MASK_B4) ? 0xFF : 0x00;
         hid_report.pressure_circle     = (buttons & USB_GAMEPAD_MASK_B2) ? 0xFF : 0x00;
         hid_report.pressure_cross      = (buttons & USB_GAMEPAD_MASK_B1) ? 0xFF : 0x00;
@@ -678,31 +678,31 @@ static bool usbd_send_xinput_report(uint8_t player_index)
 
         // Digital buttons byte 0 (DPAD, Start, Back, L3, R3)
         xinput_report.buttons0 = 0;
-        if (buttons & USBR_BUTTON_DU) xinput_report.buttons0 |= XINPUT_BTN_DPAD_UP;
-        if (buttons & USBR_BUTTON_DD) xinput_report.buttons0 |= XINPUT_BTN_DPAD_DOWN;
-        if (buttons & USBR_BUTTON_DL) xinput_report.buttons0 |= XINPUT_BTN_DPAD_LEFT;
-        if (buttons & USBR_BUTTON_DR) xinput_report.buttons0 |= XINPUT_BTN_DPAD_RIGHT;
-        if (buttons & USBR_BUTTON_S2) xinput_report.buttons0 |= XINPUT_BTN_START;
-        if (buttons & USBR_BUTTON_S1) xinput_report.buttons0 |= XINPUT_BTN_BACK;
-        if (buttons & USBR_BUTTON_L3) xinput_report.buttons0 |= XINPUT_BTN_L3;
-        if (buttons & USBR_BUTTON_R3) xinput_report.buttons0 |= XINPUT_BTN_R3;
+        if (buttons & JP_BUTTON_DU) xinput_report.buttons0 |= XINPUT_BTN_DPAD_UP;
+        if (buttons & JP_BUTTON_DD) xinput_report.buttons0 |= XINPUT_BTN_DPAD_DOWN;
+        if (buttons & JP_BUTTON_DL) xinput_report.buttons0 |= XINPUT_BTN_DPAD_LEFT;
+        if (buttons & JP_BUTTON_DR) xinput_report.buttons0 |= XINPUT_BTN_DPAD_RIGHT;
+        if (buttons & JP_BUTTON_S2) xinput_report.buttons0 |= XINPUT_BTN_START;
+        if (buttons & JP_BUTTON_S1) xinput_report.buttons0 |= XINPUT_BTN_BACK;
+        if (buttons & JP_BUTTON_L3) xinput_report.buttons0 |= XINPUT_BTN_L3;
+        if (buttons & JP_BUTTON_R3) xinput_report.buttons0 |= XINPUT_BTN_R3;
 
         // Digital buttons byte 1 (LB, RB, Guide, A, B, X, Y)
         xinput_report.buttons1 = 0;
-        if (buttons & USBR_BUTTON_L1) xinput_report.buttons1 |= XINPUT_BTN_LB;
-        if (buttons & USBR_BUTTON_R1) xinput_report.buttons1 |= XINPUT_BTN_RB;
-        if (buttons & USBR_BUTTON_A1) xinput_report.buttons1 |= XINPUT_BTN_GUIDE;
-        if (buttons & USBR_BUTTON_B1) xinput_report.buttons1 |= XINPUT_BTN_A;
-        if (buttons & USBR_BUTTON_B2) xinput_report.buttons1 |= XINPUT_BTN_B;
-        if (buttons & USBR_BUTTON_B3) xinput_report.buttons1 |= XINPUT_BTN_X;
-        if (buttons & USBR_BUTTON_B4) xinput_report.buttons1 |= XINPUT_BTN_Y;
+        if (buttons & JP_BUTTON_L1) xinput_report.buttons1 |= XINPUT_BTN_LB;
+        if (buttons & JP_BUTTON_R1) xinput_report.buttons1 |= XINPUT_BTN_RB;
+        if (buttons & JP_BUTTON_A1) xinput_report.buttons1 |= XINPUT_BTN_GUIDE;
+        if (buttons & JP_BUTTON_B1) xinput_report.buttons1 |= XINPUT_BTN_A;
+        if (buttons & JP_BUTTON_B2) xinput_report.buttons1 |= XINPUT_BTN_B;
+        if (buttons & JP_BUTTON_B3) xinput_report.buttons1 |= XINPUT_BTN_X;
+        if (buttons & JP_BUTTON_B4) xinput_report.buttons1 |= XINPUT_BTN_Y;
 
         // Analog triggers (0-255)
         // Use analog values, fall back to digital if analog is 0 but button pressed
         xinput_report.trigger_l = profile_out.l2_analog;
         xinput_report.trigger_r = profile_out.r2_analog;
-        if (xinput_report.trigger_l == 0 && (buttons & USBR_BUTTON_L2)) xinput_report.trigger_l = 0xFF;
-        if (xinput_report.trigger_r == 0 && (buttons & USBR_BUTTON_R2)) xinput_report.trigger_r = 0xFF;
+        if (xinput_report.trigger_l == 0 && (buttons & JP_BUTTON_L2)) xinput_report.trigger_l = 0xFF;
+        if (xinput_report.trigger_r == 0 && (buttons & JP_BUTTON_R2)) xinput_report.trigger_r = 0xFF;
 
         // Analog sticks (signed 16-bit, -32768 to +32767)
         // Y-axis inverted: input 0=down, XInput convention positive=up
@@ -742,20 +742,20 @@ static bool usbd_send_switch_report(uint8_t player_index)
 
         // Buttons (16-bit) - position-based mapping (matches GP2040-CE)
         switch_report.buttons = 0;
-        if (buttons & USBR_BUTTON_B1) switch_report.buttons |= SWITCH_MASK_B;  // B1 (bottom) → B
-        if (buttons & USBR_BUTTON_B2) switch_report.buttons |= SWITCH_MASK_A;  // B2 (right)  → A
-        if (buttons & USBR_BUTTON_B3) switch_report.buttons |= SWITCH_MASK_Y;  // B3 (left)   → Y
-        if (buttons & USBR_BUTTON_B4) switch_report.buttons |= SWITCH_MASK_X;  // B4 (top)    → X
-        if (buttons & USBR_BUTTON_L1) switch_report.buttons |= SWITCH_MASK_L;  // L
-        if (buttons & USBR_BUTTON_R1) switch_report.buttons |= SWITCH_MASK_R;  // R
-        if (buttons & USBR_BUTTON_L2) switch_report.buttons |= SWITCH_MASK_ZL; // ZL
-        if (buttons & USBR_BUTTON_R2) switch_report.buttons |= SWITCH_MASK_ZR; // ZR
-        if (buttons & USBR_BUTTON_S1) switch_report.buttons |= SWITCH_MASK_MINUS;  // Minus
-        if (buttons & USBR_BUTTON_S2) switch_report.buttons |= SWITCH_MASK_PLUS;   // Plus
-        if (buttons & USBR_BUTTON_L3) switch_report.buttons |= SWITCH_MASK_L3;
-        if (buttons & USBR_BUTTON_R3) switch_report.buttons |= SWITCH_MASK_R3;
-        if (buttons & USBR_BUTTON_A1) switch_report.buttons |= SWITCH_MASK_HOME;
-        if (buttons & USBR_BUTTON_A2) switch_report.buttons |= SWITCH_MASK_CAPTURE;
+        if (buttons & JP_BUTTON_B1) switch_report.buttons |= SWITCH_MASK_B;  // B1 (bottom) → B
+        if (buttons & JP_BUTTON_B2) switch_report.buttons |= SWITCH_MASK_A;  // B2 (right)  → A
+        if (buttons & JP_BUTTON_B3) switch_report.buttons |= SWITCH_MASK_Y;  // B3 (left)   → Y
+        if (buttons & JP_BUTTON_B4) switch_report.buttons |= SWITCH_MASK_X;  // B4 (top)    → X
+        if (buttons & JP_BUTTON_L1) switch_report.buttons |= SWITCH_MASK_L;  // L
+        if (buttons & JP_BUTTON_R1) switch_report.buttons |= SWITCH_MASK_R;  // R
+        if (buttons & JP_BUTTON_L2) switch_report.buttons |= SWITCH_MASK_ZL; // ZL
+        if (buttons & JP_BUTTON_R2) switch_report.buttons |= SWITCH_MASK_ZR; // ZR
+        if (buttons & JP_BUTTON_S1) switch_report.buttons |= SWITCH_MASK_MINUS;  // Minus
+        if (buttons & JP_BUTTON_S2) switch_report.buttons |= SWITCH_MASK_PLUS;   // Plus
+        if (buttons & JP_BUTTON_L3) switch_report.buttons |= SWITCH_MASK_L3;
+        if (buttons & JP_BUTTON_R3) switch_report.buttons |= SWITCH_MASK_R3;
+        if (buttons & JP_BUTTON_A1) switch_report.buttons |= SWITCH_MASK_HOME;
+        if (buttons & JP_BUTTON_A2) switch_report.buttons |= SWITCH_MASK_CAPTURE;
 
         // D-pad as hat switch
         switch_report.hat = convert_dpad_to_hat(buttons);
@@ -797,29 +797,29 @@ static bool usbd_send_ps3_report(uint8_t player_index)
 
         // Digital buttons byte 0
         ps3_report.buttons[0] = 0;
-        if (buttons & USBR_BUTTON_S1) ps3_report.buttons[0] |= PS3_BTN_SELECT;
-        if (buttons & USBR_BUTTON_L3) ps3_report.buttons[0] |= PS3_BTN_L3;
-        if (buttons & USBR_BUTTON_R3) ps3_report.buttons[0] |= PS3_BTN_R3;
-        if (buttons & USBR_BUTTON_S2) ps3_report.buttons[0] |= PS3_BTN_START;
-        if (buttons & USBR_BUTTON_DU) ps3_report.buttons[0] |= PS3_BTN_DPAD_UP;
-        if (buttons & USBR_BUTTON_DR) ps3_report.buttons[0] |= PS3_BTN_DPAD_RIGHT;
-        if (buttons & USBR_BUTTON_DD) ps3_report.buttons[0] |= PS3_BTN_DPAD_DOWN;
-        if (buttons & USBR_BUTTON_DL) ps3_report.buttons[0] |= PS3_BTN_DPAD_LEFT;
+        if (buttons & JP_BUTTON_S1) ps3_report.buttons[0] |= PS3_BTN_SELECT;
+        if (buttons & JP_BUTTON_L3) ps3_report.buttons[0] |= PS3_BTN_L3;
+        if (buttons & JP_BUTTON_R3) ps3_report.buttons[0] |= PS3_BTN_R3;
+        if (buttons & JP_BUTTON_S2) ps3_report.buttons[0] |= PS3_BTN_START;
+        if (buttons & JP_BUTTON_DU) ps3_report.buttons[0] |= PS3_BTN_DPAD_UP;
+        if (buttons & JP_BUTTON_DR) ps3_report.buttons[0] |= PS3_BTN_DPAD_RIGHT;
+        if (buttons & JP_BUTTON_DD) ps3_report.buttons[0] |= PS3_BTN_DPAD_DOWN;
+        if (buttons & JP_BUTTON_DL) ps3_report.buttons[0] |= PS3_BTN_DPAD_LEFT;
 
         // Digital buttons byte 1
         ps3_report.buttons[1] = 0;
-        if (buttons & USBR_BUTTON_L2) ps3_report.buttons[1] |= PS3_BTN_L2;
-        if (buttons & USBR_BUTTON_R2) ps3_report.buttons[1] |= PS3_BTN_R2;
-        if (buttons & USBR_BUTTON_L1) ps3_report.buttons[1] |= PS3_BTN_L1;
-        if (buttons & USBR_BUTTON_R1) ps3_report.buttons[1] |= PS3_BTN_R1;
-        if (buttons & USBR_BUTTON_B4) ps3_report.buttons[1] |= PS3_BTN_TRIANGLE;
-        if (buttons & USBR_BUTTON_B2) ps3_report.buttons[1] |= PS3_BTN_CIRCLE;
-        if (buttons & USBR_BUTTON_B1) ps3_report.buttons[1] |= PS3_BTN_CROSS;
-        if (buttons & USBR_BUTTON_B3) ps3_report.buttons[1] |= PS3_BTN_SQUARE;
+        if (buttons & JP_BUTTON_L2) ps3_report.buttons[1] |= PS3_BTN_L2;
+        if (buttons & JP_BUTTON_R2) ps3_report.buttons[1] |= PS3_BTN_R2;
+        if (buttons & JP_BUTTON_L1) ps3_report.buttons[1] |= PS3_BTN_L1;
+        if (buttons & JP_BUTTON_R1) ps3_report.buttons[1] |= PS3_BTN_R1;
+        if (buttons & JP_BUTTON_B4) ps3_report.buttons[1] |= PS3_BTN_TRIANGLE;
+        if (buttons & JP_BUTTON_B2) ps3_report.buttons[1] |= PS3_BTN_CIRCLE;
+        if (buttons & JP_BUTTON_B1) ps3_report.buttons[1] |= PS3_BTN_CROSS;
+        if (buttons & JP_BUTTON_B3) ps3_report.buttons[1] |= PS3_BTN_SQUARE;
 
         // Digital buttons byte 2 (PS button)
         ps3_report.buttons[2] = 0;
-        if (buttons & USBR_BUTTON_A1) ps3_report.buttons[2] |= PS3_BTN_PS;
+        if (buttons & JP_BUTTON_A1) ps3_report.buttons[2] |= PS3_BTN_PS;
 
         // Analog sticks (HID convention: 0=up, 255=down - no inversion needed)
         ps3_report.lx = profile_out.left_x;
@@ -846,18 +846,18 @@ static bool usbd_send_ps3_report(uint8_t player_index)
             ps3_report.pressure_square   = profile_out.pressure[11];
         } else {
             // Fall back to digital (0xFF pressed, 0x00 released)
-            ps3_report.pressure_up    = (buttons & USBR_BUTTON_DU) ? 0xFF : 0x00;
-            ps3_report.pressure_right = (buttons & USBR_BUTTON_DR) ? 0xFF : 0x00;
-            ps3_report.pressure_down  = (buttons & USBR_BUTTON_DD) ? 0xFF : 0x00;
-            ps3_report.pressure_left  = (buttons & USBR_BUTTON_DL) ? 0xFF : 0x00;
+            ps3_report.pressure_up    = (buttons & JP_BUTTON_DU) ? 0xFF : 0x00;
+            ps3_report.pressure_right = (buttons & JP_BUTTON_DR) ? 0xFF : 0x00;
+            ps3_report.pressure_down  = (buttons & JP_BUTTON_DD) ? 0xFF : 0x00;
+            ps3_report.pressure_left  = (buttons & JP_BUTTON_DL) ? 0xFF : 0x00;
             ps3_report.pressure_l2    = profile_out.l2_analog;
             ps3_report.pressure_r2    = profile_out.r2_analog;
-            ps3_report.pressure_l1    = (buttons & USBR_BUTTON_L1) ? 0xFF : 0x00;
-            ps3_report.pressure_r1    = (buttons & USBR_BUTTON_R1) ? 0xFF : 0x00;
-            ps3_report.pressure_triangle = (buttons & USBR_BUTTON_B4) ? 0xFF : 0x00;
-            ps3_report.pressure_circle   = (buttons & USBR_BUTTON_B2) ? 0xFF : 0x00;
-            ps3_report.pressure_cross    = (buttons & USBR_BUTTON_B1) ? 0xFF : 0x00;
-            ps3_report.pressure_square   = (buttons & USBR_BUTTON_B3) ? 0xFF : 0x00;
+            ps3_report.pressure_l1    = (buttons & JP_BUTTON_L1) ? 0xFF : 0x00;
+            ps3_report.pressure_r1    = (buttons & JP_BUTTON_R1) ? 0xFF : 0x00;
+            ps3_report.pressure_triangle = (buttons & JP_BUTTON_B4) ? 0xFF : 0x00;
+            ps3_report.pressure_circle   = (buttons & JP_BUTTON_B2) ? 0xFF : 0x00;
+            ps3_report.pressure_cross    = (buttons & JP_BUTTON_B1) ? 0xFF : 0x00;
+            ps3_report.pressure_square   = (buttons & JP_BUTTON_B3) ? 0xFF : 0x00;
         }
 
         // Motion data (SIXAXIS) - big-endian 16-bit values
@@ -916,10 +916,10 @@ static bool usbd_send_psclassic_report(uint8_t player_index)
         psclassic_report.buttons = PSCLASSIC_DPAD_CENTER;
 
         // D-pad encoding (bits 10-13)
-        uint8_t up = (buttons & USBR_BUTTON_DU) ? 1 : 0;
-        uint8_t down = (buttons & USBR_BUTTON_DD) ? 1 : 0;
-        uint8_t left = (buttons & USBR_BUTTON_DL) ? 1 : 0;
-        uint8_t right = (buttons & USBR_BUTTON_DR) ? 1 : 0;
+        uint8_t up = (buttons & JP_BUTTON_DU) ? 1 : 0;
+        uint8_t down = (buttons & JP_BUTTON_DD) ? 1 : 0;
+        uint8_t left = (buttons & JP_BUTTON_DL) ? 1 : 0;
+        uint8_t right = (buttons & JP_BUTTON_DR) ? 1 : 0;
 
         if (up && right)        psclassic_report.buttons = PSCLASSIC_DPAD_UP_RIGHT;
         else if (up && left)    psclassic_report.buttons = PSCLASSIC_DPAD_UP_LEFT;
@@ -932,16 +932,16 @@ static bool usbd_send_psclassic_report(uint8_t player_index)
 
         // Face buttons and shoulders (bits 0-9)
         psclassic_report.buttons |=
-              (buttons & USBR_BUTTON_B4 ? PSCLASSIC_MASK_TRIANGLE : 0)
-            | (buttons & USBR_BUTTON_B2 ? PSCLASSIC_MASK_CIRCLE   : 0)
-            | (buttons & USBR_BUTTON_B1 ? PSCLASSIC_MASK_CROSS    : 0)
-            | (buttons & USBR_BUTTON_B3 ? PSCLASSIC_MASK_SQUARE   : 0)
-            | (buttons & USBR_BUTTON_L1 ? PSCLASSIC_MASK_L1       : 0)
-            | (buttons & USBR_BUTTON_R1 ? PSCLASSIC_MASK_R1       : 0)
-            | (buttons & USBR_BUTTON_L2 ? PSCLASSIC_MASK_L2       : 0)
-            | (buttons & USBR_BUTTON_R2 ? PSCLASSIC_MASK_R2       : 0)
-            | (buttons & USBR_BUTTON_S1 ? PSCLASSIC_MASK_SELECT   : 0)
-            | (buttons & USBR_BUTTON_S2 ? PSCLASSIC_MASK_START    : 0);
+              (buttons & JP_BUTTON_B4 ? PSCLASSIC_MASK_TRIANGLE : 0)
+            | (buttons & JP_BUTTON_B2 ? PSCLASSIC_MASK_CIRCLE   : 0)
+            | (buttons & JP_BUTTON_B1 ? PSCLASSIC_MASK_CROSS    : 0)
+            | (buttons & JP_BUTTON_B3 ? PSCLASSIC_MASK_SQUARE   : 0)
+            | (buttons & JP_BUTTON_L1 ? PSCLASSIC_MASK_L1       : 0)
+            | (buttons & JP_BUTTON_R1 ? PSCLASSIC_MASK_R1       : 0)
+            | (buttons & JP_BUTTON_L2 ? PSCLASSIC_MASK_L2       : 0)
+            | (buttons & JP_BUTTON_R2 ? PSCLASSIC_MASK_R2       : 0)
+            | (buttons & JP_BUTTON_S1 ? PSCLASSIC_MASK_SELECT   : 0)
+            | (buttons & JP_BUTTON_S2 ? PSCLASSIC_MASK_START    : 0);
 
     } else {
         // No input - neutral state
@@ -989,10 +989,10 @@ static bool usbd_send_ps4_report(uint8_t player_index)
         ps4_report_buffer[4] = profile_out.right_y;         // RY
 
         // Byte 5: D-pad (bits 0-3) + face buttons (bits 4-7)
-        uint8_t up = (buttons & USBR_BUTTON_DU) ? 1 : 0;
-        uint8_t down = (buttons & USBR_BUTTON_DD) ? 1 : 0;
-        uint8_t left = (buttons & USBR_BUTTON_DL) ? 1 : 0;
-        uint8_t right = (buttons & USBR_BUTTON_DR) ? 1 : 0;
+        uint8_t up = (buttons & JP_BUTTON_DU) ? 1 : 0;
+        uint8_t down = (buttons & JP_BUTTON_DD) ? 1 : 0;
+        uint8_t left = (buttons & JP_BUTTON_DL) ? 1 : 0;
+        uint8_t right = (buttons & JP_BUTTON_DR) ? 1 : 0;
 
         uint8_t dpad;
         if (up && right)        dpad = PS4_HAT_UP_RIGHT;
@@ -1006,29 +1006,29 @@ static bool usbd_send_ps4_report(uint8_t player_index)
         else                    dpad = PS4_HAT_NOTHING;
 
         uint8_t face_buttons = 0;
-        if (buttons & USBR_BUTTON_B3) face_buttons |= 0x10;  // Square
-        if (buttons & USBR_BUTTON_B1) face_buttons |= 0x20;  // Cross
-        if (buttons & USBR_BUTTON_B2) face_buttons |= 0x40;  // Circle
-        if (buttons & USBR_BUTTON_B4) face_buttons |= 0x80;  // Triangle
+        if (buttons & JP_BUTTON_B3) face_buttons |= 0x10;  // Square
+        if (buttons & JP_BUTTON_B1) face_buttons |= 0x20;  // Cross
+        if (buttons & JP_BUTTON_B2) face_buttons |= 0x40;  // Circle
+        if (buttons & JP_BUTTON_B4) face_buttons |= 0x80;  // Triangle
 
         ps4_report_buffer[5] = dpad | face_buttons;
 
         // Byte 6: Shoulder buttons + other buttons
         uint8_t byte6 = 0;
-        if (buttons & USBR_BUTTON_L1) byte6 |= 0x01;  // L1
-        if (buttons & USBR_BUTTON_R1) byte6 |= 0x02;  // R1
-        if (buttons & USBR_BUTTON_L2) byte6 |= 0x04;  // L2 (digital)
-        if (buttons & USBR_BUTTON_R2) byte6 |= 0x08;  // R2 (digital)
-        if (buttons & USBR_BUTTON_S1) byte6 |= 0x10;  // Share
-        if (buttons & USBR_BUTTON_S2) byte6 |= 0x20;  // Options
-        if (buttons & USBR_BUTTON_L3) byte6 |= 0x40;  // L3
-        if (buttons & USBR_BUTTON_R3) byte6 |= 0x80;  // R3
+        if (buttons & JP_BUTTON_L1) byte6 |= 0x01;  // L1
+        if (buttons & JP_BUTTON_R1) byte6 |= 0x02;  // R1
+        if (buttons & JP_BUTTON_L2) byte6 |= 0x04;  // L2 (digital)
+        if (buttons & JP_BUTTON_R2) byte6 |= 0x08;  // R2 (digital)
+        if (buttons & JP_BUTTON_S1) byte6 |= 0x10;  // Share
+        if (buttons & JP_BUTTON_S2) byte6 |= 0x20;  // Options
+        if (buttons & JP_BUTTON_L3) byte6 |= 0x40;  // L3
+        if (buttons & JP_BUTTON_R3) byte6 |= 0x80;  // R3
         ps4_report_buffer[6] = byte6;
 
         // Byte 7: PS + Touchpad + Counter (6-bit)
         uint8_t byte7 = 0;
-        if (buttons & USBR_BUTTON_A1) byte7 |= 0x01;  // PS button
-        if (buttons & USBR_BUTTON_A2) byte7 |= 0x02;  // Touchpad click
+        if (buttons & JP_BUTTON_A1) byte7 |= 0x01;  // PS button
+        if (buttons & JP_BUTTON_A2) byte7 |= 0x02;  // Touchpad click
         byte7 |= ((ps4_report_counter++ & 0x3F) << 2);       // Counter in bits 2-7
         ps4_report_buffer[7] = byte7;
 
@@ -1076,27 +1076,27 @@ static bool usbd_send_xbone_report(uint8_t player_index)
         uint32_t buttons = apply_usbd_profile(event, &profile_out);
 
         // Buttons
-        xbone_report.a = (buttons & USBR_BUTTON_B1) ? 1 : 0;
-        xbone_report.b = (buttons & USBR_BUTTON_B2) ? 1 : 0;
-        xbone_report.x = (buttons & USBR_BUTTON_B3) ? 1 : 0;
-        xbone_report.y = (buttons & USBR_BUTTON_B4) ? 1 : 0;
+        xbone_report.a = (buttons & JP_BUTTON_B1) ? 1 : 0;
+        xbone_report.b = (buttons & JP_BUTTON_B2) ? 1 : 0;
+        xbone_report.x = (buttons & JP_BUTTON_B3) ? 1 : 0;
+        xbone_report.y = (buttons & JP_BUTTON_B4) ? 1 : 0;
 
-        xbone_report.left_shoulder = (buttons & USBR_BUTTON_L1) ? 1 : 0;
-        xbone_report.right_shoulder = (buttons & USBR_BUTTON_R1) ? 1 : 0;
+        xbone_report.left_shoulder = (buttons & JP_BUTTON_L1) ? 1 : 0;
+        xbone_report.right_shoulder = (buttons & JP_BUTTON_R1) ? 1 : 0;
 
-        xbone_report.back = (buttons & USBR_BUTTON_S1) ? 1 : 0;
-        xbone_report.start = (buttons & USBR_BUTTON_S2) ? 1 : 0;
+        xbone_report.back = (buttons & JP_BUTTON_S1) ? 1 : 0;
+        xbone_report.start = (buttons & JP_BUTTON_S2) ? 1 : 0;
 
-        xbone_report.guide = (buttons & USBR_BUTTON_A1) ? 1 : 0;
-        xbone_report.sync = (buttons & USBR_BUTTON_A2) ? 1 : 0;
+        xbone_report.guide = (buttons & JP_BUTTON_A1) ? 1 : 0;
+        xbone_report.sync = (buttons & JP_BUTTON_A2) ? 1 : 0;
 
-        xbone_report.left_thumb = (buttons & USBR_BUTTON_L3) ? 1 : 0;
-        xbone_report.right_thumb = (buttons & USBR_BUTTON_R3) ? 1 : 0;
+        xbone_report.left_thumb = (buttons & JP_BUTTON_L3) ? 1 : 0;
+        xbone_report.right_thumb = (buttons & JP_BUTTON_R3) ? 1 : 0;
 
-        xbone_report.dpad_up = (buttons & USBR_BUTTON_DU) ? 1 : 0;
-        xbone_report.dpad_down = (buttons & USBR_BUTTON_DD) ? 1 : 0;
-        xbone_report.dpad_left = (buttons & USBR_BUTTON_DL) ? 1 : 0;
-        xbone_report.dpad_right = (buttons & USBR_BUTTON_DR) ? 1 : 0;
+        xbone_report.dpad_up = (buttons & JP_BUTTON_DU) ? 1 : 0;
+        xbone_report.dpad_down = (buttons & JP_BUTTON_DD) ? 1 : 0;
+        xbone_report.dpad_left = (buttons & JP_BUTTON_DL) ? 1 : 0;
+        xbone_report.dpad_right = (buttons & JP_BUTTON_DR) ? 1 : 0;
 
         // Triggers (0-1023)
         // Map from profile analog (0-255) to Xbox One range (0-1023)
@@ -1104,9 +1104,9 @@ static bool usbd_send_xbone_report(uint8_t player_index)
         xbone_report.right_trigger = (uint16_t)profile_out.r2_analog * 4;
 
         // Fallback to digital if analog is 0 but button pressed
-        if (xbone_report.left_trigger == 0 && (buttons & USBR_BUTTON_L2))
+        if (xbone_report.left_trigger == 0 && (buttons & JP_BUTTON_L2))
             xbone_report.left_trigger = 1023;
-        if (xbone_report.right_trigger == 0 && (buttons & USBR_BUTTON_R2))
+        if (xbone_report.right_trigger == 0 && (buttons & JP_BUTTON_R2))
             xbone_report.right_trigger = 1023;
 
         // Analog sticks (signed 16-bit, -32768 to +32767)
@@ -1145,18 +1145,18 @@ static bool usbd_send_xac_report(uint8_t player_index)
 
         // Buttons (12 total, split into low 4 bits and high 8 bits)
         uint16_t xac_buttons = 0;
-        if (buttons & USBR_BUTTON_B1) xac_buttons |= XAC_MASK_B1;  // A
-        if (buttons & USBR_BUTTON_B2) xac_buttons |= XAC_MASK_B2;  // B
-        if (buttons & USBR_BUTTON_B3) xac_buttons |= XAC_MASK_B3;  // X
-        if (buttons & USBR_BUTTON_B4) xac_buttons |= XAC_MASK_B4;  // Y
-        if (buttons & USBR_BUTTON_L1) xac_buttons |= XAC_MASK_L1;  // LB
-        if (buttons & USBR_BUTTON_R1) xac_buttons |= XAC_MASK_R1;  // RB
-        if (buttons & USBR_BUTTON_L2) xac_buttons |= XAC_MASK_L2;  // LT (digital)
-        if (buttons & USBR_BUTTON_R2) xac_buttons |= XAC_MASK_R2;  // RT (digital)
-        if (buttons & USBR_BUTTON_S1) xac_buttons |= XAC_MASK_S1;  // Back
-        if (buttons & USBR_BUTTON_S2) xac_buttons |= XAC_MASK_S2;  // Start
-        if (buttons & USBR_BUTTON_L3) xac_buttons |= XAC_MASK_L3;  // LS
-        if (buttons & USBR_BUTTON_R3) xac_buttons |= XAC_MASK_R3;  // RS
+        if (buttons & JP_BUTTON_B1) xac_buttons |= XAC_MASK_B1;  // A
+        if (buttons & JP_BUTTON_B2) xac_buttons |= XAC_MASK_B2;  // B
+        if (buttons & JP_BUTTON_B3) xac_buttons |= XAC_MASK_B3;  // X
+        if (buttons & JP_BUTTON_B4) xac_buttons |= XAC_MASK_B4;  // Y
+        if (buttons & JP_BUTTON_L1) xac_buttons |= XAC_MASK_L1;  // LB
+        if (buttons & JP_BUTTON_R1) xac_buttons |= XAC_MASK_R1;  // RB
+        if (buttons & JP_BUTTON_L2) xac_buttons |= XAC_MASK_L2;  // LT (digital)
+        if (buttons & JP_BUTTON_R2) xac_buttons |= XAC_MASK_R2;  // RT (digital)
+        if (buttons & JP_BUTTON_S1) xac_buttons |= XAC_MASK_S1;  // Back
+        if (buttons & JP_BUTTON_S2) xac_buttons |= XAC_MASK_S2;  // Start
+        if (buttons & JP_BUTTON_L3) xac_buttons |= XAC_MASK_L3;  // LS
+        if (buttons & JP_BUTTON_R3) xac_buttons |= XAC_MASK_R3;  // RS
 
         xac_report.buttons_lo = xac_buttons & 0x0F;
         xac_report.buttons_hi = (xac_buttons >> 4) & 0xFF;
@@ -1715,7 +1715,7 @@ uint16_t tud_hid_get_report_cb(uint8_t itf, uint8_t report_id, hid_report_type_t
     // Default: return current input report
     (void)report_id;
     (void)report_type;
-    uint16_t len = sizeof(usbretro_hid_report_t);
+    uint16_t len = sizeof(joypad_hid_report_t);
     if (reqlen < len) len = reqlen;
     memcpy(buffer, &hid_report, len);
     return len;

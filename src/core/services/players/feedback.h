@@ -1,10 +1,10 @@
 // feedback.h
-// USBRetro canonical feedback definitions
+// Joypad canonical feedback definitions
 //
 // Controller-independent format for rumble and LED feedback that device
 // drivers map to their specific hardware capabilities.
 //
-// Similar to how USBR_BUTTON_* provides controller-independent button input,
+// Similar to how JP_BUTTON_* provides controller-independent button input,
 // this provides controller-independent feedback output.
 
 #ifndef CORE_FEEDBACK_H

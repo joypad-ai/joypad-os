@@ -228,23 +228,23 @@ void input_report_switch_pro(uint8_t dev_addr, uint8_t instance, uint8_t const* 
         }
       }
 
-      buttons = (((dpad_up)              ? USBR_BUTTON_DU : 0) |
-                 ((dpad_down)            ? USBR_BUTTON_DD : 0) |
-                 ((dpad_left)            ? USBR_BUTTON_DL : 0) |
-                 ((dpad_right)           ? USBR_BUTTON_DR : 0) |
-                 ((bttn_b1)              ? USBR_BUTTON_B1 : 0) |
-                 ((bttn_b2)              ? USBR_BUTTON_B2 : 0) |
-                 ((bttn_b3)              ? USBR_BUTTON_B3 : 0) |
-                 ((bttn_b4)              ? USBR_BUTTON_B4 : 0) |
-                 ((bttn_l1)              ? USBR_BUTTON_L1 : 0) |
-                 ((bttn_r1)              ? USBR_BUTTON_R1 : 0) |
-                 ((update_report.sr_l || update_report.zl) ? USBR_BUTTON_L2 : 0) |
-                 ((update_report.sr_r || update_report.zr) ? USBR_BUTTON_R2 : 0) |
-                 ((bttn_s1)              ? USBR_BUTTON_S1 : 0) |
-                 ((bttn_s2)              ? USBR_BUTTON_S2 : 0) |
-                 ((update_report.lstick) ? USBR_BUTTON_L3 : 0) |
-                 ((update_report.rstick) ? USBR_BUTTON_R3 : 0) |
-                 ((bttn_a1)              ? USBR_BUTTON_A1 : 0));
+      buttons = (((dpad_up)              ? JP_BUTTON_DU : 0) |
+                 ((dpad_down)            ? JP_BUTTON_DD : 0) |
+                 ((dpad_left)            ? JP_BUTTON_DL : 0) |
+                 ((dpad_right)           ? JP_BUTTON_DR : 0) |
+                 ((bttn_b1)              ? JP_BUTTON_B1 : 0) |
+                 ((bttn_b2)              ? JP_BUTTON_B2 : 0) |
+                 ((bttn_b3)              ? JP_BUTTON_B3 : 0) |
+                 ((bttn_b4)              ? JP_BUTTON_B4 : 0) |
+                 ((bttn_l1)              ? JP_BUTTON_L1 : 0) |
+                 ((bttn_r1)              ? JP_BUTTON_R1 : 0) |
+                 ((update_report.sr_l || update_report.zl) ? JP_BUTTON_L2 : 0) |
+                 ((update_report.sr_r || update_report.zr) ? JP_BUTTON_R2 : 0) |
+                 ((bttn_s1)              ? JP_BUTTON_S1 : 0) |
+                 ((bttn_s2)              ? JP_BUTTON_S2 : 0) |
+                 ((update_report.lstick) ? JP_BUTTON_L3 : 0) |
+                 ((update_report.rstick) ? JP_BUTTON_R3 : 0) |
+                 ((bttn_a1)              ? JP_BUTTON_A1 : 0));
 
       // Joy-Con Grip merging: combine both Joy-Con inputs into one controller
       if (switch_devices[dev_addr].instance_count > 1) {
@@ -259,14 +259,14 @@ void input_report_switch_pro(uint8_t dev_addr, uint8_t instance, uint8_t const* 
           switch_devices[dev_addr].merged_event.type = INPUT_TYPE_GAMEPAD;
 
           // Left Joy-Con: D-pad, left stick, L buttons
-          uint32_t left_buttons = (((dpad_up)   ? USBR_BUTTON_DU : 0) |
-                                   ((dpad_down) ? USBR_BUTTON_DD : 0) |
-                                   ((dpad_left) ? USBR_BUTTON_DL : 0) |
-                                   ((dpad_right)? USBR_BUTTON_DR : 0) |
-                                   ((bttn_l1)   ? USBR_BUTTON_L1 : 0) |
-                                   ((update_report.zl) ? USBR_BUTTON_L2 : 0) |
-                                   ((update_report.lstick) ? USBR_BUTTON_L3 : 0) |
-                                   ((bttn_s1)   ? USBR_BUTTON_S1 : 0));  // Minus button
+          uint32_t left_buttons = (((dpad_up)   ? JP_BUTTON_DU : 0) |
+                                   ((dpad_down) ? JP_BUTTON_DD : 0) |
+                                   ((dpad_left) ? JP_BUTTON_DL : 0) |
+                                   ((dpad_right)? JP_BUTTON_DR : 0) |
+                                   ((bttn_l1)   ? JP_BUTTON_L1 : 0) |
+                                   ((update_report.zl) ? JP_BUTTON_L2 : 0) |
+                                   ((update_report.lstick) ? JP_BUTTON_L3 : 0) |
+                                   ((bttn_s1)   ? JP_BUTTON_S1 : 0));  // Minus button
 
           switch_devices[dev_addr].merged_event.buttons |= left_buttons;
           switch_devices[dev_addr].merged_event.analog[0] = leftX;  // Left stick X
@@ -280,15 +280,15 @@ void input_report_switch_pro(uint8_t dev_addr, uint8_t instance, uint8_t const* 
           switch_devices[dev_addr].merged_event.type = INPUT_TYPE_GAMEPAD;
 
           // Right Joy-Con: Face buttons, right stick, R buttons
-          uint32_t right_buttons = (((bttn_b1) ? USBR_BUTTON_B1 : 0) |
-                                    ((bttn_b2) ? USBR_BUTTON_B2 : 0) |
-                                    ((bttn_b3) ? USBR_BUTTON_B3 : 0) |
-                                    ((bttn_b4) ? USBR_BUTTON_B4 : 0) |
-                                    ((bttn_r1) ? USBR_BUTTON_R1 : 0) |
-                                    ((update_report.zr) ? USBR_BUTTON_R2 : 0) |
-                                    ((update_report.rstick) ? USBR_BUTTON_R3 : 0) |
-                                    ((bttn_s2) ? USBR_BUTTON_S2 : 0) |  // Plus button
-                                    ((bttn_a1) ? USBR_BUTTON_A1 : 0));  // Home button
+          uint32_t right_buttons = (((bttn_b1) ? JP_BUTTON_B1 : 0) |
+                                    ((bttn_b2) ? JP_BUTTON_B2 : 0) |
+                                    ((bttn_b3) ? JP_BUTTON_B3 : 0) |
+                                    ((bttn_b4) ? JP_BUTTON_B4 : 0) |
+                                    ((bttn_r1) ? JP_BUTTON_R1 : 0) |
+                                    ((update_report.zr) ? JP_BUTTON_R2 : 0) |
+                                    ((update_report.rstick) ? JP_BUTTON_R3 : 0) |
+                                    ((bttn_s2) ? JP_BUTTON_S2 : 0) |  // Plus button
+                                    ((bttn_a1) ? JP_BUTTON_A1 : 0));  // Home button
 
           switch_devices[dev_addr].merged_event.buttons |= right_buttons;
           switch_devices[dev_addr].merged_event.analog[2] = rightX;  // Right stick X
@@ -382,23 +382,23 @@ void input_report_switch_pro(uint8_t dev_addr, uint8_t instance, uint8_t const* 
     uint8_t rightX = scale_analog_switch_pro(pro2_report.right_x);
     uint8_t rightY = scale_analog_switch_pro(pro2_report.right_y);
 
-    buttons = (((dpad_up)              ? USBR_BUTTON_DU : 0) |
-               ((dpad_down)            ? USBR_BUTTON_DD : 0) |
-               ((dpad_left)            ? USBR_BUTTON_DL : 0) |
-               ((dpad_right)           ? USBR_BUTTON_DR : 0) |
-               ((bttn_b1)              ? USBR_BUTTON_B1 : 0) |
-               ((bttn_b2)              ? USBR_BUTTON_B2 : 0) |
-               ((bttn_b3)              ? USBR_BUTTON_B3 : 0) |
-               ((bttn_b4)              ? USBR_BUTTON_B4 : 0) |
-               ((bttn_l1)              ? USBR_BUTTON_L1 : 0) |
-               ((bttn_r1)              ? USBR_BUTTON_R1 : 0) |
-               ((pro2_report.zl)       ? USBR_BUTTON_L2 : 0) |
-               ((pro2_report.zr)       ? USBR_BUTTON_R2 : 0) |
-               ((bttn_s1)              ? USBR_BUTTON_S1 : 0) |
-               ((bttn_s2)              ? USBR_BUTTON_S2 : 0) |
-               ((pro2_report.lstick)   ? USBR_BUTTON_L3 : 0) |
-               ((pro2_report.rstick)   ? USBR_BUTTON_R3 : 0) |
-               ((bttn_a1)              ? USBR_BUTTON_A1 : 0));
+    buttons = (((dpad_up)              ? JP_BUTTON_DU : 0) |
+               ((dpad_down)            ? JP_BUTTON_DD : 0) |
+               ((dpad_left)            ? JP_BUTTON_DL : 0) |
+               ((dpad_right)           ? JP_BUTTON_DR : 0) |
+               ((bttn_b1)              ? JP_BUTTON_B1 : 0) |
+               ((bttn_b2)              ? JP_BUTTON_B2 : 0) |
+               ((bttn_b3)              ? JP_BUTTON_B3 : 0) |
+               ((bttn_b4)              ? JP_BUTTON_B4 : 0) |
+               ((bttn_l1)              ? JP_BUTTON_L1 : 0) |
+               ((bttn_r1)              ? JP_BUTTON_R1 : 0) |
+               ((pro2_report.zl)       ? JP_BUTTON_L2 : 0) |
+               ((pro2_report.zr)       ? JP_BUTTON_R2 : 0) |
+               ((bttn_s1)              ? JP_BUTTON_S1 : 0) |
+               ((bttn_s2)              ? JP_BUTTON_S2 : 0) |
+               ((pro2_report.lstick)   ? JP_BUTTON_L3 : 0) |
+               ((pro2_report.rstick)   ? JP_BUTTON_R3 : 0) |
+               ((bttn_a1)              ? JP_BUTTON_A1 : 0));
 
     bool is_root = instance == switch_devices[dev_addr].instance_root;
     input_event_t event = {

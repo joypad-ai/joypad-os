@@ -152,80 +152,80 @@ void __not_in_flash_func(core1_task)(void)
       if (gpio_get(ROW0_PIN)) {
         // Player 1 - ROW0
         loopy_byte |= LOOPY_BIT0; // Presence
-        loopy_byte |= ((player_1 & USBR_BUTTON_S2) == 0) ? LOOPY_BIT1 : 0; // Start
-        loopy_byte |= ((player_1 & USBR_BUTTON_L1) == 0) ? LOOPY_BIT2 : 0; // L
-        loopy_byte |= ((player_1 & USBR_BUTTON_R1) == 0) ? LOOPY_BIT3 : 0; // R
+        loopy_byte |= ((player_1 & JP_BUTTON_S2) == 0) ? LOOPY_BIT1 : 0; // Start
+        loopy_byte |= ((player_1 & JP_BUTTON_L1) == 0) ? LOOPY_BIT2 : 0; // L
+        loopy_byte |= ((player_1 & JP_BUTTON_R1) == 0) ? LOOPY_BIT3 : 0; // R
 
         // Player 2 - ROW0
         loopy_byte |= (playersCount >= 2               ) ? LOOPY_BIT4 : 0; // Presence
-        loopy_byte |= ((player_2 & USBR_BUTTON_S2) == 0) ? LOOPY_BIT5 : 0; // Start
-        loopy_byte |= ((player_2 & USBR_BUTTON_L1) == 0) ? LOOPY_BIT6 : 0; // L
-        loopy_byte |= ((player_2 & USBR_BUTTON_R1) == 0) ? LOOPY_BIT7 : 0; // R
+        loopy_byte |= ((player_2 & JP_BUTTON_S2) == 0) ? LOOPY_BIT5 : 0; // Start
+        loopy_byte |= ((player_2 & JP_BUTTON_L1) == 0) ? LOOPY_BIT6 : 0; // L
+        loopy_byte |= ((player_2 & JP_BUTTON_R1) == 0) ? LOOPY_BIT7 : 0; // R
 
       } else if (gpio_get(ROW1_PIN)) {
         // Player 1 - ROW1
-        loopy_byte |= ((player_1 & USBR_BUTTON_B1) == 0) ? LOOPY_BIT0 : 0; // A
-        loopy_byte |= ((player_1 & USBR_BUTTON_B4) == 0) ? LOOPY_BIT1 : 0; // D
-        loopy_byte |= ((player_1 & USBR_BUTTON_B3) == 0) ? LOOPY_BIT2 : 0; // C
-        loopy_byte |= ((player_1 & USBR_BUTTON_B2) == 0) ? LOOPY_BIT3 : 0; // B
+        loopy_byte |= ((player_1 & JP_BUTTON_B1) == 0) ? LOOPY_BIT0 : 0; // A
+        loopy_byte |= ((player_1 & JP_BUTTON_B4) == 0) ? LOOPY_BIT1 : 0; // D
+        loopy_byte |= ((player_1 & JP_BUTTON_B3) == 0) ? LOOPY_BIT2 : 0; // C
+        loopy_byte |= ((player_1 & JP_BUTTON_B2) == 0) ? LOOPY_BIT3 : 0; // B
 
         // Player 2 - ROW1
-        loopy_byte |= ((player_2 & USBR_BUTTON_B1) == 0) ? LOOPY_BIT4 : 0; // A
-        loopy_byte |= ((player_2 & USBR_BUTTON_B4) == 0) ? LOOPY_BIT5 : 0; // D
-        loopy_byte |= ((player_2 & USBR_BUTTON_B3) == 0) ? LOOPY_BIT6 : 0; // C
-        loopy_byte |= ((player_2 & USBR_BUTTON_B2) == 0) ? LOOPY_BIT7 : 0; // B
+        loopy_byte |= ((player_2 & JP_BUTTON_B1) == 0) ? LOOPY_BIT4 : 0; // A
+        loopy_byte |= ((player_2 & JP_BUTTON_B4) == 0) ? LOOPY_BIT5 : 0; // D
+        loopy_byte |= ((player_2 & JP_BUTTON_B3) == 0) ? LOOPY_BIT6 : 0; // C
+        loopy_byte |= ((player_2 & JP_BUTTON_B2) == 0) ? LOOPY_BIT7 : 0; // B
 
       } else if (gpio_get(ROW2_PIN)) {
         // Player 1 - ROW2
-        loopy_byte |= ((player_1 & USBR_BUTTON_DU) == 0) ? LOOPY_BIT0 : 0; // Up
-        loopy_byte |= ((player_1 & USBR_BUTTON_DD) == 0) ? LOOPY_BIT1 : 0; // Down
-        loopy_byte |= ((player_1 & USBR_BUTTON_DL) == 0) ? LOOPY_BIT2 : 0; // Left
-        loopy_byte |= ((player_1 & USBR_BUTTON_DR) == 0) ? LOOPY_BIT3 : 0; // Right
+        loopy_byte |= ((player_1 & JP_BUTTON_DU) == 0) ? LOOPY_BIT0 : 0; // Up
+        loopy_byte |= ((player_1 & JP_BUTTON_DD) == 0) ? LOOPY_BIT1 : 0; // Down
+        loopy_byte |= ((player_1 & JP_BUTTON_DL) == 0) ? LOOPY_BIT2 : 0; // Left
+        loopy_byte |= ((player_1 & JP_BUTTON_DR) == 0) ? LOOPY_BIT3 : 0; // Right
 
         // Player 2 - ROW2
-        loopy_byte |= ((player_2 & USBR_BUTTON_DU) == 0) ? LOOPY_BIT4 : 0; // Up
-        loopy_byte |= ((player_2 & USBR_BUTTON_DD) == 0) ? LOOPY_BIT5 : 0; // Down
-        loopy_byte |= ((player_2 & USBR_BUTTON_DL) == 0) ? LOOPY_BIT6 : 0; // Left
-        loopy_byte |= ((player_2 & USBR_BUTTON_DR) == 0) ? LOOPY_BIT7 : 0; // Right
+        loopy_byte |= ((player_2 & JP_BUTTON_DU) == 0) ? LOOPY_BIT4 : 0; // Up
+        loopy_byte |= ((player_2 & JP_BUTTON_DD) == 0) ? LOOPY_BIT5 : 0; // Down
+        loopy_byte |= ((player_2 & JP_BUTTON_DL) == 0) ? LOOPY_BIT6 : 0; // Left
+        loopy_byte |= ((player_2 & JP_BUTTON_DR) == 0) ? LOOPY_BIT7 : 0; // Right
 
       } else if (gpio_get(ROW3_PIN)) {
         // Player 3 - ROW0
         loopy_byte |= (playersCount >= 3               ) ? LOOPY_BIT0 : 0; // Presence
-        loopy_byte |= ((player_3 & USBR_BUTTON_S2) == 0) ? LOOPY_BIT1 : 0; // Start
-        loopy_byte |= ((player_3 & USBR_BUTTON_L1) == 0) ? LOOPY_BIT2 : 0; // L
-        loopy_byte |= ((player_3 & USBR_BUTTON_R1) == 0) ? LOOPY_BIT3 : 0; // R
+        loopy_byte |= ((player_3 & JP_BUTTON_S2) == 0) ? LOOPY_BIT1 : 0; // Start
+        loopy_byte |= ((player_3 & JP_BUTTON_L1) == 0) ? LOOPY_BIT2 : 0; // L
+        loopy_byte |= ((player_3 & JP_BUTTON_R1) == 0) ? LOOPY_BIT3 : 0; // R
 
         // Player 4 - ROW0
         loopy_byte |= (playersCount >= 4               ) ? LOOPY_BIT4 : 0; // Presence
-        loopy_byte |= ((player_4 & USBR_BUTTON_S2) == 0) ? LOOPY_BIT5 : 0; // Start
-        loopy_byte |= ((player_4 & USBR_BUTTON_L1) == 0) ? LOOPY_BIT6 : 0; // L
-        loopy_byte |= ((player_4 & USBR_BUTTON_R1) == 0) ? LOOPY_BIT7 : 0; // R
+        loopy_byte |= ((player_4 & JP_BUTTON_S2) == 0) ? LOOPY_BIT5 : 0; // Start
+        loopy_byte |= ((player_4 & JP_BUTTON_L1) == 0) ? LOOPY_BIT6 : 0; // L
+        loopy_byte |= ((player_4 & JP_BUTTON_R1) == 0) ? LOOPY_BIT7 : 0; // R
 
       } else if (gpio_get(ROW4_PIN)) {
         // Player 3 - ROW1
-        loopy_byte |= ((player_3 & USBR_BUTTON_B1) == 0) ? LOOPY_BIT0 : 0; // A
-        loopy_byte |= ((player_3 & USBR_BUTTON_B4) == 0) ? LOOPY_BIT1 : 0; // D
-        loopy_byte |= ((player_3 & USBR_BUTTON_B3) == 0) ? LOOPY_BIT2 : 0; // C
-        loopy_byte |= ((player_3 & USBR_BUTTON_B2) == 0) ? LOOPY_BIT3 : 0; // B
+        loopy_byte |= ((player_3 & JP_BUTTON_B1) == 0) ? LOOPY_BIT0 : 0; // A
+        loopy_byte |= ((player_3 & JP_BUTTON_B4) == 0) ? LOOPY_BIT1 : 0; // D
+        loopy_byte |= ((player_3 & JP_BUTTON_B3) == 0) ? LOOPY_BIT2 : 0; // C
+        loopy_byte |= ((player_3 & JP_BUTTON_B2) == 0) ? LOOPY_BIT3 : 0; // B
 
         // Player 4 - ROW1
-        loopy_byte |= ((player_4 & USBR_BUTTON_B1) == 0) ? LOOPY_BIT4 : 0; // A
-        loopy_byte |= ((player_4 & USBR_BUTTON_B4) == 0) ? LOOPY_BIT5 : 0; // D
-        loopy_byte |= ((player_4 & USBR_BUTTON_B3) == 0) ? LOOPY_BIT6 : 0; // C
-        loopy_byte |= ((player_4 & USBR_BUTTON_B2) == 0) ? LOOPY_BIT7 : 0; // B
+        loopy_byte |= ((player_4 & JP_BUTTON_B1) == 0) ? LOOPY_BIT4 : 0; // A
+        loopy_byte |= ((player_4 & JP_BUTTON_B4) == 0) ? LOOPY_BIT5 : 0; // D
+        loopy_byte |= ((player_4 & JP_BUTTON_B3) == 0) ? LOOPY_BIT6 : 0; // C
+        loopy_byte |= ((player_4 & JP_BUTTON_B2) == 0) ? LOOPY_BIT7 : 0; // B
 
       } else if (gpio_get(ROW5_PIN)) {
         // Player 3 - ROW2
-        loopy_byte |= ((player_3 & USBR_BUTTON_DU) == 0) ? LOOPY_BIT0 : 0; // Up
-        loopy_byte |= ((player_3 & USBR_BUTTON_DD) == 0) ? LOOPY_BIT1 : 0; // Down
-        loopy_byte |= ((player_3 & USBR_BUTTON_DL) == 0) ? LOOPY_BIT2 : 0; // Left
-        loopy_byte |= ((player_3 & USBR_BUTTON_DR) == 0) ? LOOPY_BIT3 : 0; // Right
+        loopy_byte |= ((player_3 & JP_BUTTON_DU) == 0) ? LOOPY_BIT0 : 0; // Up
+        loopy_byte |= ((player_3 & JP_BUTTON_DD) == 0) ? LOOPY_BIT1 : 0; // Down
+        loopy_byte |= ((player_3 & JP_BUTTON_DL) == 0) ? LOOPY_BIT2 : 0; // Left
+        loopy_byte |= ((player_3 & JP_BUTTON_DR) == 0) ? LOOPY_BIT3 : 0; // Right
 
         // Player 4 - ROW2
-        loopy_byte |= ((player_4 & USBR_BUTTON_DU) == 0) ? LOOPY_BIT4 : 0; // Up
-        loopy_byte |= ((player_4 & USBR_BUTTON_DD) == 0) ? LOOPY_BIT5 : 0; // Down
-        loopy_byte |= ((player_4 & USBR_BUTTON_DL) == 0) ? LOOPY_BIT6 : 0; // Left
-        loopy_byte |= ((player_4 & USBR_BUTTON_DR) == 0) ? LOOPY_BIT7 : 0; // Right
+        loopy_byte |= ((player_4 & JP_BUTTON_DU) == 0) ? LOOPY_BIT4 : 0; // Up
+        loopy_byte |= ((player_4 & JP_BUTTON_DD) == 0) ? LOOPY_BIT5 : 0; // Down
+        loopy_byte |= ((player_4 & JP_BUTTON_DL) == 0) ? LOOPY_BIT6 : 0; // Left
+        loopy_byte |= ((player_4 & JP_BUTTON_DR) == 0) ? LOOPY_BIT7 : 0; // Right
       }
 
     } else {
@@ -243,9 +243,9 @@ void __not_in_flash_func(core1_task)(void)
       loopy_byte |= ((x_gray >> 1) & 0x1             ) ? LOOPY_BIT1 : 0; // X
       loopy_byte |= ((y_gray)      & 0x1             ) ? LOOPY_BIT2 : 0; // Y
       loopy_byte |= ((y_gray >> 1) & 0x1             ) ? LOOPY_BIT3 : 0; // Y
-      loopy_byte |= ((player_1 & USBR_BUTTON_B1) == 0) ? LOOPY_BIT4 : 0; // Left
+      loopy_byte |= ((player_1 & JP_BUTTON_B1) == 0) ? LOOPY_BIT4 : 0; // Left
       loopy_byte |= ((0)                             ) ? LOOPY_BIT5 : 0; // N/C
-      loopy_byte |= ((player_1 & USBR_BUTTON_B2) == 0) ? LOOPY_BIT6 : 0; // Right
+      loopy_byte |= ((player_1 & JP_BUTTON_B2) == 0) ? LOOPY_BIT6 : 0; // Right
       loopy_byte |= ((1)                             ) ? LOOPY_BIT7 : 0; // Presence
     }
 
@@ -275,7 +275,7 @@ void __not_in_flash_func(update_output)(void)
   // {
   // }
 
-  // TODO: parse USBRetro button state to output_word here
+  // TODO: parse Joypad button state to output_word here
   // if (playersCount < 1)
   // {
   //   bytes[0] = 0x00;

@@ -27,20 +27,20 @@
 
 static const button_map_entry_t gc_default_map[] = {
     // Face buttons - SNES/PlayStation-style to GameCube
-    MAP_BUTTON(USBR_BUTTON_B1, GC_BUTTON_B),      // Cross/B → GC B
-    MAP_BUTTON(USBR_BUTTON_B2, GC_BUTTON_A),      // Circle/A → GC A
-    MAP_BUTTON(USBR_BUTTON_B3, GC_BUTTON_Y),      // Square/X → GC Y
-    MAP_BUTTON(USBR_BUTTON_B4, GC_BUTTON_X),      // Triangle/Y → GC X
+    MAP_BUTTON(JP_BUTTON_B1, GC_BUTTON_B),      // Cross/B → GC B
+    MAP_BUTTON(JP_BUTTON_B2, GC_BUTTON_A),      // Circle/A → GC A
+    MAP_BUTTON(JP_BUTTON_B3, GC_BUTTON_Y),      // Square/X → GC Y
+    MAP_BUTTON(JP_BUTTON_B4, GC_BUTTON_X),      // Triangle/Y → GC X
 
     // Shoulders
-    MAP_BUTTON(USBR_BUTTON_R1, GC_BUTTON_Z),      // R1/RB → Z
+    MAP_BUTTON(JP_BUTTON_R1, GC_BUTTON_Z),      // R1/RB → Z
 
     // L1/LB → nothing (GC has no equivalent)
-    MAP_DISABLED(USBR_BUTTON_L1),
+    MAP_DISABLED(JP_BUTTON_L1),
 
     // System
-    MAP_BUTTON(USBR_BUTTON_S2, GC_BUTTON_START),  // Start → Start
-    MAP_DISABLED(USBR_BUTTON_S1),                  // Select → nothing (profile switch)
+    MAP_BUTTON(JP_BUTTON_S2, GC_BUTTON_START),  // Start → Start
+    MAP_DISABLED(JP_BUTTON_S1),                  // Select → nothing (profile switch)
 };
 
 static const profile_t gc_profile_default = {
@@ -70,18 +70,18 @@ static const profile_t gc_profile_default = {
 
 static const button_map_entry_t gc_snes_map[] = {
     // Face buttons - same as default
-    MAP_BUTTON(USBR_BUTTON_B1, GC_BUTTON_B),
-    MAP_BUTTON(USBR_BUTTON_B2, GC_BUTTON_A),
-    MAP_BUTTON(USBR_BUTTON_B3, GC_BUTTON_Y),
-    MAP_BUTTON(USBR_BUTTON_B4, GC_BUTTON_X),
+    MAP_BUTTON(JP_BUTTON_B1, GC_BUTTON_B),
+    MAP_BUTTON(JP_BUTTON_B2, GC_BUTTON_A),
+    MAP_BUTTON(JP_BUTTON_B3, GC_BUTTON_Y),
+    MAP_BUTTON(JP_BUTTON_B4, GC_BUTTON_X),
 
     // Shoulders with full analog press
-    MAP_BUTTON_ANALOG(USBR_BUTTON_L1, GC_BUTTON_L, ANALOG_TARGET_L2_FULL, 0),
-    MAP_BUTTON_ANALOG(USBR_BUTTON_R1, GC_BUTTON_R, ANALOG_TARGET_R2_FULL, 0),
+    MAP_BUTTON_ANALOG(JP_BUTTON_L1, GC_BUTTON_L, ANALOG_TARGET_L2_FULL, 0),
+    MAP_BUTTON_ANALOG(JP_BUTTON_R1, GC_BUTTON_R, ANALOG_TARGET_R2_FULL, 0),
 
     // Select → Z
-    MAP_BUTTON(USBR_BUTTON_S1, GC_BUTTON_Z),
-    MAP_BUTTON(USBR_BUTTON_S2, GC_BUTTON_START),
+    MAP_BUTTON(JP_BUTTON_S1, GC_BUTTON_Z),
+    MAP_BUTTON(JP_BUTTON_S2, GC_BUTTON_START),
 };
 
 static const profile_t gc_profile_snes = {
@@ -112,25 +112,25 @@ static const profile_t gc_profile_snes = {
 
 static const button_map_entry_t gc_ssbm_map[] = {
     // Face buttons
-    MAP_BUTTON(USBR_BUTTON_B1, GC_BUTTON_B),
-    MAP_BUTTON(USBR_BUTTON_B2, GC_BUTTON_A),
-    MAP_BUTTON(USBR_BUTTON_B3, GC_BUTTON_Y),
-    MAP_BUTTON(USBR_BUTTON_B4, GC_BUTTON_X),
+    MAP_BUTTON(JP_BUTTON_B1, GC_BUTTON_B),
+    MAP_BUTTON(JP_BUTTON_B2, GC_BUTTON_A),
+    MAP_BUTTON(JP_BUTTON_B3, GC_BUTTON_Y),
+    MAP_BUTTON(JP_BUTTON_B4, GC_BUTTON_X),
 
     // L1 (LB) → Z
-    MAP_BUTTON(USBR_BUTTON_L1, GC_BUTTON_Z),
+    MAP_BUTTON(JP_BUTTON_L1, GC_BUTTON_Z),
 
     // R1 (RB) → X (for short hop aerials)
-    MAP_BUTTON(USBR_BUTTON_R1, GC_BUTTON_X),
+    MAP_BUTTON(JP_BUTTON_R1, GC_BUTTON_X),
 
     // System
-    MAP_DISABLED(USBR_BUTTON_S1),
-    MAP_BUTTON(USBR_BUTTON_S2, GC_BUTTON_START),
+    MAP_DISABLED(JP_BUTTON_S1),
+    MAP_BUTTON(JP_BUTTON_S2, GC_BUTTON_START),
 };
 
 // L3 = walk modifier (reduces to 50% for precise movement)
 static const stick_modifier_t gc_ssbm_left_modifiers[] = {
-    STICK_MODIFIER(USBR_BUTTON_L3, 0.50f),
+    STICK_MODIFIER(JP_BUTTON_L3, 0.50f),
 };
 
 static const profile_t gc_profile_ssbm = {
@@ -160,20 +160,20 @@ static const profile_t gc_profile_ssbm = {
 
 static const button_map_entry_t gc_mkwii_map[] = {
     // Face buttons
-    MAP_BUTTON(USBR_BUTTON_B1, GC_BUTTON_B),
-    MAP_BUTTON(USBR_BUTTON_B2, GC_BUTTON_A),
-    MAP_BUTTON(USBR_BUTTON_B3, GC_BUTTON_Y),
-    MAP_BUTTON(USBR_BUTTON_B4, GC_BUTTON_X),
+    MAP_BUTTON(JP_BUTTON_B1, GC_BUTTON_B),
+    MAP_BUTTON(JP_BUTTON_B2, GC_BUTTON_A),
+    MAP_BUTTON(JP_BUTTON_B3, GC_BUTTON_Y),
+    MAP_BUTTON(JP_BUTTON_B4, GC_BUTTON_X),
 
     // L1 (LB) → D-pad Up (for wheelies/tricks)
-    MAP_BUTTON(USBR_BUTTON_L1, GC_BUTTON_DU),
+    MAP_BUTTON(JP_BUTTON_L1, GC_BUTTON_DU),
 
     // R1 (RB) → R with full analog
-    MAP_BUTTON_ANALOG(USBR_BUTTON_R1, GC_BUTTON_R, ANALOG_TARGET_R2_FULL, 0),
+    MAP_BUTTON_ANALOG(JP_BUTTON_R1, GC_BUTTON_R, ANALOG_TARGET_R2_FULL, 0),
 
     // System
-    MAP_DISABLED(USBR_BUTTON_S1),
-    MAP_BUTTON(USBR_BUTTON_S2, GC_BUTTON_START),
+    MAP_DISABLED(JP_BUTTON_S1),
+    MAP_BUTTON(JP_BUTTON_S2, GC_BUTTON_START),
 };
 
 static const profile_t gc_profile_mkwii = {
@@ -203,20 +203,20 @@ static const profile_t gc_profile_mkwii = {
 
 static const button_map_entry_t gc_fighting_map[] = {
     // Face buttons
-    MAP_BUTTON(USBR_BUTTON_B1, GC_BUTTON_B),
-    MAP_BUTTON(USBR_BUTTON_B2, GC_BUTTON_A),
-    MAP_BUTTON(USBR_BUTTON_B3, GC_BUTTON_Y),
-    MAP_BUTTON(USBR_BUTTON_B4, GC_BUTTON_X),
+    MAP_BUTTON(JP_BUTTON_B1, GC_BUTTON_B),
+    MAP_BUTTON(JP_BUTTON_B2, GC_BUTTON_A),
+    MAP_BUTTON(JP_BUTTON_B3, GC_BUTTON_Y),
+    MAP_BUTTON(JP_BUTTON_B4, GC_BUTTON_X),
 
     // L1 → C-stick Up (for in-game config/macros)
-    MAP_ANALOG_ONLY(USBR_BUTTON_L1, ANALOG_TARGET_RY_MAX),
+    MAP_ANALOG_ONLY(JP_BUTTON_L1, ANALOG_TARGET_RY_MAX),
 
     // R1 → Z
-    MAP_BUTTON(USBR_BUTTON_R1, GC_BUTTON_Z),
+    MAP_BUTTON(JP_BUTTON_R1, GC_BUTTON_Z),
 
     // System
-    MAP_DISABLED(USBR_BUTTON_S1),
-    MAP_BUTTON(USBR_BUTTON_S2, GC_BUTTON_START),
+    MAP_DISABLED(JP_BUTTON_S1),
+    MAP_BUTTON(JP_BUTTON_S2, GC_BUTTON_START),
 };
 
 static const profile_t gc_profile_fighting = {

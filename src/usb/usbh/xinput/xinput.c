@@ -105,24 +105,24 @@ void tuh_xinput_report_received_cb(uint8_t dev_addr, uint8_t instance, xinputh_i
       uint8_t analog_l = p->bLeftTrigger;
       uint8_t analog_r = p->bRightTrigger;
 
-      buttons = (((p->wButtons & XINPUT_GAMEPAD_DPAD_UP)       ? USBR_BUTTON_DU : 0) |
-                ((p->wButtons & XINPUT_GAMEPAD_DPAD_DOWN)      ? USBR_BUTTON_DD : 0) |
-                ((p->wButtons & XINPUT_GAMEPAD_DPAD_LEFT)      ? USBR_BUTTON_DL : 0) |
-                ((p->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT)     ? USBR_BUTTON_DR : 0) |
-                ((p->wButtons & XINPUT_GAMEPAD_A)              ? USBR_BUTTON_B1 : 0) |
-                ((p->wButtons & XINPUT_GAMEPAD_B)              ? USBR_BUTTON_B2 : 0) |
-                ((p->wButtons & XINPUT_GAMEPAD_X)              ? USBR_BUTTON_B3 : 0) |
-                ((p->wButtons & XINPUT_GAMEPAD_Y)              ? USBR_BUTTON_B4 : 0) |
-                ((p->wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER)  ? USBR_BUTTON_L1 : 0) |
-                ((p->wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER) ? USBR_BUTTON_R1 : 0) |
-                ((analog_l > 16)                               ? USBR_BUTTON_L2 : 0) |
-                ((analog_r > 16)                               ? USBR_BUTTON_R2 : 0) |
-                ((p->wButtons & XINPUT_GAMEPAD_BACK)           ? USBR_BUTTON_S1 : 0) |
-                ((p->wButtons & XINPUT_GAMEPAD_START)          ? USBR_BUTTON_S2 : 0) |
-                ((p->wButtons & XINPUT_GAMEPAD_LEFT_THUMB)     ? USBR_BUTTON_L3 : 0) |
-                ((p->wButtons & XINPUT_GAMEPAD_RIGHT_THUMB)    ? USBR_BUTTON_R3 : 0) |
-                ((p->wButtons & XINPUT_GAMEPAD_GUIDE)          ? USBR_BUTTON_A1 : 0) |
-                ((p->wButtons & XINPUT_GAMEPAD_SHARE)          ? USBR_BUTTON_A2 : 0));
+      buttons = (((p->wButtons & XINPUT_GAMEPAD_DPAD_UP)       ? JP_BUTTON_DU : 0) |
+                ((p->wButtons & XINPUT_GAMEPAD_DPAD_DOWN)      ? JP_BUTTON_DD : 0) |
+                ((p->wButtons & XINPUT_GAMEPAD_DPAD_LEFT)      ? JP_BUTTON_DL : 0) |
+                ((p->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT)     ? JP_BUTTON_DR : 0) |
+                ((p->wButtons & XINPUT_GAMEPAD_A)              ? JP_BUTTON_B1 : 0) |
+                ((p->wButtons & XINPUT_GAMEPAD_B)              ? JP_BUTTON_B2 : 0) |
+                ((p->wButtons & XINPUT_GAMEPAD_X)              ? JP_BUTTON_B3 : 0) |
+                ((p->wButtons & XINPUT_GAMEPAD_Y)              ? JP_BUTTON_B4 : 0) |
+                ((p->wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER)  ? JP_BUTTON_L1 : 0) |
+                ((p->wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER) ? JP_BUTTON_R1 : 0) |
+                ((analog_l > 16)                               ? JP_BUTTON_L2 : 0) |
+                ((analog_r > 16)                               ? JP_BUTTON_R2 : 0) |
+                ((p->wButtons & XINPUT_GAMEPAD_BACK)           ? JP_BUTTON_S1 : 0) |
+                ((p->wButtons & XINPUT_GAMEPAD_START)          ? JP_BUTTON_S2 : 0) |
+                ((p->wButtons & XINPUT_GAMEPAD_LEFT_THUMB)     ? JP_BUTTON_L3 : 0) |
+                ((p->wButtons & XINPUT_GAMEPAD_RIGHT_THUMB)    ? JP_BUTTON_R3 : 0) |
+                ((p->wButtons & XINPUT_GAMEPAD_GUIDE)          ? JP_BUTTON_A1 : 0) |
+                ((p->wButtons & XINPUT_GAMEPAD_SHARE)          ? JP_BUTTON_A2 : 0));
 
       input_event_t event = {
         .dev_addr = dev_addr,

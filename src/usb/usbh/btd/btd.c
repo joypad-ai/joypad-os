@@ -158,7 +158,7 @@ static void btd_state_machine(void)
             break;
 
         case BTD_STATE_WRITE_NAME:
-            btd_hci_write_local_name("USBRetro BT");
+            btd_hci_write_local_name("Joypad BT");
             break;
 
         case BTD_STATE_WRITE_COD:

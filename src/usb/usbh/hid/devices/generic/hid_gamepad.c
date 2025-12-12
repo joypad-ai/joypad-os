@@ -479,22 +479,22 @@ void process_hid_gamepad(uint8_t dev_addr, uint8_t instance, uint8_t const* repo
     }
 
     // Active-high: set bit when button is pressed
-    buttons = ((current.up)       ? USBR_BUTTON_DU : 0) |
-              ((current.down)     ? USBR_BUTTON_DD : 0) |
-              ((current.left)     ? USBR_BUTTON_DL : 0) |
-              ((current.right)    ? USBR_BUTTON_DR : 0) |
-              ((current.button2)  ? USBR_BUTTON_B1 : 0) |
-              ((buttonI)          ? USBR_BUTTON_B2 : 0) |
-              ((buttonIV)         ? USBR_BUTTON_B3 : 0) |
-              ((buttonIII)        ? USBR_BUTTON_B4 : 0) |
-              ((buttonV)          ? USBR_BUTTON_L1 : 0) |
-              ((buttonVI)         ? USBR_BUTTON_R1 : 0) |
-              ((buttonVII)        ? USBR_BUTTON_L2 : 0) |
-              ((buttonVIII)       ? USBR_BUTTON_R2 : 0) |
-              ((buttonSelect)     ? USBR_BUTTON_S1 : 0) |
-              ((buttonStart)      ? USBR_BUTTON_S2 : 0) |
-              ((current.button11) ? USBR_BUTTON_L3 : 0) |
-              ((current.button12) ? USBR_BUTTON_R3 : 0);
+    buttons = ((current.up)       ? JP_BUTTON_DU : 0) |
+              ((current.down)     ? JP_BUTTON_DD : 0) |
+              ((current.left)     ? JP_BUTTON_DL : 0) |
+              ((current.right)    ? JP_BUTTON_DR : 0) |
+              ((current.button2)  ? JP_BUTTON_B1 : 0) |
+              ((buttonI)          ? JP_BUTTON_B2 : 0) |
+              ((buttonIV)         ? JP_BUTTON_B3 : 0) |
+              ((buttonIII)        ? JP_BUTTON_B4 : 0) |
+              ((buttonV)          ? JP_BUTTON_L1 : 0) |
+              ((buttonVI)         ? JP_BUTTON_R1 : 0) |
+              ((buttonVII)        ? JP_BUTTON_L2 : 0) |
+              ((buttonVIII)       ? JP_BUTTON_R2 : 0) |
+              ((buttonSelect)     ? JP_BUTTON_S1 : 0) |
+              ((buttonStart)      ? JP_BUTTON_S2 : 0) |
+              ((current.button11) ? JP_BUTTON_L3 : 0) |
+              ((current.button12) ? JP_BUTTON_R3 : 0);
 
     // HID convention: 0=up, 255=down (no inversion needed)
     uint8_t axis_x = current.x;

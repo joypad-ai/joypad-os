@@ -1,5 +1,5 @@
 // manager.c
-// USBRetro Core - Player Management System
+// Joypad Core - Player Management System
 //
 // Configurable player slot management supporting both SHIFT and FIXED modes.
 

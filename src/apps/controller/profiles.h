@@ -15,7 +15,7 @@
 
 // S1 + S2 = A1 (Home/Guide button)
 static const button_combo_entry_t controller_combos[] = {
-    MAP_COMBO(USBR_BUTTON_S1 | USBR_BUTTON_S2, USBR_BUTTON_A1),
+    MAP_COMBO(JP_BUTTON_S1 | JP_BUTTON_S2, JP_BUTTON_A1),
 };
 
 // ============================================================================

@@ -236,23 +236,23 @@ static void ds3_process_report(bthid_device_t* device, const uint8_t* data, uint
 
     // Build button state
     uint32_t buttons = 0;
-    if (rpt->up)       buttons |= USBR_BUTTON_DU;
-    if (rpt->down)     buttons |= USBR_BUTTON_DD;
-    if (rpt->left)     buttons |= USBR_BUTTON_DL;
-    if (rpt->right)    buttons |= USBR_BUTTON_DR;
-    if (rpt->cross)    buttons |= USBR_BUTTON_B1;
-    if (rpt->circle)   buttons |= USBR_BUTTON_B2;
-    if (rpt->square)   buttons |= USBR_BUTTON_B3;
-    if (rpt->triangle) buttons |= USBR_BUTTON_B4;
-    if (rpt->l1)       buttons |= USBR_BUTTON_L1;
-    if (rpt->r1)       buttons |= USBR_BUTTON_R1;
-    if (rpt->l2)       buttons |= USBR_BUTTON_L2;
-    if (rpt->r2)       buttons |= USBR_BUTTON_R2;
-    if (rpt->select)   buttons |= USBR_BUTTON_S1;
-    if (rpt->start)    buttons |= USBR_BUTTON_S2;
-    if (rpt->l3)       buttons |= USBR_BUTTON_L3;
-    if (rpt->r3)       buttons |= USBR_BUTTON_R3;
-    if (rpt->ps)       buttons |= USBR_BUTTON_A1;
+    if (rpt->up)       buttons |= JP_BUTTON_DU;
+    if (rpt->down)     buttons |= JP_BUTTON_DD;
+    if (rpt->left)     buttons |= JP_BUTTON_DL;
+    if (rpt->right)    buttons |= JP_BUTTON_DR;
+    if (rpt->cross)    buttons |= JP_BUTTON_B1;
+    if (rpt->circle)   buttons |= JP_BUTTON_B2;
+    if (rpt->square)   buttons |= JP_BUTTON_B3;
+    if (rpt->triangle) buttons |= JP_BUTTON_B4;
+    if (rpt->l1)       buttons |= JP_BUTTON_L1;
+    if (rpt->r1)       buttons |= JP_BUTTON_R1;
+    if (rpt->l2)       buttons |= JP_BUTTON_L2;
+    if (rpt->r2)       buttons |= JP_BUTTON_R2;
+    if (rpt->select)   buttons |= JP_BUTTON_S1;
+    if (rpt->start)    buttons |= JP_BUTTON_S2;
+    if (rpt->l3)       buttons |= JP_BUTTON_L3;
+    if (rpt->r3)       buttons |= JP_BUTTON_R3;
+    if (rpt->ps)       buttons |= JP_BUTTON_A1;
 
     // Analog sticks (HID convention: 0=up, 255=down)
     uint8_t lx = rpt->lx;

@@ -1,10 +1,10 @@
 // gamecube_buttons.h - GameCube Button Aliases
 //
-// Aliases for USBR_BUTTON_* constants that map to GameCube button names.
+// Aliases for JP_BUTTON_* constants that map to GameCube button names.
 // These are purely for readability in profile definitions.
 //
 // Example usage in a profile:
-//   { .input = USBR_BUTTON_B1, .output = GC_BUTTON_A }
+//   { .input = JP_BUTTON_B1, .output = GC_BUTTON_A }
 //   This reads: "USBR B1 maps to GameCube A button"
 
 #ifndef GAMECUBE_BUTTONS_H
@@ -15,28 +15,28 @@
 // ============================================================================
 // GAMECUBE BUTTON ALIASES
 // ============================================================================
-// These aliases equal the USBR_BUTTON_* values they represent on GameCube.
+// These aliases equal the JP_BUTTON_* values they represent on GameCube.
 // The mapping reflects the default/natural position on a GameCube controller.
 
 // Face buttons
-#define GC_BUTTON_A         USBR_BUTTON_B1  // A (large green button)
-#define GC_BUTTON_B         USBR_BUTTON_B2  // B (small red button)
-#define GC_BUTTON_X         USBR_BUTTON_B4  // X (right of A)
-#define GC_BUTTON_Y         USBR_BUTTON_B3  // Y (above A)
+#define GC_BUTTON_A         JP_BUTTON_B1  // A (large green button)
+#define GC_BUTTON_B         JP_BUTTON_B2  // B (small red button)
+#define GC_BUTTON_X         JP_BUTTON_B4  // X (right of A)
+#define GC_BUTTON_Y         JP_BUTTON_B3  // Y (above A)
 
 // Shoulder/Trigger buttons
-#define GC_BUTTON_Z         USBR_BUTTON_R1  // Z (digital, above R)
-#define GC_BUTTON_L         USBR_BUTTON_L2  // L trigger (analog + digital)
-#define GC_BUTTON_R         USBR_BUTTON_R2  // R trigger (analog + digital)
+#define GC_BUTTON_Z         JP_BUTTON_R1  // Z (digital, above R)
+#define GC_BUTTON_L         JP_BUTTON_L2  // L trigger (analog + digital)
+#define GC_BUTTON_R         JP_BUTTON_R2  // R trigger (analog + digital)
 
 // System
-#define GC_BUTTON_START     USBR_BUTTON_S2  // Start
+#define GC_BUTTON_START     JP_BUTTON_S2  // Start
 
 // D-pad
-#define GC_BUTTON_DU        USBR_BUTTON_DU  // D-pad Up
-#define GC_BUTTON_DD        USBR_BUTTON_DD  // D-pad Down
-#define GC_BUTTON_DL        USBR_BUTTON_DL  // D-pad Left
-#define GC_BUTTON_DR        USBR_BUTTON_DR  // D-pad Right
+#define GC_BUTTON_DU        JP_BUTTON_DU  // D-pad Up
+#define GC_BUTTON_DD        JP_BUTTON_DD  // D-pad Down
+#define GC_BUTTON_DL        JP_BUTTON_DL  // D-pad Left
+#define GC_BUTTON_DR        JP_BUTTON_DR  // D-pad Right
 
 // ============================================================================
 // GAMECUBE-SPECIFIC OUTPUT ACTIONS

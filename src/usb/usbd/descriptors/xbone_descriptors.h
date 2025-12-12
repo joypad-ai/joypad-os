@@ -20,8 +20,8 @@
 #define XBONE_BCD           0x0101  // Device version 1.01
 
 // String descriptors
-#define XBONE_MANUFACTURER  "USBRetro"
-#define XBONE_PRODUCT       "USBRetro (Xbox One)"
+#define XBONE_MANUFACTURER  "Joypad"
+#define XBONE_PRODUCT       "Joypad (Xbox One)"
 
 // GIP Protocol Commands
 typedef enum {

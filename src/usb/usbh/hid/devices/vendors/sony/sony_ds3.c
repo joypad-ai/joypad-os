@@ -170,23 +170,23 @@ void input_sony_ds3(uint8_t dev_addr, uint8_t instance, uint8_t const* report, u
 
       // All shoulder buttons passed as digital (platform-agnostic)
       // Consoles handle analog trigger thresholds in their router_submit_input()
-      buttons = (((ds3_report.up)       ? USBR_BUTTON_DU : 0) |
-                 ((ds3_report.down)     ? USBR_BUTTON_DD : 0) |
-                 ((ds3_report.left)     ? USBR_BUTTON_DL : 0) |
-                 ((ds3_report.right)    ? USBR_BUTTON_DR : 0) |
-                 ((ds3_report.cross)    ? USBR_BUTTON_B1 : 0) |
-                 ((ds3_report.circle)   ? USBR_BUTTON_B2 : 0) |
-                 ((ds3_report.square)   ? USBR_BUTTON_B3 : 0) |
-                 ((ds3_report.triangle) ? USBR_BUTTON_B4 : 0) |
-                 ((ds3_report.l1)       ? USBR_BUTTON_L1 : 0) |
-                 ((ds3_report.r1)       ? USBR_BUTTON_R1 : 0) |
-                 ((ds3_report.l2)       ? USBR_BUTTON_L2 : 0) |
-                 ((ds3_report.r2)       ? USBR_BUTTON_R2 : 0) |
-                 ((ds3_report.select)   ? USBR_BUTTON_S1 : 0) |
-                 ((ds3_report.start)    ? USBR_BUTTON_S2 : 0) |
-                 ((ds3_report.l3)       ? USBR_BUTTON_L3 : 0) |
-                 ((ds3_report.r3)       ? USBR_BUTTON_R3 : 0) |
-                 ((ds3_report.ps)       ? USBR_BUTTON_A1 : 0));
+      buttons = (((ds3_report.up)       ? JP_BUTTON_DU : 0) |
+                 ((ds3_report.down)     ? JP_BUTTON_DD : 0) |
+                 ((ds3_report.left)     ? JP_BUTTON_DL : 0) |
+                 ((ds3_report.right)    ? JP_BUTTON_DR : 0) |
+                 ((ds3_report.cross)    ? JP_BUTTON_B1 : 0) |
+                 ((ds3_report.circle)   ? JP_BUTTON_B2 : 0) |
+                 ((ds3_report.square)   ? JP_BUTTON_B3 : 0) |
+                 ((ds3_report.triangle) ? JP_BUTTON_B4 : 0) |
+                 ((ds3_report.l1)       ? JP_BUTTON_L1 : 0) |
+                 ((ds3_report.r1)       ? JP_BUTTON_R1 : 0) |
+                 ((ds3_report.l2)       ? JP_BUTTON_L2 : 0) |
+                 ((ds3_report.r2)       ? JP_BUTTON_R2 : 0) |
+                 ((ds3_report.select)   ? JP_BUTTON_S1 : 0) |
+                 ((ds3_report.start)    ? JP_BUTTON_S2 : 0) |
+                 ((ds3_report.l3)       ? JP_BUTTON_L3 : 0) |
+                 ((ds3_report.r3)       ? JP_BUTTON_R3 : 0) |
+                 ((ds3_report.ps)       ? JP_BUTTON_A1 : 0));
 
       // keep analog within range [1-255]
       ensureAllNonZero(&analog_1x, &analog_1y, &analog_2x, &analog_2y);

@@ -43,7 +43,7 @@
 // 1. Edit profiles.h in your app to create/modify profiles
 // 2. Switch profiles at runtime by holding SELECT for 2 seconds, then D-pad Up/Down
 //
-// The profile system uses USBR_BUTTON_* constants with GameCube-specific aliases
+// The profile system uses JP_BUTTON_* constants with GameCube-specific aliases
 // (GC_BUTTON_A, GC_BUTTON_B, etc.) for readable profile definitions.
 
 // Global variables

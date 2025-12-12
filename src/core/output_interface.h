@@ -1,5 +1,5 @@
 // output_interface.h
-// Output abstraction for USBRetro - supports native console and USB device outputs
+// Output abstraction for Joypad - supports native console and USB device outputs
 
 #ifndef OUTPUT_INTERFACE_H
 #define OUTPUT_INTERFACE_H

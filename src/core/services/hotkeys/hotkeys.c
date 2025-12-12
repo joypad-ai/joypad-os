@@ -64,7 +64,7 @@ void hotkeys_reset_player(uint8_t player) {
 
 // Check if all required buttons are pressed (active-high: 1 = pressed)
 static inline bool buttons_match(uint32_t current, uint32_t required) {
-    // In USBRetro, buttons are active-high (1 = pressed, 0 = released)
+    // In Joypad, buttons are active-high (1 = pressed, 0 = released)
     return (current & required) == required;
 }
 

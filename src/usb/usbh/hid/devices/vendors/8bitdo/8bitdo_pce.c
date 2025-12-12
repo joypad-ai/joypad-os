@@ -48,23 +48,23 @@ void process_8bitdo_pce(uint8_t dev_addr, uint8_t instance, uint8_t const* repor
     bool dpad_down  = (pce_report.dpad >= 3 && pce_report.dpad <= 5);
     bool dpad_left  = (pce_report.dpad >= 5 && pce_report.dpad <= 7);
 
-    buttons = (((dpad_up)        ? USBR_BUTTON_DU : 0) |
-               ((dpad_down)      ? USBR_BUTTON_DD : 0) |
-               ((dpad_left)      ? USBR_BUTTON_DL : 0) |
-               ((dpad_right)     ? USBR_BUTTON_DR : 0) |
-               ((pce_report.two) ? USBR_BUTTON_B1 : 0) |
-               ((pce_report.one) ? USBR_BUTTON_B2 : 0) |
-               ((0)              ? USBR_BUTTON_B3 : 0) |
-               ((0)              ? USBR_BUTTON_B4 : 0) |
-               ((0)              ? USBR_BUTTON_L1 : 0) |
-               ((0)              ? USBR_BUTTON_R1 : 0) |
-               ((0)              ? USBR_BUTTON_L2 : 0) |
-               ((0)              ? USBR_BUTTON_R2 : 0) |
-               ((pce_report.sel) ? USBR_BUTTON_S1 : 0) |
-               ((pce_report.run) ? USBR_BUTTON_S2 : 0) |
-               ((0)              ? USBR_BUTTON_R3 : 0) |
-               ((0)              ? USBR_BUTTON_L3 : 0) |
-               ((0)              ? USBR_BUTTON_A1 : 0));
+    buttons = (((dpad_up)        ? JP_BUTTON_DU : 0) |
+               ((dpad_down)      ? JP_BUTTON_DD : 0) |
+               ((dpad_left)      ? JP_BUTTON_DL : 0) |
+               ((dpad_right)     ? JP_BUTTON_DR : 0) |
+               ((pce_report.two) ? JP_BUTTON_B1 : 0) |
+               ((pce_report.one) ? JP_BUTTON_B2 : 0) |
+               ((0)              ? JP_BUTTON_B3 : 0) |
+               ((0)              ? JP_BUTTON_B4 : 0) |
+               ((0)              ? JP_BUTTON_L1 : 0) |
+               ((0)              ? JP_BUTTON_R1 : 0) |
+               ((0)              ? JP_BUTTON_L2 : 0) |
+               ((0)              ? JP_BUTTON_R2 : 0) |
+               ((pce_report.sel) ? JP_BUTTON_S1 : 0) |
+               ((pce_report.run) ? JP_BUTTON_S2 : 0) |
+               ((0)              ? JP_BUTTON_R3 : 0) |
+               ((0)              ? JP_BUTTON_L3 : 0) |
+               ((0)              ? JP_BUTTON_A1 : 0));
 
     // add to accumulator and post to the state machine
     // if a scan from the host machine is ongoing, wait

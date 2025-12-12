@@ -236,19 +236,19 @@ void __not_in_flash_func(update_output)(void)
     // Keyboard-specific transforms for PCEngine
     if (event->type == INPUT_TYPE_KEYBOARD) {
       // A1 (Home/Ctrl+Alt+Delete) → SSDS3 IGR combo (Select+Run)
-      if (event->buttons & USBR_BUTTON_A1) {
-        byte &= ~(USBR_BUTTON_S1 | USBR_BUTTON_S2);  // Clear Select and Run bits (0 = pressed in PCE)
+      if (event->buttons & JP_BUTTON_A1) {
+        byte &= ~(JP_BUTTON_S1 | JP_BUTTON_S2);  // Clear Select and Run bits (0 = pressed in PCE)
       }
     }
 
     // check for 6-button enable/disable hotkeys (active-high: check if bits are SET)
-    if ((event->buttons & (USBR_BUTTON_S2 | USBR_BUTTON_DU)) == (USBR_BUTTON_S2 | USBR_BUTTON_DU))
+    if ((event->buttons & (JP_BUTTON_S2 | JP_BUTTON_DU)) == (JP_BUTTON_S2 | JP_BUTTON_DU))
       pce_state.button_mode[i] = BUTTON_MODE_6;
-    else if ((event->buttons & (USBR_BUTTON_S2 | USBR_BUTTON_DD)) == (USBR_BUTTON_S2 | USBR_BUTTON_DD))
+    else if ((event->buttons & (JP_BUTTON_S2 | JP_BUTTON_DD)) == (JP_BUTTON_S2 | JP_BUTTON_DD))
       pce_state.button_mode[i] = BUTTON_MODE_2;
-    else if ((event->buttons & (USBR_BUTTON_S2 | USBR_BUTTON_DR)) == (USBR_BUTTON_S2 | USBR_BUTTON_DR))
+    else if ((event->buttons & (JP_BUTTON_S2 | JP_BUTTON_DR)) == (JP_BUTTON_S2 | JP_BUTTON_DR))
       pce_state.button_mode[i] = BUTTON_MODE_3_SEL;
-    else if ((event->buttons & (USBR_BUTTON_S2 | USBR_BUTTON_DL)) == (USBR_BUTTON_S2 | USBR_BUTTON_DL))
+    else if ((event->buttons & (JP_BUTTON_S2 | JP_BUTTON_DL)) == (JP_BUTTON_S2 | JP_BUTTON_DL))
       pce_state.button_mode[i] = BUTTON_MODE_3_RUN;
 
     // Turbo EverDrive Pro hot-key fix

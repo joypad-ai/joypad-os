@@ -416,19 +416,19 @@ void process_hid_keyboard(uint8_t dev_addr, uint8_t instance, uint8_t const* hid
   }
 
   // Active-high: set bit when button is pressed
-  buttons = (((dpad_up)    ? USBR_BUTTON_DU : 0) |
-             ((dpad_down)  ? USBR_BUTTON_DD : 0) |
-             ((dpad_left)  ? USBR_BUTTON_DL : 0) |
-             ((dpad_right) ? USBR_BUTTON_DR : 0) |
-             ((btns_b1)    ? USBR_BUTTON_B1 : 0) |
-             ((btns_b2)    ? USBR_BUTTON_B2 : 0) |
-             ((btns_b3)    ? USBR_BUTTON_B3 : 0) |
-             ((btns_b4)    ? USBR_BUTTON_B4 : 0) |
-             ((btns_l1)    ? USBR_BUTTON_L1 : 0) |
-             ((btns_r1)    ? USBR_BUTTON_R1 : 0) |
-             ((btns_sel)   ? USBR_BUTTON_S1 : 0) |
-             ((btns_run)   ? USBR_BUTTON_S2 : 0) |
-             ((btns_a1)    ? USBR_BUTTON_A1 : 0));
+  buttons = (((dpad_up)    ? JP_BUTTON_DU : 0) |
+             ((dpad_down)  ? JP_BUTTON_DD : 0) |
+             ((dpad_left)  ? JP_BUTTON_DL : 0) |
+             ((dpad_right) ? JP_BUTTON_DR : 0) |
+             ((btns_b1)    ? JP_BUTTON_B1 : 0) |
+             ((btns_b2)    ? JP_BUTTON_B2 : 0) |
+             ((btns_b3)    ? JP_BUTTON_B3 : 0) |
+             ((btns_b4)    ? JP_BUTTON_B4 : 0) |
+             ((btns_l1)    ? JP_BUTTON_L1 : 0) |
+             ((btns_r1)    ? JP_BUTTON_R1 : 0) |
+             ((btns_sel)   ? JP_BUTTON_S1 : 0) |
+             ((btns_run)   ? JP_BUTTON_S2 : 0) |
+             ((btns_a1)    ? JP_BUTTON_A1 : 0));
 
   // TODO: map L2/R2/L3/R3 buttons
 

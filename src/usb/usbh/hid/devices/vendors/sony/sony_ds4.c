@@ -168,26 +168,26 @@ void input_sony_ds4(uint8_t dev_addr, uint8_t instance, uint8_t const* report, u
       bool tpad_left = ds4_report.tpad && !ds4_report.tpad_f1_down && tx < 960;
       bool tpad_right = ds4_report.tpad && !ds4_report.tpad_f1_down && tx >= 960;
 
-      buttons = (((dpad_up)             ? USBR_BUTTON_DU : 0) |
-                 ((dpad_down)           ? USBR_BUTTON_DD : 0) |
-                 ((dpad_left)           ? USBR_BUTTON_DL : 0) |
-                 ((dpad_right)          ? USBR_BUTTON_DR : 0) |
-                 ((ds4_report.cross)    ? USBR_BUTTON_B1 : 0) |
-                 ((ds4_report.circle)   ? USBR_BUTTON_B2 : 0) |
-                 ((ds4_report.square)   ? USBR_BUTTON_B3 : 0) |
-                 ((ds4_report.triangle) ? USBR_BUTTON_B4 : 0) |
-                 ((ds4_report.l1)       ? USBR_BUTTON_L1 : 0) |
-                 ((ds4_report.r1)       ? USBR_BUTTON_R1 : 0) |
-                 ((ds4_report.l2)       ? USBR_BUTTON_L2 : 0) |
-                 ((ds4_report.r2)       ? USBR_BUTTON_R2 : 0) |
-                 ((ds4_report.share)    ? USBR_BUTTON_S1 : 0) |
-                 ((ds4_report.option)   ? USBR_BUTTON_S2 : 0) |
-                 ((ds4_report.l3)       ? USBR_BUTTON_L3 : 0) |
-                 ((ds4_report.r3)       ? USBR_BUTTON_R3 : 0) |
-                 ((ds4_report.ps)       ? USBR_BUTTON_A1 : 0) |
-                 ((ds4_report.tpad)     ? USBR_BUTTON_A2 : 0) |
-                 ((tpad_left)           ? USBR_BUTTON_L4 : 0) |
-                 ((tpad_right)          ? USBR_BUTTON_R4 : 0));
+      buttons = (((dpad_up)             ? JP_BUTTON_DU : 0) |
+                 ((dpad_down)           ? JP_BUTTON_DD : 0) |
+                 ((dpad_left)           ? JP_BUTTON_DL : 0) |
+                 ((dpad_right)          ? JP_BUTTON_DR : 0) |
+                 ((ds4_report.cross)    ? JP_BUTTON_B1 : 0) |
+                 ((ds4_report.circle)   ? JP_BUTTON_B2 : 0) |
+                 ((ds4_report.square)   ? JP_BUTTON_B3 : 0) |
+                 ((ds4_report.triangle) ? JP_BUTTON_B4 : 0) |
+                 ((ds4_report.l1)       ? JP_BUTTON_L1 : 0) |
+                 ((ds4_report.r1)       ? JP_BUTTON_R1 : 0) |
+                 ((ds4_report.l2)       ? JP_BUTTON_L2 : 0) |
+                 ((ds4_report.r2)       ? JP_BUTTON_R2 : 0) |
+                 ((ds4_report.share)    ? JP_BUTTON_S1 : 0) |
+                 ((ds4_report.option)   ? JP_BUTTON_S2 : 0) |
+                 ((ds4_report.l3)       ? JP_BUTTON_L3 : 0) |
+                 ((ds4_report.r3)       ? JP_BUTTON_R3 : 0) |
+                 ((ds4_report.ps)       ? JP_BUTTON_A1 : 0) |
+                 ((ds4_report.tpad)     ? JP_BUTTON_A2 : 0) |
+                 ((tpad_left)           ? JP_BUTTON_L4 : 0) |
+                 ((tpad_right)          ? JP_BUTTON_R4 : 0));
 
       uint8_t analog_1x = ds4_report.x;
       uint8_t analog_1y = ds4_report.y;   // HID convention: 0=up, 255=down

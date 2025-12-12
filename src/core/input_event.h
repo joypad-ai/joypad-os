@@ -1,5 +1,5 @@
 // input_event.h
-// Unified Input Event System for USBRetro
+// Unified Input Event System for Joypad
 // Supports all device types with extensible analog axis arrays
 
 #ifndef INPUT_EVENT_H
@@ -55,7 +55,7 @@ typedef enum {
 // ============================================================================
 //
 // INTERNAL Y-AXIS CONVENTION (IMPORTANT):
-// USBRetro uses HID convention internally: Y-axis UP = 0, DOWN = 255
+// Joypad uses HID convention internally: Y-axis UP = 0, DOWN = 255
 //   - 0   = stick pushed UP
 //   - 128 = centered (neutral)
 //   - 255 = stick pushed DOWN
@@ -86,7 +86,7 @@ typedef struct {
     controller_layout_t layout; // Physical button layout (for 6-button controllers)
 
     // Digital inputs
-    uint32_t buttons;           // Button bitmap (USBR_BUTTON_* defines from globals.h)
+    uint32_t buttons;           // Button bitmap (JP_BUTTON_* defines from globals.h)
     uint32_t keys;              // Keyboard keys (modifier + scancodes)
 
     // Absolute analog inputs (0-255, centered at 128)

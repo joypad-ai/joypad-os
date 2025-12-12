@@ -32,7 +32,7 @@ static usb_output_mode_t last_displayed_mode = 0xFF;
 static uint8_t last_rumble = 0;
 static uint32_t last_buttons = 0;  // Track button state for edge detection
 
-// Button name lookup table (matches USBR_BUTTON_* bit positions)
+// Button name lookup table (matches JP_BUTTON_* bit positions)
 typedef struct {
     uint32_t mask;
     const char* name;
@@ -45,24 +45,24 @@ typedef struct {
 #define ARROW_RIGHT "\x04"
 
 static const button_name_t button_names[] = {
-    { USBR_BUTTON_DU, ARROW_UP },
-    { USBR_BUTTON_DR, ARROW_RIGHT },
-    { USBR_BUTTON_DD, ARROW_DOWN },
-    { USBR_BUTTON_DL, ARROW_LEFT },
-    { USBR_BUTTON_B1, "B1" },
-    { USBR_BUTTON_B2, "B2" },
-    { USBR_BUTTON_B3, "B3" },
-    { USBR_BUTTON_B4, "B4" },
-    { USBR_BUTTON_L1, "L1" },
-    { USBR_BUTTON_R1, "R1" },
-    { USBR_BUTTON_L2, "L2" },
-    { USBR_BUTTON_R2, "R2" },
-    { USBR_BUTTON_S1, "S1" },
-    { USBR_BUTTON_S2, "S2" },
-    { USBR_BUTTON_L3, "L3" },
-    { USBR_BUTTON_R3, "R3" },
-    { USBR_BUTTON_A1, "A1" },
-    { USBR_BUTTON_A2, "A2" },
+    { JP_BUTTON_DU, ARROW_UP },
+    { JP_BUTTON_DR, ARROW_RIGHT },
+    { JP_BUTTON_DD, ARROW_DOWN },
+    { JP_BUTTON_DL, ARROW_LEFT },
+    { JP_BUTTON_B1, "B1" },
+    { JP_BUTTON_B2, "B2" },
+    { JP_BUTTON_B3, "B3" },
+    { JP_BUTTON_B4, "B4" },
+    { JP_BUTTON_L1, "L1" },
+    { JP_BUTTON_R1, "R1" },
+    { JP_BUTTON_L2, "L2" },
+    { JP_BUTTON_R2, "R2" },
+    { JP_BUTTON_S1, "S1" },
+    { JP_BUTTON_S2, "S2" },
+    { JP_BUTTON_L3, "L3" },
+    { JP_BUTTON_R3, "R3" },
+    { JP_BUTTON_A1, "A1" },
+    { JP_BUTTON_A2, "A2" },
     { 0, NULL }
 };
 

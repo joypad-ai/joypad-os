@@ -95,7 +95,7 @@ typedef struct __attribute__((packed)) {
     uint8_t  pressure_r1;
     uint8_t  pressure_l2;
     uint8_t  pressure_r2;
-} usbretro_hid_report_t;
+} joypad_hid_report_t;
 
 // D-pad / Hat Switch values
 #define HID_HAT_UP          0

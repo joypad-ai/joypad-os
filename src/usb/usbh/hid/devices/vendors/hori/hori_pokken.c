@@ -52,23 +52,23 @@ void process_hori_pokken(uint8_t dev_addr, uint8_t instance, uint8_t const* repo
     bool dpad_down  = (update_report.dpad >= 3 && update_report.dpad <= 5);
     bool dpad_left  = (update_report.dpad >= 5 && update_report.dpad <= 7);
 
-    buttons = (((dpad_up)              ? USBR_BUTTON_DU : 0) |
-               ((dpad_down)            ? USBR_BUTTON_DD : 0) |
-               ((dpad_left)            ? USBR_BUTTON_DL : 0) |
-               ((dpad_right)           ? USBR_BUTTON_DR : 0) |
-               ((update_report.b)      ? USBR_BUTTON_B1 : 0) |
-               ((update_report.a)      ? USBR_BUTTON_B2 : 0) |
-               ((update_report.y)      ? USBR_BUTTON_B3 : 0) |
-               ((update_report.x)      ? USBR_BUTTON_B4 : 0) |
-               ((update_report.l)      ? USBR_BUTTON_L1 : 0) |
-               ((update_report.r)      ? USBR_BUTTON_R1 : 0) |
-               ((update_report.zl)     ? USBR_BUTTON_L2 : 0) |
-               ((update_report.zr)     ? USBR_BUTTON_R2 : 0) |
-               ((update_report.select) ? USBR_BUTTON_S1 : 0) |
-               ((update_report.start)  ? USBR_BUTTON_S2 : 0) |
-               ((0)                    ? USBR_BUTTON_L3 : 0) |
-               ((0)                    ? USBR_BUTTON_R3 : 0) |
-               ((0)                    ? USBR_BUTTON_A1 : 0));
+    buttons = (((dpad_up)              ? JP_BUTTON_DU : 0) |
+               ((dpad_down)            ? JP_BUTTON_DD : 0) |
+               ((dpad_left)            ? JP_BUTTON_DL : 0) |
+               ((dpad_right)           ? JP_BUTTON_DR : 0) |
+               ((update_report.b)      ? JP_BUTTON_B1 : 0) |
+               ((update_report.a)      ? JP_BUTTON_B2 : 0) |
+               ((update_report.y)      ? JP_BUTTON_B3 : 0) |
+               ((update_report.x)      ? JP_BUTTON_B4 : 0) |
+               ((update_report.l)      ? JP_BUTTON_L1 : 0) |
+               ((update_report.r)      ? JP_BUTTON_R1 : 0) |
+               ((update_report.zl)     ? JP_BUTTON_L2 : 0) |
+               ((update_report.zr)     ? JP_BUTTON_R2 : 0) |
+               ((update_report.select) ? JP_BUTTON_S1 : 0) |
+               ((update_report.start)  ? JP_BUTTON_S2 : 0) |
+               ((0)                    ? JP_BUTTON_L3 : 0) |
+               ((0)                    ? JP_BUTTON_R3 : 0) |
+               ((0)                    ? JP_BUTTON_A1 : 0));
 
     // HID convention: 0=up, 255=down (no inversion needed)
     // Add 1 to avoid 0 value (ensureAllNonZero handles edge cases)

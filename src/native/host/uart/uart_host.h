@@ -6,7 +6,7 @@
 //
 // Use cases:
 //   - ESP32-S3 AI platform sending AI-controlled inputs
-//   - Another USBRetro board sharing its USB controller inputs
+//   - Another Joypad board sharing its USB controller inputs
 //   - Any external MCU sending controller data
 //
 // The UART host and device (uart_device) can share the same UART peripheral

@@ -20,7 +20,7 @@
 #define XAC_VID           0x2563  // SHANWAN (same as HID mode)
 #define XAC_PID           0x0576  // Different PID to distinguish from DInput
 #define XAC_BCD           0x0100  // v1.00
-#define XAC_MANUFACTURER  "USBRetro"
+#define XAC_MANUFACTURER  "Joypad"
 #define XAC_PRODUCT       "USBR (XAC)"
 
 #define XAC_ENDPOINT_SIZE 64

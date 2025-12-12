@@ -130,27 +130,27 @@ void nuon_init(void)
   hotkeys_register(&stop_hotkey);
 }
 
-// maps default usbretro button bit order to nuon's button packet data structure
+// maps default joypad button bit order to nuon's button packet data structure
 uint32_t map_nuon_buttons(uint32_t buttons)
 {
   uint32_t nuon_buttons = 0x0080;
 
   // Mapping the buttons (active-high: 1 = pressed)
-  nuon_buttons |= (buttons & USBR_BUTTON_B2) ? NUON_BUTTON_C_DOWN : 0;  // Circle -> C-DOWN
-  nuon_buttons |= (buttons & USBR_BUTTON_B1) ? NUON_BUTTON_A  : 0;  // Cross -> A
-  nuon_buttons |= (buttons & USBR_BUTTON_S2) ? NUON_BUTTON_START : 0;  // Option -> START
-  nuon_buttons |= (buttons & USBR_BUTTON_S1) ? NUON_BUTTON_NUON : 0;  // Share -> NUON/Z
-  nuon_buttons |= (buttons & USBR_BUTTON_DD) ? NUON_BUTTON_DOWN : 0;  // Dpad Down -> D-DOWN
-  nuon_buttons |= (buttons & USBR_BUTTON_DL) ? NUON_BUTTON_LEFT : 0;  // Dpad Left -> D-LEFT
-  nuon_buttons |= (buttons & USBR_BUTTON_DU) ? NUON_BUTTON_UP : 0;  // Dpad Up -> D-UP
-  nuon_buttons |= (buttons & USBR_BUTTON_DR) ? NUON_BUTTON_RIGHT : 0;  // Dpad Right -> D-RIGHT
+  nuon_buttons |= (buttons & JP_BUTTON_B2) ? NUON_BUTTON_C_DOWN : 0;  // Circle -> C-DOWN
+  nuon_buttons |= (buttons & JP_BUTTON_B1) ? NUON_BUTTON_A  : 0;  // Cross -> A
+  nuon_buttons |= (buttons & JP_BUTTON_S2) ? NUON_BUTTON_START : 0;  // Option -> START
+  nuon_buttons |= (buttons & JP_BUTTON_S1) ? NUON_BUTTON_NUON : 0;  // Share -> NUON/Z
+  nuon_buttons |= (buttons & JP_BUTTON_DD) ? NUON_BUTTON_DOWN : 0;  // Dpad Down -> D-DOWN
+  nuon_buttons |= (buttons & JP_BUTTON_DL) ? NUON_BUTTON_LEFT : 0;  // Dpad Left -> D-LEFT
+  nuon_buttons |= (buttons & JP_BUTTON_DU) ? NUON_BUTTON_UP : 0;  // Dpad Up -> D-UP
+  nuon_buttons |= (buttons & JP_BUTTON_DR) ? NUON_BUTTON_RIGHT : 0;  // Dpad Right -> D-RIGHT
   // Skipping the two buttons represented by 0x0080 and 0x0040 in the new format
-  nuon_buttons |= (buttons & USBR_BUTTON_L1) ? NUON_BUTTON_L : 0;  // L1 -> L
-  nuon_buttons |= (buttons & USBR_BUTTON_R1) ? NUON_BUTTON_R : 0;  // R1 -> R
-  nuon_buttons |= (buttons & USBR_BUTTON_B3) ? NUON_BUTTON_B : 0;  // Square -> B
-  nuon_buttons |= (buttons & USBR_BUTTON_B4) ? NUON_BUTTON_C_LEFT : 0;  // Triangle -> C-LEFT
-  nuon_buttons |= (buttons & USBR_BUTTON_L2) ? NUON_BUTTON_C_UP : 0;  // L2 -> C-UP
-  nuon_buttons |= (buttons & USBR_BUTTON_R2) ? NUON_BUTTON_C_RIGHT : 0;  // R2 -> C-RIGHT
+  nuon_buttons |= (buttons & JP_BUTTON_L1) ? NUON_BUTTON_L : 0;  // L1 -> L
+  nuon_buttons |= (buttons & JP_BUTTON_R1) ? NUON_BUTTON_R : 0;  // R1 -> R
+  nuon_buttons |= (buttons & JP_BUTTON_B3) ? NUON_BUTTON_B : 0;  // Square -> B
+  nuon_buttons |= (buttons & JP_BUTTON_B4) ? NUON_BUTTON_C_LEFT : 0;  // Triangle -> C-LEFT
+  nuon_buttons |= (buttons & JP_BUTTON_L2) ? NUON_BUTTON_C_UP : 0;  // L2 -> C-UP
+  nuon_buttons |= (buttons & JP_BUTTON_R2) ? NUON_BUTTON_C_RIGHT : 0;  // R2 -> C-RIGHT
 
   return nuon_buttons;
 }

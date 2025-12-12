@@ -25,22 +25,22 @@
 
 static const button_map_entry_t loopy_default_map[] = {
     // Face buttons - diamond layout
-    MAP_BUTTON(USBR_BUTTON_B1, LOOPY_BUTTON_A),    // Cross → A (bottom)
-    MAP_BUTTON(USBR_BUTTON_B2, LOOPY_BUTTON_B),    // Circle → B (right)
-    MAP_BUTTON(USBR_BUTTON_B3, LOOPY_BUTTON_C),    // Square → C (top)
-    MAP_BUTTON(USBR_BUTTON_B4, LOOPY_BUTTON_D),    // Triangle → D (left)
+    MAP_BUTTON(JP_BUTTON_B1, LOOPY_BUTTON_A),    // Cross → A (bottom)
+    MAP_BUTTON(JP_BUTTON_B2, LOOPY_BUTTON_B),    // Circle → B (right)
+    MAP_BUTTON(JP_BUTTON_B3, LOOPY_BUTTON_C),    // Square → C (top)
+    MAP_BUTTON(JP_BUTTON_B4, LOOPY_BUTTON_D),    // Triangle → D (left)
 
     // Shoulders
-    MAP_BUTTON(USBR_BUTTON_L1, LOOPY_BUTTON_L),
-    MAP_BUTTON(USBR_BUTTON_R1, LOOPY_BUTTON_R),
+    MAP_BUTTON(JP_BUTTON_L1, LOOPY_BUTTON_L),
+    MAP_BUTTON(JP_BUTTON_R1, LOOPY_BUTTON_R),
 
     // Triggers also map to L/R
-    MAP_BUTTON(USBR_BUTTON_L2, LOOPY_BUTTON_L),
-    MAP_BUTTON(USBR_BUTTON_R2, LOOPY_BUTTON_R),
+    MAP_BUTTON(JP_BUTTON_L2, LOOPY_BUTTON_L),
+    MAP_BUTTON(JP_BUTTON_R2, LOOPY_BUTTON_R),
 
     // System
-    MAP_DISABLED(USBR_BUTTON_S1),                   // Select → nothing
-    MAP_BUTTON(USBR_BUTTON_S2, LOOPY_BUTTON_START), // Start → Start
+    MAP_DISABLED(JP_BUTTON_S1),                   // Select → nothing
+    MAP_BUTTON(JP_BUTTON_S2, LOOPY_BUTTON_START), // Start → Start
 };
 
 static const profile_t loopy_profile_default = {
