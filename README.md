@@ -38,7 +38,7 @@ Joypad Core is the real-time nervous system of the Joypad platform.
 
 | Output | Features | Documentation |
 |--------|----------|---------------|
-| **USB Device** | HID Gamepad, XInput, Xbox OG, PS3, PS4, PS Classic, Switch | [Docs](docs/BUILD.md) |
+| **USB Device** | HID Gamepad, XInput, Xbox OG, Xbox One, PS3, PS4, PS Classic, Switch | [Docs](docs/BUILD.md) |
 | **PCEngine / TurboGrafx-16** | Multitap (5 players), Mouse, 2/3/6-button | [Docs](docs/consoles/PCENGINE.md) |
 | **GameCube / Wii** | Profiles, Rumble, Keyboard mode | [Docs](docs/consoles/GAMECUBE.md) |
 | **Nuon DVD Players** | Controller, Spinner (Tempest 3000), IGR | [Docs](docs/consoles/NUON.md) |
