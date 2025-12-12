@@ -52,6 +52,21 @@ make flash-usb2gc
 
 Output: `releases/usbr_<commit>_<board>_<app>.uf2`
 
+### App Build Matrix
+
+| App | Board | Input | Output |
+|-----|-------|-------|--------|
+| `usb2pce` | KB2040 | USB/BT | PCEngine |
+| `usb2gc` | KB2040 | USB/BT | GameCube |
+| `usb2nuon` | KB2040 | USB/BT | Nuon |
+| `usb23do` | RP2040-Zero | USB/BT | 3DO |
+| `usb2loopy` | KB2040 | USB/BT | Loopy |
+| `usb2usb` | Feather USB Host | USB/BT | USB HID |
+| `snes2usb` | KB2040 | SNES | USB HID |
+| `snes23do` | RP2040-Zero | SNES | 3DO |
+| `usb2uart` | KB2040 | USB | UART/ESP32 |
+| `controller_*` | Various | GPIO | USB HID |
+
 ## Architecture
 
 ### Repository Structure
