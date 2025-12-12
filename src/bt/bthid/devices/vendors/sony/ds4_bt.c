@@ -105,22 +105,24 @@ static void ds4_set_led(bthid_device_t* device, uint8_t r, uint8_t g, uint8_t b)
     ds4_bt_data_t* ds4 = (ds4_bt_data_t*)device->driver_data;
     if (!ds4) return;
 
-    uint8_t buf[23];
+    // DS4 BT output report - must use SET_REPORT on control channel
+    // Format: [SET_REPORT header][Report ID 0x11][flags][data...]
+    uint8_t buf[79];
     memset(buf, 0, sizeof(buf));
 
-    // BT output format
-    buf[0] = 0x11;  // Report ID
-    buf[1] = 0x80;  // Flags
-    buf[2] = 0x00;
-    buf[3] = 0xFF;  // Enable rumble+LED
+    buf[0] = 0x52;  // SET_REPORT | Output (0x50 | 0x02)
+    buf[1] = 0x11;  // Report ID
+    buf[2] = 0x80;  // Flags (BT)
+    buf[3] = 0x00;
+    buf[4] = 0xFF;  // Enable rumble+LED
 
-    buf[6] = ds4->rumble_right;
-    buf[7] = ds4->rumble_left;
-    buf[8] = r;
-    buf[9] = g;
-    buf[10] = b;
+    buf[7] = ds4->rumble_right;
+    buf[8] = ds4->rumble_left;
+    buf[9] = r;
+    buf[10] = g;
+    buf[11] = b;
 
-    bt_send_interrupt(device->conn_index, buf, sizeof(buf));
+    bt_send_control(device->conn_index, buf, sizeof(buf));
 }
 
 static void ds4_enable_sixaxis(bthid_device_t* device)
@@ -188,11 +190,19 @@ static bool ds4_init(bthid_device_t* device)
     return false;
 }
 
+static bool ds4_process_debug_done = false;
+
 static void ds4_process_report(bthid_device_t* device, const uint8_t* data, uint16_t len)
 {
     ds4_bt_data_t* ds4 = (ds4_bt_data_t*)device->driver_data;
     if (!ds4) {
         return;
+    }
+
+    // Debug: print first report received
+    if (!ds4_process_debug_done) {
+        printf("[DS4_BT] Process report: len=%d, data[0]=0x%02X\n", len, len > 0 ? data[0] : 0);
+        ds4_process_debug_done = true;
     }
 
     // BT reports have different report IDs:
@@ -213,6 +223,7 @@ static void ds4_process_report(bthid_device_t* device, const uint8_t* data, uint
         report_len = len - 1;
     } else {
         // Unknown report format
+        printf("[DS4_BT] Unknown report: len=%d, data[0]=0x%02X\n", len, len > 0 ? data[0] : 0);
         return;
     }
 

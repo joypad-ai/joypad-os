@@ -263,6 +263,8 @@ void bt_on_disconnect(uint8_t conn_index)
     remove_device(conn_index);
 }
 
+static bool bt_on_hid_report_debug_done = false;
+
 void bt_on_hid_report(uint8_t conn_index, const uint8_t* data, uint16_t len)
 {
     if (len < 1) {
@@ -273,6 +275,13 @@ void bt_on_hid_report(uint8_t conn_index, const uint8_t* data, uint16_t len)
     if (!device) {
         printf("[BTHID] Report for unknown device on conn %d\n", conn_index);
         return;
+    }
+
+    // Debug first report
+    if (!bt_on_hid_report_debug_done) {
+        printf("[BTHID] First report: conn=%d, len=%d, data[0]=0x%02X\n",
+               conn_index, len, data[0]);
+        bt_on_hid_report_debug_done = true;
     }
 
     // Parse HID transaction header
