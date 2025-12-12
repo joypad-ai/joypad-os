@@ -270,4 +270,154 @@ typedef struct __attribute__((packed)) {
     uint16_t total_num_sco_packets;
 } hci_return_read_buffer_size_t;
 
+// ============================================================================
+// LE META EVENT SUB-EVENTS
+// ============================================================================
+
+#define HCI_LE_EVT_CONNECTION_COMPLETE          0x01
+#define HCI_LE_EVT_ADVERTISING_REPORT           0x02
+#define HCI_LE_EVT_CONNECTION_UPDATE_COMPLETE   0x03
+#define HCI_LE_EVT_READ_REMOTE_FEATURES         0x04
+#define HCI_LE_EVT_LONG_TERM_KEY_REQUEST        0x05
+#define HCI_LE_EVT_REMOTE_CONN_PARAM_REQUEST    0x06
+#define HCI_LE_EVT_DATA_LENGTH_CHANGE           0x07
+#define HCI_LE_EVT_READ_LOCAL_P256_PUB_KEY      0x08
+#define HCI_LE_EVT_GENERATE_DHKEY_COMPLETE      0x09
+#define HCI_LE_EVT_ENHANCED_CONN_COMPLETE       0x0A
+#define HCI_LE_EVT_DIRECTED_ADV_REPORT          0x0B
+#define HCI_LE_EVT_PHY_UPDATE_COMPLETE          0x0C
+#define HCI_LE_EVT_EXTENDED_ADV_REPORT          0x0D
+
+// ============================================================================
+// LE ADVERTISING REPORT EVENT TYPES
+// ============================================================================
+
+#define HCI_LE_ADV_REPORT_IND                   0x00  // Connectable undirected
+#define HCI_LE_ADV_REPORT_DIRECT_IND            0x01  // Connectable directed
+#define HCI_LE_ADV_REPORT_SCAN_IND              0x02  // Scannable undirected
+#define HCI_LE_ADV_REPORT_NONCONN_IND           0x03  // Non-connectable undirected
+#define HCI_LE_ADV_REPORT_SCAN_RSP              0x04  // Scan response
+
+// ============================================================================
+// LE EVENT STRUCTURES
+// ============================================================================
+
+// LE Meta Event header
+typedef struct __attribute__((packed)) {
+    uint8_t subevent;
+    uint8_t params[];
+} hci_le_meta_event_t;
+
+// LE Connection Complete event
+typedef struct __attribute__((packed)) {
+    uint8_t  status;
+    uint16_t handle;
+    uint8_t  role;                  // 0x00 = Master, 0x01 = Slave
+    uint8_t  peer_addr_type;
+    uint8_t  peer_addr[6];
+    uint16_t conn_interval;         // N * 1.25ms
+    uint16_t conn_latency;
+    uint16_t supervision_timeout;   // N * 10ms
+    uint8_t  master_clock_accuracy;
+} hci_le_conn_complete_t;
+
+// LE Advertising Report (single report entry)
+typedef struct __attribute__((packed)) {
+    uint8_t event_type;             // HCI_LE_ADV_REPORT_*
+    uint8_t addr_type;              // 0x00 = public, 0x01 = random
+    uint8_t addr[6];
+    uint8_t data_length;
+    // Followed by: data[data_length], rssi (int8_t)
+} hci_le_adv_report_entry_t;
+
+// LE Advertising Report event
+typedef struct __attribute__((packed)) {
+    uint8_t num_reports;
+    // Followed by: hci_le_adv_report_entry_t entries[num_reports]
+} hci_le_adv_report_t;
+
+// LE Connection Update Complete event
+typedef struct __attribute__((packed)) {
+    uint8_t  status;
+    uint16_t handle;
+    uint16_t conn_interval;
+    uint16_t conn_latency;
+    uint16_t supervision_timeout;
+} hci_le_conn_update_complete_t;
+
+// LE Read Remote Features Complete event
+typedef struct __attribute__((packed)) {
+    uint8_t  status;
+    uint16_t handle;
+    uint8_t  features[8];
+} hci_le_read_remote_features_complete_t;
+
+// LE Long Term Key Request event
+typedef struct __attribute__((packed)) {
+    uint16_t handle;
+    uint8_t  random[8];
+    uint16_t ediv;
+} hci_le_ltk_request_t;
+
+// LE Read Buffer Size complete return params
+typedef struct __attribute__((packed)) {
+    uint8_t  status;
+    uint16_t le_acl_data_packet_length;
+    uint8_t  total_num_le_acl_packets;
+} hci_return_le_read_buffer_size_t;
+
+// LE Extended Advertising Report (Bluetooth 5.0+)
+// Event type bits:
+#define HCI_LE_EXT_ADV_EVT_CONNECTABLE      0x0001
+#define HCI_LE_EXT_ADV_EVT_SCANNABLE        0x0002
+#define HCI_LE_EXT_ADV_EVT_DIRECTED         0x0004
+#define HCI_LE_EXT_ADV_EVT_SCAN_RSP         0x0008
+#define HCI_LE_EXT_ADV_EVT_LEGACY           0x0010
+#define HCI_LE_EXT_ADV_EVT_DATA_COMPLETE    0x0000
+#define HCI_LE_EXT_ADV_EVT_DATA_INCOMPLETE  0x0020
+#define HCI_LE_EXT_ADV_EVT_DATA_TRUNCATED   0x0040
+
+typedef struct __attribute__((packed)) {
+    uint16_t event_type;
+    uint8_t  addr_type;
+    uint8_t  addr[6];
+    uint8_t  primary_phy;
+    uint8_t  secondary_phy;
+    uint8_t  advertising_sid;
+    int8_t   tx_power;
+    int8_t   rssi;
+    uint16_t periodic_adv_interval;
+    uint8_t  direct_addr_type;
+    uint8_t  direct_addr[6];
+    uint8_t  data_length;
+    // Followed by: data[data_length]
+} hci_le_ext_adv_report_entry_t;
+
+// ============================================================================
+// BLE AD (Advertising Data) TYPES
+// ============================================================================
+
+#define BLE_AD_TYPE_FLAGS                       0x01
+#define BLE_AD_TYPE_INCOMPLETE_16BIT_UUIDS      0x02
+#define BLE_AD_TYPE_COMPLETE_16BIT_UUIDS        0x03
+#define BLE_AD_TYPE_INCOMPLETE_32BIT_UUIDS      0x04
+#define BLE_AD_TYPE_COMPLETE_32BIT_UUIDS        0x05
+#define BLE_AD_TYPE_INCOMPLETE_128BIT_UUIDS     0x06
+#define BLE_AD_TYPE_COMPLETE_128BIT_UUIDS       0x07
+#define BLE_AD_TYPE_SHORTENED_LOCAL_NAME        0x08
+#define BLE_AD_TYPE_COMPLETE_LOCAL_NAME         0x09
+#define BLE_AD_TYPE_TX_POWER_LEVEL              0x0A
+#define BLE_AD_TYPE_CLASS_OF_DEVICE             0x0D
+#define BLE_AD_TYPE_SERVICE_DATA_16BIT          0x16
+#define BLE_AD_TYPE_APPEARANCE                  0x19
+#define BLE_AD_TYPE_MANUFACTURER_SPECIFIC       0xFF
+
+// ============================================================================
+// BLE GAP APPEARANCE VALUES (for gamepads)
+// ============================================================================
+
+#define BLE_APPEARANCE_UNKNOWN                  0x0000
+#define BLE_APPEARANCE_GAMEPAD                  0x03C4
+#define BLE_APPEARANCE_JOYSTICK                 0x03C5
+
 #endif // HCI_EVENT_H

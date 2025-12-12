@@ -42,6 +42,7 @@ void btd_init(void)
 {
     memset(&btd_ctx, 0, sizeof(btd_ctx));
     btd_ctx.state = BTD_STATE_INIT;
+    btd_ctx.le_connecting = false;  // Explicit init
 
     // Mark all connections as disconnected
     for (int i = 0; i < BTD_MAX_CONNECTIONS; i++) {
@@ -55,7 +56,7 @@ void btd_init(void)
     // Initialize L2CAP layer
     l2cap_init();
 
-    printf("[BTD] Initialized\n");
+    printf("[BTD] Initialized (le_connecting=%d)\n", btd_ctx.le_connecting);
 }
 
 // ============================================================================
@@ -97,6 +98,20 @@ void btd_task(void)
         printf("[BTD] Scanning... (evt_pending=%d)\n", btd_ctx.evt_pending);
     }
 
+    // Handle delayed BLE connection (after scan has stopped)
+    static uint16_t le_connect_delay = 0;
+    if (btd_ctx.le_connecting && btd_ctx.le_connect_pending && !btd_ctx.pending_cmd) {
+        le_connect_delay++;
+        if (le_connect_delay >= 100) {  // ~100ms delay
+            le_connect_delay = 0;
+            btd_ctx.le_connect_pending = false;  // Clear pending, keep le_connecting
+            printf("[BTD] Initiating delayed BLE connection...\n");
+            btd_hci_le_create_connection(btd_ctx.le_pending_addr, btd_ctx.le_pending_addr_type);
+        }
+    } else {
+        le_connect_delay = 0;
+    }
+
     // Re-queue event endpoint if not pending (polling model like USB Host Shield)
     if (!btd_ctx.evt_pending) {
         btd_ctx.evt_pending = true;
@@ -122,6 +137,13 @@ static void btd_state_machine(void)
     // Don't send new commands if we're waiting for a response
     if (btd_ctx.pending_cmd) {
         return;
+    }
+
+    // Debug: show state transitions for LE init
+    static btd_state_t last_state = BTD_STATE_INIT;
+    if (btd_ctx.state != last_state) {
+        printf("[BTD] State transition: %d -> %d\n", last_state, btd_ctx.state);
+        last_state = btd_ctx.state;
     }
 
     switch (btd_ctx.state) {
@@ -177,8 +199,48 @@ static void btd_state_machine(void)
             btd_hci_write_scan_enable(HCI_SCAN_PAGE_ONLY);
             break;
 
+        // BLE (Bluetooth Low Energy) initialization states
+        case BTD_STATE_LE_WRITE_HOST_SUPPORT:
+            // Enable BLE on the dongle (Bluetooth 4.0+ requirement)
+            printf("[BTD] Attempting to enable BLE (LE Host Support)...\n");
+            btd_hci_write_le_host_support(true);
+            break;
+
+        case BTD_STATE_LE_READ_BUFFER_SIZE:
+            printf("[BTD] Reading LE buffer size...\n");
+            btd_hci_le_read_buffer_size();
+            break;
+
+        case BTD_STATE_LE_SET_EVENT_MASK:
+            printf("[BTD] Setting LE event mask...\n");
+            btd_hci_le_set_event_mask();
+            break;
+
+        case BTD_STATE_LE_SET_SCAN_PARAMS:
+            // Use extended scanning for BT 5.0+ (HCI version >= 9)
+            if (btd_ctx.hci_version >= 9) {
+                printf("[BTD] Setting LE EXTENDED scan parameters (BT 5.0+)...\n");
+                btd_hci_le_set_ext_scan_parameters(HCI_LE_SCAN_ACTIVE, 0x0060, 0x0030);
+            } else {
+                printf("[BTD] Setting LE legacy scan parameters...\n");
+                btd_hci_le_set_scan_parameters(HCI_LE_SCAN_ACTIVE, 0x0060, 0x0030, true);
+            }
+            break;
+
+        case BTD_STATE_LE_SCAN_ENABLE:
+            // Use extended scanning for BT 5.0+ (HCI version >= 9)
+            // Disable duplicate filtering to ensure we see all advertisements
+            if (btd_ctx.hci_version >= 9) {
+                printf("[BTD] Enabling LE EXTENDED scanning (BT 5.0+, no dup filter)...\n");
+                btd_hci_le_set_ext_scan_enable(true, false);  // No duplicate filter
+            } else {
+                printf("[BTD] Enabling LE legacy scanning...\n");
+                btd_hci_le_set_scan_enable(true, false);  // No duplicate filter
+            }
+            break;
+
         case BTD_STATE_INQUIRY:
-            // Start scanning for nearby Bluetooth devices
+            // Start scanning for nearby Classic Bluetooth devices
             btd_hci_inquiry();
             break;
 
@@ -281,13 +343,14 @@ bool btd_hci_read_buffer_size(void)
 bool btd_hci_set_event_mask(void)
 {
     printf("[BTD] Sending HCI_Set_Event_Mask\n");
-    // Event mask from USB Host Shield - enables most events including connection events
+    // Event mask - enables most events including connection events
     // Bits enable: Inquiry Complete, Inquiry Result, Connection Complete,
     // Connection Request, Disconnection Complete, Auth Complete, Remote Name,
     // Encryption Change, PIN Request, Link Key Request, Link Key Notification,
     // Command Complete, Command Status, and many more
+    // Byte 7 bit 5 (bit 61) = LE Meta Event - CRITICAL for BLE!
     uint8_t event_mask[8] = {
-        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x1F, 0xFF, 0x00
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x1F, 0xFF, 0x20
     };
     return btd_send_hci_cmd(HCI_SET_EVENT_MASK, event_mask, 8);
 }
@@ -461,6 +524,219 @@ bool btd_hci_remote_name_request(const uint8_t* bd_addr)
 }
 
 // ============================================================================
+// HCI LE COMMANDS (Bluetooth Low Energy)
+// ============================================================================
+
+bool btd_hci_write_le_host_support(bool enable)
+{
+    printf("[BTD] Setting LE Host Support: %s\n", enable ? "enabled" : "disabled");
+    uint8_t params[2] = {
+        enable ? 0x01 : 0x00,  // LE Supported Host
+        0x00                    // Simultaneous LE and BR/EDR (unused, set to 0)
+    };
+    return btd_send_hci_cmd(HCI_WRITE_LE_HOST_SUPPORT, params, 2);
+}
+
+bool btd_hci_le_read_buffer_size(void)
+{
+    printf("[BTD] Reading LE Buffer Size\n");
+    return btd_send_hci_cmd(HCI_LE_READ_BUFFER_SIZE, NULL, 0);
+}
+
+bool btd_hci_le_set_event_mask(void)
+{
+    printf("[BTD] Setting LE Event Mask (including Extended Advertising)\n");
+    // LE Event Mask bits (little-endian):
+    // Byte 0: Bit 0-7
+    //   Bit 0: LE Connection Complete
+    //   Bit 1: LE Advertising Report (legacy)
+    //   Bit 2: LE Connection Update Complete
+    //   Bit 3: LE Read Remote Features Complete
+    //   Bit 4: LE Long Term Key Request
+    // Byte 1: Bit 8-15
+    //   Bit 12: LE Extended Advertising Report (BT 5.0+) = byte 1, bit 4 = 0x10
+    //
+    // Enable: bits 0-4 (0x1F) + bit 12 (0x10 in byte 1)
+    uint8_t le_event_mask[8] = {
+        0x1F, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    };
+    return btd_send_hci_cmd(HCI_LE_SET_EVENT_MASK, le_event_mask, 8);
+}
+
+bool btd_hci_le_set_scan_parameters(uint8_t scan_type, uint16_t interval,
+                                     uint16_t window, bool filter_duplicates)
+{
+    printf("[BTD] Setting LE Scan Parameters: type=%d interval=0x%04X window=0x%04X\n",
+           scan_type, interval, window);
+    (void)filter_duplicates;  // Used in scan enable, not parameters
+
+    hci_le_set_scan_params_t params = {
+        .scan_type = scan_type,
+        .scan_interval = interval,
+        .scan_window = window,
+        .own_address_type = HCI_LE_ADDR_PUBLIC,
+        .filter_policy = HCI_LE_SCAN_FILTER_ACCEPT_ALL
+    };
+    return btd_send_hci_cmd(HCI_LE_SET_SCAN_PARAMETERS, (uint8_t*)&params, sizeof(params));
+}
+
+bool btd_hci_le_set_scan_enable(bool enable, bool filter_duplicates)
+{
+    printf("[BTD] %s LE Scanning (filter_dups=%d)\n",
+           enable ? "Enabling" : "Disabling", filter_duplicates);
+
+    hci_le_set_scan_enable_t params = {
+        .enable = enable ? 0x01 : 0x00,
+        .filter_duplicates = filter_duplicates ? 0x01 : 0x00
+    };
+    return btd_send_hci_cmd(HCI_LE_SET_SCAN_ENABLE, (uint8_t*)&params, sizeof(params));
+}
+
+bool btd_hci_le_create_connection(const uint8_t* peer_addr, uint8_t peer_addr_type)
+{
+    char addr_str[18];
+    btd_bd_addr_to_str(peer_addr, addr_str);
+
+    // Mark that we're connecting (prevents multiple connection attempts)
+    btd_ctx.le_connecting = true;
+
+    // Use Extended Create Connection for BT 5.0+ (HCI version >= 9)
+    if (btd_ctx.hci_version >= 9) {
+        printf("[BTD] Creating LE EXTENDED connection to %s (addr_type=%d)\n", addr_str, peer_addr_type);
+
+        hci_le_ext_create_conn_t params = {
+            .filter_policy = 0x00,        // Use peer address
+            .own_addr_type = HCI_LE_ADDR_PUBLIC,
+            .peer_addr_type = peer_addr_type,
+            .initiating_phys = 0x01,      // 1M PHY only
+            .phy_1m = {
+                .scan_interval = 0x0060,      // 60ms
+                .scan_window = 0x0030,        // 30ms
+                .conn_interval_min = 0x0018,  // 30ms
+                .conn_interval_max = 0x0028,  // 50ms
+                .conn_latency = 0x0000,
+                .supervision_timeout = 0x00C8, // 2000ms (200 * 10ms) - longer timeout
+                .min_ce_length = 0x0000,
+                .max_ce_length = 0x0000
+            }
+        };
+        memcpy(params.peer_addr, peer_addr, 6);
+
+        return btd_send_hci_cmd(HCI_LE_EXT_CREATE_CONNECTION, (uint8_t*)&params, sizeof(params));
+    }
+
+    // Legacy Create Connection for older controllers
+    printf("[BTD] Creating LE connection to %s (addr_type=%d)\n", addr_str, peer_addr_type);
+
+    hci_le_create_conn_t params = {
+        .scan_interval = 0x0060,      // 60ms
+        .scan_window = 0x0030,        // 30ms
+        .filter_policy = 0x00,        // Use peer address, not white list
+        .peer_addr_type = peer_addr_type,
+        .own_addr_type = HCI_LE_ADDR_PUBLIC,
+        .conn_interval_min = 0x0018,  // 30ms (24 * 1.25ms)
+        .conn_interval_max = 0x0028,  // 50ms (40 * 1.25ms)
+        .conn_latency = 0x0000,       // No slave latency
+        .supervision_timeout = 0x002C, // 440ms (44 * 10ms)
+        .min_ce_length = 0x0000,
+        .max_ce_length = 0x0000
+    };
+    memcpy(params.peer_addr, peer_addr, 6);
+
+    return btd_send_hci_cmd(HCI_LE_CREATE_CONNECTION, (uint8_t*)&params, sizeof(params));
+}
+
+bool btd_hci_le_create_connection_cancel(void)
+{
+    printf("[BTD] Cancelling LE connection attempt\n");
+    return btd_send_hci_cmd(HCI_LE_CREATE_CONNECTION_CANCEL, NULL, 0);
+}
+
+bool btd_hci_le_connection_update(uint16_t handle, uint16_t interval_min,
+                                   uint16_t interval_max, uint16_t latency,
+                                   uint16_t timeout)
+{
+    printf("[BTD] Updating LE connection 0x%04X\n", handle);
+
+    hci_le_conn_update_t params = {
+        .handle = handle,
+        .conn_interval_min = interval_min,
+        .conn_interval_max = interval_max,
+        .conn_latency = latency,
+        .supervision_timeout = timeout,
+        .min_ce_length = 0x0000,
+        .max_ce_length = 0x0000
+    };
+    return btd_send_hci_cmd(HCI_LE_CONNECTION_UPDATE, (uint8_t*)&params, sizeof(params));
+}
+
+bool btd_hci_le_start_encryption(uint16_t handle, const uint8_t* random,
+                                  uint16_t ediv, const uint8_t* ltk)
+{
+    printf("[BTD] Starting LE encryption for handle 0x%04X\n", handle);
+
+    hci_le_start_encryption_t params;
+    params.handle = handle;
+    memcpy(params.random, random, 8);
+    params.ediv = ediv;
+    memcpy(params.ltk, ltk, 16);
+    return btd_send_hci_cmd(HCI_LE_START_ENCRYPTION, (uint8_t*)&params, sizeof(params));
+}
+
+bool btd_hci_le_ltk_reply(uint16_t handle, const uint8_t* ltk)
+{
+    printf("[BTD] LE LTK reply for handle 0x%04X\n", handle);
+
+    uint8_t params[18];
+    params[0] = handle & 0xFF;
+    params[1] = (handle >> 8) & 0xFF;
+    memcpy(&params[2], ltk, 16);
+    return btd_send_hci_cmd(HCI_LE_LTK_REQUEST_REPLY, params, 18);
+}
+
+bool btd_hci_le_ltk_neg_reply(uint16_t handle)
+{
+    printf("[BTD] LE LTK negative reply for handle 0x%04X\n", handle);
+
+    uint8_t params[2] = { handle & 0xFF, (handle >> 8) & 0xFF };
+    return btd_send_hci_cmd(HCI_LE_LTK_REQUEST_NEG_REPLY, params, 2);
+}
+
+// ============================================================================
+// HCI LE EXTENDED COMMANDS (Bluetooth 5.0+)
+// ============================================================================
+
+bool btd_hci_le_set_ext_scan_parameters(uint8_t scan_type, uint16_t interval, uint16_t window)
+{
+    printf("[BTD] Setting LE Extended Scan Parameters: type=%d interval=0x%04X window=0x%04X\n",
+           scan_type, interval, window);
+
+    hci_le_set_ext_scan_params_t params = {
+        .own_addr_type = HCI_LE_ADDR_PUBLIC,
+        .filter_policy = HCI_LE_SCAN_FILTER_ACCEPT_ALL,
+        .scanning_phys = 0x01,  // Scan on 1M PHY only
+        .scan_type = scan_type,
+        .scan_interval = interval,
+        .scan_window = window
+    };
+    return btd_send_hci_cmd(HCI_LE_SET_EXT_SCAN_PARAMETERS, (uint8_t*)&params, sizeof(params));
+}
+
+bool btd_hci_le_set_ext_scan_enable(bool enable, bool filter_duplicates)
+{
+    printf("[BTD] %s LE Extended Scanning (filter_dups=%d)\n",
+           enable ? "Enabling" : "Disabling", filter_duplicates);
+
+    hci_le_set_ext_scan_enable_t params = {
+        .enable = enable ? 0x01 : 0x00,
+        .filter_duplicates = filter_duplicates ? 0x01 : 0x00,
+        .duration = 0x0000,  // Scan continuously
+        .period = 0x0000     // No periodic scanning
+    };
+    return btd_send_hci_cmd(HCI_LE_SET_EXT_SCAN_ENABLE, (uint8_t*)&params, sizeof(params));
+}
+
+// ============================================================================
 // ACL DATA SENDING
 // ============================================================================
 
@@ -507,6 +783,13 @@ static void btd_process_event(const uint8_t* data, uint16_t len)
 
     const hci_event_t* evt = (const hci_event_t*)data;
 
+    // Debug: show ALL events when in running state (except common ones)
+    if (btd_ctx.state == BTD_STATE_RUNNING &&
+        evt->event_code != HCI_EVENT_NUMBER_OF_COMPLETED_PACKETS &&
+        evt->event_code != 0x00) {
+        printf("[BTD] Event received: code=0x%02X len=%d\n", evt->event_code, evt->param_len);
+    }
+
     switch (evt->event_code) {
         case HCI_EVENT_COMMAND_COMPLETE: {
             const hci_event_cmd_complete_t* cc = (const hci_event_cmd_complete_t*)evt->params;
@@ -548,8 +831,21 @@ static void btd_process_event(const uint8_t* data, uint16_t len)
                     if (ret->status == HCI_SUCCESS) {
                         btd_ctx.hci_version = ret->hci_version;
                         btd_ctx.manufacturer = ret->manufacturer;
-                        printf("[BTD] HCI Version: %d, Manufacturer: 0x%04X\n",
-                               ret->hci_version, ret->manufacturer);
+                        // HCI versions: 6=BT4.0, 7=BT4.1, 8=BT4.2, 9=BT5.0, 10=BT5.1, 11=BT5.2, 12=BT5.3, 13=BT5.4
+                        const char* bt_version = "Unknown";
+                        switch (ret->hci_version) {
+                            case 6: bt_version = "4.0 (BLE supported)"; break;
+                            case 7: bt_version = "4.1 (BLE supported)"; break;
+                            case 8: bt_version = "4.2 (BLE supported)"; break;
+                            case 9: bt_version = "5.0 (BLE+Extended Adv)"; break;
+                            case 10: bt_version = "5.1"; break;
+                            case 11: bt_version = "5.2"; break;
+                            case 12: bt_version = "5.3"; break;
+                            case 13: bt_version = "5.4"; break;
+                            default: if (ret->hci_version < 6) bt_version = "<4.0 (NO BLE)"; break;
+                        }
+                        printf("[BTD] Bluetooth Version: %s (HCI=%d, Manufacturer=0x%04X)\n",
+                               bt_version, ret->hci_version, ret->manufacturer);
                     }
                     btd_ctx.state = BTD_STATE_READ_BUFFER_SIZE;
                     break;
@@ -586,21 +882,119 @@ static void btd_process_event(const uint8_t* data, uint16_t len)
 
                 case HCI_WRITE_SCAN_ENABLE:
                     btd_ctx.scan_enabled = true;
-                    printf("[BTD] Scan enabled - starting device discovery\n");
-                    // Start ACL endpoint now that initialization is done
+                    printf("[BTD] Scan enabled - continuing to BLE setup\n");
+                    // Start ACL endpoint now that basic initialization is done
                     printf("[BTD] Starting ACL IN endpoint 0x%02X\n", btd_ctx.ep_acl_in);
                     if (!usbh_edpt_xfer(btd_ctx.dev_addr, btd_ctx.ep_acl_in,
                                        btd_ctx.acl_in_buf, sizeof(btd_ctx.acl_in_buf))) {
                         printf("[BTD] Failed to start ACL endpoint!\n");
                     }
-                    // Start inquiry to find nearby devices
-                    btd_ctx.state = BTD_STATE_INQUIRY;
+                    // Continue to BLE initialization
+                    btd_ctx.state = BTD_STATE_LE_WRITE_HOST_SUPPORT;
                     break;
 
                 case HCI_INQUIRY_CANCEL:
-                    // Inquiry was cancelled, go to running state
-                    btd_ctx.state = BTD_STATE_RUNNING;
+                    // Check if this was for a pending BLE connection
+                    if (btd_ctx.le_connect_pending) {
+                        printf("[BTD] Inquiry cancelled, now stopping scan...\n");
+                        // Stop extended scanning - connection will be initiated when scan stops
+                        if (btd_ctx.hci_version >= 9) {
+                            btd_hci_le_set_ext_scan_enable(false, false);
+                        } else {
+                            btd_hci_le_set_scan_enable(false, false);
+                        }
+                    } else {
+                        // Inquiry was cancelled for other reason, go to running state
+                        btd_ctx.state = BTD_STATE_RUNNING;
+                    }
                     break;
+
+                // LE Command Complete handlers
+                case HCI_WRITE_LE_HOST_SUPPORT: {
+                    uint8_t status = cc->return_params[0];
+                    if (status == HCI_SUCCESS) {
+                        printf("[BTD] LE Host Support enabled\n");
+                        btd_ctx.le_supported = true;
+                        btd_ctx.le_enabled = true;
+                        btd_ctx.state = BTD_STATE_LE_READ_BUFFER_SIZE;
+                    } else {
+                        printf("[BTD] LE not supported (status=0x%02X), skipping BLE init\n", status);
+                        btd_ctx.le_supported = false;
+                        btd_ctx.state = BTD_STATE_INQUIRY;
+                    }
+                    break;
+                }
+
+                case HCI_LE_READ_BUFFER_SIZE: {
+                    const hci_return_le_read_buffer_size_t* ret =
+                        (const hci_return_le_read_buffer_size_t*)cc->return_params;
+                    if (ret->status == HCI_SUCCESS) {
+                        btd_ctx.le_acl_mtu = ret->le_acl_data_packet_length;
+                        btd_ctx.le_acl_credits = ret->total_num_le_acl_packets;
+                        printf("[BTD] LE Buffer Size: MTU=%d, Credits=%d\n",
+                               btd_ctx.le_acl_mtu, btd_ctx.le_acl_credits);
+                    }
+                    btd_ctx.state = BTD_STATE_LE_SET_EVENT_MASK;
+                    break;
+                }
+
+                case HCI_LE_SET_EVENT_MASK:
+                    printf("[BTD] LE Event Mask set\n");
+                    btd_ctx.state = BTD_STATE_LE_SET_SCAN_PARAMS;
+                    break;
+
+                case HCI_LE_SET_SCAN_PARAMETERS:
+                    printf("[BTD] LE Scan Parameters set\n");
+                    btd_ctx.state = BTD_STATE_LE_SCAN_ENABLE;
+                    break;
+
+                case HCI_LE_SET_SCAN_ENABLE: {
+                    uint8_t status = cc->return_params[0];
+                    if (status == HCI_SUCCESS) {
+                        btd_ctx.le_scan_enabled = true;
+                        printf("[BTD] *** BLE SCANNING ACTIVE *** - now starting Classic inquiry\n");
+                    } else {
+                        printf("[BTD] LE Scan enable FAILED (status=0x%02X) - BLE devices won't be detected\n", status);
+                        btd_ctx.le_scan_enabled = false;
+                    }
+                    // Move to classic inquiry regardless
+                    btd_ctx.state = BTD_STATE_INQUIRY;
+                    break;
+                }
+
+                case HCI_LE_CREATE_CONNECTION_CANCEL:
+                    printf("[BTD] LE Connection attempt cancelled\n");
+                    break;
+
+                // Extended scanning (BT 5.0+)
+                case HCI_LE_SET_EXT_SCAN_PARAMETERS:
+                    printf("[BTD] LE Extended Scan Parameters set\n");
+                    btd_ctx.state = BTD_STATE_LE_SCAN_ENABLE;
+                    break;
+
+                case HCI_LE_SET_EXT_SCAN_ENABLE: {
+                    uint8_t status = cc->return_params[0];
+                    if (status == HCI_SUCCESS) {
+                        // Check if this was a scan disable for pending connection
+                        if (btd_ctx.le_connect_pending) {
+                            btd_ctx.le_scan_enabled = false;
+                            printf("[BTD] Scan stopped, connection will be initiated shortly...\n");
+                            // Don't connect immediately - let task loop handle it after a delay
+                            btd_ctx.le_connecting = true;  // Signal task to connect
+                            btd_ctx.state = BTD_STATE_RUNNING;  // Go to running, don't restart scans
+                            break;
+                        }
+                        btd_ctx.le_scan_enabled = true;
+                        printf("[BTD] *** BLE EXTENDED SCANNING ACTIVE *** - now starting Classic inquiry\n");
+                        btd_ctx.state = BTD_STATE_INQUIRY;
+                    } else {
+                        printf("[BTD] LE Extended Scan command FAILED (status=0x%02X)\n", status);
+                        btd_ctx.le_scan_enabled = false;
+                        btd_ctx.le_connect_pending = false;  // Clear pending on failure
+                        btd_ctx.state = BTD_STATE_INQUIRY;
+                    }
+                    break;
+                }
             }
             break;
         }
@@ -1035,6 +1429,167 @@ static void btd_process_event(const uint8_t* data, uint16_t len)
             break;
         }
 
+        case HCI_EVENT_LE_META: {
+            // LE Meta Event - contains BLE sub-events
+            if (evt->param_len < 1) break;
+
+            const hci_le_meta_event_t* le_meta = (const hci_le_meta_event_t*)evt->params;
+            printf("[BTD] LE Meta Event: subevent=0x%02X, param_len=%d\n",
+                   le_meta->subevent, evt->param_len);
+
+            switch (le_meta->subevent) {
+                case HCI_LE_EVT_CONNECTION_COMPLETE: {
+                    const hci_le_conn_complete_t* le_conn = (const hci_le_conn_complete_t*)le_meta->params;
+                    char addr_str[18];
+                    btd_bd_addr_to_str(le_conn->peer_addr, addr_str);
+
+                    // Connection attempt finished (success or failure)
+                    btd_ctx.le_connecting = false;
+                    btd_ctx.le_connect_pending = false;
+
+                    if (le_conn->status == HCI_SUCCESS) {
+                        printf("[BTD] LE Connection complete: %s, handle=0x%04X, role=%s\n",
+                               addr_str, le_conn->handle,
+                               le_conn->role == 0 ? "Master" : "Slave");
+
+                        // Allocate connection slot for BLE device
+                        btd_connection_t* conn = btd_alloc_connection();
+                        if (conn) {
+                            conn->state = BTD_CONN_CONNECTED;
+                            memcpy(conn->bd_addr, le_conn->peer_addr, 6);
+                            conn->handle = le_conn->handle;
+                            conn->is_ble = true;
+                            conn->name[0] = '\0';
+                            // BLE uses ATT on fixed CID 0x0004
+                            conn->control_cid = 0x0004;
+
+                            btd_ctx.num_connections++;
+                            btd_ctx.le_scan_enabled = false;  // Stop scanning when connected
+
+                            uint8_t idx = conn - btd_ctx.connections;
+                            printf("[BTD] *** BLE CONNECTED TO XBOX! conn_idx=%d ***\n", idx);
+                            btd_on_le_connection(idx);
+                        }
+                    } else {
+                        printf("[BTD] LE Connection failed: %s, status=0x%02X\n",
+                               addr_str, le_conn->status);
+                    }
+                    break;
+                }
+
+                case HCI_LE_EVT_ADVERTISING_REPORT: {
+                    const hci_le_adv_report_t* adv = (const hci_le_adv_report_t*)le_meta->params;
+                    const uint8_t* ptr = (const uint8_t*)(adv + 1);
+
+                    for (int i = 0; i < adv->num_reports; i++) {
+                        const hci_le_adv_report_entry_t* entry = (const hci_le_adv_report_entry_t*)ptr;
+                        const uint8_t* adv_data = ptr + sizeof(hci_le_adv_report_entry_t);
+                        int8_t rssi = (int8_t)adv_data[entry->data_length];
+
+                        char addr_str[18];
+                        btd_bd_addr_to_str(entry->addr, addr_str);
+                        printf("[BTD] LE Adv: %s type=%d addr_type=%d rssi=%d len=%d\n",
+                               addr_str, entry->event_type, entry->addr_type, rssi, entry->data_length);
+
+                        // Notify higher layer of advertisement
+                        btd_on_le_adv_report(entry->addr, entry->addr_type, rssi,
+                                             adv_data, entry->data_length);
+
+                        // Move to next report
+                        ptr += sizeof(hci_le_adv_report_entry_t) + entry->data_length + 1;
+                    }
+                    break;
+                }
+
+                case HCI_LE_EVT_CONNECTION_UPDATE_COMPLETE: {
+                    const hci_le_conn_update_complete_t* update = (const hci_le_conn_update_complete_t*)le_meta->params;
+                    printf("[BTD] LE Connection update: handle=0x%04X status=0x%02X interval=%d latency=%d timeout=%d\n",
+                           update->handle, update->status, update->conn_interval,
+                           update->conn_latency, update->supervision_timeout);
+                    break;
+                }
+
+                case HCI_LE_EVT_LONG_TERM_KEY_REQUEST: {
+                    const hci_le_ltk_request_t* ltk_req = (const hci_le_ltk_request_t*)le_meta->params;
+                    printf("[BTD] LE LTK request: handle=0x%04X\n", ltk_req->handle);
+                    // For now, reject - we don't have bonding support yet
+                    btd_hci_le_ltk_neg_reply(ltk_req->handle);
+                    break;
+                }
+
+                case HCI_LE_EVT_EXTENDED_ADV_REPORT: {
+                    // Extended Advertising Report (Bluetooth 5.0+)
+                    uint8_t num_reports = le_meta->params[0];
+                    const uint8_t* ptr = &le_meta->params[1];
+
+                    for (int i = 0; i < num_reports; i++) {
+                        const hci_le_ext_adv_report_entry_t* entry = (const hci_le_ext_adv_report_entry_t*)ptr;
+                        const uint8_t* adv_data = ptr + sizeof(hci_le_ext_adv_report_entry_t);
+
+                        char addr_str[18];
+                        btd_bd_addr_to_str(entry->addr, addr_str);
+                        printf("[BTD] LE Extended Adv: %s evt=0x%04X addr_type=%d rssi=%d len=%d\n",
+                               addr_str, entry->event_type, entry->addr_type, entry->rssi, entry->data_length);
+
+                        // Parse AD structures to extract device name
+                        char dev_name[32] = {0};
+                        if (entry->data_length > 0) {
+                            uint8_t ad_offset = 0;
+                            while (ad_offset < entry->data_length) {
+                                uint8_t ad_len = adv_data[ad_offset];
+                                if (ad_len == 0 || ad_offset + 1 + ad_len > entry->data_length) break;
+                                uint8_t ad_type = adv_data[ad_offset + 1];
+                                // 0x08 = Shortened Local Name, 0x09 = Complete Local Name
+                                if ((ad_type == 0x08 || ad_type == 0x09) && ad_len > 1) {
+                                    uint8_t name_len = ad_len - 1;
+                                    if (name_len > sizeof(dev_name) - 1) name_len = sizeof(dev_name) - 1;
+                                    memcpy(dev_name, &adv_data[ad_offset + 2], name_len);
+                                    dev_name[name_len] = '\0';
+                                    printf("[BTD]   Name: %s\n", dev_name);
+                                    break;
+                                }
+                                ad_offset += ad_len + 1;
+                            }
+                        }
+
+                        // Check for Xbox controller and initiate connection
+                        if (dev_name[0] && strstr(dev_name, "Xbox") != NULL) {
+                            printf("[BTD] *** XBOX CONTROLLER FOUND! ***\n");
+                            // Check if connectable and not already connecting/pending
+                            if ((entry->event_type & HCI_LE_EXT_ADV_EVT_CONNECTABLE) &&
+                                !btd_ctx.le_connecting && !btd_ctx.le_connect_pending) {
+                                // Save address and cancel inquiry first
+                                memcpy(btd_ctx.le_pending_addr, entry->addr, 6);
+                                btd_ctx.le_pending_addr_type = entry->addr_type;
+                                btd_ctx.le_connect_pending = true;
+                                printf("[BTD] Canceling inquiry to connect to Xbox...\n");
+                                // Cancel classic inquiry first - then scan will be stopped in callback
+                                btd_hci_inquiry_cancel();
+                            }
+                        }
+
+                        // Check if connectable
+                        if (entry->event_type & HCI_LE_EXT_ADV_EVT_CONNECTABLE) {
+                            printf("[BTD]   -> Connectable BLE device!\n");
+                        }
+
+                        // Notify higher layer of advertisement
+                        btd_on_le_adv_report(entry->addr, entry->addr_type, entry->rssi,
+                                             adv_data, entry->data_length);
+
+                        // Move to next report
+                        ptr += sizeof(hci_le_ext_adv_report_entry_t) + entry->data_length;
+                    }
+                    break;
+                }
+
+                default:
+                    printf("[BTD] Unhandled LE sub-event: 0x%02X\n", le_meta->subevent);
+                    break;
+            }
+            break;
+        }
+
         default:
             if (evt->event_code != 0x00) {  // Ignore empty/invalid events
                 printf("[BTD] Unhandled event: 0x%02X\n", evt->event_code);
@@ -1148,6 +1703,8 @@ void btd_print_state(void)
     const char* state_names[] = {
         "INIT", "RESET", "READ_BD_ADDR", "READ_VERSION", "READ_BUFFER_SIZE",
         "SET_EVENT_MASK", "WRITE_NAME", "WRITE_COD", "WRITE_SSP", "WRITE_SCAN",
+        "LE_WRITE_HOST_SUPPORT", "LE_READ_BUFFER_SIZE", "LE_SET_EVENT_MASK",
+        "LE_SET_SCAN_PARAMS", "LE_SCAN_ENABLE",
         "INQUIRY", "RUNNING", "ERROR"
     };
 
@@ -1281,6 +1838,8 @@ bool btd_driver_set_config(uint8_t dev_addr, uint8_t itf_num)
     btd_ctx.dongle_connected = true;
     btd_ctx.state = BTD_STATE_INIT;
     btd_ctx.pending_cmd = 0;  // Ensure clean state
+    btd_ctx.le_connecting = false;  // Reset BLE connection state
+    printf("[BTD] Reset le_connecting to %d\n", btd_ctx.le_connecting);
 
     // Tell USBH we're done with enumeration FIRST
     usbh_driver_set_config_complete(dev_addr, btd_ctx.itf_num);
@@ -1397,4 +1956,16 @@ __attribute__((weak)) void btd_on_acl_data(uint8_t conn_index, const uint8_t* da
 __attribute__((weak)) void btd_on_remote_name_complete(uint8_t conn_index, const char* name)
 {
     printf("[BTD] Remote name complete for connection %d: %s (weak handler)\n", conn_index, name);
+}
+
+__attribute__((weak)) void btd_on_le_adv_report(const uint8_t* addr, uint8_t addr_type,
+                                                  int8_t rssi, const uint8_t* data, uint8_t data_len)
+{
+    (void)addr; (void)addr_type; (void)rssi; (void)data; (void)data_len;
+    // Advertising reports are high-frequency, don't log by default in weak handler
+}
+
+__attribute__((weak)) void btd_on_le_connection(uint8_t conn_index)
+{
+    printf("[BTD] LE Connection %d established (weak handler)\n", conn_index);
 }

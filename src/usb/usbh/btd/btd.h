@@ -50,7 +50,13 @@ typedef enum {
     BTD_STATE_WRITE_COD,        // Writing class of device
     BTD_STATE_WRITE_SSP,        // Enable Simple Pairing
     BTD_STATE_WRITE_SCAN,       // Enable scan mode
-    BTD_STATE_INQUIRY,          // Scanning for nearby devices
+    // BLE (Bluetooth Low Energy) initialization states
+    BTD_STATE_LE_WRITE_HOST_SUPPORT, // Enable LE host support
+    BTD_STATE_LE_READ_BUFFER_SIZE,   // Read LE buffer sizes
+    BTD_STATE_LE_SET_EVENT_MASK,     // Set LE event mask
+    BTD_STATE_LE_SET_SCAN_PARAMS,    // Set LE scan parameters
+    BTD_STATE_LE_SCAN_ENABLE,        // Enable LE scanning
+    BTD_STATE_INQUIRY,          // Scanning for nearby devices (Classic)
     BTD_STATE_RUNNING,          // Ready for connections
     BTD_STATE_ERROR,            // Error state
 } btd_state_t;
@@ -74,9 +80,10 @@ typedef struct {
     uint16_t handle;            // ACL connection handle
     uint8_t  class_of_device[3];// Remote class of device
     char     name[BTD_MAX_NAME_LEN];  // Remote device name
+    bool     is_ble;            // true = BLE connection, false = Classic BR/EDR
 
-    // L2CAP channels
-    uint16_t control_cid;       // HID Control channel (local CID)
+    // L2CAP channels (Classic BR/EDR) or ATT (BLE)
+    uint16_t control_cid;       // HID Control channel (local CID) / ATT CID for BLE
     uint16_t control_dcid;      // HID Control channel (remote CID)
     uint16_t interrupt_cid;     // HID Interrupt channel (local CID)
     uint16_t interrupt_dcid;    // HID Interrupt channel (remote CID)
@@ -123,6 +130,17 @@ typedef struct {
     bool     evt_pending;       // Event endpoint transfer is pending
     bool     acl_out_pending;   // ACL OUT transfer pending
     uint16_t acl_out_pending_len; // Length of pending ACL data
+
+    // BLE (Bluetooth Low Energy) support
+    bool     le_supported;      // Dongle supports BLE (Bluetooth 4.0+)
+    bool     le_enabled;        // BLE has been enabled
+    bool     le_scan_enabled;   // BLE scanning is active
+    bool     le_connecting;     // BLE connection in progress
+    bool     le_connect_pending; // Waiting to connect after scan stops
+    uint8_t  le_pending_addr[6]; // Address to connect to
+    uint8_t  le_pending_addr_type; // Address type to connect to
+    uint16_t le_acl_mtu;        // LE ACL packet MTU
+    uint8_t  le_acl_credits;    // Available LE ACL packet credits
 } btd_t;
 
 // ============================================================================
@@ -187,6 +205,37 @@ bool btd_hci_set_connection_encryption(uint16_t handle, bool enable);
 bool btd_hci_remote_name_request(const uint8_t* bd_addr);
 
 // ============================================================================
+// HCI LE COMMAND FUNCTIONS (Bluetooth Low Energy)
+// ============================================================================
+
+// LE Setup
+bool btd_hci_write_le_host_support(bool enable);
+bool btd_hci_le_read_buffer_size(void);
+bool btd_hci_le_set_event_mask(void);
+
+// LE Scanning
+bool btd_hci_le_set_scan_parameters(uint8_t scan_type, uint16_t interval,
+                                     uint16_t window, bool filter_duplicates);
+bool btd_hci_le_set_scan_enable(bool enable, bool filter_duplicates);
+
+// LE Connection
+bool btd_hci_le_create_connection(const uint8_t* peer_addr, uint8_t peer_addr_type);
+bool btd_hci_le_create_connection_cancel(void);
+bool btd_hci_le_connection_update(uint16_t handle, uint16_t interval_min,
+                                   uint16_t interval_max, uint16_t latency,
+                                   uint16_t timeout);
+
+// LE Encryption
+bool btd_hci_le_start_encryption(uint16_t handle, const uint8_t* random,
+                                  uint16_t ediv, const uint8_t* ltk);
+bool btd_hci_le_ltk_reply(uint16_t handle, const uint8_t* ltk);
+bool btd_hci_le_ltk_neg_reply(uint16_t handle);
+
+// LE Extended Scanning (Bluetooth 5.0+)
+bool btd_hci_le_set_ext_scan_parameters(uint8_t scan_type, uint16_t interval, uint16_t window);
+bool btd_hci_le_set_ext_scan_enable(bool enable, bool filter_duplicates);
+
+// ============================================================================
 // ACL DATA FUNCTIONS
 // ============================================================================
 
@@ -215,6 +264,14 @@ extern void btd_on_acl_data(uint8_t conn_index, const uint8_t* data, uint16_t le
 
 // Called when remote name request completes
 extern void btd_on_remote_name_complete(uint8_t conn_index, const char* name);
+
+// LE callbacks
+// Called when a BLE advertisement is received during scanning
+extern void btd_on_le_adv_report(const uint8_t* addr, uint8_t addr_type,
+                                  int8_t rssi, const uint8_t* data, uint8_t data_len);
+
+// Called when a BLE connection is established
+extern void btd_on_le_connection(uint8_t conn_index);
 
 // ============================================================================
 // TINYUSB INTEGRATION
