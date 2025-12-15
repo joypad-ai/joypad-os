@@ -43,6 +43,22 @@ bool btstack_ble_is_initialized(void);
 bool btstack_ble_is_powered_on(void);
 bool btstack_ble_is_scanning(void);
 
+// Classic BT connection info (for bthid driver matching)
+typedef struct {
+    bool active;
+    uint8_t bd_addr[6];
+    char name[32];
+    uint8_t class_of_device[3];
+    bool hid_ready;
+} btstack_classic_conn_info_t;
+
+bool btstack_classic_get_connection(uint8_t conn_index, btstack_classic_conn_info_t* info);
+uint8_t btstack_classic_get_connection_count(void);
+
+// Classic BT output (for bthid drivers)
+bool btstack_classic_send_report(uint8_t conn_index, uint8_t report_id,
+                                  const uint8_t* data, uint16_t len);
+
 #ifdef __cplusplus
 }
 #endif

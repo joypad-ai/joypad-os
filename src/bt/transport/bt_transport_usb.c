@@ -44,8 +44,7 @@ static bool usb_transport_is_ready(void)
 
 static uint8_t usb_transport_get_connection_count(void)
 {
-    // TODO: Expose connection count from btstack_ble.c
-    return 0;
+    return btstack_classic_get_connection_count();
 }
 
 static const bt_connection_t* usb_transport_get_connection(uint8_t index)
@@ -53,21 +52,43 @@ static const bt_connection_t* usb_transport_get_connection(uint8_t index)
     if (index >= BT_MAX_CONNECTIONS) {
         return NULL;
     }
-    // TODO: Expose connection info from btstack_ble.c
-    return NULL;
+
+    btstack_classic_conn_info_t info;
+    if (!btstack_classic_get_connection(index, &info)) {
+        return NULL;
+    }
+
+    // Update cached connection struct
+    bt_connection_t* conn = &usb_connections[index];
+    memcpy(conn->bd_addr, info.bd_addr, 6);
+    strncpy(conn->name, info.name, BT_MAX_NAME_LEN - 1);
+    conn->name[BT_MAX_NAME_LEN - 1] = '\0';
+    memcpy(conn->class_of_device, info.class_of_device, 3);
+    conn->connected = info.active;
+    conn->hid_ready = info.hid_ready;
+
+    return conn;
 }
 
 static bool usb_transport_send_control(uint8_t conn_index, const uint8_t* data, uint16_t len)
 {
-    // TODO: Implement GATT write for output reports
-    (void)conn_index; (void)data; (void)len;
+    // Classic BT: parse SET_REPORT header and forward to BTstack
+    if (len >= 2) {
+        // data[0] = transaction type | report type, data[1] = report_id
+        uint8_t report_id = data[1];
+        return btstack_classic_send_report(conn_index, report_id, data + 2, len - 2);
+    }
     return false;
 }
 
 static bool usb_transport_send_interrupt(uint8_t conn_index, const uint8_t* data, uint16_t len)
 {
-    // TODO: Implement GATT write for output reports
-    (void)conn_index; (void)data; (void)len;
+    // Classic BT: parse DATA|OUTPUT header and forward to BTstack
+    if (len >= 2) {
+        // data[0] = 0xA2 (DATA|OUTPUT), data[1] = report_id
+        uint8_t report_id = data[1];
+        return btstack_classic_send_report(conn_index, report_id, data + 2, len - 2);
+    }
     return false;
 }
 

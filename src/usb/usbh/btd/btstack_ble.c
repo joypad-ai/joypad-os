@@ -24,8 +24,15 @@ extern void btstack_memory_init(void);
 #include "ble/gatt_client.h"
 #include "ble/le_device_db.h"
 #include "ble/gatt-service/hids_client.h"
+#include "classic/hid_host.h"
+#include "classic/sdp_client.h"
 #include "hci_dump.h"
 #include "hci_dump_embedded_stdout.h"
+
+// BTHID callbacks - for classic BT HID devices
+extern void bt_on_hid_ready(uint8_t conn_index);
+extern void bt_on_disconnect(uint8_t conn_index);
+extern void bt_on_hid_report(uint8_t conn_index, const uint8_t* data, uint16_t len);
 
 // Forward declare transport functions to avoid TinyUSB/BTstack HID header conflict
 // (hci_transport_h2_tinyusb.h includes tusb.h which defines conflicting HID types)
@@ -239,12 +246,67 @@ static gatt_client_characteristic_t xbox_hid_characteristic;  // Fake characteri
 static void xbox_hid_notification_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size);
 
 // ============================================================================
+// CLASSIC BT HID HOST STATE
+// ============================================================================
+
+#define MAX_CLASSIC_CONNECTIONS 4
+#define INQUIRY_DURATION 5  // Inquiry duration in 1.28s units
+
+typedef struct {
+    bool active;
+    uint16_t hid_cid;           // BTstack HID connection ID
+    bd_addr_t addr;
+    char name[32];
+    uint8_t class_of_device[3];
+    bool hid_ready;
+} classic_connection_t;
+
+static struct {
+    bool inquiry_active;
+    classic_connection_t connections[MAX_CLASSIC_CONNECTIONS];
+} classic_state;
+
+// Classic HID descriptor storage
+static uint8_t classic_hid_descriptor_storage[512];
+
+// Find classic connection by hid_cid
+static classic_connection_t* find_classic_connection_by_cid(uint16_t hid_cid) {
+    for (int i = 0; i < MAX_CLASSIC_CONNECTIONS; i++) {
+        if (classic_state.connections[i].active && classic_state.connections[i].hid_cid == hid_cid) {
+            return &classic_state.connections[i];
+        }
+    }
+    return NULL;
+}
+
+// Get conn_index for classic connection
+static int get_classic_conn_index(uint16_t hid_cid) {
+    for (int i = 0; i < MAX_CLASSIC_CONNECTIONS; i++) {
+        if (classic_state.connections[i].active && classic_state.connections[i].hid_cid == hid_cid) {
+            return i;  // conn_index matches array index
+        }
+    }
+    return -1;
+}
+
+// Find free classic connection slot
+static classic_connection_t* find_free_classic_connection(void) {
+    for (int i = 0; i < MAX_CLASSIC_CONNECTIONS; i++) {
+        if (!classic_state.connections[i].active) {
+            return &classic_state.connections[i];
+        }
+    }
+    return NULL;
+}
+
+// ============================================================================
 // FORWARD DECLARATIONS
 // ============================================================================
 
 static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size);
 static void sm_packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size);
 static void hids_client_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size);
+static void hid_host_packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size);
 static ble_connection_t* find_connection_by_handle(hci_con_handle_t handle);
 static ble_connection_t* find_free_connection(void);
 static void start_hids_client(ble_connection_t *conn);
@@ -298,6 +360,15 @@ void btstack_ble_init(void)
     printf("[BTSTACK_BLE] Init LE Device DB...\n");
     le_device_db_init();
 
+    // Initialize classic BT HID Host
+    printf("[BTSTACK] Init Classic HID Host...\n");
+    memset(&classic_state, 0, sizeof(classic_state));
+    hid_host_init(classic_hid_descriptor_storage, sizeof(classic_hid_descriptor_storage));
+    hid_host_register_packet_handler(hid_host_packet_handler);
+
+    // Allow sniff mode and role switch for classic BT (improves compatibility)
+    gap_set_default_link_policy_settings(LM_LINK_POLICY_ENABLE_SNIFF_MODE | LM_LINK_POLICY_ENABLE_ROLE_SWITCH);
+
     // Register for HCI events
     printf("[BTSTACK_BLE] Register event handlers...\n");
     hci_event_callback_registration.callback = packet_handler;
@@ -308,7 +379,7 @@ void btstack_ble_init(void)
     sm_add_event_handler(&sm_event_callback_registration);
 
     ble_state.initialized = true;
-    printf("[BTSTACK_BLE] Initialized OK\n");
+    printf("[BTSTACK] Initialized OK (BLE + Classic)\n");
 }
 
 void btstack_ble_power_on(void)
@@ -333,35 +404,41 @@ void btstack_ble_power_on(void)
 void btstack_ble_start_scan(void)
 {
     if (!ble_state.powered_on) {
-        printf("[BTSTACK_BLE] Not powered on yet\n");
+        printf("[BTSTACK] Not powered on yet\n");
         return;
     }
 
-    if (ble_state.scan_active) {
-        printf("[BTSTACK_BLE] Scan already active\n");
+    if (ble_state.scan_active || classic_state.inquiry_active) {
+        printf("[BTSTACK] Scan already active\n");
         return;
     }
 
-    printf("[BTSTACK_BLE] Starting LE scan...\n");
-
-    // Set scan parameters
+    printf("[BTSTACK] Starting BLE scan...\n");
     gap_set_scan_params(1, SCAN_INTERVAL, SCAN_WINDOW, 0);
-
-    // Start scanning
     gap_start_scan();
-
     ble_state.scan_active = true;
     ble_state.state = BLE_STATE_SCANNING;
+
+    // Also start classic BT inquiry
+    printf("[BTSTACK] Starting Classic inquiry...\n");
+    gap_inquiry_start(INQUIRY_DURATION);
+    classic_state.inquiry_active = true;
 }
 
 void btstack_ble_stop_scan(void)
 {
-    if (!ble_state.scan_active) return;
+    if (ble_state.scan_active) {
+        printf("[BTSTACK] Stopping BLE scan\n");
+        gap_stop_scan();
+        ble_state.scan_active = false;
+        ble_state.state = BLE_STATE_IDLE;
+    }
 
-    printf("[BTSTACK_BLE] Stopping LE scan\n");
-    gap_stop_scan();
-    ble_state.scan_active = false;
-    ble_state.state = BLE_STATE_IDLE;
+    if (classic_state.inquiry_active) {
+        printf("[BTSTACK] Stopping Classic inquiry\n");
+        gap_inquiry_stop();
+        classic_state.inquiry_active = false;
+    }
 }
 
 // ============================================================================
@@ -500,6 +577,72 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
             }
             break;
         }
+
+        // Classic BT inquiry result
+        case GAP_EVENT_INQUIRY_RESULT: {
+            bd_addr_t addr;
+            gap_event_inquiry_result_get_bd_addr(packet, addr);
+            uint32_t cod = gap_event_inquiry_result_get_class_of_device(packet);
+
+            // Parse name from extended inquiry response if available
+            char name[240] = {0};
+            if (gap_event_inquiry_result_get_name_available(packet)) {
+                int name_len = gap_event_inquiry_result_get_name_len(packet);
+                if (name_len > 0 && name_len < (int)sizeof(name)) {
+                    memcpy(name, gap_event_inquiry_result_get_name(packet), name_len);
+                    name[name_len] = 0;
+                }
+            }
+
+            // Class of Device: Major=0x05 (Peripheral), Minor bits indicate type
+            uint8_t major_class = (cod >> 8) & 0x1F;
+            uint8_t minor_class = (cod >> 2) & 0x3F;
+            bool is_gamepad = (major_class == 0x05) && ((minor_class & 0x0F) == 0x02);  // Gamepad
+            bool is_joystick = (major_class == 0x05) && ((minor_class & 0x0F) == 0x01); // Joystick
+
+            printf("[BTSTACK] Inquiry: %02X:%02X:%02X:%02X:%02X:%02X COD=0x%06X name=\"%s\"%s\n",
+                   addr[5], addr[4], addr[3], addr[2], addr[1], addr[0],
+                   (unsigned)cod, name, (is_gamepad || is_joystick) ? " [GAMEPAD]" : "");
+
+            // Auto-connect to gamepads
+            if ((is_gamepad || is_joystick) && classic_state.inquiry_active) {
+                printf("[BTSTACK] Classic gamepad found, connecting...\n");
+                btstack_ble_stop_scan();  // Stop inquiry
+
+                uint16_t hid_cid;
+                uint8_t status = hid_host_connect(addr, HID_PROTOCOL_MODE_REPORT, &hid_cid);
+                if (status == ERROR_CODE_SUCCESS) {
+                    printf("[BTSTACK] hid_host_connect started, cid=0x%04X\n", hid_cid);
+
+                    // Allocate connection slot
+                    classic_connection_t* conn = find_free_classic_connection();
+                    if (conn) {
+                        memset(conn, 0, sizeof(*conn));
+                        conn->active = true;
+                        conn->hid_cid = hid_cid;
+                        memcpy(conn->addr, addr, 6);
+                        strncpy(conn->name, name, sizeof(conn->name) - 1);
+                        conn->class_of_device[0] = cod & 0xFF;
+                        conn->class_of_device[1] = (cod >> 8) & 0xFF;
+                        conn->class_of_device[2] = (cod >> 16) & 0xFF;
+                    }
+                } else {
+                    printf("[BTSTACK] hid_host_connect failed: %d\n", status);
+                }
+            }
+            break;
+        }
+
+        case GAP_EVENT_INQUIRY_COMPLETE:
+            printf("[BTSTACK] Inquiry complete\n");
+            classic_state.inquiry_active = false;
+            // Restart scanning after inquiry completes (if we're still in scan mode)
+            if (ble_state.state == BLE_STATE_SCANNING) {
+                printf("[BTSTACK] Restarting inquiry...\n");
+                gap_inquiry_start(INQUIRY_DURATION);
+                classic_state.inquiry_active = true;
+            }
+            break;
 
         case HCI_EVENT_LE_META: {
             uint8_t subevent = hci_event_le_meta_get_subevent_code(packet);
@@ -891,5 +1034,178 @@ bool btstack_ble_is_powered_on(void)
 
 bool btstack_ble_is_scanning(void)
 {
-    return ble_state.scan_active;
+    return ble_state.scan_active || classic_state.inquiry_active;
+}
+
+// ============================================================================
+// CLASSIC BT HID HOST PACKET HANDLER
+// ============================================================================
+
+static void hid_host_packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size)
+{
+    UNUSED(channel);
+    UNUSED(size);
+
+    if (packet_type != HCI_EVENT_PACKET) return;
+
+    uint8_t event_type = hci_event_packet_get_type(packet);
+    if (event_type != HCI_EVENT_HID_META) return;
+
+    uint8_t subevent = hci_event_hid_meta_get_subevent_code(packet);
+
+    switch (subevent) {
+        case HID_SUBEVENT_INCOMING_CONNECTION: {
+            // Accept incoming HID connections from devices
+            uint16_t hid_cid = hid_subevent_incoming_connection_get_hid_cid(packet);
+            printf("[BTSTACK] HID incoming connection, cid=0x%04X - accepting\n", hid_cid);
+            hid_host_accept_connection(hid_cid, HID_PROTOCOL_MODE_REPORT);
+
+            // Allocate connection slot if needed
+            if (!find_classic_connection_by_cid(hid_cid)) {
+                classic_connection_t* conn = find_free_classic_connection();
+                if (conn) {
+                    memset(conn, 0, sizeof(*conn));
+                    conn->active = true;
+                    conn->hid_cid = hid_cid;
+                    hid_subevent_incoming_connection_get_address(packet, conn->addr);
+                }
+            }
+            break;
+        }
+
+        case HID_SUBEVENT_CONNECTION_OPENED: {
+            uint16_t hid_cid = hid_subevent_connection_opened_get_hid_cid(packet);
+            uint8_t status = hid_subevent_connection_opened_get_status(packet);
+
+            if (status != ERROR_CODE_SUCCESS) {
+                printf("[BTSTACK] HID connection failed, status=0x%02X\n", status);
+                // Remove connection slot
+                classic_connection_t* conn = find_classic_connection_by_cid(hid_cid);
+                if (conn) {
+                    memset(conn, 0, sizeof(*conn));
+                }
+                return;
+            }
+
+            printf("[BTSTACK] HID connection opened, cid=0x%04X\n", hid_cid);
+
+            // Mark connection as ready (HID channels established)
+            classic_connection_t* conn = find_classic_connection_by_cid(hid_cid);
+            if (conn) {
+                conn->hid_ready = true;
+            }
+            break;
+        }
+
+        case HID_SUBEVENT_DESCRIPTOR_AVAILABLE: {
+            uint16_t hid_cid = hid_subevent_descriptor_available_get_hid_cid(packet);
+            uint8_t status = hid_subevent_descriptor_available_get_status(packet);
+
+            printf("[BTSTACK] HID descriptor available, cid=0x%04X status=0x%02X\n", hid_cid, status);
+
+            // Notify bthid layer that device is ready
+            int conn_index = get_classic_conn_index(hid_cid);
+            if (conn_index >= 0) {
+                printf("[BTSTACK] Calling bt_on_hid_ready(%d)\n", conn_index);
+                bt_on_hid_ready(conn_index);
+            }
+            break;
+        }
+
+        case HID_SUBEVENT_REPORT: {
+            uint16_t hid_cid = hid_subevent_report_get_hid_cid(packet);
+            const uint8_t* report = hid_subevent_report_get_report(packet);
+            uint16_t report_len = hid_subevent_report_get_report_len(packet);
+
+            // Route to bthid layer
+            int conn_index = get_classic_conn_index(hid_cid);
+            if (conn_index >= 0 && report_len > 0) {
+                // Build BTHID-compatible packet: DATA|INPUT header + report
+                static uint8_t hid_packet[256];
+                hid_packet[0] = 0xA1;  // DATA | INPUT header
+                if (report_len < sizeof(hid_packet) - 1) {
+                    memcpy(hid_packet + 1, report, report_len);
+                    bt_on_hid_report(conn_index, hid_packet, report_len + 1);
+                }
+            }
+            break;
+        }
+
+        case HID_SUBEVENT_CONNECTION_CLOSED: {
+            uint16_t hid_cid = hid_subevent_connection_closed_get_hid_cid(packet);
+            printf("[BTSTACK] HID connection closed, cid=0x%04X\n", hid_cid);
+
+            // Notify bthid layer
+            int conn_index = get_classic_conn_index(hid_cid);
+            if (conn_index >= 0) {
+                bt_on_disconnect(conn_index);
+            }
+
+            // Free connection slot
+            classic_connection_t* conn = find_classic_connection_by_cid(hid_cid);
+            if (conn) {
+                memset(conn, 0, sizeof(*conn));
+            }
+            break;
+        }
+
+        case HID_SUBEVENT_SET_PROTOCOL_RESPONSE: {
+            uint16_t hid_cid = hid_subevent_set_protocol_response_get_hid_cid(packet);
+            uint8_t handshake = hid_subevent_set_protocol_response_get_handshake_status(packet);
+            hid_protocol_mode_t mode = hid_subevent_set_protocol_response_get_protocol_mode(packet);
+            printf("[BTSTACK] HID set protocol response: cid=0x%04X handshake=%d mode=%d\n",
+                   hid_cid, handshake, mode);
+            break;
+        }
+
+        default:
+            printf("[BTSTACK] HID subevent: 0x%02X\n", subevent);
+            break;
+    }
+}
+
+// ============================================================================
+// CLASSIC BT OUTPUT REPORTS
+// ============================================================================
+
+// Send output report via classic HID (called from bthid drivers)
+bool btstack_classic_send_report(uint8_t conn_index, uint8_t report_id,
+                                  const uint8_t* data, uint16_t len)
+{
+    if (conn_index >= MAX_CLASSIC_CONNECTIONS) return false;
+
+    classic_connection_t* conn = &classic_state.connections[conn_index];
+    if (!conn->active || !conn->hid_ready) return false;
+
+    return hid_host_send_report(conn->hid_cid, report_id, data, len) == ERROR_CODE_SUCCESS;
+}
+
+// Get classic connection info for bthid driver matching
+bool btstack_classic_get_connection(uint8_t conn_index, btstack_classic_conn_info_t* info)
+{
+    if (conn_index >= MAX_CLASSIC_CONNECTIONS || !info) return false;
+
+    classic_connection_t* conn = &classic_state.connections[conn_index];
+    if (!conn->active) return false;
+
+    info->active = conn->active;
+    memcpy(info->bd_addr, conn->addr, 6);
+    strncpy(info->name, conn->name, sizeof(info->name) - 1);
+    info->name[sizeof(info->name) - 1] = '\0';
+    memcpy(info->class_of_device, conn->class_of_device, 3);
+    info->hid_ready = conn->hid_ready;
+
+    return true;
+}
+
+// Get number of active classic connections
+uint8_t btstack_classic_get_connection_count(void)
+{
+    uint8_t count = 0;
+    for (int i = 0; i < MAX_CLASSIC_CONNECTIONS; i++) {
+        if (classic_state.connections[i].active) {
+            count++;
+        }
+    }
+    return count;
 }
