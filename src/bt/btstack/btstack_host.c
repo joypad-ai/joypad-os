@@ -18,6 +18,7 @@
 extern void btstack_memory_init(void);
 
 #include "bluetooth_data_types.h"
+#include "bluetooth_company_id.h"
 #include "ad_parser.h"
 #include "gap.h"
 #include "hci.h"
@@ -28,6 +29,10 @@ extern void btstack_memory_init(void);
 #include "ble/gatt-service/hids_client.h"
 #include "classic/hid_host.h"
 #include "classic/sdp_client.h"
+#include "classic/sdp_server.h"
+#include "classic/sdp_util.h"
+#include "classic/device_id_server.h"
+#include "classic/btstack_link_key_db_memory.h"
 #include "hci_dump.h"
 #include "hci_dump_embedded_stdout.h"
 
@@ -173,11 +178,19 @@ static struct {
     // Pending incoming connection info (from HCI_EVENT_CONNECTION_REQUEST)
     bd_addr_t pending_addr;
     uint32_t pending_cod;
+    char pending_name[64];
     bool pending_valid;
+    // Pending HID connect (deferred until encryption completes)
+    bd_addr_t pending_hid_addr;
+    hci_con_handle_t pending_hid_handle;
+    bool pending_hid_connect;
 } classic_state;
 
 // Classic HID descriptor storage
 static uint8_t classic_hid_descriptor_storage[512];
+
+// SDP Device ID record buffer (needed for DS4/DS5 reconnection)
+static uint8_t device_id_sdp_service_buffer[100];
 
 // Find classic connection by hid_cid
 static classic_connection_t* find_classic_connection_by_cid(uint16_t hid_cid) {
@@ -291,6 +304,10 @@ void btstack_host_init(const void* transport)
     printf("[BTSTACK_HOST] Init HCI with provided transport...\n");
     hci_init(transport, NULL);
 
+    // Set link key DB for Classic BT bonding (stores link keys in RAM)
+    printf("[BTSTACK_HOST] Init Link Key DB...\n");
+    hci_set_link_key_db(btstack_link_key_db_memory_instance());
+
     printf("[BTSTACK_HOST] Init L2CAP...\n");
     l2cap_init();
 
@@ -318,6 +335,14 @@ void btstack_host_init(const void* transport)
     gap_set_security_level(LEVEL_0);  // DS3 doesn't support SSP
     hid_host_init(classic_hid_descriptor_storage, sizeof(classic_hid_descriptor_storage));
     hid_host_register_packet_handler(hid_host_packet_handler);
+
+    // SDP server - needed for DS4/DS5 reconnection (they query Device ID)
+    sdp_init();
+    device_id_create_sdp_record(device_id_sdp_service_buffer, 0x10003,
+                                DEVICE_ID_VENDOR_ID_SOURCE_BLUETOOTH,
+                                BLUETOOTH_COMPANY_ID_BLUEKITCHEN_GMBH, 1, 1);
+    sdp_register_service(device_id_sdp_service_buffer);
+    printf("[BTSTACK_HOST] SDP server initialized\n");
 
     // Allow sniff mode and role switch for classic BT (improves compatibility)
     gap_set_default_link_policy_settings(LM_LINK_POLICY_ENABLE_SNIFF_MODE | LM_LINK_POLICY_ENABLE_ROLE_SWITCH);
@@ -507,10 +532,16 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                 // This helps Sony controllers recognize us as a valid host
                 gap_set_class_of_device(0x000104);  // Major: Computer, Minor: Desktop
 
+                // Enable SSP (Secure Simple Pairing) on the controller
+                extern const hci_cmd_t hci_write_simple_pairing_mode;
+                hci_send_cmd(&hci_write_simple_pairing_mode, 1);
+
                 // Enable bonding for Classic BT
                 gap_set_bondable_mode(1);
                 // Set IO capability for "just works" pairing (no PIN required)
                 gap_ssp_set_io_capability(SSP_IO_CAPABILITY_NO_INPUT_NO_OUTPUT);
+                // Request bonding during SSP (required for BTstack to store link keys!)
+                gap_ssp_set_authentication_requirement(SSP_IO_AUTHREQ_MITM_PROTECTION_NOT_REQUIRED_DEDICATED_BONDING);
                 // Auto-accept incoming SSP pairing requests
                 gap_ssp_set_auto_accept(1);
 
@@ -647,6 +678,7 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
             // Save pending connection info for use when HID connection is established
             memcpy(classic_state.pending_addr, addr, 6);
             classic_state.pending_cod = cod;
+            classic_state.pending_name[0] = '\0';  // Clear, will be filled by remote name request
             classic_state.pending_valid = true;
             // BTstack should auto-accept via gap_ssp_set_auto_accept(1) set at init
             break;
@@ -659,7 +691,27 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
             hci_event_connection_complete_get_bd_addr(packet, addr);
             printf("[BTSTACK_HOST] Connection complete: status=%d handle=0x%04X addr=%02X:%02X:%02X:%02X:%02X:%02X\n",
                    status, handle, addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
-            // DS3 will initiate L2CAP channels - hid_host should accept them automatically
+
+            // For incoming connections, request security level 2 after ACL is up
+            // This triggers authentication/pairing for devices that support it (DS4/DS5)
+            // while allowing DS3 (which doesn't support SSP) to work with L2CAP level 0
+            if (status == 0) {
+                if (classic_state.pending_valid &&
+                    bd_addr_cmp(addr, classic_state.pending_addr) == 0) {
+                    uint32_t cod = classic_state.pending_cod;
+                    printf("[BTSTACK_HOST] Incoming ACL complete, COD=0x%06X - requesting auth\n", cod);
+
+                    // For incoming connections, let the device initiate L2CAP/HID channels
+                    // DS3 (0x000508) and DS4/DS5 (0x002508) all initiate themselves on reconnect
+                    // We just need encryption to succeed, then wait for HID_SUBEVENT_INCOMING_CONNECTION
+                    // Keep pending_valid=true so COD is available in HID_SUBEVENT_INCOMING_CONNECTION
+
+                    // Request remote name for driver matching (we don't have it from inquiry)
+                    gap_remote_name_request(addr, 0, 0);
+                }
+                // Request authentication (Bluepad32 pattern)
+                gap_request_security_level(handle, LEVEL_2);
+            }
             break;
         }
 
@@ -725,6 +777,25 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
             break;
         }
 
+        case HCI_EVENT_REMOTE_NAME_REQUEST_COMPLETE: {
+            bd_addr_t name_addr;
+            hci_event_remote_name_request_complete_get_bd_addr(packet, name_addr);
+            uint8_t name_status = hci_event_remote_name_request_complete_get_status(packet);
+
+            if (name_status == 0) {
+                const char* name = hci_event_remote_name_request_complete_get_remote_name(packet);
+                printf("[BTSTACK_HOST] Remote name: %s\n", name);
+
+                // Store name if this is our pending incoming connection
+                if (classic_state.pending_valid &&
+                    memcmp(name_addr, classic_state.pending_addr, 6) == 0) {
+                    strncpy(classic_state.pending_name, name, sizeof(classic_state.pending_name) - 1);
+                    classic_state.pending_name[sizeof(classic_state.pending_name) - 1] = '\0';
+                }
+            }
+            break;
+        }
+
         case HCI_EVENT_DISCONNECTION_COMPLETE: {
             hci_con_handle_t handle = hci_event_disconnection_complete_get_connection_handle(packet);
             uint8_t reason = hci_event_disconnection_complete_get_reason(packet);
@@ -743,6 +814,48 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
             break;
         }
 
+        case HCI_EVENT_LINK_KEY_REQUEST: {
+            bd_addr_t req_addr;
+            reverse_bytes(&packet[2], req_addr, 6);
+
+            // Check if BTstack found the connection
+            hci_connection_t *conn = hci_connection_for_bd_addr_and_type(req_addr, BD_ADDR_TYPE_ACL);
+            printf("[BTSTACK_HOST] Link key request: %02X:%02X:%02X:%02X:%02X:%02X conn=%s\n",
+                   req_addr[0], req_addr[1], req_addr[2], req_addr[3], req_addr[4], req_addr[5],
+                   conn ? "YES" : "NO");
+
+            // BTstack's internal handler already ran - if conn was found, it set AUTH_FLAG
+            // and will send reply in hci_run(). If not, we need to send reply ourselves.
+            if (!conn) {
+                link_key_t key;
+                link_key_type_t type;
+                const btstack_link_key_db_t* db = btstack_link_key_db_memory_instance();
+                if (db && db->get_link_key(req_addr, key, &type)) {
+                    printf("[BTSTACK_HOST] Key found, sending reply (conn not found by BTstack)\n");
+                    hci_send_cmd(&hci_link_key_request_reply, req_addr, key);
+                } else {
+                    printf("[BTSTACK_HOST] Key NOT found\n");
+                    hci_send_cmd(&hci_link_key_request_negative_reply, req_addr);
+                }
+            }
+            break;
+        }
+
+        case HCI_EVENT_LINK_KEY_NOTIFICATION: {
+            bd_addr_t notif_addr;
+            reverse_bytes(&packet[2], notif_addr, 6);
+            link_key_type_t key_type = (link_key_type_t)packet[24];
+            printf("[BTSTACK_HOST] Link key notification: %02X:%02X:%02X:%02X:%02X:%02X type=%d\n",
+                   notif_addr[0], notif_addr[1], notif_addr[2], notif_addr[3], notif_addr[4], notif_addr[5], key_type);
+
+            const btstack_link_key_db_t* db = btstack_link_key_db_memory_instance();
+            if (db) {
+                db->put_link_key(notif_addr, &packet[8], key_type);
+                printf("[BTSTACK_HOST] Link key stored\n");
+            }
+            break;
+        }
+
         case HCI_EVENT_ENCRYPTION_CHANGE: {
             hci_con_handle_t handle = hci_event_encryption_change_get_connection_handle(packet);
             uint8_t status = hci_event_encryption_change_get_status(packet);
@@ -752,7 +865,20 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                    handle, status, enabled);
 
             if (status == 0 && enabled) {
-                printf("[BTSTACK_HOST] Encrypted! (no action, waiting for pairing complete)\n");
+                // Check if we have a pending HID connect for this handle
+                if (classic_state.pending_hid_connect &&
+                    classic_state.pending_hid_handle == handle) {
+                    printf("[BTSTACK_HOST] Encryption complete, initiating HID connection\n");
+                    uint16_t hid_cid;
+                    uint8_t err = hid_host_connect(classic_state.pending_hid_addr,
+                                                   HID_PROTOCOL_MODE_REPORT, &hid_cid);
+                    if (err == ERROR_CODE_SUCCESS) {
+                        printf("[BTSTACK_HOST] hid_host_connect initiated, cid=0x%04X\n", hid_cid);
+                    } else {
+                        printf("[BTSTACK_HOST] hid_host_connect failed: %d\n", err);
+                    }
+                    classic_state.pending_hid_connect = false;
+                }
             }
             break;
         }
@@ -1144,12 +1270,18 @@ static void hid_host_packet_handler(uint8_t packet_type, uint16_t channel, uint8
                     conn->hid_cid = hid_cid;
                     hid_subevent_incoming_connection_get_address(packet, conn->addr);
 
-                    // Use pending COD if address matches (from HCI_EVENT_CONNECTION_REQUEST)
+                    // Use pending COD and name if address matches (from HCI_EVENT_CONNECTION_REQUEST)
                     if (classic_state.pending_valid &&
                         memcmp(conn->addr, classic_state.pending_addr, 6) == 0) {
                         conn->class_of_device[0] = classic_state.pending_cod & 0xFF;
                         conn->class_of_device[1] = (classic_state.pending_cod >> 8) & 0xFF;
                         conn->class_of_device[2] = (classic_state.pending_cod >> 16) & 0xFF;
+                        // Copy name if we got it from remote name request
+                        if (classic_state.pending_name[0]) {
+                            strncpy(conn->name, classic_state.pending_name, sizeof(conn->name) - 1);
+                            conn->name[sizeof(conn->name) - 1] = '\0';
+                            printf("[BTSTACK_HOST] Using pending name: %s\n", conn->name);
+                        }
                         classic_state.pending_valid = false;
                         printf("[BTSTACK_HOST] Using pending COD: 0x%06X\n", (unsigned)classic_state.pending_cod);
                     }

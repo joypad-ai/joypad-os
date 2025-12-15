@@ -81,6 +81,7 @@
 
 // Link keys storage (Classic BT)
 #define NVM_NUM_LINK_KEYS 2
+#define MAX_NR_BTSTACK_LINK_KEY_DB_MEMORY_ENTRIES 4
 // Note: Don't define NVM_NUM_DEVICE_DB_ENTRIES - we use le_device_db_memory.c
 
 // ============================================================================

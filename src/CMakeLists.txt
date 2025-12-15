@@ -125,8 +125,11 @@ set(BTSTACK_SOURCES
     ${PICO_BTSTACK_PATH}/src/ble/gatt-service/hids_client.c
     # Classic (for HID Host)
     ${PICO_BTSTACK_PATH}/src/classic/sdp_client.c
+    ${PICO_BTSTACK_PATH}/src/classic/sdp_server.c
     ${PICO_BTSTACK_PATH}/src/classic/sdp_util.c
+    ${PICO_BTSTACK_PATH}/src/classic/device_id_server.c
     ${PICO_BTSTACK_PATH}/src/classic/hid_host.c
+    ${PICO_BTSTACK_PATH}/src/classic/btstack_link_key_db_memory.c
     # 3rd party
     ${PICO_BTSTACK_PATH}/3rd-party/micro-ecc/uECC.c
     ${PICO_BTSTACK_PATH}/3rd-party/rijndael/rijndael.c
