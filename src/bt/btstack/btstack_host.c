@@ -1144,9 +1144,22 @@ static void ble_hid_notification_handler(uint8_t packet_type, uint16_t channel, 
     uint16_t value_length = gatt_event_notification_get_value_length(packet);
     const uint8_t *value = gatt_event_notification_get_value(packet);
 
-    // Only process HID report handles (Xbox uses 0x001E)
-    if (value_handle != 0x001E) return;
-    if (value_length < 1 || value_length > sizeof(pending_ble_report)) return;
+    // Debug: log all notifications to identify chatpad/keyboard reports
+    static uint16_t last_handle = 0;
+    static uint16_t last_len = 0;
+    if (value_handle != last_handle || value_length != last_len) {
+        printf("[BTSTACK_HOST] BLE notif: handle=0x%04X len=%d data=%02X %02X %02X %02X\n",
+               value_handle, value_length,
+               value_length > 0 ? value[0] : 0,
+               value_length > 1 ? value[1] : 0,
+               value_length > 2 ? value[2] : 0,
+               value_length > 3 ? value[3] : 0);
+        last_handle = value_handle;
+        last_len = value_length;
+    }
+
+    // Accept HID report notifications - filter by reasonable gamepad report length
+    if (value_length < 10 || value_length > sizeof(pending_ble_report)) return;
 
     // Get conn_index for this BLE connection
     int conn_index = get_ble_conn_index_by_handle(con_handle);

@@ -4,6 +4,7 @@
 #include "bthid.h"
 #include "bt/transport/bt_transport.h"
 #include "devices/generic/bthid_gamepad.h"
+#include "devices/vendors/sony/ds3_bt.h"
 #include "devices/vendors/sony/ds4_bt.h"
 #include "devices/vendors/sony/ds5_bt.h"
 #include <string.h>
@@ -355,9 +356,13 @@ void bt_on_hid_report(uint8_t conn_index, const uint8_t* data, uint16_t len)
 
             if (report_type == BTHID_REPORT_TYPE_INPUT && report_len >= 1) {
                 // Check report ID for Sony device reclassification
-                // This handles cases where name matching was wrong (e.g., third-party controllers)
+                // Only attempt if currently using a Sony driver or generic gamepad
+                // This prevents Xbox data (which may contain 0x11/0x31 bytes) from triggering reclassification
                 uint8_t report_id = report_data[0];
-                if (report_id == SONY_REPORT_ID_DS4 || report_id == SONY_REPORT_ID_DS5) {
+                const bthid_driver_t* drv = (const bthid_driver_t*)device->driver;
+                bool is_sony_or_generic = (drv == &ds3_bt_driver || drv == &ds4_bt_driver ||
+                                           drv == &ds5_bt_driver || drv == &bthid_gamepad_driver);
+                if (is_sony_or_generic && (report_id == SONY_REPORT_ID_DS4 || report_id == SONY_REPORT_ID_DS5)) {
                     // Try to reclassify based on actual report ID
                     if (try_reclassify_sony_device(device, report_id)) {
                         // Driver was swapped - it will process this report on next iteration
