@@ -227,28 +227,66 @@ void __not_in_flash_func(update_output)(void)
       }
     }
 
-    // Invert buttons for PCEngine hardware (expects active-low: 0 = pressed)
-    uint32_t buttons_inverted = ~event->buttons;
-
-    // base controller/mouse buttons (lower 8 bits)
-    int8_t byte = (buttons_inverted & 0xff);
+    // Map buttons to PCENGINE byte format
+    // PCE byte: [S2, S1, B2, B1, DL, DD, DR, DU] = [Run, Select, II, I, Left, Down, Right, Up]
+    // PCE bit positions: 7=S2(Run), 6=S1(Select), 5=B2(II), 4=B1(I), 3=DL(Left), 2=DD(Down), 1=DR(Right), 0=DU(Up)
+    // PCEngine uses active-low: 0 = pressed, 1 = not pressed
+    // Initialize to all buttons not pressed (0xFF)
+    int8_t byte = 0xFF;
+    
+    // Map each button one by one (active-low: clear bit if pressed)
+    // Lower nibble (bits 0-3): d-pad directions
+    // DU -> PCE bit 0
+    if (event->buttons & JP_BUTTON_DU) {
+        byte &= ~(1 << 0);
+    }
+    // DR -> PCE bit 1
+    if (event->buttons & JP_BUTTON_DR) {
+        byte &= ~(1 << 1);
+    }
+    // DD -> PCE bit 2
+    if (event->buttons & JP_BUTTON_DD) {
+        byte &= ~(1 << 2);
+    }
+    // DL -> PCE bit 3
+    if (event->buttons & JP_BUTTON_DL) {
+        byte &= ~(1 << 3);
+    }
+    // Upper nibble (bits 4-7): buttons
+    // B1 -> PCE bit 5 (II)
+    if (event->buttons & JP_BUTTON_B1) {
+        byte &= ~(1 << 5);
+    }
+    // B2 -> PCE bit 4 (I)
+    if (event->buttons & JP_BUTTON_B2) {
+        byte &= ~(1 << 4);
+    }
+    // S1 -> PCE bit 6
+    if (event->buttons & JP_BUTTON_S1) {
+        byte &= ~(1 << 6);
+    }
+    // S2 -> PCE bit 7
+    if (event->buttons & JP_BUTTON_S2) {
+        byte &= ~(1 << 7);
+    }
 
     // Keyboard-specific transforms for PCEngine
     if (event->type == INPUT_TYPE_KEYBOARD) {
       // A1 (Home/Ctrl+Alt+Delete) → SSDS3 IGR combo (Select+Run)
       if (event->buttons & JP_BUTTON_A1) {
-        byte &= ~(JP_BUTTON_S1 | JP_BUTTON_S2);  // Clear Select and Run bits (0 = pressed in PCE)
+        byte &= ~((1 << 6) | (1 << 7));  // Clear Select (bit 6) and Run (bit 7) bits (0 = pressed in PCE)
       }
     }
 
-    // check for 6-button enable/disable hotkeys (active-high: check if bits are SET)
-    if ((event->buttons & (JP_BUTTON_S2 | JP_BUTTON_DU)) == (JP_BUTTON_S2 | JP_BUTTON_DU))
+    // check for 6-button enable/disable hotkeys (active-high: check if BOTH buttons are pressed)
+    bool s2_pressed = (event->buttons & JP_BUTTON_S2) != 0;
+    if (s2_pressed && (event->buttons & JP_BUTTON_DU))
       pce_state.button_mode[i] = BUTTON_MODE_6;
-    else if ((event->buttons & (JP_BUTTON_S2 | JP_BUTTON_DD)) == (JP_BUTTON_S2 | JP_BUTTON_DD))
+    else if (s2_pressed && (event->buttons & JP_BUTTON_DD))
       pce_state.button_mode[i] = BUTTON_MODE_2;
-    else if ((event->buttons & (JP_BUTTON_S2 | JP_BUTTON_DR)) == (JP_BUTTON_S2 | JP_BUTTON_DR))
+    else if (s2_pressed && (event->buttons & JP_BUTTON_DL))
       pce_state.button_mode[i] = BUTTON_MODE_3_SEL;
-    else if ((event->buttons & (JP_BUTTON_S2 | JP_BUTTON_DL)) == (JP_BUTTON_S2 | JP_BUTTON_DL))
+    else if (s2_pressed && (event->buttons & JP_BUTTON_DR))
       pce_state.button_mode[i] = BUTTON_MODE_3_RUN;
 
     // Turbo EverDrive Pro hot-key fix
@@ -259,7 +297,7 @@ void __not_in_flash_func(update_output)(void)
     else if (i == 0)
     {
       // Check for hotkey combos (active-high buttons)
-      int16_t btns = (event->buttons & 0xff);
+      int16_t btns = (byte & 0xff);
       if     (btns == 0x82) hotkey = ~0x82; // RUN + RIGHT
       else if(btns == 0x88) hotkey = ~0x88; // RUN + LEFT
       else if(btns == 0x84) hotkey = ~0x84; // RUN + DOWN
@@ -267,17 +305,35 @@ void __not_in_flash_func(update_output)(void)
 
     bool has6Btn = (event->button_count >= 6);
     bool isMouse = (event->type == INPUT_TYPE_MOUSE);
-    bool is6btn = has6Btn && pce_state.button_mode[i] == BUTTON_MODE_6;
-    bool is3btnSel = has6Btn && pce_state.button_mode[i] == BUTTON_MODE_3_SEL;
-    bool is3btnRun = has6Btn && pce_state.button_mode[i] == BUTTON_MODE_3_RUN;
+    bool is6btn = pce_state.button_mode[i] == BUTTON_MODE_6;
+    bool is3btnSel = pce_state.button_mode[i] == BUTTON_MODE_3_SEL;
+    bool is3btnRun = pce_state.button_mode[i] == BUTTON_MODE_3_RUN;
 
     // 6 button extra four buttons (III/IV/V/VI)
+    // In 6-button mode, state 2 sends extended buttons instead of normal data
+    // Format: [III, IV, V, VI, 0, 0, 0, 0] - bits 7-4 are buttons, bits 3-0 are always 0
     if (is6btn)
     {
       if (state == 2)
       {
-        // Upper buttons inverted for PCE hardware
-        byte = ((buttons_inverted>>8) & 0xf0);
+        // Initialize to 0xF0: no extended buttons pressed (bits 7-4 = 1111), lower nibble = 0
+        byte = 0xF0;
+        // B3 -> PCE III (bit 7)
+        if (event->buttons & JP_BUTTON_B3) {
+          byte &= ~(1 << 4); // III
+        }
+        // B4 -> PCE IV (bit 6)
+        if (event->buttons & JP_BUTTON_B4) {
+          byte &= ~(1 << 5); // IV
+        }
+        // L1 -> PCE V (bit 5)
+        if (event->buttons & JP_BUTTON_L1) {
+          byte &= ~(1 << 6); // V
+        }
+        // R1 -> PCE VI (bit 4)
+        if (event->buttons & JP_BUTTON_R1) {
+          byte &= ~(1 << 7); // VI
+        }
       }
     }
 
@@ -285,9 +341,8 @@ void __not_in_flash_func(update_output)(void)
     else if (is3btnSel)
     {
       // Check if L1 or R1 pressed (active-high)
-      if ((event->buttons>>8) & 0x30)
-      {
-        byte &= 0b01111111;
+      if (event->buttons & JP_BUTTON_B3) {
+        byte &= ~(1 << 6);
       }
     }
 
@@ -295,29 +350,28 @@ void __not_in_flash_func(update_output)(void)
     else if (is3btnRun)
     {
       // Check if L1 or R1 pressed (active-high)
-      if ((event->buttons>>8) & 0x30)
-      {
-        byte &= 0b10111111;
+      if (event->buttons & JP_BUTTON_B3) {
+        byte &= ~(1 << 7);
       }
     }
 
-    // Simulated Turbo buttons X/Y for II/I and L/R for speeds 1/2
+    // Simulated Turbo buttons B3/B4 for II/I and L1/R1 for speeds 1/2
     else {
       // Update the button state based on the turbo_state
       if (turbo_state)
       {
-        // Set the button state as pressed (active-high check)
-        if ((event->buttons>>8) & 0x20) byte &= 0b11011111;
-        if ((event->buttons>>8) & 0x10) byte &= 0b11101111;
+        // B3 -> turbo for II (bit 5), B4 -> turbo for I (bit 4)
+        if (event->buttons & JP_BUTTON_B3) byte &= ~(1 << 5);  // Turbo II
+        if (event->buttons & JP_BUTTON_B4) byte &= ~(1 << 4);  // Turbo I
       }
       else
       {
         // Set the button state as released
       }
 
-      // Check turbo speed (active-high)
-      if ((event->buttons>>8) & 0x40) timer_threshold = timer_threshold_a;
-      if ((event->buttons>>8) & 0x80) timer_threshold = timer_threshold_b;
+      // Check turbo speed (L1 = speed 1, R1 = speed 2)
+      if (event->buttons & JP_BUTTON_L1) timer_threshold = timer_threshold_a;
+      if (event->buttons & JP_BUTTON_R1) timer_threshold = timer_threshold_b;
     }
 
     // mouse x/y states

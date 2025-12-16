@@ -27,6 +27,6 @@ void hal_cpu_enable_irqs(void)
 // Enable interrupts and sleep until next interrupt
 void hal_cpu_enable_irqs_and_sleep(void)
 {
-    // Just return - we're polling in our main loop
-    __wfe();  // Wait for event (low power)
+    // Don't actually sleep - we're polling in our main loop
+    // __wfe() would block forever on console targets without USB device events
 }

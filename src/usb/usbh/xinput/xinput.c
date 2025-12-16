@@ -165,7 +165,13 @@ void tuh_xinput_mount_cb(uint8_t dev_addr, uint8_t instance, const xinputh_inter
   if (xinput_itf->type == XBOX360_WIRELESS)
   {
     tuh_xinput_init_chatpad(dev_addr, instance, true);
-    chatpad_last_keepalive[dev_addr][instance] = 0;  // Reset keepalive timer
+  }
+
+  // Reset keepalive timer for any controller with chatpad support
+  // (wired chatpad is initialized separately in set_config)
+  if (dev_addr < CFG_TUH_DEVICE_MAX && instance < CFG_TUH_XINPUT)
+  {
+    chatpad_last_keepalive[dev_addr][instance] = 0;
   }
 
   tuh_xinput_set_led(dev_addr, instance, 0, true);
@@ -195,10 +201,27 @@ void xinput_task(void)
   // Process Xbox One auth passthrough
   xbone_auth_task();
 
-  // Rumble only if controller connected
-  if (!playersCount) return;
-
   uint32_t now = to_ms_since_boot(get_absolute_time());
+
+  // Chatpad keepalive for all xinput devices (runs even without player assignment)
+  // This is critical - chatpad goes to sleep without keepalives
+  for (uint8_t dev_addr = 1; dev_addr <= CFG_TUH_DEVICE_MAX; dev_addr++)
+  {
+    for (uint8_t instance = 0; instance < CFG_TUH_XINPUT; instance++)
+    {
+      if (now - chatpad_last_keepalive[dev_addr][instance] >= XINPUT_CHATPAD_KEEPALIVE_MS)
+      {
+        // tuh_xinput_chatpad_keepalive returns false if chatpad not enabled/inited
+        if (tuh_xinput_chatpad_keepalive(dev_addr, instance))
+        {
+          chatpad_last_keepalive[dev_addr][instance] = now;
+        }
+      }
+    }
+  }
+
+  // Rumble/LED only if controller connected to a player
+  if (!playersCount) return;
 
   // Update rumble/LED state for each xinput device
   for (int i = 0; i < playersCount; ++i)
@@ -216,16 +239,6 @@ void xinput_task(void)
     // TODO: throttle and only fire if device is xinput
     tuh_xinput_set_led(dev_addr, instance, i+1, true);
     tuh_xinput_set_rumble(dev_addr, instance, rumble, rumble, true);
-
-    // Chatpad keepalive (every ~1 second)
-    if (dev_addr < CFG_TUH_DEVICE_MAX && instance < CFG_TUH_XINPUT)
-    {
-      if (now - chatpad_last_keepalive[dev_addr][instance] >= XINPUT_CHATPAD_KEEPALIVE_MS)
-      {
-        tuh_xinput_chatpad_keepalive(dev_addr, instance);
-        chatpad_last_keepalive[dev_addr][instance] = now;
-      }
-    }
   }
 }
 

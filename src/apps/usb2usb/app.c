@@ -14,14 +14,10 @@
 #include "usb/usbh/usbh.h"
 #include "usb/usbd/usbd.h"
 
-#include "bt/transport/bt_transport.h"
 #include "bt/btstack/btstack_host.h"
 #include "tusb.h"
 #include "pico/stdlib.h"
 #include <stdio.h>
-
-// External reference to USB BT transport
-extern const bt_transport_t bt_transport_usb;
 
 // ============================================================================
 // BUTTON EVENT HANDLER
@@ -129,9 +125,6 @@ void app_init(void)
 {
     printf("[app:usb2usb] Initializing USB2USB v%s\n", APP_VERSION);
 
-    // Initialize Bluetooth transport (for USB BT dongle support)
-    bt_init(&bt_transport_usb);
-
     // Initialize button service
     button_init();
     button_set_callback(on_button_event);
@@ -174,23 +167,10 @@ void app_init(void)
 // APP TASK (Optional - called from main loop)
 // ============================================================================
 
-static uint32_t app_task_counter = 0;
-
 void app_task(void)
 {
-    app_task_counter++;
-    if (app_task_counter == 1) {
-        printf("[app] first task, bt_transport=%p\n", (void*)bt_transport);
-        if (bt_transport) {
-            printf("[app] bt_transport->task=%p\n", (void*)bt_transport->task);
-        }
-    }
-
     // Process button input
     button_task();
-
-    // Run Bluetooth transport tasks (including HID device drivers)
-    bt_task();
 
     // Route feedback from USB device output to USB host input controllers
     // The output interface receives rumble/LED from the console/host

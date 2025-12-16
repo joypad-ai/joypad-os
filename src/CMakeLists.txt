@@ -55,7 +55,7 @@ set(CORE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/core/services/profiles/profile_indicator.c
 )
 
-# USB Host sources (HID + X-input + Bluetooth)
+# USB Host sources (HID + X-input)
 set(USB_HOST_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/usbh.c
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/hid/hid.c
@@ -79,6 +79,10 @@ set(USB_HOST_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/hid/devices/vendors/logitech/logitech_wingman.c
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/hid/devices/vendors/sega/sega_astrocity.c
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/xinput/xinput.c
+)
+
+# Bluetooth sources (requires BTstack)
+set(BT_HOST_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/btd/hci_transport_h2_tinyusb.c
     ${CMAKE_CURRENT_SOURCE_DIR}/bt/transport/bt_transport.c
     ${CMAKE_CURRENT_SOURCE_DIR}/bt/transport/bt_transport_usb.c
@@ -169,6 +173,30 @@ set(COMMON_SOURCES ${CORE_SOURCES} ${USB_HOST_SOURCES})
 # Common libraries for USB host apps
 set(COMMON_LIBRARIES pico_stdlib pico_multicore hardware_pio tinyusb_host tinyusb_board xinput_host)
 
+# BTstack compile definitions (shared by all USB host apps)
+# Note: Most BTstack feature flags are in bt/btstack/btstack_config.h
+# Only ENABLE_BTSTACK is needed here to enable CFG_TUH_BTD in tusb_config.h
+set(BTSTACK_DEFINITIONS
+    ENABLE_BTSTACK=1
+)
+
+# BTstack include directories
+set(BTSTACK_INCLUDES
+    ${CMAKE_CURRENT_SOURCE_DIR}/bt/btstack
+    ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/btd
+    ${PICO_BTSTACK_PATH}/src
+    ${PICO_BTSTACK_PATH}/src/ble
+    ${PICO_BTSTACK_PATH}/platform/embedded
+    ${PICO_BTSTACK_PATH}/3rd-party/micro-ecc
+    ${PICO_BTSTACK_PATH}/3rd-party/rijndael
+)
+
+# Additional BTstack sources (beyond BT_HOST_SOURCES and BTSTACK_SOURCES)
+set(BTSTACK_EXTRA_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/bt/btstack/btstack_host.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/btd/btstack_hal.c
+)
+
 # Controller libraries
 set(CONTROLLER_LIBRARIES pico_stdlib pico_multicore hardware_pio hardware_adc hardware_i2c hardware_pwm hardware_spi tinyusb_device tinyusb_board)
 
@@ -182,6 +210,17 @@ function(usbretro_target_common TARGET)
     pico_add_extra_outputs(${TARGET})
     pico_generate_pio_header(${TARGET} ${CMAKE_CURRENT_LIST_DIR}/core/services/leds/neopixel/ws2812.pio)
     target_include_directories(${TARGET} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/common)
+endfunction()
+
+# Add BTstack support to a target
+function(usbretro_add_btstack TARGET)
+    target_compile_definitions(${TARGET} PRIVATE ${BTSTACK_DEFINITIONS})
+    target_sources(${TARGET} PRIVATE
+        ${BT_HOST_SOURCES}
+        ${BTSTACK_SOURCES}
+        ${BTSTACK_EXTRA_SOURCES}
+    )
+    target_include_directories(${TARGET} PUBLIC ${BTSTACK_INCLUDES})
 endfunction()
 
 # USB host console app (USB input -> console output)
@@ -236,6 +275,7 @@ target_include_directories(usbretro_pce PUBLIC
 )
 target_link_libraries(usbretro_pce PRIVATE ${COMMON_LIBRARIES})
 usbretro_target_common(usbretro_pce)
+usbretro_add_btstack(usbretro_pce)  # TODO: BTstack causes boot crash on console targets
 pico_generate_pio_header(usbretro_pce ${CMAKE_CURRENT_LIST_DIR}/native/device/pcengine/plex.pio)
 pico_generate_pio_header(usbretro_pce ${CMAKE_CURRENT_LIST_DIR}/native/device/pcengine/clock.pio)
 pico_generate_pio_header(usbretro_pce ${CMAKE_CURRENT_LIST_DIR}/native/device/pcengine/select.pio)
@@ -256,6 +296,7 @@ target_include_directories(usbretro_ngc PUBLIC
 )
 target_link_libraries(usbretro_ngc PRIVATE ${COMMON_LIBRARIES} hardware_flash)
 usbretro_target_common(usbretro_ngc)
+usbretro_add_btstack(usbretro_ngc)  # Re-enabled for investigation
 pico_generate_pio_header(usbretro_ngc ${CMAKE_CURRENT_LIST_DIR}/lib/joybus-pio/src/joybus.pio)
 
 # --- Nuon ---
@@ -271,6 +312,7 @@ target_include_directories(usbretro_nuon PUBLIC
 )
 target_link_libraries(usbretro_nuon PRIVATE ${COMMON_LIBRARIES} pico_bit_ops)
 usbretro_target_common(usbretro_nuon)
+# usbretro_add_btstack(usbretro_nuon)  # TODO: BTstack causes boot crash on console targets
 pico_generate_pio_header(usbretro_nuon ${CMAKE_CURRENT_LIST_DIR}/native/device/nuon/polyface_read.pio)
 pico_generate_pio_header(usbretro_nuon ${CMAKE_CURRENT_LIST_DIR}/native/device/nuon/polyface_send.pio)
 
@@ -287,6 +329,7 @@ target_include_directories(usbretro_loopy PUBLIC
 )
 target_link_libraries(usbretro_loopy PRIVATE ${COMMON_LIBRARIES} pico_bit_ops)
 usbretro_target_common(usbretro_loopy)
+# usbretro_add_btstack(usbretro_loopy)  # TODO: BTstack causes boot crash on console targets
 pico_generate_pio_header(usbretro_loopy ${CMAKE_CURRENT_LIST_DIR}/native/device/loopy/loopy.pio)
 
 # --- 3DO ---
@@ -302,6 +345,7 @@ target_include_directories(usbretro_3do PUBLIC
 )
 target_link_libraries(usbretro_3do PRIVATE ${COMMON_LIBRARIES} hardware_dma)
 usbretro_target_common(usbretro_3do)
+# usbretro_add_btstack(usbretro_3do)  # TODO: BTstack causes boot crash on console targets
 pico_generate_pio_header(usbretro_3do ${CMAKE_CURRENT_LIST_DIR}/native/device/3do/sampling.pio)
 pico_generate_pio_header(usbretro_3do ${CMAKE_CURRENT_LIST_DIR}/native/device/3do/output.pio)
 
@@ -321,6 +365,7 @@ target_include_directories(usbretro_snes3do PUBLIC
 )
 target_link_libraries(usbretro_snes3do PRIVATE ${COMMON_LIBRARIES} hardware_dma)
 usbretro_target_common(usbretro_snes3do)
+# usbretro_add_btstack(usbretro_snes3do)  # TODO: BTstack causes boot crash on console targets
 pico_generate_pio_header(usbretro_snes3do ${CMAKE_CURRENT_LIST_DIR}/native/device/3do/sampling.pio)
 pico_generate_pio_header(usbretro_snes3do ${CMAKE_CURRENT_LIST_DIR}/native/device/3do/output.pio)
 
@@ -337,13 +382,13 @@ target_include_directories(usbretro_uart PUBLIC
 )
 target_link_libraries(usbretro_uart PRIVATE ${COMMON_LIBRARIES} hardware_uart)
 usbretro_target_common(usbretro_uart)
+# usbretro_add_btstack(usbretro_uart)  # TODO: BTstack causes boot crash on console targets
 
 # ============================================================================
 # USB HOST TO USB DEVICE APPS (USB input -> USB output)
 # ============================================================================
 
 # --- USB to USB (Feather USB Host) ---
-# BTstack for BLE and Classic Bluetooth
 add_executable(usbretro_usb)
 target_compile_definitions(usbretro_usb PRIVATE
     CONFIG_USB=1
@@ -355,49 +400,19 @@ target_compile_definitions(usbretro_usb PRIVATE
     PICO_DEFAULT_UART=0
     PICO_DEFAULT_UART_TX_PIN=0
     PICO_DEFAULT_UART_RX_PIN=1
-    # BTstack feature flags
-    ENABLE_BLE=1
-    ENABLE_CLASSIC=1
-    ENABLE_LE_CENTRAL=1
-    ENABLE_LE_SECURE_CONNECTIONS=1
-    ENABLE_SOFTWARE_AES128=1
-    ENABLE_MICRO_ECC_FOR_LE_SECURE_CONNECTIONS=1
-    ENABLE_HID_HOST=1
-    # BTstack memory pools
-    MAX_NR_HCI_CONNECTIONS=2
-    MAX_NR_L2CAP_CHANNELS=8
-    MAX_NR_L2CAP_SERVICES=3
-    MAX_NR_GATT_CLIENTS=1
-    MAX_NR_HID_HOST_CONNECTIONS=2
-    MAX_NR_HIDS_CLIENTS=1
-    MAX_NR_LE_DEVICE_DB_ENTRIES=2
-    MAX_NR_WHITELIST_ENTRIES=2
 )
 target_sources(usbretro_usb PUBLIC
-    ${CORE_SOURCES}
-    ${USB_HOST_SOURCES}
+    ${COMMON_SOURCES}
     ${USB_DEVICE_SOURCES}
-    ${BTSTACK_SOURCES}
-    ${CMAKE_CURRENT_SOURCE_DIR}/bt/btstack/btstack_host.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/btd/btstack_hal.c
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2usb/app.c
 )
 target_include_directories(usbretro_usb PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2usb
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd
-    # BTstack config (must be first)
-    ${CMAKE_CURRENT_SOURCE_DIR}/bt/btstack
-    # USB HCI transport header
-    ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/btd
-    # BTstack includes
-    ${PICO_BTSTACK_PATH}/src
-    ${PICO_BTSTACK_PATH}/src/ble
-    ${PICO_BTSTACK_PATH}/platform/embedded
-    ${PICO_BTSTACK_PATH}/3rd-party/micro-ecc
-    ${PICO_BTSTACK_PATH}/3rd-party/rijndael
 )
 target_link_libraries(usbretro_usb PRIVATE ${COMMON_LIBRARIES} tinyusb_device tinyusb_pico_pio_usb)
 usbretro_target_common(usbretro_usb)
+usbretro_add_btstack(usbretro_usb)
 pico_enable_stdio_uart(usbretro_usb 1)
 
 # --- USB to USB (RP2040-Zero) ---
@@ -419,6 +434,7 @@ target_include_directories(usbretro_usb_rp2040zero PUBLIC
 )
 target_link_libraries(usbretro_usb_rp2040zero PRIVATE ${COMMON_LIBRARIES} tinyusb_device tinyusb_pico_pio_usb)
 usbretro_target_common(usbretro_usb_rp2040zero)
+# usbretro_add_btstack(usbretro_usb_rp2040zero)  # TODO: BTstack causes boot crash - investigate
 
 # --- SNES to USB ---
 add_executable(usbretro_snes2usb)

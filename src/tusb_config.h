@@ -96,16 +96,22 @@
 #define CFG_TUH_MEM_ALIGN        __attribute__ ((aligned(4)))
 #endif
 
-#define CFG_TUH_HUB                 2
+#define CFG_TUH_HUB                 1
 #define CFG_TUH_CDC                 0
-#define CFG_TUH_HID                 (5*CFG_TUH_DEVICE_MAX) // typical keyboard + mouse device can have 3-4 HID interfaces
+#define CFG_TUH_HID                 8   // Max 8 HID interfaces total (2 per device typical)
 #define CFG_TUH_MSC                 0
 #define CFG_TUH_VENDOR              0
-#define CFG_TUH_XINPUT              (5*CFG_TUH_DEVICE_MAX)
-#define CFG_TUH_BTD                 1  // Bluetooth dongle support (1 dongle max)
+#define CFG_TUH_XINPUT              4   // Max 4 XInput interfaces (Xbox wireless adapter has 4 ports)
+
+// Bluetooth dongle support - only enabled when ENABLE_BTSTACK is defined by CMake
+#ifdef ENABLE_BTSTACK
+#define CFG_TUH_BTD                 1
+#else
+#define CFG_TUH_BTD                 0
+#endif
 
 // max device support (excluding hub device): 1 hub typically has 4 ports
-#define CFG_TUH_DEVICE_MAX          (5*CFG_TUH_HUB + 1)
+#define CFG_TUH_DEVICE_MAX          (4*CFG_TUH_HUB + 1)
 
 //------------- HID -------------//
 #define CFG_TUH_HID_EPIN_BUFSIZE    64

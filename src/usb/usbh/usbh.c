@@ -24,6 +24,8 @@ extern void xinput_task(void);
 // BTstack (Bluetooth) protocol handlers
 #if CFG_TUH_BTD
 #include "btd/hci_transport_h2_tinyusb.h"
+#include "bt/transport/bt_transport.h"
+extern const bt_transport_t bt_transport_usb;
 #endif
 
 // PIO USB pin definitions (configurable per board)
@@ -89,6 +91,11 @@ void usbh_init(void)
     tusb_init();
 #endif
 
+#if CFG_TUH_BTD
+    // Initialize Bluetooth transport (for USB BT dongle support)
+    bt_init(&bt_transport_usb);
+#endif
+
     printf("[usbh] Initialization complete\n");
 }
 
@@ -107,6 +114,7 @@ void usbh_task(void)
 
 #if CFG_TUH_BTD
     hci_transport_h2_tinyusb_process();
+    bt_task();
 #endif
 }
 
