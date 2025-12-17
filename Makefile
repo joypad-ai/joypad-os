@@ -37,6 +37,7 @@ export PICO_TINYUSB_PATH := $(CURDIR)/src/lib/tinyusb
 
 # Board-specific build scripts
 BOARD_SCRIPT_pico := boards/build_rpi_pico.sh
+BOARD_SCRIPT_pico_w := boards/build_pico_w.sh
 BOARD_SCRIPT_kb2040 := boards/build_ada_kb2040.sh
 BOARD_SCRIPT_qtpy := boards/build_ada_qtpy.sh
 BOARD_SCRIPT_rp2040zero := boards/build_waveshare_rp2040_zero.sh
@@ -53,6 +54,7 @@ CONSOLE_snes3do := usbretro_snes3do
 CONSOLE_uart := usbretro_uart
 CONSOLE_usb := usbretro_usb
 CONSOLE_usb_rp2040zero := usbretro_usb_rp2040zero
+CONSOLE_bt2usb := usbretro_bt2usb
 CONSOLE_snes2usb := usbretro_snes2usb
 CONSOLE_controller_fisherprice := usbretro_controller_fisherprice
 CONSOLE_controller_fisherprice_analog := usbretro_controller_fisherprice_analog
@@ -70,6 +72,7 @@ APP_snes23do := rp2040zero snes3do snes23do
 APP_usb2uart := kb2040 uart usb2uart
 APP_usb2usb := feather_usbhost usb usb2usb
 APP_usb2usb_rp2040zero := rp2040zero usb_rp2040zero usb2usb_rp2040zero
+APP_bt2usb := pico_w bt2usb bt2usb
 APP_snes2usb := kb2040 snes2usb snes2usb
 APP_controller_fisherprice := kb2040 controller_fisherprice controller_fisherprice
 APP_controller_fisherprice_analog := kb2040 controller_fisherprice_analog controller_fisherprice_analog
@@ -123,6 +126,7 @@ help:
 	@echo "  make usb2uart      - Build usb2uart (KB2040 + UART ESP32 bridge)"
 	@echo "  make usb2usb       - Build usb2usb (Feather USB Host + USB HID gamepad)"
 	@echo "  make usb2usb_rp2040zero - Build usb2usb for rp2040zero (RP2040-Zero + USB HID gamepad)"
+	@echo "  make bt2usb        - Build bt2usb (Pico W + Bluetooth -> USB HID gamepad)"
 	@echo "  make snes2usb      - Build snes2usb (KB2040 + SNES→USB HID gamepad)"
 	@echo "  make controller_fisherprice - Build controller_fisherprice (KB2040 + GPIO→USB HID gamepad)"
 	@echo "  make controller_fisherprice_analog - Build controller_fisherprice_analog (KB2040 + ADC analog stick)"
@@ -146,6 +150,7 @@ help:
 	@echo "  make flash-usb2uart - Flash usb2uart firmware"
 	@echo "  make flash-usb2usb - Flash usb2usb firmware"
 	@echo "  make flash-usb2usb_rp2040zero - Flash usb2usb_rp2040zero firmware"
+	@echo "  make flash-bt2usb  - Flash bt2usb firmware"
 	@echo "  make flash-snes2usb - Flash snes2usb firmware"
 	@echo "  make flash-controller_fisherprice - Flash controller_fisherprice firmware"
 	@echo "  make flash-controller_fisherprice_analog - Flash controller_fisherprice_analog firmware"
@@ -235,6 +240,10 @@ usb2usb:
 .PHONY: usb2usb_rp2040zero
 usb2usb_rp2040zero:
 	$(call build_app,usb2usb_rp2040zero)
+
+.PHONY: bt2usb
+bt2usb:
+	$(call build_app,bt2usb)
 
 .PHONY: snes2usb
 snes2usb:
@@ -386,6 +395,10 @@ flash-usb2usb:
 .PHONY: flash-usb2usb_rp2040zero
 flash-usb2usb_rp2040zero:
 	@$(MAKE) --no-print-directory _flash_app APP_NAME=usb2usb_rp2040zero
+
+.PHONY: flash-bt2usb
+flash-bt2usb:
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=bt2usb
 
 .PHONY: flash-snes2usb
 flash-snes2usb:

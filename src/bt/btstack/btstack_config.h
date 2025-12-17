@@ -16,8 +16,15 @@
 // We have Pico SDK time functions
 #define HAVE_BTSTACK_STDIN
 
-// We don't have malloc - use static allocation
-// #define HAVE_MALLOC
+// Memory allocation strategy
+// For USB dongle transport: no malloc, use static pools
+// For Pico W CYW43: use malloc (SDK provides it)
+#ifdef BTSTACK_USE_CYW43
+#define HAVE_MALLOC
+#else
+// Static allocation for USB dongle builds
+#define MAX_ATT_DB_SIZE 512
+#endif
 
 // Printf works
 #define HAVE_PRINTF
@@ -57,6 +64,14 @@
 // Pre-buffer for L2CAP/BNEP headers
 #define HCI_INCOMING_PRE_BUFFER_SIZE 14
 
+// CYW43-specific buffer requirements
+#ifdef BTSTACK_USE_CYW43
+// CYW43 requires 4 bytes pre-buffer for packet header
+#define HCI_OUTGOING_PRE_BUFFER_SIZE 4
+// CYW43 requires 4-byte alignment
+#define HCI_ACL_CHUNK_SIZE_ALIGNMENT 4
+#endif
+
 // ============================================================================
 // MEMORY POOLS (static allocation)
 // ============================================================================
@@ -82,7 +97,13 @@
 // Link keys storage (Classic BT)
 #define NVM_NUM_LINK_KEYS 2
 #define MAX_NR_BTSTACK_LINK_KEY_DB_MEMORY_ENTRIES 4
-// Note: Don't define NVM_NUM_DEVICE_DB_ENTRIES - we use le_device_db_memory.c
+
+// NVM storage for device DB
+// CYW43 builds use le_device_db_tlv.c which requires this
+// USB dongle builds use le_device_db_memory.c and don't need it
+#ifdef BTSTACK_USE_CYW43
+#define NVM_NUM_DEVICE_DB_ENTRIES 4
+#endif
 
 // ============================================================================
 // HID SUPPORT

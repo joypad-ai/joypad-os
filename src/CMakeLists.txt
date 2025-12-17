@@ -81,11 +81,8 @@ set(USB_HOST_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/xinput/xinput.c
 )
 
-# Bluetooth sources (requires BTstack)
-set(BT_HOST_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/btd/hci_transport_h2_tinyusb.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/bt/transport/bt_transport.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/bt/transport/bt_transport_usb.c
+# Bluetooth HID device drivers (shared between USB dongle and CYW43 transports)
+set(BTHID_DEVICE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/bt/bthid/bthid.c
     ${CMAKE_CURRENT_SOURCE_DIR}/bt/bthid/bthid_registry.c
     ${CMAKE_CURRENT_SOURCE_DIR}/bt/bthid/devices/generic/bthid_gamepad.c
@@ -95,6 +92,14 @@ set(BT_HOST_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/bt/bthid/devices/vendors/nintendo/switch_pro_bt.c
     ${CMAKE_CURRENT_SOURCE_DIR}/bt/bthid/devices/vendors/microsoft/xbox_bt.c
     ${CMAKE_CURRENT_SOURCE_DIR}/bt/bthid/devices/vendors/microsoft/xbox_ble.c
+)
+
+# Bluetooth sources for USB dongle transport (requires BTstack)
+set(BT_HOST_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/btd/hci_transport_h2_tinyusb.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/bt/transport/bt_transport.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/bt/transport/bt_transport_usb.c
+    ${BTHID_DEVICE_SOURCES}
 )
 
 # BTstack sources
@@ -435,6 +440,51 @@ target_include_directories(usbretro_usb_rp2040zero PUBLIC
 target_link_libraries(usbretro_usb_rp2040zero PRIVATE ${COMMON_LIBRARIES} tinyusb_device tinyusb_pico_pio_usb)
 usbretro_target_common(usbretro_usb_rp2040zero)
 usbretro_add_btstack(usbretro_usb_rp2040zero)
+
+# --- BT to USB (Pico W built-in Bluetooth) ---
+# Only build when targeting Pico W
+if (PICO_BOARD STREQUAL "pico_w")
+    add_executable(usbretro_bt2usb)
+    target_compile_definitions(usbretro_bt2usb PRIVATE
+        CONFIG_BT2USB=1
+        CONFIG_USB=1
+        DISABLE_USB_HOST=1
+        USE_BOOTSEL_BUTTON=1
+        CYW43_LWIP=0
+        # BTstack uses async_context, not embedded run loop
+        BTSTACK_USE_CYW43=1
+    )
+    target_sources(usbretro_bt2usb PUBLIC
+        ${CORE_SOURCES}
+        ${USB_DEVICE_SOURCES}
+        ${BTHID_DEVICE_SOURCES}
+        ${CMAKE_CURRENT_SOURCE_DIR}/bt/btstack/btstack_host.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/bt/transport/bt_transport.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/bt/transport/bt_transport_cyw43.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/apps/bt2usb/app.c
+    )
+    target_include_directories(usbretro_bt2usb PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/apps/bt2usb
+        ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd
+        ${CMAKE_CURRENT_SOURCE_DIR}/bt
+        ${CMAKE_CURRENT_SOURCE_DIR}/bt/btstack
+        ${CMAKE_CURRENT_SOURCE_DIR}/bt/bthid
+        ${BTSTACK_INCLUDES}
+    )
+    target_link_libraries(usbretro_bt2usb PRIVATE
+        pico_stdlib
+        pico_multicore
+        pico_cyw43_arch_poll
+        pico_btstack_ble
+        pico_btstack_classic
+        pico_btstack_cyw43
+        tinyusb_device
+        tinyusb_board
+    )
+    usbretro_target_common(usbretro_bt2usb)
+    pico_enable_stdio_usb(usbretro_bt2usb 0)
+    pico_enable_stdio_uart(usbretro_bt2usb 1)
+endif()
 
 # --- SNES to USB ---
 add_executable(usbretro_snes2usb)

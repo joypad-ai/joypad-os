@@ -12,7 +12,11 @@
 #include "btstack_defines.h"
 #include "btstack_event.h"
 #include "btstack_run_loop.h"
+
+// Run loop depends on transport: embedded for USB dongle, async_context for CYW43
+#ifndef BTSTACK_USE_CYW43
 #include "btstack_run_loop_embedded.h"
+#endif
 
 // Declare btstack_memory_init - can't include btstack_memory.h due to HID conflicts
 extern void btstack_memory_init(void);
@@ -33,7 +37,12 @@ extern void btstack_memory_init(void);
 #include "classic/sdp_server.h"
 #include "classic/sdp_util.h"
 #include "classic/device_id_server.h"
+
+// Link key storage: memory DB for USB dongle, TLV-based for CYW43
+#ifndef BTSTACK_USE_CYW43
 #include "classic/btstack_link_key_db_memory.h"
+#endif
+
 #include "hci_dump.h"
 #include "hci_dump_embedded_stdout.h"
 
@@ -283,40 +292,9 @@ static void register_ble_hid_listener(hci_con_handle_t con_handle);
 // INITIALIZATION
 // ============================================================================
 
-void btstack_host_init(const void* transport)
+// Internal function to set up HID handlers (used by both init paths)
+static void setup_hid_handlers(void)
 {
-    if (hid_state.initialized) {
-        printf("[BTSTACK_HOST] Already initialized\n");
-        return;
-    }
-
-    if (!transport) {
-        printf("[BTSTACK_HOST] ERROR: No HCI transport provided\n");
-        return;
-    }
-
-    printf("[BTSTACK_HOST] Initializing BTstack...\n");
-
-    memset(&hid_state, 0, sizeof(hid_state));
-    hid_state.hci_transport = (const hci_transport_t*)transport;
-
-    // HCI dump disabled - too verbose (logs every ACL packet)
-    // printf("[BTSTACK_HOST] Init HCI dump (for logging)...\n");
-    // hci_dump_init(hci_dump_embedded_stdout_get_instance());
-
-    printf("[BTSTACK_HOST] Init memory pools...\n");
-    btstack_memory_init();
-
-    printf("[BTSTACK_HOST] Init run loop...\n");
-    btstack_run_loop_init(btstack_run_loop_embedded_get_instance());
-
-    printf("[BTSTACK_HOST] Init HCI with provided transport...\n");
-    hci_init(transport, NULL);
-
-    // Set link key DB for Classic BT bonding (stores link keys in RAM)
-    printf("[BTSTACK_HOST] Init Link Key DB...\n");
-    hci_set_link_key_db(btstack_link_key_db_memory_instance());
-
     printf("[BTSTACK_HOST] Init L2CAP...\n");
     l2cap_init();
 
@@ -366,7 +344,67 @@ void btstack_host_init(const void* transport)
     sm_add_event_handler(&sm_event_callback_registration);
 
     hid_state.initialized = true;
-    printf("[BTSTACK_HOST] Initialized OK (BLE + Classic)\n");
+    printf("[BTSTACK_HOST] HID handlers initialized (BLE + Classic)\n");
+}
+
+// btstack_host_init is only used for USB dongle transport
+// For CYW43, use btstack_host_init_hid_handlers() after btstack_cyw43_init()
+#ifndef BTSTACK_USE_CYW43
+void btstack_host_init(const void* transport)
+{
+    if (hid_state.initialized) {
+        printf("[BTSTACK_HOST] Already initialized\n");
+        return;
+    }
+
+    if (!transport) {
+        printf("[BTSTACK_HOST] ERROR: No HCI transport provided\n");
+        return;
+    }
+
+    printf("[BTSTACK_HOST] Initializing BTstack...\n");
+
+    memset(&hid_state, 0, sizeof(hid_state));
+    hid_state.hci_transport = (const hci_transport_t*)transport;
+
+    // HCI dump disabled - too verbose (logs every ACL packet)
+    // printf("[BTSTACK_HOST] Init HCI dump (for logging)...\n");
+    // hci_dump_init(hci_dump_embedded_stdout_get_instance());
+
+    printf("[BTSTACK_HOST] Init memory pools...\n");
+    btstack_memory_init();
+
+    printf("[BTSTACK_HOST] Init run loop...\n");
+    btstack_run_loop_init(btstack_run_loop_embedded_get_instance());
+
+    printf("[BTSTACK_HOST] Init HCI with provided transport...\n");
+    hci_init(transport, NULL);
+
+    // Set link key DB for Classic BT bonding (stores link keys in RAM)
+    printf("[BTSTACK_HOST] Init Link Key DB...\n");
+    hci_set_link_key_db(btstack_link_key_db_memory_instance());
+
+    // Set up HID handlers
+    setup_hid_handlers();
+    printf("[BTSTACK_HOST] Initialized OK\n");
+}
+#endif
+
+void btstack_host_init_hid_handlers(void)
+{
+    if (hid_state.initialized) {
+        printf("[BTSTACK_HOST] HID handlers already initialized\n");
+        return;
+    }
+
+    printf("[BTSTACK_HOST] Initializing HID handlers (BTstack already initialized externally)...\n");
+
+    memset(&hid_state, 0, sizeof(hid_state));
+    // Note: hci_transport is not set here since BTstack was initialized externally
+
+    // Set up HID handlers (BTstack core already initialized by btstack_cyw43_init or similar)
+    setup_hid_handlers();
+    printf("[BTSTACK_HOST] HID handlers initialized OK\n");
 }
 
 void btstack_host_power_on(void)
@@ -477,13 +515,16 @@ void btstack_host_process(void)
 {
     if (!hid_state.initialized) return;
 
-    // Process transport-specific tasks (e.g., USB polling)
+    // Process transport-specific tasks (e.g., USB polling, CYW43 async context)
     btstack_host_transport_process();
 
+#ifndef BTSTACK_USE_CYW43
     // Process BTstack run loop multiple times to let packets flow through HCI->L2CAP->ATT->GATT
+    // Note: CYW43 uses async_context run loop, processed by cyw43_arch_poll() in transport
     for (int i = 0; i < 5; i++) {
         btstack_run_loop_embedded_execute_once();
     }
+#endif
 
     // Process any pending BLE HID report (deferred from BTstack callback to avoid stack overflow)
     if (ble_report_pending) {
@@ -914,8 +955,10 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                    req_addr[0], req_addr[1], req_addr[2], req_addr[3], req_addr[4], req_addr[5],
                    conn ? "YES" : "NO");
 
-            // BTstack's internal handler already ran - if conn was found, it set AUTH_FLAG
+#ifndef BTSTACK_USE_CYW43
+            // For USB dongle: BTstack's internal handler already ran - if conn was found, it set AUTH_FLAG
             // and will send reply in hci_run(). If not, we need to send reply ourselves.
+            // For CYW43: SDK's BTstack handles link keys via flash TLV, let it handle this
             if (!conn) {
                 link_key_t key;
                 link_key_type_t type;
@@ -928,6 +971,7 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                     hci_send_cmd(&hci_link_key_request_negative_reply, req_addr);
                 }
             }
+#endif
             break;
         }
 
@@ -938,11 +982,15 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
             printf("[BTSTACK_HOST] Link key notification: %02X:%02X:%02X:%02X:%02X:%02X type=%d\n",
                    notif_addr[0], notif_addr[1], notif_addr[2], notif_addr[3], notif_addr[4], notif_addr[5], key_type);
 
+#ifndef BTSTACK_USE_CYW43
+            // For USB dongle: store link key in memory DB
+            // For CYW43: SDK's BTstack handles link keys via flash TLV
             const btstack_link_key_db_t* db = btstack_link_key_db_memory_instance();
             if (db) {
                 db->put_link_key(notif_addr, &packet[8], key_type);
                 printf("[BTSTACK_HOST] Link key stored\n");
             }
+#endif
             break;
         }
 

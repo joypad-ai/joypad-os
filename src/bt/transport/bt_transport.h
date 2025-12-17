@@ -13,7 +13,10 @@
 // ============================================================================
 
 // 4 Classic + 2 BLE connections (BLE uses conn_index 4-5)
+// Apps can override this by defining BT_MAX_CONNECTIONS in app.h before including this header
+#ifndef BT_MAX_CONNECTIONS
 #define BT_MAX_CONNECTIONS      6
+#endif
 #define BT_MAX_NAME_LEN         32
 
 // ============================================================================

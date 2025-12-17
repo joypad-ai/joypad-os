@@ -28,6 +28,10 @@ extern "C" {
 // Note: transport is actually hci_transport_t* but we use void* to avoid header conflicts
 void btstack_host_init(const void* transport);
 
+// Initialize only the HID handlers (callbacks, state) without BTstack init
+// Use this when BTstack was already initialized externally (e.g., btstack_cyw43_init)
+void btstack_host_init_hid_handlers(void);
+
 // Power on the Bluetooth controller
 void btstack_host_power_on(void);
 
