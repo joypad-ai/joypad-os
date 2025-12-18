@@ -62,24 +62,24 @@ CONSOLE_controller_fisherprice_analog := joypad_controller_fisherprice_analog
 CONSOLE_controller_alpakka := joypad_controller_alpakka
 CONSOLE_controller_macropad := joypad_controller_macropad
 
-# App definitions: APP_name = board console output_name
+# App definitions: APP_name = board target output_name input output
 # Naming convention: <app>_<board> for all apps
-APP_usb2pce_kb2040 := kb2040 pce usb2pce_kb2040
-APP_usb2gc_kb2040 := kb2040 ngc usb2gc_kb2040
-APP_usb2gc_rp2040zero := rp2040zero ngc_rp2040zero usb2gc_rp2040zero
-APP_usb2nuon_kb2040 := kb2040 nuon usb2nuon_kb2040
-APP_usb2loopy_kb2040 := kb2040 loopy usb2loopy_kb2040
-APP_usb23do_rp2040zero := rp2040zero 3do usb23do_rp2040zero
-APP_snes23do_rp2040zero := rp2040zero snes3do snes23do_rp2040zero
-APP_usb2uart_kb2040 := kb2040 uart usb2uart_kb2040
-APP_usb2usb_feather := feather_usbhost usb usb2usb_feather
-APP_usb2usb_rp2040zero := rp2040zero usb_rp2040zero usb2usb_rp2040zero
-APP_bt2usb_pico_w := pico_w bt2usb bt2usb_pico_w
-APP_snes2usb_kb2040 := kb2040 snes2usb snes2usb_kb2040
-APP_controller_fisherprice_kb2040 := kb2040 controller_fisherprice controller_fisherprice_kb2040
-APP_controller_fisherprice_analog_kb2040 := kb2040 controller_fisherprice_analog controller_fisherprice_analog_kb2040
-APP_controller_alpakka_pico := pico controller_alpakka controller_alpakka_pico
-APP_controller_macropad := macropad controller_macropad controller_macropad
+APP_usb2pce_kb2040 := kb2040 pce usb2pce_kb2040 USB/BT PCEngine
+APP_usb2gc_kb2040 := kb2040 ngc usb2gc_kb2040 USB/BT GameCube
+APP_usb2gc_rp2040zero := rp2040zero ngc_rp2040zero usb2gc_rp2040zero USB/BT GameCube
+APP_usb2nuon_kb2040 := kb2040 nuon usb2nuon_kb2040 USB/BT Nuon
+APP_usb2loopy_kb2040 := kb2040 loopy usb2loopy_kb2040 USB/BT Loopy
+APP_usb23do_rp2040zero := rp2040zero 3do usb23do_rp2040zero USB/BT 3DO
+APP_snes23do_rp2040zero := rp2040zero snes3do snes23do_rp2040zero SNES 3DO
+APP_usb2uart_kb2040 := kb2040 uart usb2uart_kb2040 USB/BT UART
+APP_usb2usb_feather := feather_usbhost usb usb2usb_feather USB/BT USB
+APP_usb2usb_rp2040zero := rp2040zero usb_rp2040zero usb2usb_rp2040zero USB/BT USB
+APP_bt2usb_pico_w := pico_w bt2usb bt2usb_pico_w Bluetooth USB
+APP_snes2usb_kb2040 := kb2040 snes2usb snes2usb_kb2040 SNES USB
+APP_controller_fisherprice_kb2040 := kb2040 controller_fisherprice controller_fisherprice_kb2040 GPIO USB
+APP_controller_fisherprice_analog_kb2040 := kb2040 controller_fisherprice_analog controller_fisherprice_analog_kb2040 GPIO/ADC USB
+APP_controller_alpakka_pico := pico controller_alpakka controller_alpakka_pico GPIO/I2C USB
+APP_controller_macropad := macropad controller_macropad controller_macropad GPIO USB
 
 # All apps (note: controller_macropad not included - build explicitly with 'make controller_macropad')
 APPS := usb2pce_kb2040 usb2gc_kb2040 usb2gc_rp2040zero usb2nuon_kb2040 usb2loopy_kb2040 usb23do_rp2040zero snes23do_rp2040zero usb2uart_kb2040 usb2usb_feather usb2usb_rp2040zero bt2usb_pico_w snes2usb_kb2040 controller_fisherprice_kb2040 controller_alpakka_pico
@@ -182,7 +182,8 @@ build: all
 define build_app
 	@echo "$(YELLOW)Building $1...$(NC)"
 	@echo "  Board:   $(word 1,$(APP_$1))"
-	@echo "  Console: $(word 2,$(APP_$1))"
+	@echo "  Input:   $(word 4,$(APP_$1))"
+	@echo "  Output:  $(word 5,$(APP_$1))"
 	@echo "  Version: $(VERSION_ID)"
 	@cd src && rm -rf build
 	@cd src && sh $(BOARD_SCRIPT_$(word 1,$(APP_$1)))
@@ -191,7 +192,7 @@ define build_app
 	@cp src/build/$(CONSOLE_$(word 2,$(APP_$1))).uf2 \
 	    $(RELEASE_DIR)/joypad_$(VERSION_ID)_$(word 3,$(APP_$1)).uf2
 	@echo "$(GREEN)✓ $1 built successfully$(NC)"
-	@echo "  Output: $(RELEASE_DIR)/joypad_$(VERSION_ID)_$(word 3,$(APP_$1)).uf2"
+	@echo "  File: $(RELEASE_DIR)/joypad_$(VERSION_ID)_$(word 3,$(APP_$1)).uf2"
 	@echo ""
 endef
 
