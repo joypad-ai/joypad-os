@@ -98,12 +98,9 @@
 #define NVM_NUM_LINK_KEYS 2
 #define MAX_NR_BTSTACK_LINK_KEY_DB_MEMORY_ENTRIES 4
 
-// NVM storage for device DB
-// CYW43 builds use le_device_db_tlv.c which requires this
-// USB dongle builds use le_device_db_memory.c and don't need it
-#ifdef BTSTACK_USE_CYW43
+// NVM storage for device DB (flash-based TLV storage)
+// Both USB dongle and CYW43 builds now use le_device_db_tlv.c for persistent storage
 #define NVM_NUM_DEVICE_DB_ENTRIES 4
-#endif
 
 // ============================================================================
 // HID SUPPORT

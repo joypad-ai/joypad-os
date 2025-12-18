@@ -45,45 +45,47 @@ BOARD_SCRIPT_feather_usbhost := boards/build_ada_feather_usbhost.sh
 BOARD_SCRIPT_macropad := boards/build_ada_macropad.sh
 
 # Console targets (cmake target names)
-CONSOLE_3do := usbretro_3do
-CONSOLE_pce := usbretro_pce
-CONSOLE_ngc := usbretro_ngc
-CONSOLE_nuon := usbretro_nuon
-CONSOLE_loopy := usbretro_loopy
-CONSOLE_snes3do := usbretro_snes3do
-CONSOLE_uart := usbretro_uart
-CONSOLE_usb := usbretro_usb
-CONSOLE_usb_rp2040zero := usbretro_usb_rp2040zero
-CONSOLE_bt2usb := usbretro_bt2usb
-CONSOLE_snes2usb := usbretro_snes2usb
-CONSOLE_controller_fisherprice := usbretro_controller_fisherprice
-CONSOLE_controller_fisherprice_analog := usbretro_controller_fisherprice_analog
-CONSOLE_controller_alpakka := usbretro_controller_alpakka
-CONSOLE_controller_macropad := usbretro_controller_macropad
+CONSOLE_3do := joypad_3do
+CONSOLE_pce := joypad_pce
+CONSOLE_ngc := joypad_ngc
+CONSOLE_ngc_rp2040zero := joypad_ngc_rp2040zero
+CONSOLE_nuon := joypad_nuon
+CONSOLE_loopy := joypad_loopy
+CONSOLE_snes3do := joypad_snes3do
+CONSOLE_uart := joypad_uart
+CONSOLE_usb := joypad_usb
+CONSOLE_usb_rp2040zero := joypad_usb_rp2040zero
+CONSOLE_bt2usb := joypad_bt2usb
+CONSOLE_snes2usb := joypad_snes2usb
+CONSOLE_controller_fisherprice := joypad_controller_fisherprice
+CONSOLE_controller_fisherprice_analog := joypad_controller_fisherprice_analog
+CONSOLE_controller_alpakka := joypad_controller_alpakka
+CONSOLE_controller_macropad := joypad_controller_macropad
 
 # App definitions: APP_name = board console output_name
-# Naming convention: usb2<console> for all apps
-APP_usb2pce := kb2040 pce usb2pce
-APP_usb2gc := kb2040 ngc usb2gc
-APP_usb2nuon := kb2040 nuon usb2nuon
-APP_usb2loopy := kb2040 loopy usb2loopy
-APP_usb23do := rp2040zero 3do usb23do
-APP_snes23do := rp2040zero snes3do snes23do
-APP_usb2uart := kb2040 uart usb2uart
-APP_usb2usb := feather_usbhost usb usb2usb
+# Naming convention: <app>_<board> for all apps
+APP_usb2pce_kb2040 := kb2040 pce usb2pce_kb2040
+APP_usb2gc_kb2040 := kb2040 ngc usb2gc_kb2040
+APP_usb2gc_rp2040zero := rp2040zero ngc_rp2040zero usb2gc_rp2040zero
+APP_usb2nuon_kb2040 := kb2040 nuon usb2nuon_kb2040
+APP_usb2loopy_kb2040 := kb2040 loopy usb2loopy_kb2040
+APP_usb23do_rp2040zero := rp2040zero 3do usb23do_rp2040zero
+APP_snes23do_rp2040zero := rp2040zero snes3do snes23do_rp2040zero
+APP_usb2uart_kb2040 := kb2040 uart usb2uart_kb2040
+APP_usb2usb_feather := feather_usbhost usb usb2usb_feather
 APP_usb2usb_rp2040zero := rp2040zero usb_rp2040zero usb2usb_rp2040zero
-APP_bt2usb := pico_w bt2usb bt2usb
-APP_snes2usb := kb2040 snes2usb snes2usb
-APP_controller_fisherprice := kb2040 controller_fisherprice controller_fisherprice
-APP_controller_fisherprice_analog := kb2040 controller_fisherprice_analog controller_fisherprice_analog
-APP_controller_alpakka := pico controller_alpakka controller_alpakka
+APP_bt2usb_pico_w := pico_w bt2usb bt2usb_pico_w
+APP_snes2usb_kb2040 := kb2040 snes2usb snes2usb_kb2040
+APP_controller_fisherprice_kb2040 := kb2040 controller_fisherprice controller_fisherprice_kb2040
+APP_controller_fisherprice_analog_kb2040 := kb2040 controller_fisherprice_analog controller_fisherprice_analog_kb2040
+APP_controller_alpakka_pico := pico controller_alpakka controller_alpakka_pico
 APP_controller_macropad := macropad controller_macropad controller_macropad
 
 # All apps (note: controller_macropad not included - build explicitly with 'make controller_macropad')
-APPS := usb2pce usb2gc usb2nuon usb2loopy usb23do snes23do usb2uart usb2usb usb2usb_rp2040zero snes2usb controller_fisherprice controller_alpakka
+APPS := usb2pce_kb2040 usb2gc_kb2040 usb2gc_rp2040zero usb2nuon_kb2040 usb2loopy_kb2040 usb23do_rp2040zero snes23do_rp2040zero usb2uart_kb2040 usb2usb_feather usb2usb_rp2040zero bt2usb_pico_w snes2usb_kb2040 controller_fisherprice_kb2040 controller_alpakka_pico
 
-# Stable apps for release (mature enough for public release)
-RELEASE_APPS := usb2pce usb2gc usb2nuon
+# Stable apps for release
+RELEASE_APPS := usb2pce_kb2040 usb2gc_kb2040 usb2gc_rp2040zero usb2nuon_kb2040 usb2loopy_kb2040 usb23do_rp2040zero usb2usb_feather usb2usb_rp2040zero bt2usb_pico_w snes2usb_kb2040 snes23do_rp2040zero
 
 # Release directory
 RELEASE_DIR := releases
@@ -117,21 +119,21 @@ help:
 	@echo "  make build         - Build all apps (alias for 'make all')"
 	@echo ""
 	@echo "$(GREEN)App Targets:$(NC)"
-	@echo "  make usb2pce       - Build usb2pce (KB2040 + PCEngine)"
-	@echo "  make usb2gc        - Build usb2gc (KB2040 + GameCube)"
-	@echo "  make usb2nuon      - Build usb2nuon (KB2040 + Nuon)"
-	@echo "  make usb2loopy     - Build usb2loopy (KB2040 + Loopy)"
-	@echo "  make usb23do       - Build usb23do (RP2040 Zero + 3DO)"
-	@echo "  make snes23do      - Build snes23do (RP2040 Zero + SNES->3DO)"
-	@echo "  make usb2uart      - Build usb2uart (KB2040 + UART ESP32 bridge)"
-	@echo "  make usb2usb       - Build usb2usb (Feather USB Host + USB HID gamepad)"
-	@echo "  make usb2usb_rp2040zero - Build usb2usb for rp2040zero (RP2040-Zero + USB HID gamepad)"
-	@echo "  make bt2usb        - Build bt2usb (Pico W + Bluetooth -> USB HID gamepad)"
-	@echo "  make snes2usb      - Build snes2usb (KB2040 + SNES→USB HID gamepad)"
-	@echo "  make controller_fisherprice - Build controller_fisherprice (KB2040 + GPIO→USB HID gamepad)"
-	@echo "  make controller_fisherprice_analog - Build controller_fisherprice_analog (KB2040 + ADC analog stick)"
-	@echo "  make controller_alpakka - Build controller_alpakka (Pico + GPIO/I2C→USB HID gamepad)"
-	@echo "  make controller_macropad - Build controller_macropad (MacroPad RP2040 + 12 keys→USB HID gamepad)"
+	@echo "  make usb2pce_kb2040     - USB/BT -> PCEngine (KB2040)"
+	@echo "  make usb2gc_kb2040      - USB/BT -> GameCube (KB2040)"
+	@echo "  make usb2gc_rp2040zero  - USB/BT -> GameCube (RP2040-Zero)"
+	@echo "  make usb2nuon_kb2040    - USB/BT -> Nuon (KB2040)"
+	@echo "  make usb2loopy_kb2040   - USB/BT -> Loopy (KB2040)"
+	@echo "  make usb23do_rp2040zero - USB/BT -> 3DO (RP2040-Zero)"
+	@echo "  make snes23do_rp2040zero - SNES -> 3DO (RP2040-Zero)"
+	@echo "  make usb2uart_kb2040    - USB -> UART/ESP32 (KB2040)"
+	@echo "  make usb2usb_feather    - USB/BT -> USB HID (Feather USB Host)"
+	@echo "  make usb2usb_rp2040zero - USB/BT -> USB HID (RP2040-Zero)"
+	@echo "  make bt2usb_pico_w      - Bluetooth -> USB HID (Pico W)"
+	@echo "  make snes2usb_kb2040    - SNES -> USB HID (KB2040)"
+	@echo "  make controller_fisherprice_kb2040 - GPIO -> USB HID (KB2040)"
+	@echo "  make controller_alpakka_pico - GPIO/I2C -> USB HID (Pico)"
+	@echo "  make controller_macropad - 12 keys -> USB HID (MacroPad RP2040)"
 	@echo ""
 	@echo "$(GREEN)Convenience Targets:$(NC)"
 	@echo "  make all           - Build all apps"
@@ -140,22 +142,11 @@ help:
 	@echo "  make releases      - Build stable apps for release"
 	@echo ""
 	@echo "$(GREEN)Flash Targets:$(NC)"
-	@echo "  make flash         - Flash most recently built firmware"
-	@echo "  make flash-usb2pce - Flash usb2pce firmware"
-	@echo "  make flash-usb2gc  - Flash usb2gc firmware"
-	@echo "  make flash-usb2nuon - Flash usb2nuon firmware"
-	@echo "  make flash-usb2loopy - Flash usb2loopy firmware"
-	@echo "  make flash-usb23do - Flash usb23do firmware"
-	@echo "  make flash-snes23do - Flash snes23do firmware"
-	@echo "  make flash-usb2uart - Flash usb2uart firmware"
-	@echo "  make flash-usb2usb - Flash usb2usb firmware"
-	@echo "  make flash-usb2usb_rp2040zero - Flash usb2usb_rp2040zero firmware"
-	@echo "  make flash-bt2usb  - Flash bt2usb firmware"
-	@echo "  make flash-snes2usb - Flash snes2usb firmware"
-	@echo "  make flash-controller_fisherprice - Flash controller_fisherprice firmware"
-	@echo "  make flash-controller_fisherprice_analog - Flash controller_fisherprice_analog firmware"
-	@echo "  make flash-controller_alpakka - Flash controller_alpakka firmware"
-	@echo "  make flash-controller_macropad - Flash controller_macropad firmware"
+	@echo "  make flash                - Flash most recently built firmware"
+	@echo "  make flash-usb2pce_kb2040 - Flash usb2pce_kb2040"
+	@echo "  make flash-usb2gc_kb2040  - Flash usb2gc_kb2040"
+	@echo "  make flash-usb2gc_rp2040zero - Flash usb2gc_rp2040zero"
+	@echo "  (and similar for other apps)"
 	@echo ""
 	@echo "$(GREEN)Console-Only Targets (uses KB2040):$(NC)"
 	@echo "  make pce           - Build PCEngine firmware"
@@ -187,7 +178,7 @@ init:
 build: all
 
 # Generic app build function
-# Output naming: usbr_<version|commit>_<board>_<app>.uf2
+# Output naming: joypad_<version|commit>_<app>.uf2
 define build_app
 	@echo "$(YELLOW)Building $1...$(NC)"
 	@echo "  Board:   $(word 1,$(APP_$1))"
@@ -198,68 +189,72 @@ define build_app
 	@cd src/build && $(MAKE) --no-print-directory $(CONSOLE_$(word 2,$(APP_$1))) -j4
 	@mkdir -p $(RELEASE_DIR)
 	@cp src/build/$(CONSOLE_$(word 2,$(APP_$1))).uf2 \
-	    $(RELEASE_DIR)/usbr_$(VERSION_ID)_$(word 1,$(APP_$1))_$(word 3,$(APP_$1)).uf2
+	    $(RELEASE_DIR)/joypad_$(VERSION_ID)_$(word 3,$(APP_$1)).uf2
 	@echo "$(GREEN)✓ $1 built successfully$(NC)"
-	@echo "  Output: $(RELEASE_DIR)/usbr_$(VERSION_ID)_$(word 1,$(APP_$1))_$(word 3,$(APP_$1)).uf2"
+	@echo "  Output: $(RELEASE_DIR)/joypad_$(VERSION_ID)_$(word 3,$(APP_$1)).uf2"
 	@echo ""
 endef
 
 # App targets
-.PHONY: usb2pce
-usb2pce:
-	$(call build_app,usb2pce)
+.PHONY: usb2pce_kb2040
+usb2pce_kb2040:
+	$(call build_app,usb2pce_kb2040)
 
-.PHONY: usb2gc
-usb2gc:
-	$(call build_app,usb2gc)
+.PHONY: usb2gc_kb2040
+usb2gc_kb2040:
+	$(call build_app,usb2gc_kb2040)
 
-.PHONY: usb2nuon
-usb2nuon:
-	$(call build_app,usb2nuon)
+.PHONY: usb2gc_rp2040zero
+usb2gc_rp2040zero:
+	$(call build_app,usb2gc_rp2040zero)
 
-.PHONY: usb2loopy
-usb2loopy:
-	$(call build_app,usb2loopy)
+.PHONY: usb2nuon_kb2040
+usb2nuon_kb2040:
+	$(call build_app,usb2nuon_kb2040)
 
-.PHONY: usb23do
-usb23do:
-	$(call build_app,usb23do)
+.PHONY: usb2loopy_kb2040
+usb2loopy_kb2040:
+	$(call build_app,usb2loopy_kb2040)
 
-.PHONY: snes23do
-snes23do:
-	$(call build_app,snes23do)
+.PHONY: usb23do_rp2040zero
+usb23do_rp2040zero:
+	$(call build_app,usb23do_rp2040zero)
 
-.PHONY: usb2uart
-usb2uart:
-	$(call build_app,usb2uart)
+.PHONY: snes23do_rp2040zero
+snes23do_rp2040zero:
+	$(call build_app,snes23do_rp2040zero)
 
-.PHONY: usb2usb
-usb2usb:
-	$(call build_app,usb2usb)
+.PHONY: usb2uart_kb2040
+usb2uart_kb2040:
+	$(call build_app,usb2uart_kb2040)
+
+.PHONY: usb2usb_feather
+usb2usb_feather:
+	$(call build_app,usb2usb_feather)
 
 .PHONY: usb2usb_rp2040zero
 usb2usb_rp2040zero:
 	$(call build_app,usb2usb_rp2040zero)
 
-.PHONY: bt2usb
-bt2usb:
-	$(call build_app,bt2usb)
+.PHONY: bt2usb_pico_w
+bt2usb_pico_w:
+	$(call build_app,bt2usb_pico_w)
 
-.PHONY: snes2usb
-snes2usb:
-	$(call build_app,snes2usb)
+.PHONY: snes2usb_kb2040
+snes2usb_kb2040:
+	$(call build_app,snes2usb_kb2040)
 
-.PHONY: controller_fisherprice
-controller_fisherprice:
-	$(call build_app,controller_fisherprice)
+.PHONY: controller_fisherprice_kb2040
+controller_fisherprice_kb2040:
+	$(call build_app,controller_fisherprice_kb2040)
 
-.PHONY: controller_fisherprice_analog
-controller_fisherprice_analog:
-	$(call build_app,controller_fisherprice_analog)
+.PHONY: controller_fisherprice_analog_kb2040
+controller_fisherprice_analog_kb2040:
+	$(call build_app,controller_fisherprice_analog_kb2040)
 
-.PHONY: controller_alpakka
-controller_alpakka:
-	$(call build_app,controller_alpakka)
+.PHONY: controller_alpakka_pico
+controller_alpakka_pico:
+	$(call build_app,controller_alpakka_pico)
 
 .PHONY: controller_macropad
 controller_macropad:
@@ -360,61 +355,65 @@ flash:
 	echo "$(GREEN)  Device will reboot automatically$(NC)"
 
 # Flash specific apps (finds most recent matching file)
-.PHONY: flash-usb2pce
-flash-usb2pce:
-	@$(MAKE) --no-print-directory _flash_app APP_NAME=usb2pce
+.PHONY: flash-usb2pce_kb2040
+flash-usb2pce_kb2040:
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=usb2pce_kb2040
 
-.PHONY: flash-usb2gc
-flash-usb2gc:
-	@$(MAKE) --no-print-directory _flash_app APP_NAME=usb2gc
+.PHONY: flash-usb2gc_kb2040
+flash-usb2gc_kb2040:
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=usb2gc_kb2040
 
-.PHONY: flash-usb2nuon
-flash-usb2nuon:
-	@$(MAKE) --no-print-directory _flash_app APP_NAME=usb2nuon
+.PHONY: flash-usb2gc_rp2040zero
+flash-usb2gc_rp2040zero:
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=usb2gc_rp2040zero
 
-.PHONY: flash-usb2loopy
-flash-usb2loopy:
-	@$(MAKE) --no-print-directory _flash_app APP_NAME=usb2loopy
+.PHONY: flash-usb2nuon_kb2040
+flash-usb2nuon_kb2040:
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=usb2nuon_kb2040
 
-.PHONY: flash-usb23do
-flash-usb23do:
-	@$(MAKE) --no-print-directory _flash_app APP_NAME=usb23do
+.PHONY: flash-usb2loopy_kb2040
+flash-usb2loopy_kb2040:
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=usb2loopy_kb2040
 
-.PHONY: flash-snes23do
-flash-snes23do:
-	@$(MAKE) --no-print-directory _flash_app APP_NAME=snes23do
+.PHONY: flash-usb23do_rp2040zero
+flash-usb23do_rp2040zero:
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=usb23do_rp2040zero
 
-.PHONY: flash-usb2uart
-flash-usb2uart:
-	@$(MAKE) --no-print-directory _flash_app APP_NAME=usb2uart
+.PHONY: flash-snes23do_rp2040zero
+flash-snes23do_rp2040zero:
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=snes23do_rp2040zero
 
-.PHONY: flash-usb2usb
-flash-usb2usb:
-	@$(MAKE) --no-print-directory _flash_app APP_NAME=usb2usb
+.PHONY: flash-usb2uart_kb2040
+flash-usb2uart_kb2040:
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=usb2uart_kb2040
+
+.PHONY: flash-usb2usb_feather
+flash-usb2usb_feather:
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=usb2usb_feather
 
 .PHONY: flash-usb2usb_rp2040zero
 flash-usb2usb_rp2040zero:
 	@$(MAKE) --no-print-directory _flash_app APP_NAME=usb2usb_rp2040zero
 
-.PHONY: flash-bt2usb
-flash-bt2usb:
-	@$(MAKE) --no-print-directory _flash_app APP_NAME=bt2usb
+.PHONY: flash-bt2usb_pico_w
+flash-bt2usb_pico_w:
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=bt2usb_pico_w
 
-.PHONY: flash-snes2usb
-flash-snes2usb:
-	@$(MAKE) --no-print-directory _flash_app APP_NAME=snes2usb
+.PHONY: flash-snes2usb_kb2040
+flash-snes2usb_kb2040:
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=snes2usb_kb2040
 
-.PHONY: flash-controller_fisherprice
-flash-controller_fisherprice:
-	@$(MAKE) --no-print-directory _flash_app APP_NAME=controller_fisherprice
+.PHONY: flash-controller_fisherprice_kb2040
+flash-controller_fisherprice_kb2040:
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=controller_fisherprice_kb2040
 
-.PHONY: flash-controller_fisherprice_analog
-flash-controller_fisherprice_analog:
-	@$(MAKE) --no-print-directory _flash_app APP_NAME=controller_fisherprice_analog
+.PHONY: flash-controller_fisherprice_analog_kb2040
+flash-controller_fisherprice_analog_kb2040:
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=controller_fisherprice_analog_kb2040
 
-.PHONY: flash-controller_alpakka
-flash-controller_alpakka:
-	@$(MAKE) --no-print-directory _flash_app APP_NAME=controller_alpakka
+.PHONY: flash-controller_alpakka_pico
+flash-controller_alpakka_pico:
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=controller_alpakka_pico
 
 .PHONY: flash-controller_macropad
 flash-controller_macropad:
@@ -428,7 +427,7 @@ _flash_app:
 		echo "$(YELLOW)  Please put device in bootloader mode$(NC)"; \
 		exit 1; \
 	fi
-	@FLASH_FILE=$$(ls -t $(RELEASE_DIR)/usbr_*_$(APP_NAME).uf2 2>/dev/null | head -1); \
+	@FLASH_FILE=$$(ls -t $(RELEASE_DIR)/joypad_*$(APP_NAME).uf2 2>/dev/null | head -1); \
 	if [ -z "$$FLASH_FILE" ]; then \
 		echo "$(YELLOW)⚠ No $(APP_NAME) firmware found in $(RELEASE_DIR)$(NC)"; \
 		echo "$(YELLOW)  Build it first with 'make $(APP_NAME)'$(NC)"; \

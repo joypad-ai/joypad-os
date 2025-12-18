@@ -36,7 +36,7 @@ jobs:
           context: .
           push: false
           load: true
-          tags: usbretro:latest
+          tags: joypad:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -53,7 +53,7 @@ jobs:
             -v ${{ github.workspace }}:/workspace \
             -w /workspace \
             -e GIT_COMMIT=${COMMIT_HASH} \
-            usbretro:latest /bin/bash -c "make all"
+            joypad:latest /bin/bash -c "make all"
 
           # Fix permissions (Docker creates files as root)
           sudo chown -R $(id -u):$(id -g) releases/
@@ -63,9 +63,9 @@ jobs:
           mkdir -p artifacts
           COMMIT_HASH=${{ steps.commit.outputs.hash }}
 
-          # Group files by board and create zip for each
-          for board in kb2040 pico rp2040zero feather_usbhost macropad qtpy; do
-            board_files=$(ls releases/usbr_*_${board}_*.uf2 2>/dev/null || true)
+          # Group files by board (board name is now at end of filename)
+          for board in kb2040 pico pico_w rp2040zero feather macropad; do
+            board_files=$(ls releases/joypad_*_${board}.uf2 2>/dev/null || true)
             if [ -n "$board_files" ]; then
               mkdir -p "artifacts/${board}"
               cp $board_files "artifacts/${board}/"
@@ -79,35 +79,42 @@ jobs:
       - name: Upload kb2040 artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: usbretro_${{ steps.commit.outputs.hash }}_kb2040
+          name: joypad_${{ steps.commit.outputs.hash }}_kb2040
           path: artifacts/kb2040/*.uf2
           if-no-files-found: ignore
 
       - name: Upload pico artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: usbretro_${{ steps.commit.outputs.hash }}_pico
+          name: joypad_${{ steps.commit.outputs.hash }}_pico
           path: artifacts/pico/*.uf2
+          if-no-files-found: ignore
+
+      - name: Upload pico_w artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: joypad_${{ steps.commit.outputs.hash }}_pico_w
+          path: artifacts/pico_w/*.uf2
           if-no-files-found: ignore
 
       - name: Upload rp2040zero artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: usbretro_${{ steps.commit.outputs.hash }}_rp2040zero
+          name: joypad_${{ steps.commit.outputs.hash }}_rp2040zero
           path: artifacts/rp2040zero/*.uf2
           if-no-files-found: ignore
 
-      - name: Upload feather_usbhost artifacts
+      - name: Upload feather artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: usbretro_${{ steps.commit.outputs.hash }}_feather_usbhost
-          path: artifacts/feather_usbhost/*.uf2
+          name: joypad_${{ steps.commit.outputs.hash }}_feather
+          path: artifacts/feather/*.uf2
           if-no-files-found: ignore
 
       - name: Upload macropad artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: usbretro_${{ steps.commit.outputs.hash }}_macropad
+          name: joypad_${{ steps.commit.outputs.hash }}_macropad
           path: artifacts/macropad/*.uf2
           if-no-files-found: ignore
 
@@ -222,7 +229,7 @@ jobs:
         with:
           context: .
           load: true
-          tags: usbretro:latest
+          tags: joypad:latest
           cache-from: type=gha
 
       - name: Build release apps
@@ -234,7 +241,7 @@ jobs:
             -v ${{ github.workspace }}:/workspace \
             -w /workspace \
             -e RELEASE_VERSION=${VERSION} \
-            usbretro:latest /bin/bash -c "make releases"
+            joypad:latest /bin/bash -c "make releases"
 
           # Fix permissions
           sudo chown -R $(id -u):$(id -g) releases/

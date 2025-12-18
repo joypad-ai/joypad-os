@@ -38,9 +38,13 @@ extern void btstack_memory_init(void);
 #include "classic/sdp_util.h"
 #include "classic/device_id_server.h"
 
-// Link key storage: memory DB for USB dongle, TLV-based for CYW43
+// Link key storage: TLV (flash) based for all builds
+// USB dongle uses pico_flash_bank_instance(), CYW43 uses SDK's btstack_cyw43.c setup
 #ifndef BTSTACK_USE_CYW43
-#include "classic/btstack_link_key_db_memory.h"
+#include "classic/btstack_link_key_db_tlv.h"
+#include "ble/le_device_db_tlv.h"
+#include "btstack_tlv_flash_bank.h"
+#include "pico/btstack_flash_bank.h"
 #endif
 
 #include "hci_dump.h"
@@ -350,6 +354,37 @@ static void setup_hid_handlers(void)
 // btstack_host_init is only used for USB dongle transport
 // For CYW43, use btstack_host_init_hid_handlers() after btstack_cyw43_init()
 #ifndef BTSTACK_USE_CYW43
+
+// TLV context for flash-based link key storage (must be static/persistent)
+static btstack_tlv_flash_bank_t btstack_tlv_flash_bank_context;
+
+// Set up TLV (flash) storage for persistent link keys and BLE bonding
+static void setup_tlv_storage(void) {
+    printf("[BTSTACK_HOST] Setting up flash-based TLV storage...\n");
+
+    // Get the Pico SDK flash bank HAL instance
+    const hal_flash_bank_t *hal_flash_bank_impl = pico_flash_bank_instance();
+
+    // Initialize BTstack TLV with flash bank
+    const btstack_tlv_t *btstack_tlv_impl = btstack_tlv_flash_bank_init_instance(
+            &btstack_tlv_flash_bank_context,
+            hal_flash_bank_impl,
+            NULL);
+
+    // Set global TLV instance
+    btstack_tlv_set_instance(btstack_tlv_impl, &btstack_tlv_flash_bank_context);
+
+    // Set up Classic BT link key storage using TLV
+    const btstack_link_key_db_t *btstack_link_key_db = btstack_link_key_db_tlv_get_instance(
+            btstack_tlv_impl, &btstack_tlv_flash_bank_context);
+    hci_set_link_key_db(btstack_link_key_db);
+    printf("[BTSTACK_HOST] Classic BT link key DB configured (flash)\n");
+
+    // Configure BLE device DB for TLV storage
+    le_device_db_tlv_configure(btstack_tlv_impl, &btstack_tlv_flash_bank_context);
+    printf("[BTSTACK_HOST] BLE device DB configured (flash)\n");
+}
+
 void btstack_host_init(const void* transport)
 {
     if (hid_state.initialized) {
@@ -380,9 +415,8 @@ void btstack_host_init(const void* transport)
     printf("[BTSTACK_HOST] Init HCI with provided transport...\n");
     hci_init(transport, NULL);
 
-    // Set link key DB for Classic BT bonding (stores link keys in RAM)
-    printf("[BTSTACK_HOST] Init Link Key DB...\n");
-    hci_set_link_key_db(btstack_link_key_db_memory_instance());
+    // Set up flash-based TLV storage for persistent link keys and BLE bonds
+    setup_tlv_storage();
 
     // Set up HID handlers
     setup_hid_handlers();
@@ -949,29 +983,12 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
             bd_addr_t req_addr;
             reverse_bytes(&packet[2], req_addr, 6);
 
-            // Check if BTstack found the connection
+            // BTstack handles link key lookup via the registered link key DB (TLV flash storage)
+            // This is just for logging - hci.c will query the DB and send the appropriate reply
             hci_connection_t *conn = hci_connection_for_bd_addr_and_type(req_addr, BD_ADDR_TYPE_ACL);
             printf("[BTSTACK_HOST] Link key request: %02X:%02X:%02X:%02X:%02X:%02X conn=%s\n",
                    req_addr[0], req_addr[1], req_addr[2], req_addr[3], req_addr[4], req_addr[5],
                    conn ? "YES" : "NO");
-
-#ifndef BTSTACK_USE_CYW43
-            // For USB dongle: BTstack's internal handler already ran - if conn was found, it set AUTH_FLAG
-            // and will send reply in hci_run(). If not, we need to send reply ourselves.
-            // For CYW43: SDK's BTstack handles link keys via flash TLV, let it handle this
-            if (!conn) {
-                link_key_t key;
-                link_key_type_t type;
-                const btstack_link_key_db_t* db = btstack_link_key_db_memory_instance();
-                if (db && db->get_link_key(req_addr, key, &type)) {
-                    printf("[BTSTACK_HOST] Key found, sending reply (conn not found by BTstack)\n");
-                    hci_send_cmd(&hci_link_key_request_reply, req_addr, key);
-                } else {
-                    printf("[BTSTACK_HOST] Key NOT found\n");
-                    hci_send_cmd(&hci_link_key_request_negative_reply, req_addr);
-                }
-            }
-#endif
             break;
         }
 
@@ -979,18 +996,10 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
             bd_addr_t notif_addr;
             reverse_bytes(&packet[2], notif_addr, 6);
             link_key_type_t key_type = (link_key_type_t)packet[24];
-            printf("[BTSTACK_HOST] Link key notification: %02X:%02X:%02X:%02X:%02X:%02X type=%d\n",
+            // BTstack stores link key via the registered link key DB (TLV flash storage)
+            // This is just for logging - hci.c already stored the key
+            printf("[BTSTACK_HOST] Link key notification: %02X:%02X:%02X:%02X:%02X:%02X type=%d (stored to flash)\n",
                    notif_addr[0], notif_addr[1], notif_addr[2], notif_addr[3], notif_addr[4], notif_addr[5], key_type);
-
-#ifndef BTSTACK_USE_CYW43
-            // For USB dongle: store link key in memory DB
-            // For CYW43: SDK's BTstack handles link keys via flash TLV
-            const btstack_link_key_db_t* db = btstack_link_key_db_memory_instance();
-            if (db) {
-                db->put_link_key(notif_addr, &packet[8], key_type);
-                printf("[BTSTACK_HOST] Link key stored\n");
-            }
-#endif
             break;
         }
 
