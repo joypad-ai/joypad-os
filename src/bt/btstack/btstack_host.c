@@ -142,6 +142,14 @@ static struct {
     bd_addr_type_t pending_addr_type;
     char pending_name[32];
 
+    // Last connected device (for reconnection)
+    bd_addr_t last_connected_addr;
+    bd_addr_type_t last_connected_addr_type;
+    char last_connected_name[32];
+    bool has_last_connected;
+    uint32_t reconnect_attempt_time;
+    uint8_t reconnect_attempts;
+
     // Connections
     ble_connection_t connections[MAX_BLE_CONNECTIONS];
 
@@ -738,22 +746,19 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                        addr[5], addr[4], addr[3], addr[2], addr[1], addr[0], name);
             }
 
-            // Check for controllers
+            // Check for controllers by name
             bool is_xbox = (strstr(name, "Xbox") != NULL);
             bool is_nintendo = (strstr(name, "Pro Controller") != NULL ||
                                strstr(name, "Joy-Con") != NULL);
             bool is_stadia = (strstr(name, "Stadia") != NULL);
             bool is_controller = is_xbox || is_nintendo || is_stadia;
 
-            // Only log potential controllers to reduce spam
-            if (is_controller && name[0] != 0) {
-                printf("[BTSTACK_HOST] BLE controller: %02X:%02X:%02X:%02X:%02X:%02X name=\"%s\"\n",
-                       addr[5], addr[4], addr[3], addr[2], addr[1], addr[0], name);
-
-                // Auto-connect to supported BLE controllers
-                if ((is_xbox || is_stadia) && hid_state.state == BLE_STATE_SCANNING) {
+            // Auto-connect to supported BLE controllers by name
+            if (hid_state.state == BLE_STATE_SCANNING && is_controller) {
+                if (is_xbox || is_stadia) {
+                    printf("[BTSTACK_HOST] BLE controller: %02X:%02X:%02X:%02X:%02X:%02X name=\"%s\"\n",
+                           addr[5], addr[4], addr[3], addr[2], addr[1], addr[0], name);
                     printf("[BTSTACK_HOST] Connecting to %s...\n", is_xbox ? "Xbox" : "Stadia");
-                    // Save name for when connection completes
                     strncpy(hid_state.pending_name, name, sizeof(hid_state.pending_name) - 1);
                     hid_state.pending_name[sizeof(hid_state.pending_name) - 1] = '\0';
                     btstack_host_connect_ble(addr, addr_type);
@@ -908,6 +913,17 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                     if (status != 0) {
                         printf("[BTSTACK_HOST] Connection failed: 0x%02X\n", status);
                         hid_state.state = BLE_STATE_IDLE;
+
+                        // If reconnection attempt failed, try again or resume scanning
+                        if (hid_state.has_last_connected && hid_state.reconnect_attempts < 5) {
+                            hid_state.reconnect_attempts++;
+                            printf("[BTSTACK_HOST] Retrying reconnection (attempt %d)...\n",
+                                   hid_state.reconnect_attempts);
+                            btstack_host_connect_ble(hid_state.last_connected_addr, hid_state.last_connected_addr_type);
+                        } else {
+                            printf("[BTSTACK_HOST] Reconnection failed, resuming scan\n");
+                            btstack_host_start_scan();
+                        }
                         break;
                     }
 
@@ -992,8 +1008,24 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
 
             hid_state.state = BLE_STATE_IDLE;
 
-            // Resume scanning
-            btstack_host_start_scan();
+            // Try to reconnect to last connected device if we have one stored
+            if (hid_state.has_last_connected && hid_state.reconnect_attempts < 5) {
+                hid_state.reconnect_attempts++;
+                printf("[BTSTACK_HOST] Attempting reconnection to stored device (attempt %d)...\n",
+                       hid_state.reconnect_attempts);
+                printf("[BTSTACK_HOST] Connecting to %02X:%02X:%02X:%02X:%02X:%02X name='%s'\n",
+                       hid_state.last_connected_addr[5], hid_state.last_connected_addr[4],
+                       hid_state.last_connected_addr[3], hid_state.last_connected_addr[2],
+                       hid_state.last_connected_addr[1], hid_state.last_connected_addr[0],
+                       hid_state.last_connected_name);
+                // Copy stored name to pending so it's available when connection completes
+                strncpy(hid_state.pending_name, hid_state.last_connected_name, sizeof(hid_state.pending_name) - 1);
+                hid_state.pending_name[sizeof(hid_state.pending_name) - 1] = '\0';
+                btstack_host_connect_ble(hid_state.last_connected_addr, hid_state.last_connected_addr_type);
+            } else {
+                // Resume scanning for new devices
+                btstack_host_start_scan();
+            }
             break;
         }
 
@@ -1082,6 +1114,17 @@ static void sm_packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *pa
                 printf("[BTSTACK_HOST] SM: Pairing successful!\n");
                 ble_connection_t* conn = find_connection_by_handle(handle);
                 if (conn) {
+                    // Store for reconnection
+                    memcpy(hid_state.last_connected_addr, conn->addr, 6);
+                    hid_state.last_connected_addr_type = conn->addr_type;
+                    strncpy(hid_state.last_connected_name, conn->name, sizeof(hid_state.last_connected_name) - 1);
+                    hid_state.last_connected_name[sizeof(hid_state.last_connected_name) - 1] = '\0';
+                    hid_state.has_last_connected = true;
+                    hid_state.reconnect_attempts = 0;
+                    printf("[BTSTACK_HOST] Stored device for reconnection: %02X:%02X:%02X:%02X:%02X:%02X name='%s'\n",
+                           conn->addr[5], conn->addr[4], conn->addr[3], conn->addr[2], conn->addr[1], conn->addr[0],
+                           hid_state.last_connected_name);
+
                     // Xbox controllers: use fast-path with known handle 0x001E
                     // Other controllers: do proper GATT discovery
                     bool is_xbox = (strstr(conn->name, "Xbox") != NULL);
@@ -1111,6 +1154,18 @@ static void sm_packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *pa
                 printf("[BTSTACK_HOST] SM: Re-encryption successful!\n");
                 ble_connection_t* conn = find_connection_by_handle(handle);
                 if (conn) {
+                    // Reset reconnect counter on successful re-encryption
+                    hid_state.reconnect_attempts = 0;
+
+                    // Update stored device info (in case address type changed or for reconnection)
+                    memcpy(hid_state.last_connected_addr, conn->addr, 6);
+                    hid_state.last_connected_addr_type = conn->addr_type;
+                    if (conn->name[0] != '\0') {
+                        strncpy(hid_state.last_connected_name, conn->name, sizeof(hid_state.last_connected_name) - 1);
+                        hid_state.last_connected_name[sizeof(hid_state.last_connected_name) - 1] = '\0';
+                    }
+                    hid_state.has_last_connected = true;
+
                     bool is_xbox = (strstr(conn->name, "Xbox") != NULL);
                     if (is_xbox) {
                         printf("[BTSTACK_HOST] Xbox detected - using fast-path HID listener\n");
