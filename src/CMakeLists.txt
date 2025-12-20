@@ -316,14 +316,15 @@ joypad_add_btstack(joypad_ngc)
 pico_generate_pio_header(joypad_ngc ${CMAKE_CURRENT_LIST_DIR}/lib/joybus-pio/src/joybus.pio)
 
 # --- GameCube (RP2040-Zero) ---
+# Note: Uses native USB host (not PIO USB) to avoid PIO conflict with joybus
+# Override default I2C pins (6/7) to avoid conflict with GameCube pins (GC_DATA=7, GC_3V3=6)
 add_executable(joypad_ngc_rp2040zero)
 target_compile_definitions(joypad_ngc_rp2040zero PRIVATE
     CONFIG_NGC=1
-    CONFIG_PIO_USB_DP_PIN=10
-    PICO_DEFAULT_PIO_USB_DP_PIN=10
-    BOARD_TUH_RHPORT=1
     WS2812_PIN=16
     USE_BOOTSEL_BUTTON=1
+    PICO_DEFAULT_I2C_SDA_PIN=14
+    PICO_DEFAULT_I2C_SCL_PIN=15
 )
 target_sources(joypad_ngc_rp2040zero PUBLIC ${COMMON_SOURCES}
     ${CMAKE_CURRENT_SOURCE_DIR}/native/device/gamecube/gamecube_device.c
@@ -336,7 +337,7 @@ target_include_directories(joypad_ngc_rp2040zero PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/native/device/gamecube
     ${CMAKE_CURRENT_SOURCE_DIR}/lib/joybus-pio/include
 )
-target_link_libraries(joypad_ngc_rp2040zero PRIVATE ${COMMON_LIBRARIES} hardware_flash tinyusb_pico_pio_usb)
+target_link_libraries(joypad_ngc_rp2040zero PRIVATE ${COMMON_LIBRARIES} hardware_flash)
 joypad_target_common(joypad_ngc_rp2040zero)
 joypad_add_btstack(joypad_ngc_rp2040zero)
 pico_generate_pio_header(joypad_ngc_rp2040zero ${CMAKE_CURRENT_LIST_DIR}/lib/joybus-pio/src/joybus.pio)
