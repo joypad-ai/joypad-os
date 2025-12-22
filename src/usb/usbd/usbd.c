@@ -158,10 +158,10 @@ static uint32_t apply_usbd_profile(const input_event_t* event, profile_output_t*
 // CONVERSION HELPERS
 // ============================================================================
 
-// Convert input_event buttons to HID gamepad buttons
-static uint16_t convert_buttons(uint32_t buttons)
+// Convert input_event buttons to HID gamepad buttons (18 buttons)
+static uint32_t convert_buttons(uint32_t buttons)
 {
-    uint16_t hid_buttons = 0;
+    uint32_t hid_buttons = 0;
 
     // Joypad uses active-high (1 = pressed), HID uses active-high (1 = pressed)
     // No inversion needed
@@ -180,6 +180,10 @@ static uint16_t convert_buttons(uint32_t buttons)
     if (buttons & JP_BUTTON_R3) hid_buttons |= USB_GAMEPAD_MASK_R3;
     if (buttons & JP_BUTTON_A1) hid_buttons |= USB_GAMEPAD_MASK_A1;
     if (buttons & JP_BUTTON_A2) hid_buttons |= USB_GAMEPAD_MASK_A2;
+    if (buttons & JP_BUTTON_A3) hid_buttons |= USB_GAMEPAD_MASK_A3;
+    if (buttons & JP_BUTTON_A4) hid_buttons |= USB_GAMEPAD_MASK_A4;
+    if (buttons & JP_BUTTON_L4) hid_buttons |= USB_GAMEPAD_MASK_L4;
+    if (buttons & JP_BUTTON_R4) hid_buttons |= USB_GAMEPAD_MASK_R4;
 
     return hid_buttons;
 }
@@ -647,9 +651,11 @@ static bool usbd_send_hid_report(uint8_t player_index)
     profile_output_t profile_out;
     uint32_t processed_buttons = apply_usbd_profile(event, &profile_out);
 
-    // Convert processed buttons to HID report
-    uint16_t buttons = convert_buttons(processed_buttons);
-    hid_report.buttons = buttons;
+    // Convert processed buttons to HID report (18 buttons across 3 bytes)
+    uint32_t buttons = convert_buttons(processed_buttons);
+    hid_report.buttons_lo = buttons & 0xFF;           // Buttons 1-8
+    hid_report.buttons_mid = (buttons >> 8) & 0xFF;   // Buttons 9-16
+    hid_report.buttons_hi = (buttons >> 16) & 0x03;   // Buttons 17-18 (L4, R4)
     hid_report.hat = convert_dpad_to_hat(processed_buttons);
 
     // Analog sticks (HID convention: 0=up, 255=down - no inversion needed)

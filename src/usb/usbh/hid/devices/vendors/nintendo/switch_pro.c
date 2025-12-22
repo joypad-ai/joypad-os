@@ -6,6 +6,11 @@
 #include "core/input_event.h"
 #include "pico/time.h"
 
+// Stick calibration data
+typedef struct {
+  uint16_t center;      // Calibrated center value
+} stick_cal_t;
+
 // Switch instance state
 typedef struct TU_ATTR_PACKED
 {
@@ -22,6 +27,9 @@ typedef struct TU_ATTR_PACKED
   bool command_ack;
   uint8_t rumble;
   uint8_t player_led_set;
+  // Stick calibration (captured on first reports assuming sticks at rest)
+  stick_cal_t cal_lx, cal_ly, cal_rx, cal_ry;
+  uint8_t cal_samples;
 } switch_instance_t;
 
 // Cached device report properties on mount
@@ -46,11 +54,7 @@ static inline bool is_switch_pro(uint16_t vid, uint16_t pid)
   return ((vid == 0x057e && (
            pid == 0x2009 || // Nintendo Switch Pro
            pid == 0x200e || // JoyCon Charge Grip
-           pid == 0x2017 || // SNES Controller (NSO)
-           pid == 0x2066 || // Joy-Con 2 (R) - experimental
-           pid == 0x2067 || // Joy-Con 2 (L) - experimental
-           pid == 0x2069 || // Nintendo Switch Pro 2 - experimental
-           pid == 0x2073    // GameCube Controller (NSW2) - experimental
+           pid == 0x2017    // SNES Controller (NSO)
   )));
 }
 
@@ -70,16 +74,29 @@ bool diff_report_switch_pro(switch_pro_report_t const* rpt1, switch_pro_report_t
   return result;
 }
 
-// scales down switch analog value to a single byte
-uint8_t scale_analog_switch_pro(uint16_t switch_val)
-{
-    // If the input is zero, then output min value of 1
-    if (switch_val == 0) {
-        return 1;
-    }
+// Effective stick range from center (Switch sticks reach ~75-80% of theoretical max)
+#define STICK_RANGE 1600
+#define CAL_SAMPLES_NEEDED 4
 
-    // Otherwise, scale the switch value from [1, 4095] to [1, 255]
-    return 1 + ((switch_val - 1) * 255) / 4095;
+// Legacy scaling for Joy-Cons (uncalibrated, simple linear)
+static uint8_t scale_analog_joycon(uint16_t switch_val) {
+  if (switch_val == 0) return 1;
+  return 1 + ((switch_val - 1) * 255) / 4095;
+}
+
+// Scale calibrated analog value to 8-bit (0-255, 128 = center)
+static uint8_t scale_analog_calibrated(uint16_t val, uint16_t center) {
+  int32_t centered = (int32_t)val - (int32_t)center;
+
+  // Scale to -128..+127 range using effective stick range
+  int32_t scaled = (centered * 127) / STICK_RANGE;
+
+  // Clamp to valid range
+  if (scaled < -128) scaled = -128;
+  if (scaled > 127) scaled = 127;
+
+  // Convert to 0-255 with 128 as center
+  return (uint8_t)(scaled + 128);
 }
 
 // resets default values in case devices are hotswapped
@@ -146,6 +163,32 @@ void input_report_switch_pro(uint8_t dev_addr, uint8_t instance, uint8_t const* 
     update_report.right_x = (update_report.right_stick[0] & 0xFF) | ((update_report.right_stick[1] & 0x0F) << 8);
     update_report.right_y = ((update_report.right_stick[1] & 0xF0) >> 4) | ((update_report.right_stick[2] & 0xFF) << 4);
 
+    // Auto-calibrate center on first reports (Pro controllers only, assumes sticks at rest)
+    switch_instance_t* inst = &switch_devices[dev_addr].instances[instance];
+    if (switch_devices[dev_addr].is_pro && inst->cal_samples < CAL_SAMPLES_NEEDED) {
+      if (inst->cal_samples == 0) {
+        inst->cal_lx.center = update_report.left_x;
+        inst->cal_ly.center = update_report.left_y;
+        inst->cal_rx.center = update_report.right_x;
+        inst->cal_ry.center = update_report.right_y;
+      } else {
+        inst->cal_lx.center = (inst->cal_lx.center + update_report.left_x) / 2;
+        inst->cal_ly.center = (inst->cal_ly.center + update_report.left_y) / 2;
+        inst->cal_rx.center = (inst->cal_rx.center + update_report.right_x) / 2;
+        inst->cal_ry.center = (inst->cal_ry.center + update_report.right_y) / 2;
+      }
+      inst->cal_samples++;
+
+      if (inst->cal_samples >= CAL_SAMPLES_NEEDED) {
+        TU_LOG1("SWITCH[%d|%d]: Calibrated centers: L(%u,%u) R(%u,%u)\r\n",
+               dev_addr, instance,
+               inst->cal_lx.center, inst->cal_ly.center,
+               inst->cal_rx.center, inst->cal_ry.center);
+      }
+      prev_report[dev_addr-1][instance] = update_report;
+      return;  // Skip input during calibration
+    }
+
     if (diff_report_switch_pro(&prev_report[dev_addr-1][instance], &update_report))
     {
       TU_LOG1("SWITCH[%d|%d]: Report ID = 0x%x\r\n", dev_addr, instance, update_report.report_id);
@@ -187,9 +230,10 @@ void input_report_switch_pro(uint8_t dev_addr, uint8_t instance, uint8_t const* 
       bool bttn_b4 = update_report.x;
       bool bttn_l1 = update_report.l;
       bool bttn_r1 = update_report.r;
-      bool bttn_s1 = update_report.select || update_report.zl || update_report.zr;
+      bool bttn_s1 = update_report.select;
       bool bttn_s2 = update_report.start;
       bool bttn_a1 = update_report.home;
+      bool bttn_a2 = update_report.cap;
 
       uint8_t leftX = 0;
       uint8_t leftY = 0;
@@ -197,10 +241,11 @@ void input_report_switch_pro(uint8_t dev_addr, uint8_t instance, uint8_t const* 
       uint8_t rightY = 0;
 
       if (switch_devices[dev_addr].is_pro) {
-        leftX = scale_analog_switch_pro(update_report.left_x);
-        leftY = 255 - scale_analog_switch_pro(update_report.left_y);   // Invert Y (Nintendo: up=high, HID: up=low)
-        rightX = scale_analog_switch_pro(update_report.right_x);
-        rightY = 255 - scale_analog_switch_pro(update_report.right_y); // Invert Y (Nintendo: up=high, HID: up=low)
+        // Use calibrated scaling for Pro controllers
+        leftX = scale_analog_calibrated(update_report.left_x, inst->cal_lx.center);
+        leftY = 255 - scale_analog_calibrated(update_report.left_y, inst->cal_ly.center);   // Invert Y
+        rightX = scale_analog_calibrated(update_report.right_x, inst->cal_rx.center);
+        rightY = 255 - scale_analog_calibrated(update_report.right_y, inst->cal_ry.center); // Invert Y
       } else {
         bool is_left_joycon = (!update_report.right_x && !update_report.right_y);
         bool is_right_joycon = (!update_report.left_x && !update_report.left_y);
@@ -212,8 +257,8 @@ void input_report_switch_pro(uint8_t dev_addr, uint8_t instance, uint8_t const* 
           bttn_l1 = update_report.l;
           bttn_s2 = false;
 
-          leftX = scale_analog_switch_pro(update_report.left_x + 127);
-          leftY = 255 - scale_analog_switch_pro(update_report.left_y - 127);  // Invert Y
+          leftX = scale_analog_joycon(update_report.left_x + 127);
+          leftY = 255 - scale_analog_joycon(update_report.left_y - 127);  // Invert Y
         }
         else if (is_right_joycon)
         {
@@ -223,8 +268,8 @@ void input_report_switch_pro(uint8_t dev_addr, uint8_t instance, uint8_t const* 
           dpad_left  = false; // (right_stick_x < (2048 - threshold));
           bttn_a1 = false;
 
-          rightX = scale_analog_switch_pro(update_report.right_x);
-          rightY = 255 - scale_analog_switch_pro(update_report.right_y + 127);  // Invert Y
+          rightX = scale_analog_joycon(update_report.right_x);
+          rightY = 255 - scale_analog_joycon(update_report.right_y + 127);  // Invert Y
         }
       }
 
@@ -244,7 +289,8 @@ void input_report_switch_pro(uint8_t dev_addr, uint8_t instance, uint8_t const* 
                  ((bttn_s2)              ? JP_BUTTON_S2 : 0) |
                  ((update_report.lstick) ? JP_BUTTON_L3 : 0) |
                  ((update_report.rstick) ? JP_BUTTON_R3 : 0) |
-                 ((bttn_a1)              ? JP_BUTTON_A1 : 0));
+                 ((bttn_a1)              ? JP_BUTTON_A1 : 0) |
+                 ((bttn_a2)              ? JP_BUTTON_A2 : 0));
 
       // Joy-Con Grip merging: combine both Joy-Con inputs into one controller
       if (switch_devices[dev_addr].instance_count > 1) {
@@ -288,7 +334,8 @@ void input_report_switch_pro(uint8_t dev_addr, uint8_t instance, uint8_t const* 
                                     ((update_report.zr) ? JP_BUTTON_R2 : 0) |
                                     ((update_report.rstick) ? JP_BUTTON_R3 : 0) |
                                     ((bttn_s2) ? JP_BUTTON_S2 : 0) |  // Plus button
-                                    ((bttn_a1) ? JP_BUTTON_A1 : 0));  // Home button
+                                    ((bttn_a1) ? JP_BUTTON_A1 : 0) |  // Home button
+                                    ((bttn_a2) ? JP_BUTTON_A2 : 0));  // Capture button
 
           switch_devices[dev_addr].merged_event.buttons |= right_buttons;
           switch_devices[dev_addr].merged_event.analog[2] = rightX;  // Right stick X
@@ -326,99 +373,6 @@ void input_report_switch_pro(uint8_t dev_addr, uint8_t instance, uint8_t const* 
       prev_report[dev_addr-1][instance] = update_report;
 
     }
-  }
-  else if (update_report.report_id == 0x09) // Switch 2 Pro Controller Report
-  {
-    switch_pro2_report_t pro2_report;
-    memcpy(&pro2_report, report, sizeof(pro2_report));
-
-    switch_devices[dev_addr].instances[instance].usb_enable_ack = true;
-
-    // Unpack 12-bit analog values (same format as Switch 1)
-    pro2_report.left_x = (pro2_report.left_stick[0] & 0xFF) | ((pro2_report.left_stick[1] & 0x0F) << 8);
-    pro2_report.left_y = ((pro2_report.left_stick[1] & 0xF0) >> 4) | ((pro2_report.left_stick[2] & 0xFF) << 4);
-    pro2_report.right_x = (pro2_report.right_stick[0] & 0xFF) | ((pro2_report.right_stick[1] & 0x0F) << 8);
-    pro2_report.right_y = ((pro2_report.right_stick[1] & 0xF0) >> 4) | ((pro2_report.right_stick[2] & 0xFF) << 4);
-
-    TU_LOG1("SWITCH2[%d|%d]: Report ID = 0x%x\r\n", dev_addr, instance, pro2_report.report_id);
-    TU_LOG1("(lx, ly, rx, ry) = (%u, %u, %u, %u)\r\n", pro2_report.left_x, pro2_report.left_y, pro2_report.right_x, pro2_report.right_y);
-    TU_LOG1("DPad = ");
-
-    if (pro2_report.down) TU_LOG1("Down ");
-    if (pro2_report.up) TU_LOG1("Up ");
-    if (pro2_report.right) TU_LOG1("Right ");
-    if (pro2_report.left ) TU_LOG1("Left ");
-
-    TU_LOG1("; Buttons = ");
-    if (pro2_report.y) TU_LOG1("Y ");
-    if (pro2_report.b) TU_LOG1("B ");
-    if (pro2_report.a) TU_LOG1("A ");
-    if (pro2_report.x) TU_LOG1("X ");
-    if (pro2_report.l) TU_LOG1("L ");
-    if (pro2_report.r) TU_LOG1("R ");
-    if (pro2_report.zl) TU_LOG1("ZL ");
-    if (pro2_report.zr) TU_LOG1("ZR ");
-    if (pro2_report.lstick) TU_LOG1("LStick ");
-    if (pro2_report.rstick) TU_LOG1("RStick ");
-    if (pro2_report.select) TU_LOG1("Select ");
-    if (pro2_report.start) TU_LOG1("Start ");
-    if (pro2_report.home) TU_LOG1("Home ");
-    if (pro2_report.cap) TU_LOG1("Cap ");
-    TU_LOG1("\r\n");
-
-    bool dpad_up    = pro2_report.up;
-    bool dpad_right = pro2_report.right;
-    bool dpad_down  = pro2_report.down;
-    bool dpad_left  = pro2_report.left;
-    bool bttn_b1 = pro2_report.b;
-    bool bttn_b2 = pro2_report.a;
-    bool bttn_b3 = pro2_report.y;
-    bool bttn_b4 = pro2_report.x;
-    bool bttn_l1 = pro2_report.l;
-    bool bttn_r1 = pro2_report.r;
-    bool bttn_s1 = pro2_report.select || pro2_report.zl || pro2_report.zr;
-    bool bttn_s2 = pro2_report.start;
-    bool bttn_a1 = pro2_report.home;
-
-    // Scale analog sticks
-    uint8_t leftX = scale_analog_switch_pro(pro2_report.left_x);
-    uint8_t leftY = scale_analog_switch_pro(pro2_report.left_y);
-    uint8_t rightX = scale_analog_switch_pro(pro2_report.right_x);
-    uint8_t rightY = scale_analog_switch_pro(pro2_report.right_y);
-
-    buttons = (((dpad_up)              ? JP_BUTTON_DU : 0) |
-               ((dpad_down)            ? JP_BUTTON_DD : 0) |
-               ((dpad_left)            ? JP_BUTTON_DL : 0) |
-               ((dpad_right)           ? JP_BUTTON_DR : 0) |
-               ((bttn_b1)              ? JP_BUTTON_B1 : 0) |
-               ((bttn_b2)              ? JP_BUTTON_B2 : 0) |
-               ((bttn_b3)              ? JP_BUTTON_B3 : 0) |
-               ((bttn_b4)              ? JP_BUTTON_B4 : 0) |
-               ((bttn_l1)              ? JP_BUTTON_L1 : 0) |
-               ((bttn_r1)              ? JP_BUTTON_R1 : 0) |
-               ((pro2_report.zl)       ? JP_BUTTON_L2 : 0) |
-               ((pro2_report.zr)       ? JP_BUTTON_R2 : 0) |
-               ((bttn_s1)              ? JP_BUTTON_S1 : 0) |
-               ((bttn_s2)              ? JP_BUTTON_S2 : 0) |
-               ((pro2_report.lstick)   ? JP_BUTTON_L3 : 0) |
-               ((pro2_report.rstick)   ? JP_BUTTON_R3 : 0) |
-               ((bttn_a1)              ? JP_BUTTON_A1 : 0));
-
-    bool is_root = instance == switch_devices[dev_addr].instance_root;
-    input_event_t event = {
-      .dev_addr = dev_addr,
-      .instance = is_root ? instance : -1,
-      .type = INPUT_TYPE_GAMEPAD,
-        .transport = INPUT_TRANSPORT_USB,
-        .transport = INPUT_TRANSPORT_USB,
-        .transport = INPUT_TRANSPORT_USB,
-        .transport = INPUT_TRANSPORT_USB,
-      .buttons = buttons,
-      .button_count = 10,  // B, A, Y, X, L, R, ZL, ZR, L3, R3
-      .analog = {leftX, leftY, rightX, rightY, 128, 0, 0, 128},
-      .keys = 0,
-    };
-    router_submit_input(&event);
   }
   else // process input reports for events and command acknowledgments
   {
@@ -676,9 +630,7 @@ static inline bool init_switch_pro(uint8_t dev_addr, uint8_t instance)
   uint16_t vid, pid;
   tuh_vid_pid_get(dev_addr, &vid, &pid);
   // Mark controllers with analog sticks as "Pro" for proper scaling
-  if (pid == 0x2009 ||  // Switch Pro
-      pid == 0x2069 ||  // Switch Pro 2 - experimental
-      pid == 0x2073) {  // GameCube Controller (NSW2) - experimental
+  if (pid == 0x2009) {  // Switch Pro
     switch_devices[dev_addr].is_pro = true;
   }
 }

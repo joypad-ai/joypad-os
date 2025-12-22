@@ -9,7 +9,7 @@
 #include <stdint.h>
 
 // HID Report Descriptor for Generic Gamepad (GP2040-CE compatible, PS3 support)
-// 14 buttons, 4 axes (2 sticks), 1 dpad (hat switch), 12 pressure axes (PS3)
+// 18 buttons, 4 axes (2 sticks), 1 dpad (hat switch), 12 pressure axes (PS3)
 static const uint8_t hid_report_descriptor[] = {
     0x05, 0x01,        // Usage Page (Generic Desktop Ctrls)
     0x09, 0x05,        // Usage (Game Pad)
@@ -19,13 +19,13 @@ static const uint8_t hid_report_descriptor[] = {
     0x35, 0x00,        //   Physical Minimum (0)
     0x45, 0x01,        //   Physical Maximum (1)
     0x75, 0x01,        //   Report Size (1)
-    0x95, 0x0E,        //   Report Count (14)
+    0x95, 0x12,        //   Report Count (18)
     0x05, 0x09,        //   Usage Page (Button)
     0x19, 0x01,        //   Usage Minimum (Button 1)
-    0x29, 0x0E,        //   Usage Maximum (Button 14)
+    0x29, 0x12,        //   Usage Maximum (Button 18)
     0x81, 0x02,        //   Input (Data,Var,Abs)
-    0x95, 0x02,        //   Report Count (2)
-    0x81, 0x01,        //   Input (Const,Ary,Abs) - 2 bit padding
+    0x95, 0x06,        //   Report Count (6)
+    0x81, 0x01,        //   Input (Const,Ary,Abs) - 6 bit padding to byte align
 
     // D-pad (Hat Switch)
     0x05, 0x01,        //   Usage Page (Generic Desktop Ctrls)
@@ -74,9 +74,11 @@ static const uint8_t hid_report_descriptor[] = {
 };
 
 // HID Report structure (matches descriptor above)
-// 19 bytes total: buttons + hat + sticks + PS3 pressure
+// 20 bytes total: buttons + hat + sticks + PS3 pressure
 typedef struct __attribute__((packed)) {
-    uint16_t buttons;       // 14 buttons + 2 padding bits
+    uint8_t  buttons_lo;    // Buttons 1-8: B3,B1,B2,B4,L1,R1,L2,R2
+    uint8_t  buttons_mid;   // Buttons 9-16: S1,S2,L3,R3,A1,A2,A3,A4
+    uint8_t  buttons_hi;    // Buttons 17-18: L4,R4 + 6 padding bits
     uint8_t  hat;           // D-pad: low 4 bits = hat (0-7, 8=center), high 4 bits = padding
     uint8_t  lx;            // Left stick X (0-255, 128 = center)
     uint8_t  ly;            // Left stick Y (0-255, 128 = center)

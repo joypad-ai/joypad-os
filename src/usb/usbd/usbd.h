@@ -70,6 +70,10 @@ typedef enum {
 #define USB_GAMEPAD_MASK_R3    (1U << 11)  // DInput 12 - Right stick click
 #define USB_GAMEPAD_MASK_A1    (1U << 12)  // DInput 13 - Home/Guide
 #define USB_GAMEPAD_MASK_A2    (1U << 13)  // DInput 14 - Capture/Touchpad
+#define USB_GAMEPAD_MASK_A3    (1U << 14)  // DInput 15 - Mute/Square
+#define USB_GAMEPAD_MASK_A4    (1U << 15)  // DInput 16 - Reserved
+#define USB_GAMEPAD_MASK_L4    (1U << 16)  // DInput 17 - Left paddle
+#define USB_GAMEPAD_MASK_R4    (1U << 17)  // DInput 18 - Right paddle
 
 // D-pad masks
 #define USB_DPAD_MASK_UP       (1U << 0)

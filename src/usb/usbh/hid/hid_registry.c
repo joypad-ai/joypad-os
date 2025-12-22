@@ -16,6 +16,7 @@
 #include "devices/vendors/8bitdo/8bitdo_pce.h"
 #include "devices/vendors/nintendo/gamecube_adapter.h"
 #include "devices/vendors/nintendo/switch_pro.h"
+#include "devices/vendors/nintendo/switch2_pro.h"
 #include "devices/vendors/hori/hori_horipad.h"
 #include "devices/vendors/hori/hori_pokken.h"
 #include "devices/vendors/logitech/logitech_wingman.h"
@@ -39,6 +40,7 @@ void register_devices() {
     device_interfaces[CONTROLLER_ASTROCITY] = &sega_astrocity_interface;
     device_interfaces[CONTROLLER_GAMECUBE] = &gamecube_adapter_interface;
     device_interfaces[CONTROLLER_SWITCH] = &switch_pro_interface;
+    device_interfaces[CONTROLLER_SWITCH2] = &switch2_pro_interface;
     device_interfaces[CONTROLLER_STADIA] = &google_stadia_interface;
     device_interfaces[CONTROLLER_DINPUT] = &hid_gamepad_interface;
     device_interfaces[CONTROLLER_KEYBOARD] = &hid_keyboard_interface;
