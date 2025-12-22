@@ -25,7 +25,8 @@ typedef struct TU_ATTR_PACKED
   bool full_report_enabled;
   bool imu_enabled;
   bool command_ack;
-  uint8_t rumble;
+  uint8_t rumble_left;
+  uint8_t rumble_right;
   uint8_t player_led_set;
   // Stick calibration (captured on first reports assuming sticks at rest)
   stick_cal_t cal_lx, cal_ly, cal_rx, cal_ry;
@@ -145,7 +146,8 @@ void unmount_switch_pro(uint8_t dev_addr, uint8_t instance)
   switch_devices[dev_addr].instances[instance].command_ack = true;
   switch_devices[dev_addr].instances[instance].full_report_enabled = false;
   switch_devices[dev_addr].instances[instance].imu_enabled = false;
-  switch_devices[dev_addr].instances[instance].rumble = 0;
+  switch_devices[dev_addr].instances[instance].rumble_left = 0;
+  switch_devices[dev_addr].instances[instance].rumble_right = 0;
   switch_devices[dev_addr].instances[instance].player_led_set = 0xff;
   switch_devices[dev_addr].is_pro = false;
 
@@ -564,8 +566,8 @@ void output_switch_pro(uint8_t dev_addr, uint8_t instance, device_output_config_
           report[0x01] = output_sequence_counter++;
 
           // Include current rumble state in CMD_AND_RUMBLE
-          encode_rumble(config->rumble, &report[0x02]);      // Left motor
-          encode_rumble(config->rumble, &report[0x02 + 4]);  // Right motor
+          encode_rumble(config->rumble_left, &report[0x02]);       // Left motor
+          encode_rumble(config->rumble_right, &report[0x02 + 4]);  // Right motor
 
           report[0x0A + 0] = CMD_LED;    // SUB_COMMAND
 
@@ -583,13 +585,16 @@ void output_switch_pro(uint8_t dev_addr, uint8_t instance, device_output_config_
           }
 
           switch_devices[dev_addr].instances[instance].player_led_set = player_index;
-          switch_devices[dev_addr].instances[instance].rumble = config->rumble;  // Track rumble too
+          switch_devices[dev_addr].instances[instance].rumble_left = config->rumble_left;
+          switch_devices[dev_addr].instances[instance].rumble_right = config->rumble_right;
 
           tuh_hid_send_report(dev_addr, instance, 0, report, report_size);
         }
-        else if (switch_devices[dev_addr].instances[instance].rumble != config->rumble)
+        else if (switch_devices[dev_addr].instances[instance].rumble_left != config->rumble_left ||
+                 switch_devices[dev_addr].instances[instance].rumble_right != config->rumble_right)
         {
-          TU_LOG1("SWITCH[%d|%d]: CMD_RUMBLE_ONLY, %d\r\n", dev_addr, instance, config->rumble);
+          TU_LOG1("SWITCH[%d|%d]: CMD_RUMBLE_ONLY, L=%d R=%d\r\n", dev_addr, instance,
+                  config->rumble_left, config->rumble_right);
 
           report_size = 10;
 
@@ -597,10 +602,11 @@ void output_switch_pro(uint8_t dev_addr, uint8_t instance, device_output_config_
           report[0x00] = CMD_RUMBLE_ONLY; // COMMAND
 
           // Encode rumble with intensity passthrough
-          encode_rumble(config->rumble, &report[0x02]);      // Left motor
-          encode_rumble(config->rumble, &report[0x02 + 4]);  // Right motor
+          encode_rumble(config->rumble_left, &report[0x02]);       // Left motor
+          encode_rumble(config->rumble_right, &report[0x02 + 4]);  // Right motor
 
-          switch_devices[dev_addr].instances[instance].rumble = config->rumble;
+          switch_devices[dev_addr].instances[instance].rumble_left = config->rumble_left;
+          switch_devices[dev_addr].instances[instance].rumble_right = config->rumble_right;
 
           tuh_hid_send_report(dev_addr, instance, 0, report, report_size);
         }
@@ -630,7 +636,8 @@ static inline bool init_switch_pro(uint8_t dev_addr, uint8_t instance)
 
   switch_devices[dev_addr].instances[instance].command_ack = true;
   // Initialize to 0xFF so first config comparison triggers output
-  switch_devices[dev_addr].instances[instance].rumble = 0xFF;
+  switch_devices[dev_addr].instances[instance].rumble_left = 0xFF;
+  switch_devices[dev_addr].instances[instance].rumble_right = 0xFF;
   switch_devices[dev_addr].instances[instance].player_led_set = 0xFF;
 
   if ((++switch_devices[dev_addr].instance_count) == 1) {

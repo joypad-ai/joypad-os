@@ -74,7 +74,8 @@ typedef struct {
   uint8_t ep_out;
   uint8_t itf_num;
   bool xfer_pending;
-  uint8_t rumble;
+  uint8_t rumble_left;
+  uint8_t rumble_right;
   uint8_t player_led;
   uint32_t last_haptic_ms;  // Timestamp of last haptic send
   // Stick calibration (captured on first reports assuming sticks at rest)
@@ -358,24 +359,27 @@ void input_switch2_pro(uint8_t dev_addr, uint8_t instance, uint8_t const* report
 // Haptic update interval (ms) - send continuously while rumble active
 #define HAPTIC_INTERVAL_MS 50
 
-static void output_rumble(uint8_t dev_addr, uint8_t instance, uint8_t rumble) {
+static void output_rumble(uint8_t dev_addr, uint8_t instance, uint8_t rumble_left, uint8_t rumble_right) {
   switch2_instance_t* inst = &switch2_devices[dev_addr].instances[instance];
   uint32_t now = to_ms_since_boot(get_absolute_time());
 
   // Check if we need to send:
   // - Always send on change
   // - Send periodically while rumble is active
-  bool changed = (inst->rumble != rumble);
-  bool periodic = (rumble && (now - inst->last_haptic_ms >= HAPTIC_INTERVAL_MS));
+  bool changed = (inst->rumble_left != rumble_left) || (inst->rumble_right != rumble_right);
+  bool active = (rumble_left || rumble_right);
+  bool periodic = (active && (now - inst->last_haptic_ms >= HAPTIC_INTERVAL_MS));
 
   if (!changed && !periodic) {
     return;
   }
 
   if (changed) {
-    printf("[SWITCH2] Rumble: %d -> %d\r\n", inst->rumble, rumble);
+    printf("[SWITCH2] Rumble: L %d->%d, R %d->%d\r\n",
+           inst->rumble_left, rumble_left, inst->rumble_right, rumble_right);
   }
-  inst->rumble = rumble;
+  inst->rumble_left = rumble_left;
+  inst->rumble_right = rumble_right;
   inst->last_haptic_ms = now;
 
   // Build haptic report
@@ -386,14 +390,18 @@ static void output_rumble(uint8_t dev_addr, uint8_t instance, uint8_t rumble) {
   switch2_haptic_buf[17] = switch2_haptic_buf[1];  // Duplicate counter
   haptic_counter = (haptic_counter + 1) & 0x0F;
 
-  // Use actual intensity value from host (0-255)
-  // If intensity is very low (<16), boost to minimum perceptible level
-  uint8_t intensity = rumble;
-  if (intensity > 0 && intensity < 64) {
-    intensity = 64;  // Minimum perceptible threshold
+  // Apply minimum perceptible threshold to each motor
+  uint8_t left_intensity = rumble_left;
+  if (left_intensity > 0 && left_intensity < 64) {
+    left_intensity = 64;
   }
-  encode_haptic(intensity, &switch2_haptic_buf[2]);   // Left motor: bytes 2-6
-  encode_haptic(intensity, &switch2_haptic_buf[18]);  // Right motor: bytes 18-22
+  uint8_t right_intensity = rumble_right;
+  if (right_intensity > 0 && right_intensity < 64) {
+    right_intensity = 64;
+  }
+
+  encode_haptic(left_intensity, &switch2_haptic_buf[2]);   // Left motor: bytes 2-6
+  encode_haptic(right_intensity, &switch2_haptic_buf[18]); // Right motor: bytes 18-22
 
   // Send via HID (Report ID 0x02)
   tuh_hid_send_report(dev_addr, instance, 0x02, switch2_haptic_buf + 1, 63);
@@ -448,7 +456,7 @@ void task_switch2_pro(uint8_t dev_addr, uint8_t instance, device_output_config_t
 
   // Handle rumble and player LED when ready
   if (inst->state == SWITCH2_STATE_READY) {
-    output_rumble(dev_addr, instance, config->rumble);
+    output_rumble(dev_addr, instance, config->rumble_left, config->rumble_right);
     output_player_led(dev_addr, instance, config->player_index);
     return;
   }
@@ -498,7 +506,8 @@ static bool init_switch2_pro(uint8_t dev_addr, uint8_t instance) {
   memset(inst, 0, sizeof(*inst));
 
   // Initialize to invalid values so first output triggers a send
-  inst->rumble = 0xFF;
+  inst->rumble_left = 0xFF;
+  inst->rumble_right = 0xFF;
   inst->player_led = 0xFF;
 
   switch2_devices[dev_addr].instance_count++;

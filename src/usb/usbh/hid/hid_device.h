@@ -13,7 +13,9 @@
 
 typedef struct {
     int player_index;          // Display player index (for LED patterns)
-    uint8_t rumble;            // Rumble intensity (0-255, 0=off)
+    uint8_t rumble;            // Rumble intensity (0-255, 0=off) - legacy, use max of left/right
+    uint8_t rumble_left;       // Left motor intensity (0-255, heavy/low-frequency)
+    uint8_t rumble_right;      // Right motor intensity (0-255, light/high-frequency)
     uint8_t leds;              // LED pattern/state
     uint8_t trigger_threshold; // Adaptive trigger threshold (0=disabled, 1-255=threshold)
     uint8_t test;              // Test pattern counter (0=disabled)

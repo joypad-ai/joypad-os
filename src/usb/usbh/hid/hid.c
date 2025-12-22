@@ -92,6 +92,8 @@ void hid_task(void)
           device_output_config_t config = {
             .player_index = display_player_index,
             .rumble = fb ? (fb->rumble.left > fb->rumble.right ? fb->rumble.left : fb->rumble.right) : 0,
+            .rumble_left = fb ? fb->rumble.left : 0,
+            .rumble_right = fb ? fb->rumble.right : 0,
             .leds = fb ? fb->led.pattern : 0,
             .trigger_threshold = trigger_threshold,
             .test = test_counter
