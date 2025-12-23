@@ -1,28 +1,28 @@
-# Joypad Core
+# Joypad OS
 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/images/logo_solid.svg">
     <source media="(prefers-color-scheme: light)" srcset="docs/images/logo_solid_black.svg">
-    <img alt="Joypad Core" src="docs/images/logo_solid_black.svg" width="300">
+    <img alt="Joypad OS" src="docs/images/logo_solid_black.svg" width="300">
   </picture>
 </p>
 <p align="center">
-  <img src="https://img.shields.io/github/license/joypad-ai/joypad-core" />
-  <img src="https://img.shields.io/github/actions/workflow/status/joypad-ai/joypad-core/.github/workflows/build.yml" />
+  <img src="https://img.shields.io/github/license/joypad-ai/joypad-os" />
+  <img src="https://img.shields.io/github/actions/workflow/status/joypad-ai/joypad-os/.github/workflows/build.yml" />
 </p>
 
 **Universal controller firmware foundation for adapters, controllers, and input systems.**
 
-Joypad Core is a modular, high-performance firmware platform for building controller adapters, custom controllers, and input/output bridges across USB, Bluetooth, and native game console protocols.
+Joypad OS is a modular, high-performance firmware platform for building controller adapters, custom controllers, and input/output bridges across USB, Bluetooth, and native game console protocols.
 
 Formerly known as **USBRetro**, this project now serves as the foundational firmware layer of the **Joypad** ecosystem — a universal platform for extending how controllers work, connect, and evolve.
 
-Joypad Core focuses on real-time controller I/O, protocol translation, and flexible routing, making it easy to build everything from classic console adapters to next-generation, assistive, and AI-augmented input devices.
+Joypad OS focuses on real-time controller I/O, protocol translation, and flexible routing, making it easy to build everything from classic console adapters to next-generation, assistive, and AI-augmented input devices.
 
 ---
 
-## What Joypad Core Enables
+## What Joypad OS Enables
 
 - **Universal input/output translation** — Convert USB HID devices into native console protocols and vice versa.
 - **Modular firmware apps** — Build specific bridges like `usb2usb`, `usb2gc`, `snes2usb`, passthrough adapters, merged inputs, and hybrid devices — all on a shared core.
@@ -30,7 +30,7 @@ Joypad Core focuses on real-time controller I/O, protocol translation, and flexi
 - **Hardware-agnostic foundation** — Designed to run across RP2040 today, with future portability to ESP32 and nRF platforms.
 - **Foundation for accessibility & assistive play** — Enables custom controllers and input extensions for gamers with diverse needs.
 
-Joypad Core is the real-time nervous system of the Joypad platform.
+Joypad OS is the real-time nervous system of the Joypad platform.
 
 ---
 
@@ -79,7 +79,7 @@ Pre-built adapters available at **[controlleradapter.com](https://controlleradap
 
 ### Quick Flash
 
-1. **Download** latest `.uf2` from [Releases](https://github.com/joypad-ai/joypad-core/releases)
+1. **Download** latest `.uf2` from [Releases](https://github.com/joypad-ai/joypad-os/releases)
 2. **Enter bootloader**:
    - **USB-2-PCE / NUON / 3DO**: Hold BOOT + connect USB-C
    - **GC USB**: Just connect USB-C (no button)
@@ -99,8 +99,8 @@ Pre-built adapters available at **[controlleradapter.com](https://controlleradap
 brew install --cask gcc-arm-embedded cmake git
 
 # Clone and initialize
-git clone https://github.com/joypad-ai/joypad-core.git
-cd joypad-core && make init
+git clone https://github.com/joypad-ai/joypad-os.git
+cd joypad-os && make init
 
 # Build specific product
 make usb2gc         # GameCube adapter
@@ -149,7 +149,7 @@ Output firmware files appear in `releases/` directory.
 
 ## Architecture
 
-Joypad Core uses a modular architecture:
+Joypad OS uses a modular architecture:
 
 - **RP2040** - Dual-core ARM Cortex-M0+ microcontroller
 - **TinyUSB** - USB host stack for polling USB devices
@@ -165,7 +165,7 @@ Joypad Core uses a modular architecture:
 ## Community & Support
 
 - **Discord**: [discord.joypad.com](https://discord.joypad.com/) - Community chat
-- **Issues**: [GitHub Issues](https://github.com/joypad-ai/joypad-core/issues) - Bug reports
+- **Issues**: [GitHub Issues](https://github.com/joypad-ai/joypad-os/issues) - Bug reports
 - **Email**: support@controlleradapter.com - Product support
 
 ---
@@ -183,6 +183,6 @@ Joypad Core uses a modular architecture:
 
 ## License
 
-Joypad Core is licensed under the **Apache-2.0 License**.
+Joypad OS is licensed under the **Apache-2.0 License**.
 
 The **Joypad** name and branding are trademarks of Joypad Inc.

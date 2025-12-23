@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Joypad Core (formerly **USBRetro**) is firmware for RP2040-based adapters that provides universal controller I/O. Old code/commits may reference `USBR_BUTTON_*` or `usbretro` naming.
+Joypad OS (formerly **USBRetro**) is firmware for RP2040-based adapters that provides universal controller I/O. Old code/commits may reference `USBR_BUTTON_*` or `usbretro` naming.
 
 **Inputs:**
 - USB HID controllers, keyboards, mice
@@ -28,8 +28,8 @@ Uses TinyUSB for USB, BTstack for Bluetooth, and RP2040 PIO for timing-critical 
 brew install --cask gcc-arm-embedded cmake git
 
 # Clone and initialize
-git clone https://github.com/joypad-ai/joypad-core.git
-cd joypad-core
+git clone https://github.com/joypad-ai/joypad-os.git
+cd joypad-os
 make init
 
 # Build apps

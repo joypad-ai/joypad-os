@@ -1,6 +1,6 @@
-# Joypad Core Build Guide
+# Joypad OS Build Guide
 
-Complete guide for building Joypad Core firmware on macOS, Linux, and Windows.
+Complete guide for building Joypad OS firmware on macOS, Linux, and Windows.
 
 ## Table of Contents
 
@@ -22,8 +22,8 @@ Complete guide for building Joypad Core firmware on macOS, Linux, and Windows.
 brew install --cask gcc-arm-embedded cmake git
 
 # 2. Clone and initialize submodules
-git clone https://github.com/joypad-ai/joypad-core.git
-cd joypad-core
+git clone https://github.com/joypad-ai/joypad-os.git
+cd joypad-os
 make init
 
 # 3. Build an app
@@ -102,8 +102,8 @@ sudo apt install cmake gcc-arm-none-eabi libnewlib-arm-none-eabi \
 
 6. **Build**:
    ```powershell
-   git clone https://github.com/joypad-ai/joypad-core.git
-   cd joypad-core
+   git clone https://github.com/joypad-ai/joypad-os.git
+   cd joypad-os
    make init
    make usb2pce    # or other target
    ```
@@ -234,7 +234,7 @@ make clean         # Clean build artifacts
 
 ### Input Sources
 
-Joypad Core supports multiple input sources:
+Joypad OS supports multiple input sources:
 
 - **USB HID** - Standard USB gamepads, keyboards, mice
 - **USB X-input** - Xbox 360/One/Series controllers
@@ -323,5 +323,5 @@ make <target>
 ## Getting Help
 
 - **Docs**: [README.md](../README.md), [HARDWARE.md](HARDWARE.md)
-- **Issues**: https://github.com/joypad-ai/joypad-core/issues
+- **Issues**: https://github.com/joypad-ai/joypad-os/issues
 - **Discord**: https://discord.joypad.com/
