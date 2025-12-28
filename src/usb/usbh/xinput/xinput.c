@@ -99,10 +99,12 @@ void tuh_xinput_report_received_cb(uint8_t dev_addr, uint8_t instance, xinputh_i
         dev_addr, instance, type_str, p->wButtons, p->bLeftTrigger, p->bRightTrigger, p->sThumbLX, p->sThumbLY, p->sThumbRX, p->sThumbRY);
 
       // Scale Xbox analog values to [1-255] range (platform-agnostic)
+      // XInput uses positive Y = UP, but internal format uses Y: 0=UP, 255=DOWN
+      // So we invert Y-axis values to match HID convention
       uint8_t analog_1x = byteScaleAnalog(p->sThumbLX);
-      uint8_t analog_1y = byteScaleAnalog(p->sThumbLY);
+      uint8_t analog_1y = 256 - byteScaleAnalog(p->sThumbLY);  // Invert Y
       uint8_t analog_2x = byteScaleAnalog(p->sThumbRX);
-      uint8_t analog_2y = byteScaleAnalog(p->sThumbRY);
+      uint8_t analog_2y = 256 - byteScaleAnalog(p->sThumbRY);  // Invert Y
       uint8_t analog_l = p->bLeftTrigger;
       uint8_t analog_r = p->bRightTrigger;
 
