@@ -98,6 +98,12 @@ bool btstack_classic_send_set_report(uint8_t conn_index, uint8_t report_id,
 bool btstack_classic_send_report(uint8_t conn_index, uint8_t report_id,
                                   const uint8_t* data, uint16_t len);
 
+// Wiimote raw L2CAP output (Wiimotes use raw protocol, not HID transport headers)
+bool btstack_wiimote_is_connection(uint8_t conn_index);
+bool btstack_wiimote_can_send(uint8_t conn_index);
+bool btstack_wiimote_send_raw(uint8_t conn_index, const uint8_t* data, uint16_t len);
+bool btstack_wiimote_send_control(uint8_t conn_index, const uint8_t* data, uint16_t len);
+
 // ============================================================================
 // BOND MANAGEMENT
 // ============================================================================

@@ -108,6 +108,11 @@ static bool usb_transport_send_control(uint8_t conn_index, const uint8_t* data, 
 
 static bool usb_transport_send_interrupt(uint8_t conn_index, const uint8_t* data, uint16_t len)
 {
+    // Wiimotes use raw L2CAP data (report ID as first byte, no HID transport headers)
+    if (btstack_wiimote_is_connection(conn_index)) {
+        return btstack_wiimote_send_raw(conn_index, data, len);
+    }
+
     // Classic BT: parse DATA|OUTPUT header and forward to BTstack
     if (len >= 2) {
         // data[0] = 0xA2 (DATA|OUTPUT), data[1] = report_id
