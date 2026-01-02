@@ -24,12 +24,16 @@ static void flush_output(void)
 
 // Flash memory layout
 // - RP2040 flash is memory-mapped at XIP_BASE (0x10000000)
-// - We use the last 4KB sector for settings storage
+// - BTstack uses the last 8KB (2 sectors) for Bluetooth bond storage
+// - We use the sector before that for settings storage
 // - Flash writes require erasing entire 4KB sectors
 // - Flash writes must be 256-byte aligned
 
 #define SETTINGS_MAGIC 0x47435052  // "GCPR" - GameCube Profile
-#define FLASH_TARGET_OFFSET (PICO_FLASH_SIZE_BYTES - FLASH_SECTOR_SIZE)
+// BTstack uses last 8KB (2 sectors) for BT bond storage
+// We use the sector before that for our settings
+#define BTSTACK_FLASH_RESERVED (FLASH_SECTOR_SIZE * 2)  // 8KB for BTstack
+#define FLASH_TARGET_OFFSET (PICO_FLASH_SIZE_BYTES - BTSTACK_FLASH_RESERVED - FLASH_SECTOR_SIZE)
 #define SAVE_DEBOUNCE_MS 5000  // Wait 5 seconds after last change before writing
 
 // Pending save state

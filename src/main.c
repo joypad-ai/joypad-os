@@ -21,6 +21,7 @@
 #include <stdio.h>
 #include "pico/stdlib.h"
 #include "pico/multicore.h"
+#include "pico/flash.h"
 
 #include "core/input_interface.h"
 #include "core/output_interface.h"
@@ -42,6 +43,32 @@ static uint8_t input_count = 0;
 
 // Active/primary output interface (accessible from other modules)
 const OutputInterface* active_output = NULL;
+
+// Store core1 task for wrapper - can be set after Core 1 launch
+static volatile void (*core1_actual_task)(void) = NULL;
+static volatile bool core1_task_ready = false;
+
+// Core 1 wrapper - initializes flash safety, then waits for and runs actual task
+static void core1_wrapper(void) {
+  // Initialize multicore lockout for flash_safe_execute to work
+  // This allows Core 0 to safely write to flash while Core 1 is running
+  flash_safe_execute_core_init();
+
+  // Wait for Core 0 to assign a task (or signal no task needed)
+  while (!core1_task_ready) {
+    __wfi();  // Wait for interrupt (low power idle)
+  }
+
+  // Run the actual core1 task if one was provided
+  if (core1_actual_task) {
+    core1_actual_task();
+  } else {
+    // No task - just idle forever while handling flash lockout requests
+    while (1) {
+      __wfi();  // Wait for interrupt (low power idle)
+    }
+  }
+}
 
 // Core 0 main loop - pinned in SRAM for consistent timing
 static void __not_in_flash_func(core0_main)(void)
@@ -77,6 +104,12 @@ int main(void)
 
   sleep_ms(250);  // Brief pause for stability
 
+  // Launch Core 1 early for flash_safe_execute support
+  // Core 1 will init flash safety and wait for task assignment
+  printf("[joypad] Launching core1 for flash safety...\n");
+  multicore_launch_core1(core1_wrapper);
+  sleep_ms(10);  // Brief delay to let Core 1 initialize
+
   leds_init();
   storage_init();
   players_init();
@@ -103,15 +136,21 @@ int main(void)
     }
   }
 
-  // Launch core1 task from first output that has one
+  // Find core1 task from first output that has one
   // Note: Only one output can use core1 (RP2040 has 2 cores)
   for (uint8_t i = 0; i < output_count; i++) {
     if (outputs[i] && outputs[i]->core1_task) {
-      printf("[joypad] Launching core1 for: %s\n", outputs[i]->name);
-      multicore_launch_core1(outputs[i]->core1_task);
+      printf("[joypad] Core1 task from: %s\n", outputs[i]->name);
+      core1_actual_task = outputs[i]->core1_task;
       break;  // Only one core1 task possible
     }
   }
+
+  // Signal Core 1 that task assignment is complete
+  // Core 1 was launched early for flash safety, now it can run its actual task
+  printf("[joypad] Signaling core1 (task: %s)\n",
+         core1_actual_task ? "yes" : "idle");
+  core1_task_ready = true;
 
   core0_main();
 

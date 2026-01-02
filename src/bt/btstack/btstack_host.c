@@ -45,6 +45,8 @@ extern void btstack_memory_init(void);
 #include "ble/le_device_db_tlv.h"
 #include "btstack_tlv_flash_bank.h"
 #include "pico/btstack_flash_bank.h"
+#include "pico/flash.h"
+#include "hardware/flash.h"
 #endif
 
 #include "hci_dump.h"
@@ -64,6 +66,31 @@ extern void bthid_update_device_info(uint8_t conn_index, const char* name,
 // Note: manager.h includes tusb.h which conflicts with BTstack, so forward declare
 extern int find_player_index(int dev_addr, int instance);
 #include "core/services/players/feedback.h"
+
+// ============================================================================
+// FLASH HELPERS (for TLV storage)
+// ============================================================================
+#ifndef BTSTACK_USE_CYW43
+// Erase both BTstack flash banks (8KB total at end of flash)
+static void __no_inline_not_in_flash_func(flash_erase_banks_func)(void* p) {
+    (void)p;
+    uint32_t flash_offset = PICO_FLASH_SIZE_BYTES - (FLASH_SECTOR_SIZE * 2);
+    // Erase both 4KB sectors
+    flash_range_erase(flash_offset, FLASH_SECTOR_SIZE * 2);
+}
+
+// Erase BTstack flash banks using flash_safe_execute
+static void btstack_erase_flash_banks(void) {
+    printf("[BTSTACK_HOST] Erasing BTstack flash banks at 0x%lX...\n",
+           (unsigned long)(PICO_FLASH_SIZE_BYTES - (FLASH_SECTOR_SIZE * 2)));
+    int result = flash_safe_execute(flash_erase_banks_func, NULL, UINT32_MAX);
+    if (result == PICO_OK) {
+        printf("[BTSTACK_HOST] Flash banks erased successfully\n");
+    } else {
+        printf("[BTSTACK_HOST] Flash erase failed: %d\n", result);
+    }
+}
+#endif
 
 // ============================================================================
 // BLE HID REPORT ROUTING
@@ -264,6 +291,9 @@ typedef struct {
     uint16_t vendor_id;
     uint16_t product_id;
     int conn_index;  // Index in classic_state.connections for bthid routing
+    bool using_hid_host;  // True if reconnected via HID Host (not direct L2CAP)
+    uint16_t hid_host_cid;  // HID Host CID for sending (when using_hid_host is true)
+    bool hid_host_ready;  // True when HID Host is ready to send (after DESCRIPTOR_AVAILABLE)
 } wiimote_connection_t;
 
 static wiimote_connection_t wiimote_conn;
@@ -431,14 +461,39 @@ static btstack_tlv_flash_bank_t btstack_tlv_flash_bank_context;
 static void setup_tlv_storage(void) {
     printf("[BTSTACK_HOST] Setting up flash-based TLV storage...\n");
 
+    // Check for corrupted flash banks and erase if needed
+    // Flash bank 0 starts at end of flash - 8KB
+    uint32_t bank0_offset = PICO_FLASH_SIZE_BYTES - (FLASH_SECTOR_SIZE * 2);
+    const uint8_t* bank0_ptr = (const uint8_t*)(XIP_BASE + bank0_offset);
+
+    // BTstack TLV expects clean flash (0xFF) or valid header
+    // If we see our debug pattern (0xDEADBEEF) or other garbage, erase
+    bool needs_erase = false;
+    if (bank0_ptr[0] == 0xDE && bank0_ptr[1] == 0xAD &&
+        bank0_ptr[2] == 0xBE && bank0_ptr[3] == 0xEF) {
+        printf("[BTSTACK_HOST] Detected corrupted flash bank (debug pattern)\n");
+        needs_erase = true;
+    }
+
+    if (needs_erase) {
+        btstack_erase_flash_banks();
+    }
+
     // Get the Pico SDK flash bank HAL instance
     const hal_flash_bank_t *hal_flash_bank_impl = pico_flash_bank_instance();
+    printf("[BTSTACK_HOST] Flash bank instance: %p\n", hal_flash_bank_impl);
 
     // Initialize BTstack TLV with flash bank
     const btstack_tlv_t *btstack_tlv_impl = btstack_tlv_flash_bank_init_instance(
             &btstack_tlv_flash_bank_context,
             hal_flash_bank_impl,
             NULL);
+    printf("[BTSTACK_HOST] TLV instance: %p\n", btstack_tlv_impl);
+
+    if (!btstack_tlv_impl) {
+        printf("[BTSTACK_HOST] ERROR: TLV init failed!\n");
+        return;
+    }
 
     // Set global TLV instance
     btstack_tlv_set_instance(btstack_tlv_impl, &btstack_tlv_flash_bank_context);
@@ -446,12 +501,24 @@ static void setup_tlv_storage(void) {
     // Set up Classic BT link key storage using TLV
     const btstack_link_key_db_t *btstack_link_key_db = btstack_link_key_db_tlv_get_instance(
             btstack_tlv_impl, &btstack_tlv_flash_bank_context);
+    printf("[BTSTACK_HOST] Link key DB instance: %p\n", btstack_link_key_db);
+
+    if (!btstack_link_key_db) {
+        printf("[BTSTACK_HOST] ERROR: Link key DB init failed!\n");
+        return;
+    }
+
     hci_set_link_key_db(btstack_link_key_db);
     printf("[BTSTACK_HOST] Classic BT link key DB configured (flash)\n");
 
     // Configure BLE device DB for TLV storage
     le_device_db_tlv_configure(btstack_tlv_impl, &btstack_tlv_flash_bank_context);
     printf("[BTSTACK_HOST] BLE device DB configured (flash)\n");
+
+    // Debug: check bank state
+    printf("[BTSTACK_HOST] TLV context: current_bank=%d write_offset=0x%lX\n",
+           btstack_tlv_flash_bank_context.current_bank,
+           (unsigned long)btstack_tlv_flash_bank_context.write_offset);
 }
 
 void btstack_host_init(const void* transport)
@@ -657,7 +724,14 @@ static void sdp_query_vid_pid_callback(uint8_t packet_type, uint16_t channel, ui
 
     if (packet_type != HCI_EVENT_PACKET) return;
 
-    switch (hci_event_packet_get_type(packet)) {
+    uint8_t event_type = hci_event_packet_get_type(packet);
+
+    // Debug: log connection-related HCI events for Wiimote troubleshooting
+    if (wiimote_conn.active && event_type >= 0x01 && event_type <= 0x20) {
+        printf("[BTSTACK_HOST] HCI event: 0x%02X\n", event_type);
+    }
+
+    switch (event_type) {
         case SDP_EVENT_QUERY_ATTRIBUTE_VALUE: {
             uint16_t attr_len = sdp_event_query_attribute_byte_get_attribute_length(packet);
             if (attr_len <= sdp_attribute_value_buffer_size) {
@@ -728,6 +802,15 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
 
     uint8_t event_type = hci_event_packet_get_type(packet);
 
+    // Debug: log key HCI events to debug Wiimote reconnection
+    // 0x04=CONNECTION_COMPLETE, 0x05=DISCONNECTION_COMPLETE, 0x06=AUTH_COMPLETE
+    // 0x08=ENCRYPTION_CHANGE, 0x17=LINK_KEY_REQUEST, 0x18=LINK_KEY_NOTIFICATION
+    // 0x16=PIN_CODE_REQUEST, 0x04=CONNECTION_REQUEST (offset differs)
+    if (event_type == 0x17 || event_type == 0x18 || event_type == 0x06 ||
+        event_type == 0x08 || event_type == 0x16) {
+        printf("[BTSTACK_HOST] >>> HCI Event 0x%02X (size=%d)\n", event_type, size);
+    }
+
     // Debug: catch GATT notifications at the global level
     if (event_type == GATT_EVENT_NOTIFICATION) {
         printf("[BTSTACK_HOST] >>> RAW GATT NOTIFICATION! len=%d\n", size);
@@ -742,6 +825,12 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                 // Reset scan state (in case of reconnect)
                 hid_state.scan_active = false;
                 classic_state.inquiry_active = false;
+
+                // Set master role policy for incoming connections
+                // Wiimotes (including Wii U Pro) REQUIRE us to be master
+                // This must be set early, before any connection requests arrive
+                hci_set_master_slave_policy(0);  // 0 = always try to become master
+                printf("[BTSTACK_HOST] Set master role policy\n");
 
                 // Print our local BD_ADDR
                 bd_addr_t local_addr;
@@ -1019,6 +1108,12 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
             uint8_t link_type = hci_event_connection_request_get_link_type(packet);
             printf("[BTSTACK_HOST] Incoming connection: %02X:%02X:%02X:%02X:%02X:%02X COD=0x%06X link=%d\n",
                    addr[0], addr[1], addr[2], addr[3], addr[4], addr[5], (unsigned)cod, link_type);
+
+            // Check if this is a Wiimote by COD (before we know the name)
+            bool is_wiimote = ((cod >> 16) == 0x00) &&
+                              (((cod >> 8) & 0x1F) == 0x05) &&
+                              ((cod & 0x0C) != 0);
+
             // Save pending connection info for use when HID connection is established
             memcpy(classic_state.pending_addr, addr, 6);
             classic_state.pending_cod = cod;
@@ -1027,7 +1122,13 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
             classic_state.pending_pid = 0;
             classic_state.pending_valid = true;
             classic_state.pending_outgoing = false;  // Device initiated this connection
-            // BTstack should auto-accept via gap_ssp_set_auto_accept(1) set at init
+
+            if (is_wiimote && link_type == 0x01) {  // ACL link
+                // Wiimotes require us to be master - set policy before BTstack auto-accepts
+                printf("[BTSTACK_HOST] Wiimote: setting master role policy\n");
+                hci_set_master_slave_policy(0);  // 0 = become master
+            }
+            // BTstack will auto-accept with the current master_slave_policy
             break;
         }
 
@@ -1067,7 +1168,7 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                         }
                     } else {
                         // Incoming connection (device connected to us)
-                        printf("[BTSTACK_HOST] Incoming ACL complete, COD=0x%06X - requesting auth\n", cod);
+                        printf("[BTSTACK_HOST] Incoming ACL complete, COD=0x%06X\n", cod);
 
                         // Check if this is a Wiimote - need role switch to master or it disconnects
                         bool is_wiimote = ((cod >> 16) == 0x00) &&
@@ -1079,26 +1180,82 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                         }
 
                         if (is_wiimote) {
-                            // Wiimote requires us to be master - switch role
-                            printf("[BTSTACK_HOST] Wiimote detected, switching to master role\n");
-                            extern const hci_cmd_t hci_switch_role_command;
-                            hci_send_cmd(&hci_switch_role_command, addr, 0);  // 0 = become master
+                            // Wiimote reconnection - check role and link key
+                            printf("[BTSTACK_HOST] Wiimote detected (incoming reconnection)\n");
+
+                            // Wiimotes require master role - check and request if needed
+                            hci_role_t current_role = gap_get_role(handle);
+                            printf("[BTSTACK_HOST] Wiimote: role=%s\n",
+                                   current_role == HCI_ROLE_MASTER ? "MASTER" :
+                                   current_role == HCI_ROLE_SLAVE ? "SLAVE" : "UNKNOWN");
+                            if (current_role != HCI_ROLE_MASTER) {
+                                printf("[BTSTACK_HOST] Wiimote: requesting master role switch\n");
+                                gap_request_role(addr, HCI_ROLE_MASTER);
+                            }
+
+                            // Check if we have a stored link key
+                            link_key_t link_key;
+                            link_key_type_t key_type;
+                            bool have_key = gap_get_link_key_for_bd_addr(addr, link_key, &key_type);
+                            printf("[BTSTACK_HOST] Wiimote: have_key=%d type=%d\n", have_key, have_key ? key_type : -1);
+
+                            // Store info for when L2CAP events come in
+                            memset(&wiimote_conn, 0, sizeof(wiimote_conn));
+                            wiimote_conn.active = true;
+                            wiimote_conn.state = WIIMOTE_STATE_IDLE;
+                            wiimote_conn.conn_index = -1;  // Not assigned yet
+                            memcpy(wiimote_conn.addr, addr, 6);
+                            wiimote_conn.acl_handle = handle;
+                            memcpy(wiimote_conn.class_of_device, &cod, 3);
+                            if (classic_state.pending_name[0]) {
+                                strncpy(wiimote_conn.name, classic_state.pending_name, sizeof(wiimote_conn.name) - 1);
+                            }
+
+                            // Request remote name for driver matching (need to distinguish Wii U Pro from Wiimote)
+                            gap_remote_name_request(addr, 0, 0);
+
+                            if (have_key) {
+                                // We have a stored key - create L2CAP channels ourselves
+                                // Don't wait for Wiimote to initiate (HID Host would intercept)
+                                printf("[BTSTACK_HOST] Wiimote: handle=0x%04X, have key, creating L2CAP channels\n", handle);
+
+                                // Create HID Control channel (PSM 0x11)
+                                uint16_t control_cid;
+                                uint8_t l2cap_status = l2cap_create_channel(wiimote_l2cap_packet_handler,
+                                                                            addr,
+                                                                            PSM_HID_CONTROL,
+                                                                            0xFFFF,
+                                                                            &control_cid);
+                                if (l2cap_status == ERROR_CODE_SUCCESS) {
+                                    wiimote_conn.control_cid = control_cid;
+                                    wiimote_conn.state = WIIMOTE_STATE_W4_CONTROL_CONNECTED;
+                                    printf("[BTSTACK_HOST] Wiimote: L2CAP control channel request sent, cid=0x%04X\n", control_cid);
+                                } else {
+                                    printf("[BTSTACK_HOST] Wiimote: l2cap_create_channel failed: 0x%02X\n", l2cap_status);
+                                    wiimote_conn.active = false;
+                                }
+                            } else {
+                                // No key - this is a new pairing, wait for device to initiate
+                                printf("[BTSTACK_HOST] Wiimote: handle=0x%04X, no key, waiting for pairing\n", handle);
+                            }
                         }
 
-                        // For incoming connections, let the device initiate L2CAP/HID channels
-                        // DS3 (0x000508) and DS4/DS5 (0x002508) all initiate themselves on reconnect
-                        // We just need encryption to succeed, then wait for HID_SUBEVENT_INCOMING_CONNECTION
-                        // Keep pending_valid=true so COD is available in HID_SUBEVENT_INCOMING_CONNECTION
+                        if (!is_wiimote) {
+                            // For non-Wiimote incoming connections, use standard flow
+                            // DS3 (0x000508) and DS4/DS5 (0x002508) all initiate themselves on reconnect
+                            // We just need encryption to succeed, then wait for HID_SUBEVENT_INCOMING_CONNECTION
 
-                        // Request remote name for driver matching (we don't have it from inquiry)
-                        gap_remote_name_request(addr, 0, 0);
+                            // Request remote name for driver matching (we don't have it from inquiry)
+                            gap_remote_name_request(addr, 0, 0);
 
-                        // Query VID/PID via SDP (PnP Information service)
-                        sdp_client_query_uuid16(&sdp_query_vid_pid_callback, addr,
-                                                BLUETOOTH_SERVICE_CLASS_PNP_INFORMATION);
+                            // Query VID/PID via SDP (PnP Information service)
+                            sdp_client_query_uuid16(&sdp_query_vid_pid_callback, addr,
+                                                    BLUETOOTH_SERVICE_CLASS_PNP_INFORMATION);
 
-                        // Request authentication (Bluepad32 pattern)
-                        gap_request_security_level(handle, LEVEL_2);
+                            // Request authentication (Bluepad32 pattern)
+                            gap_request_security_level(handle, LEVEL_2);
+                        }
+                        // For Wiimotes: do nothing, wait for device to drive the process
                     }
                 }
             }
@@ -1109,7 +1266,29 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
             uint16_t psm = l2cap_event_incoming_connection_get_psm(packet);
             uint16_t cid = l2cap_event_incoming_connection_get_local_cid(packet);
             hci_con_handle_t handle = l2cap_event_incoming_connection_get_handle(packet);
+            bd_addr_t addr;
+            l2cap_event_incoming_connection_get_address(packet, addr);
             printf("[BTSTACK_HOST] L2CAP incoming: PSM=0x%04X cid=0x%04X handle=0x%04X\n", psm, cid, handle);
+
+            // For Wiimotes during reconnection, we create outgoing L2CAP channels ourselves.
+            // If the Wiimote also tries to create incoming channels, decline them at L2CAP level
+            // to force the Wiimote to use our outgoing channels.
+            if (wiimote_conn.active && wiimote_conn.acl_handle == handle &&
+                (psm == PSM_HID_CONTROL || psm == PSM_HID_INTERRUPT)) {
+                // If we're already creating outgoing channels (reconnection), decline incoming
+                if (wiimote_conn.state >= WIIMOTE_STATE_W4_CONTROL_CONNECTED) {
+                    printf("[BTSTACK_HOST] Wiimote: declining incoming L2CAP PSM=0x%04X (using outgoing channels)\n", psm);
+                    l2cap_decline_connection(cid);
+                    break;
+                }
+                // Fresh pairing - HID Host will handle, just track state
+                printf("[BTSTACK_HOST] Wiimote: L2CAP incoming PSM=0x%04X (fresh pairing - HID Host will accept)\n", psm);
+                if (psm == PSM_HID_CONTROL) {
+                    wiimote_conn.state = WIIMOTE_STATE_W4_CONTROL_CONNECTED;
+                } else {
+                    wiimote_conn.state = WIIMOTE_STATE_W4_INTERRUPT_CONNECTED;
+                }
+            }
             break;
         }
 
@@ -1117,7 +1296,24 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
             uint8_t status = l2cap_event_channel_opened_get_status(packet);
             uint16_t psm = l2cap_event_channel_opened_get_psm(packet);
             uint16_t cid = l2cap_event_channel_opened_get_local_cid(packet);
-            printf("[BTSTACK_HOST] L2CAP opened: status=%d PSM=0x%04X cid=0x%04X\n", status, psm, cid);
+            bd_addr_t l2cap_addr;
+            l2cap_event_channel_opened_get_address(packet, l2cap_addr);
+            printf("[BTSTACK_HOST] L2CAP opened: status=%d PSM=0x%04X cid=0x%04X addr=%s\n",
+                   status, psm, cid, bd_addr_to_str(l2cap_addr));
+
+            // Capture L2CAP CIDs for Wiimote connections (for direct L2CAP sending)
+            // HID Host handles receiving, but we need direct L2CAP CIDs for sending
+            // Note: bt_on_hid_ready is called from HID_SUBEVENT_CONNECTION_OPENED
+            if (status == 0 && wiimote_conn.active &&
+                memcmp(l2cap_addr, wiimote_conn.addr, 6) == 0) {
+                if (psm == PSM_HID_CONTROL) {
+                    wiimote_conn.control_cid = cid;
+                    printf("[BTSTACK_HOST] Wiimote: captured control CID=0x%04X for direct sending\n", cid);
+                } else if (psm == PSM_HID_INTERRUPT) {
+                    wiimote_conn.interrupt_cid = cid;
+                    printf("[BTSTACK_HOST] Wiimote: captured interrupt CID=0x%04X for direct sending\n", cid);
+                }
+            }
             break;
         }
 
@@ -1212,6 +1408,20 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                             strncpy(conn->name, name, sizeof(conn->name) - 1);
                             conn->name[sizeof(conn->name) - 1] = '\0';
                             printf("[BTSTACK_HOST] Updated conn[%d] name: %s\n", i, conn->name);
+
+                            // If this is a Wiimote and PID wasn't set, detect it now and update BTHID
+                            if (conn->hid_ready && conn->vendor_id == 0x057E && conn->product_id == 0) {
+                                // "Nintendo RVL-CNT-01-UC" = Wii U Pro Controller (PID 0x0330)
+                                if (strstr(name, "-UC") != NULL) {
+                                    conn->product_id = 0x0330;
+                                    printf("[BTSTACK_HOST] Late Wii U Pro detection, updating BTHID with PID=0x0330\n");
+                                    bthid_update_device_info(i, conn->name, conn->vendor_id, conn->product_id);
+                                } else if (strstr(name, "RVL-CNT-01") != NULL) {
+                                    conn->product_id = 0x0306;
+                                    printf("[BTSTACK_HOST] Late Wiimote detection, updating BTHID with PID=0x0306\n");
+                                    bthid_update_device_info(i, conn->name, conn->vendor_id, conn->product_id);
+                                }
+                            }
                         }
                         break;
                     }
@@ -1271,12 +1481,18 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
             bd_addr_t req_addr;
             reverse_bytes(&packet[2], req_addr, 6);
 
-            // BTstack handles link key lookup via the registered link key DB (TLV flash storage)
-            // This is just for logging - hci.c will query the DB and send the appropriate reply
+            // Check if we have a stored link key
+            link_key_t link_key;
+            link_key_type_t key_type;
+            bool have_key = gap_get_link_key_for_bd_addr(req_addr, link_key, &key_type);
+
             hci_connection_t *conn = hci_connection_for_bd_addr_and_type(req_addr, BD_ADDR_TYPE_ACL);
-            printf("[BTSTACK_HOST] Link key request: %02X:%02X:%02X:%02X:%02X:%02X conn=%s\n",
+            printf("[BTSTACK_HOST] Link key request: %02X:%02X:%02X:%02X:%02X:%02X conn=%s have_key=%d type=%d\n",
                    req_addr[0], req_addr[1], req_addr[2], req_addr[3], req_addr[4], req_addr[5],
-                   conn ? "YES" : "NO");
+                   conn ? "YES" : "NO", have_key, have_key ? key_type : -1);
+
+            // BTstack's hci.c handles this automatically - it will look up the key and respond
+            // If no key is found, it sends negative reply which triggers PIN request for legacy pairing
             break;
         }
 
@@ -1330,11 +1546,22 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
         case HCI_EVENT_LINK_KEY_NOTIFICATION: {
             bd_addr_t notif_addr;
             reverse_bytes(&packet[2], notif_addr, 6);
+            link_key_t link_key;
+            memcpy(link_key, &packet[8], 16);
             link_key_type_t key_type = (link_key_type_t)packet[24];
-            // BTstack stores link key via the registered link key DB (TLV flash storage)
-            // This is just for logging - hci.c already stored the key
-            printf("[BTSTACK_HOST] Link key notification: %02X:%02X:%02X:%02X:%02X:%02X type=%d (stored to flash)\n",
+
+            printf("[BTSTACK_HOST] Link key notification: %02X:%02X:%02X:%02X:%02X:%02X type=%d\n",
                    notif_addr[0], notif_addr[1], notif_addr[2], notif_addr[3], notif_addr[4], notif_addr[5], key_type);
+
+            // Explicitly store the link key (BTstack's auto-storage may not work for legacy pairing)
+            gap_store_link_key_for_bd_addr(notif_addr, link_key, key_type);
+            break;
+        }
+
+        case HCI_EVENT_AUTHENTICATION_COMPLETE: {
+            uint8_t status = packet[2];
+            hci_con_handle_t handle = little_endian_read_16(packet, 3);
+            printf("[BTSTACK_HOST] Authentication complete: handle=0x%04X status=0x%02X\n", handle, status);
             break;
         }
 
@@ -1347,9 +1574,12 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                    handle, status, enabled);
 
             // For Wiimotes, create L2CAP control channel after encryption is enabled
+            // This handles both initial pairing (state=IDLE) and reconnection (state=W4_CONTROL_CONNECTED)
             if (status == 0 && enabled && wiimote_conn.active &&
                 wiimote_conn.acl_handle == handle &&
-                wiimote_conn.state == WIIMOTE_STATE_IDLE) {
+                (wiimote_conn.state == WIIMOTE_STATE_IDLE ||
+                 wiimote_conn.state == WIIMOTE_STATE_W4_CONTROL_CONNECTED) &&
+                wiimote_conn.control_cid == 0) {
 
                 printf("[BTSTACK_HOST] Wiimote: encryption enabled, creating HID Control channel (PSM 0x11)...\n");
 
@@ -1376,10 +1606,6 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
             hci_con_handle_t handle = gap_event_security_level_get_handle(packet);
             gap_security_level_t level = gap_event_security_level_get_security_level(packet);
             printf("[BTSTACK_HOST] Security level update: handle=0x%04X level=%d\n", handle, level);
-            // Force extra run loop iterations to let L2CAP process
-            for (int i = 0; i < 10; i++) {
-                btstack_run_loop_embedded_execute_once();
-            }
             break;
         }
 
@@ -2483,6 +2709,17 @@ static void hid_host_packet_handler(uint8_t packet_type, uint16_t channel, uint8
         case HID_SUBEVENT_INCOMING_CONNECTION: {
             // Accept incoming HID connections from devices
             uint16_t hid_cid = hid_subevent_incoming_connection_get_hid_cid(packet);
+            bd_addr_t incoming_addr;
+            hid_subevent_incoming_connection_get_address(packet, incoming_addr);
+
+            // For Wiimotes, we handle L2CAP directly - don't use HID Host
+            // We created outgoing L2CAP channels in HCI_EVENT_CONNECTION_COMPLETE
+            if (wiimote_conn.active && memcmp(incoming_addr, wiimote_conn.addr, 6) == 0) {
+                printf("[BTSTACK_HOST] Wiimote HID incoming - declining (using direct L2CAP)\n");
+                hid_host_decline_connection(hid_cid);
+                break;
+            }
+
             printf("[BTSTACK_HOST] HID incoming connection, cid=0x%04X - accepting\n", hid_cid);
             hid_host_accept_connection(hid_cid, HID_PROTOCOL_MODE_REPORT);
 
@@ -2554,21 +2791,82 @@ static void hid_host_packet_handler(uint8_t packet_type, uint16_t channel, uint8
             if (conn) {
                 conn->hid_ready = true;
 
-                // For outgoing connections, query SDP for VID/PID if we don't have it yet
-                if (conn->vendor_id == 0 && conn->product_id == 0) {
-                    // Store pending info for SDP callback
-                    memcpy(classic_state.pending_addr, conn->addr, 6);
-                    classic_state.pending_vid = 0;
-                    classic_state.pending_pid = 0;
+                // Check if this is a Wiimote by COD or name
+                // Wiimotes don't send standard HID descriptors, so we need to
+                // call bt_on_hid_ready() now instead of waiting for descriptor
+                // COD is stored little-endian: [0]=LSB, [2]=MSB
+                uint32_t cod = conn->class_of_device[0] |
+                               (conn->class_of_device[1] << 8) |
+                               (conn->class_of_device[2] << 16);
+                bool is_wiimote = ((cod >> 16) == 0x00) &&
+                                  (((cod >> 8) & 0x1F) == 0x05) &&
+                                  ((cod & 0x0C) != 0);
+                if (strstr(conn->name, "Nintendo RVL") != NULL) {
+                    is_wiimote = true;
+                }
 
-                    // Query VID/PID via SDP (PnP Information service)
-                    sdp_client_query_uuid16(&sdp_query_vid_pid_callback, conn->addr,
-                                            BLUETOOTH_SERVICE_CLASS_PNP_INFORMATION);
+                if (is_wiimote) {
+                    // Wiimotes: HID Host handles receiving, we send via direct L2CAP
+                    printf("[BTSTACK_HOST] Wiimote HID connected via HID Host (receive via HID Host, send via L2CAP)\n");
 
-                    // Also request remote name if we don't have it
-                    if (conn->name[0] == '\0') {
-                        gap_remote_name_request(conn->addr, 0, 0);
+                    // Set default Nintendo VID if not already set
+                    if (conn->vendor_id == 0) {
+                        conn->vendor_id = 0x057E;  // Nintendo
                     }
+
+                    // Detect Wii U Pro Controller by name suffix (-UC = Wii U Controller)
+                    // "Nintendo RVL-CNT-01-UC" = Wii U Pro Controller (PID 0x0330)
+                    // "Nintendo RVL-CNT-01" = Wiimote (PID 0x0306)
+                    if (conn->product_id == 0) {
+                        if (strstr(conn->name, "-UC") != NULL) {
+                            conn->product_id = 0x0330;  // Wii U Pro Controller
+                            printf("[BTSTACK_HOST] Detected Wii U Pro Controller by name\n");
+                        } else if (strstr(conn->name, "RVL-CNT-01") != NULL) {
+                            conn->product_id = 0x0306;  // Wiimote
+                        }
+                    }
+
+                    // Link wiimote_conn to this classic_connection slot for routing
+                    int conn_index = get_classic_conn_index(hid_cid);
+                    if (conn_index >= 0 && wiimote_conn.active) {
+                        wiimote_conn.conn_index = conn_index;
+                        wiimote_conn.vendor_id = conn->vendor_id;
+                        wiimote_conn.product_id = conn->product_id;
+                        strncpy(wiimote_conn.name, conn->name, sizeof(wiimote_conn.name) - 1);
+
+                        bthid_update_device_info(conn_index, conn->name,
+                                                 conn->vendor_id, conn->product_id);
+
+                        // L2CAP CIDs should be captured in L2CAP_EVENT_CHANNEL_OPENED
+                        // If we have them, we're ready to send
+                        printf("[BTSTACK_HOST] Wiimote: conn_index=%d control_cid=0x%04X interrupt_cid=0x%04X\n",
+                               conn_index, wiimote_conn.control_cid, wiimote_conn.interrupt_cid);
+
+                        if (wiimote_conn.control_cid != 0 && wiimote_conn.interrupt_cid != 0) {
+                            printf("[BTSTACK_HOST] Wiimote: calling bt_on_hid_ready(%d)\n", conn_index);
+                            bt_on_hid_ready(conn_index);
+                        } else {
+                            printf("[BTSTACK_HOST] Wiimote: waiting for L2CAP CIDs before ready\n");
+                        }
+                    }
+                } else {
+                    // For non-Wiimote devices, query SDP for VID/PID if we don't have it
+                    if (conn->vendor_id == 0 && conn->product_id == 0) {
+                        // Store pending info for SDP callback
+                        memcpy(classic_state.pending_addr, conn->addr, 6);
+                        classic_state.pending_vid = 0;
+                        classic_state.pending_pid = 0;
+
+                        // Query VID/PID via SDP (PnP Information service)
+                        sdp_client_query_uuid16(&sdp_query_vid_pid_callback, conn->addr,
+                                                BLUETOOTH_SERVICE_CLASS_PNP_INFORMATION);
+
+                        // Also request remote name if we don't have it
+                        if (conn->name[0] == '\0') {
+                            gap_remote_name_request(conn->addr, 0, 0);
+                        }
+                    }
+                    // Non-Wiimote: wait for HID_SUBEVENT_DESCRIPTOR_AVAILABLE
                 }
             }
             break;
@@ -2580,7 +2878,10 @@ static void hid_host_packet_handler(uint8_t packet_type, uint16_t channel, uint8
 
             printf("[BTSTACK_HOST] HID descriptor available, cid=0x%04X status=0x%02X\n", hid_cid, status);
 
-            // Notify bthid layer that device is ready
+            // Note: Wiimotes don't fire this event (no standard HID descriptor)
+            // For Wiimotes, bt_on_hid_ready is called from HID_SUBEVENT_CONNECTION_OPENED
+
+            // Notify bthid layer that device is ready (non-Wiimote devices)
             int conn_index = get_classic_conn_index(hid_cid);
             if (conn_index >= 0) {
                 printf("[BTSTACK_HOST] Calling bt_on_hid_ready(%d)\n", conn_index);
@@ -2696,6 +2997,40 @@ static void wiimote_l2cap_packet_handler(uint8_t packet_type, uint16_t channel, 
                     printf("[BTSTACK_HOST] Wiimote: Interrupt channel connected - HID READY!\n");
                     wiimote_conn.state = WIIMOTE_STATE_CONNECTED;
                     classic_state.pending_hid_connect = false;
+
+                    // Stop scanning now that we have a connected device
+                    btstack_host_stop_scan();
+
+                    // Allocate classic connection slot if not already allocated (reconnection case)
+                    if (wiimote_conn.conn_index < 0) {
+                        classic_connection_t* conn = find_free_classic_connection();
+                        if (conn) {
+                            memset(conn, 0, sizeof(*conn));
+                            conn->active = true;
+                            conn->hid_cid = 0xFFFF;  // Mark as Wiimote (no HID Host CID)
+                            memcpy(conn->addr, wiimote_conn.addr, 6);
+                            strncpy(conn->name, wiimote_conn.name, sizeof(conn->name) - 1);
+                            conn->vendor_id = 0x057E;  // Nintendo
+                            // Detect Wii U Pro Controller by name
+                            if (strstr(wiimote_conn.name, "-UC") != NULL) {
+                                conn->product_id = 0x0330;
+                            } else if (strstr(wiimote_conn.name, "RVL-CNT-01") != NULL) {
+                                conn->product_id = 0x0306;
+                            }
+                            conn->hid_ready = true;
+
+                            // Get index
+                            for (int i = 0; i < MAX_CLASSIC_CONNECTIONS; i++) {
+                                if (&classic_state.connections[i] == conn) {
+                                    wiimote_conn.conn_index = i;
+                                    wiimote_conn.vendor_id = conn->vendor_id;
+                                    wiimote_conn.product_id = conn->product_id;
+                                    printf("[BTSTACK_HOST] Wiimote: allocated conn_index=%d\n", i);
+                                    break;
+                                }
+                            }
+                        }
+                    }
 
                     // Update the classic connection slot
                     if (wiimote_conn.conn_index >= 0 && wiimote_conn.conn_index < MAX_CLASSIC_CONNECTIONS) {
@@ -2832,24 +3167,23 @@ bool btstack_wiimote_is_connection(uint8_t conn_index)
 // Check if we can send on Wiimote L2CAP channel
 bool btstack_wiimote_can_send(uint8_t conn_index)
 {
-    if (!btstack_wiimote_is_connection(conn_index)) {
+    if (!wiimote_conn.active) {
         return false;
     }
-    if (wiimote_conn.state != WIIMOTE_STATE_CONNECTED) {
-        return false;
+
+    // Always use direct L2CAP for sending (HID Host send functions don't work for Wiimotes)
+    if (wiimote_conn.control_cid != 0) {
+        return l2cap_can_send_packet_now(wiimote_conn.control_cid) != 0;
     }
-    return l2cap_can_send_packet_now(wiimote_conn.interrupt_cid) != 0;
+
+    return false;
 }
 
 // Send raw L2CAP data to Wiimote on INTERRUPT channel
 bool btstack_wiimote_send_raw(uint8_t conn_index, const uint8_t* data, uint16_t len)
 {
-    if (!btstack_wiimote_is_connection(conn_index)) {
-        printf("[BTSTACK_HOST] wiimote_send_raw: not a wiimote conn (idx=%d)\n", conn_index);
-        return false;
-    }
-    if (wiimote_conn.state != WIIMOTE_STATE_CONNECTED) {
-        printf("[BTSTACK_HOST] wiimote_send_raw: not connected (state=%d)\n", wiimote_conn.state);
+    if (!wiimote_conn.active) {
+        printf("[BTSTACK_HOST] wiimote_send_raw: no active connection\n");
         return false;
     }
     if (len == 0 || len > 64) {
@@ -2857,7 +3191,11 @@ bool btstack_wiimote_send_raw(uint8_t conn_index, const uint8_t* data, uint16_t 
         return false;
     }
 
-    // Check if we can send before attempting
+    // Always use direct L2CAP for Wiimote sending (HID Host send functions don't work)
+    if (wiimote_conn.interrupt_cid == 0) {
+        printf("[BTSTACK_HOST] wiimote_send_raw: no interrupt CID\n");
+        return false;
+    }
     if (!l2cap_can_send_packet_now(wiimote_conn.interrupt_cid)) {
         return false;
     }
@@ -2875,19 +3213,30 @@ bool btstack_wiimote_send_raw(uint8_t conn_index, const uint8_t* data, uint16_t 
 // Send raw L2CAP data to Wiimote on CONTROL channel
 bool btstack_wiimote_send_control(uint8_t conn_index, const uint8_t* data, uint16_t len)
 {
-    if (!btstack_wiimote_is_connection(conn_index)) {
-        return false;
-    }
-    if (wiimote_conn.state != WIIMOTE_STATE_CONNECTED) {
-        return false;
-    }
-    if (len == 0 || len > 64) {
-        return false;
-    }
-    if (!l2cap_can_send_packet_now(wiimote_conn.control_cid)) {
+    printf("[BTSTACK_HOST] wiimote_send_control: idx=%d len=%d control_cid=0x%04X\n",
+           conn_index, len, wiimote_conn.control_cid);
+
+    if (!wiimote_conn.active) {
+        printf("[BTSTACK_HOST] wiimote_send_control: no active connection\n");
         return false;
     }
 
+    // Always use direct L2CAP for Wiimote sending (HID Host send functions don't work)
+    if (wiimote_conn.control_cid == 0) {
+        printf("[BTSTACK_HOST] wiimote_send_control: no control CID\n");
+        return false;
+    }
+    if (len == 0 || len > 64) {
+        printf("[BTSTACK_HOST] wiimote_send_control: bad len=%d\n", len);
+        return false;
+    }
+    if (!l2cap_can_send_packet_now(wiimote_conn.control_cid)) {
+        printf("[BTSTACK_HOST] wiimote_send_control: L2CAP not ready to send\n");
+        return false;
+    }
+
+    printf("[BTSTACK_HOST] wiimote_send_control via L2CAP: cid=0x%04X len=%d\n",
+           wiimote_conn.control_cid, len);
     uint8_t status = l2cap_send(wiimote_conn.control_cid, data, len);
     if (status != ERROR_CODE_SUCCESS) {
         printf("[BTSTACK_HOST] wiimote_send_control: l2cap_send failed status=0x%02X\n", status);
@@ -2965,15 +3314,25 @@ void btstack_host_delete_all_bonds(void)
 {
     printf("[BTSTACK_HOST] Deleting all Bluetooth bonds...\n");
 
-    // Delete all Classic BT link keys
+#ifndef BTSTACK_USE_CYW43
+    // Erase BTstack flash banks to force clean re-initialization
+    // This is more reliable than using BTstack's delete APIs when flash was corrupted
+    btstack_erase_flash_banks();
+
+    // Re-initialize the TLV context to pick up the erased banks
+    const hal_flash_bank_t *flash_bank = pico_flash_bank_instance();
+    btstack_tlv_flash_bank_init_instance(&btstack_tlv_flash_bank_context,
+                                          flash_bank, NULL);
+    printf("[BTSTACK_HOST] TLV re-initialized with clean flash banks\n");
+#else
+    // For CYW43, use BTstack's standard APIs
     gap_delete_all_link_keys();
     printf("[BTSTACK_HOST] Classic BT link keys deleted\n");
 
-    // Delete all BLE bonds by re-initializing the LE device database
-    // le_device_db_init() clears all stored bonds
     int ble_count = le_device_db_count();
     le_device_db_init();
     printf("[BTSTACK_HOST] BLE bonds deleted (was %d devices)\n", ble_count);
+#endif
 
     printf("[BTSTACK_HOST] All bonds cleared. Devices will need to re-pair.\n");
 }

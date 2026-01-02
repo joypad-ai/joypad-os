@@ -700,7 +700,7 @@ static void wii_u_task(bthid_device_t* device)
 
         case WII_U_STATE_READY:
             // Send periodic status requests to keep connection alive
-            if ((int32_t)(now - wii->last_keepalive) >= 500000) {  // Every 500ms
+            if ((int32_t)(now - wii->last_keepalive) >= (WII_U_KEEPALIVE_MS * 1000)) {
                 if (btstack_wiimote_can_send(device->conn_index)) {
                     wii_u_request_status(device);
                     wii->last_keepalive = now;
