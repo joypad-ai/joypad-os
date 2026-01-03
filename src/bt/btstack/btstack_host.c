@@ -1216,26 +1216,14 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                             // Request remote name for driver matching (need to distinguish Wii U Pro from Wiimote)
                             gap_remote_name_request(addr, 0, 0);
 
+                            // For incoming connections (reconnection), let HID Host handle L2CAP
+                            // Don't create outgoing L2CAP - it can conflict with HID Host
                             if (have_key) {
-                                // We have a stored key - create L2CAP channels ourselves
-                                // Don't wait for Wiimote to initiate (HID Host would intercept)
-                                printf("[BTSTACK_HOST] Wiimote: handle=0x%04X, have key, creating L2CAP channels\n", handle);
-
-                                // Create HID Control channel (PSM 0x11)
-                                uint16_t control_cid;
-                                uint8_t l2cap_status = l2cap_create_channel(wiimote_l2cap_packet_handler,
-                                                                            addr,
-                                                                            PSM_HID_CONTROL,
-                                                                            0xFFFF,
-                                                                            &control_cid);
-                                if (l2cap_status == ERROR_CODE_SUCCESS) {
-                                    wiimote_conn.control_cid = control_cid;
-                                    wiimote_conn.state = WIIMOTE_STATE_W4_CONTROL_CONNECTED;
-                                    printf("[BTSTACK_HOST] Wiimote: L2CAP control channel request sent, cid=0x%04X\n", control_cid);
-                                } else {
-                                    printf("[BTSTACK_HOST] Wiimote: l2cap_create_channel failed: 0x%02X\n", l2cap_status);
-                                    wiimote_conn.active = false;
-                                }
+                                printf("[BTSTACK_HOST] Wiimote: handle=0x%04X, have key, waiting for HID Host\n", handle);
+                                // Stop scanning now - we have an incoming connection
+                                btstack_host_stop_scan();
+                                // HID Host will receive HID_SUBEVENT_INCOMING_CONNECTION
+                                // and we'll accept it there
                             } else {
                                 // No key - this is a new pairing, wait for device to initiate
                                 printf("[BTSTACK_HOST] Wiimote: handle=0x%04X, no key, waiting for pairing\n", handle);
@@ -1283,12 +1271,17 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                     l2cap_decline_connection(cid);
                     break;
                 }
-                // Fresh pairing - HID Host will handle, just track state
-                printf("[BTSTACK_HOST] Wiimote: L2CAP incoming PSM=0x%04X (fresh pairing - HID Host will accept)\n", psm);
+                // Fresh pairing or reconnection via HID Host - capture CID for direct L2CAP sending
+                // HID Host will accept, but we need the CID to bypass hid_host_send_report
+                printf("[BTSTACK_HOST] Wiimote: L2CAP incoming PSM=0x%04X cid=0x%04X (HID Host will accept)\n", psm, cid);
                 if (psm == PSM_HID_CONTROL) {
+                    wiimote_conn.control_cid = cid;
                     wiimote_conn.state = WIIMOTE_STATE_W4_CONTROL_CONNECTED;
+                    printf("[BTSTACK_HOST] Wiimote: captured control CID=0x%04X from incoming\n", cid);
                 } else {
+                    wiimote_conn.interrupt_cid = cid;
                     wiimote_conn.state = WIIMOTE_STATE_W4_INTERRUPT_CONNECTED;
+                    printf("[BTSTACK_HOST] Wiimote: captured interrupt CID=0x%04X from incoming\n", cid);
                 }
             }
             break;
@@ -2714,10 +2707,9 @@ static void hid_host_packet_handler(uint8_t packet_type, uint16_t channel, uint8
             bd_addr_t incoming_addr;
             hid_subevent_incoming_connection_get_address(packet, incoming_addr);
 
-            // For Wiimotes: If we're trying direct L2CAP but device is also initiating,
-            // accept as fallback (device might refuse our outgoing L2CAP)
+            // For Wiimotes/Wii U Pro: accept HID Host connection for reconnection
             if (wiimote_conn.active && memcmp(incoming_addr, wiimote_conn.addr, 6) == 0) {
-                printf("[BTSTACK_HOST] Wiimote HID incoming - accepting as fallback\n");
+                printf("[BTSTACK_HOST] Wiimote HID incoming - accepting\n");
                 wiimote_conn.using_hid_host = true;
                 wiimote_conn.hid_host_cid = hid_cid;
                 hid_host_accept_connection(hid_cid, HID_PROTOCOL_MODE_REPORT);
@@ -2736,7 +2728,7 @@ static void hid_host_packet_handler(uint8_t packet_type, uint16_t channel, uint8
                     for (int i = 0; i < MAX_CLASSIC_CONNECTIONS; i++) {
                         if (&classic_state.connections[i] == conn) {
                             wiimote_conn.conn_index = i;
-                            printf("[BTSTACK_HOST] Wiimote: allocated conn_index=%d for HID Host fallback\n", i);
+                            printf("[BTSTACK_HOST] Wiimote: allocated conn_index=%d for HID Host\n", i);
                             break;
                         }
                     }
@@ -2861,8 +2853,16 @@ static void hid_host_packet_handler(uint8_t packet_type, uint16_t channel, uint8
                         bthid_update_device_info(conn_index, conn->name,
                                                  conn->vendor_id, conn->product_id);
 
-                        // For direct L2CAP: CIDs should be captured in L2CAP_EVENT_CHANNEL_OPENED
-                        // For HID Host fallback: use HID Host for sending
+                        // Get L2CAP CIDs from HID Host for direct L2CAP sending
+                        // HID Host's send_report fails with 0x0C because SET_PROTOCOL fails on Wiimotes
+                        uint16_t ctrl_cid = 0, intr_cid = 0;
+                        if (hid_host_get_l2cap_cids(hid_cid, &ctrl_cid, &intr_cid) == ERROR_CODE_SUCCESS) {
+                            wiimote_conn.control_cid = ctrl_cid;
+                            wiimote_conn.interrupt_cid = intr_cid;
+                            printf("[BTSTACK_HOST] Wiimote: got L2CAP CIDs from HID Host: control=0x%04X interrupt=0x%04X\n",
+                                   ctrl_cid, intr_cid);
+                        }
+
                         printf("[BTSTACK_HOST] Wiimote: conn_index=%d control_cid=0x%04X interrupt_cid=0x%04X using_hid_host=%d\n",
                                conn_index, wiimote_conn.control_cid, wiimote_conn.interrupt_cid, wiimote_conn.using_hid_host);
 
@@ -3206,14 +3206,14 @@ bool btstack_wiimote_can_send(uint8_t conn_index)
         return false;
     }
 
-    // HID Host path (incoming reconnection)
-    if (wiimote_conn.using_hid_host && wiimote_conn.hid_host_ready) {
-        return true;  // HID Host handles flow control internally
+    // Prefer direct L2CAP when we have the interrupt CID
+    if (wiimote_conn.interrupt_cid != 0) {
+        return l2cap_can_send_packet_now(wiimote_conn.interrupt_cid) != 0;
     }
 
-    // Direct L2CAP path
-    if (wiimote_conn.control_cid != 0) {
-        return l2cap_can_send_packet_now(wiimote_conn.control_cid) != 0;
+    // Fallback to HID Host path
+    if (wiimote_conn.using_hid_host && wiimote_conn.hid_host_ready) {
+        return true;  // HID Host handles flow control internally
     }
 
     return false;
@@ -3222,6 +3222,9 @@ bool btstack_wiimote_can_send(uint8_t conn_index)
 // Send raw L2CAP data to Wiimote on INTERRUPT channel
 bool btstack_wiimote_send_raw(uint8_t conn_index, const uint8_t* data, uint16_t len)
 {
+    printf("[BTSTACK_HOST] wiimote_send_raw: active=%d using_hid=%d hid_ready=%d int_cid=0x%04X\n",
+           wiimote_conn.active, wiimote_conn.using_hid_host, wiimote_conn.hid_host_ready, wiimote_conn.interrupt_cid);
+
     if (!wiimote_conn.active) {
         printf("[BTSTACK_HOST] wiimote_send_raw: no active connection\n");
         return false;
@@ -3231,35 +3234,42 @@ bool btstack_wiimote_send_raw(uint8_t conn_index, const uint8_t* data, uint16_t 
         return false;
     }
 
-    // Use HID Host when using_hid_host is true (incoming reconnection fallback)
-    if (wiimote_conn.using_hid_host && wiimote_conn.hid_host_ready) {
-        // Data format: first byte is 0xA2, second is report ID, rest is data
-        if (len < 2) return false;
-        uint8_t report_id = data[1];
-        uint8_t status = hid_host_send_report(wiimote_conn.hid_host_cid, report_id, &data[2], len - 2);
-        if (status == ERROR_CODE_SUCCESS) {
-            printf("[BTSTACK_HOST] wiimote_send_raw: sent %d bytes via HID Host\n", len);
+    // Prefer direct L2CAP when we have the interrupt CID (works even with HID Host)
+    // This bypasses hid_host_send_report which can fail with 0x0C if HID Host state isn't ready
+    if (wiimote_conn.interrupt_cid != 0) {
+        if (!l2cap_can_send_packet_now(wiimote_conn.interrupt_cid)) {
+            printf("[BTSTACK_HOST] wiimote_send_raw: L2CAP not ready to send\n");
+            return false;
+        }
+
+        uint8_t status = l2cap_send(wiimote_conn.interrupt_cid, data, len);
+        if (status != ERROR_CODE_SUCCESS) {
+            printf("[BTSTACK_HOST] wiimote_send_raw: l2cap_send failed status=0x%02X\n", status);
+        } else {
+            printf("[BTSTACK_HOST] wiimote_send_raw: sent %d bytes on INTR cid=0x%04X (0x%02X 0x%02X...)\n",
+                   len, wiimote_conn.interrupt_cid, data[0], len > 1 ? data[1] : 0);
         }
         return status == ERROR_CODE_SUCCESS;
     }
 
-    // Direct L2CAP path
-    if (wiimote_conn.interrupt_cid == 0) {
-        printf("[BTSTACK_HOST] wiimote_send_raw: no interrupt CID\n");
-        return false;
-    }
-    if (!l2cap_can_send_packet_now(wiimote_conn.interrupt_cid)) {
-        return false;
+    // Fallback to HID Host when using_hid_host but no direct CID (shouldn't happen normally)
+    if (wiimote_conn.using_hid_host && wiimote_conn.hid_host_ready) {
+        // Data format: first byte is 0xA2, second is report ID, rest is data
+        if (len < 2) return false;
+        uint8_t report_id = data[1];
+        printf("[BTSTACK_HOST] wiimote_send_raw via HID Host: cid=0x%04X report=0x%02X len=%d\n",
+               wiimote_conn.hid_host_cid, report_id, len - 2);
+        uint8_t status = hid_host_send_report(wiimote_conn.hid_host_cid, report_id, &data[2], len - 2);
+        if (status == ERROR_CODE_SUCCESS) {
+            printf("[BTSTACK_HOST] wiimote_send_raw: sent %d bytes via HID Host\n", len);
+        } else {
+            printf("[BTSTACK_HOST] wiimote_send_raw: HID Host send failed status=0x%02X\n", status);
+        }
+        return status == ERROR_CODE_SUCCESS;
     }
 
-    uint8_t status = l2cap_send(wiimote_conn.interrupt_cid, data, len);
-    if (status != ERROR_CODE_SUCCESS) {
-        printf("[BTSTACK_HOST] wiimote_send_raw: l2cap_send failed status=0x%02X\n", status);
-    } else {
-        printf("[BTSTACK_HOST] wiimote_send_raw: sent %d bytes on INTR (0x%02X 0x%02X...)\n",
-               len, data[0], len > 1 ? data[1] : 0);
-    }
-    return status == ERROR_CODE_SUCCESS;
+    printf("[BTSTACK_HOST] wiimote_send_raw: no interrupt CID and HID Host not ready\n");
+    return false;
 }
 
 // Send raw L2CAP data to Wiimote on CONTROL channel
@@ -3277,7 +3287,31 @@ bool btstack_wiimote_send_control(uint8_t conn_index, const uint8_t* data, uint1
         return false;
     }
 
-    // Use HID Host when using_hid_host is true (incoming reconnection fallback)
+    // Prefer direct L2CAP when we have the control CID (works even with HID Host)
+    if (wiimote_conn.control_cid != 0) {
+        if (!l2cap_can_send_packet_now(wiimote_conn.control_cid)) {
+            printf("[BTSTACK_HOST] wiimote_send_control: L2CAP not ready to send\n");
+            return false;
+        }
+
+        // Convert DATA format (0xA2) to SET_REPORT format (0x52) for control channel
+        // Some Wii U Pro Controllers are strict and reject DATA transactions on control channel
+        uint8_t send_buf[64];
+        memcpy(send_buf, data, len);
+        if (send_buf[0] == 0xA2) {
+            send_buf[0] = 0x52;  // SET_REPORT | OUTPUT
+        }
+
+        printf("[BTSTACK_HOST] wiimote_send_control via L2CAP: cid=0x%04X len=%d hdr=0x%02X\n",
+               wiimote_conn.control_cid, len, send_buf[0]);
+        uint8_t status = l2cap_send(wiimote_conn.control_cid, send_buf, len);
+        if (status != ERROR_CODE_SUCCESS) {
+            printf("[BTSTACK_HOST] wiimote_send_control: l2cap_send failed status=0x%02X\n", status);
+        }
+        return status == ERROR_CODE_SUCCESS;
+    }
+
+    // Fallback to HID Host when using_hid_host but no direct CID
     if (wiimote_conn.using_hid_host && wiimote_conn.hid_host_ready) {
         // Data format: first byte is 0x52 (SET_REPORT), second is report type+ID
         if (len < 2) return false;
@@ -3290,23 +3324,8 @@ bool btstack_wiimote_send_control(uint8_t conn_index, const uint8_t* data, uint1
         return status == ERROR_CODE_SUCCESS;
     }
 
-    // Direct L2CAP path
-    if (wiimote_conn.control_cid == 0) {
-        printf("[BTSTACK_HOST] wiimote_send_control: no control CID\n");
-        return false;
-    }
-    if (!l2cap_can_send_packet_now(wiimote_conn.control_cid)) {
-        printf("[BTSTACK_HOST] wiimote_send_control: L2CAP not ready to send\n");
-        return false;
-    }
-
-    printf("[BTSTACK_HOST] wiimote_send_control via L2CAP: cid=0x%04X len=%d\n",
-           wiimote_conn.control_cid, len);
-    uint8_t status = l2cap_send(wiimote_conn.control_cid, data, len);
-    if (status != ERROR_CODE_SUCCESS) {
-        printf("[BTSTACK_HOST] wiimote_send_control: l2cap_send failed status=0x%02X\n", status);
-    }
-    return status == ERROR_CODE_SUCCESS;
+    printf("[BTSTACK_HOST] wiimote_send_control: no control CID and HID Host not ready\n");
+    return false;
 }
 
 // Get connection info for bthid driver matching (Classic or BLE)

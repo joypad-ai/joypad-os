@@ -140,9 +140,9 @@ static void wii_u_set_leds(bthid_device_t* device, uint8_t player)
         led_pattern = (1 << (player + 3));  // LED1=0x10, LED2=0x20, etc.
     }
 
-    // Try CONTROL channel instead of INTERRUPT
+    // Send on INTERRUPT channel (some controllers reject commands on CONTROL channel)
     uint8_t buf[3] = { 0xA2, 0x11, led_pattern };
-    btstack_wiimote_send_control(device->conn_index, buf, sizeof(buf));
+    btstack_wiimote_send_raw(device->conn_index, buf, sizeof(buf));
 }
 
 // Request status report (report 0x15)
@@ -150,8 +150,9 @@ static bool wii_u_request_status(bthid_device_t* device)
 {
     // Report 0x15: Request Status
     // Format: 0xA2 0x15 RR (RR = rumble bit in bit 0)
+    // Send on INTERRUPT channel (some controllers reject commands on CONTROL channel)
     uint8_t buf[3] = { 0xA2, WIIU_CMD_STATUS_REQ, 0x00 };
-    return btstack_wiimote_send_control(device->conn_index, buf, sizeof(buf));
+    return btstack_wiimote_send_raw(device->conn_index, buf, sizeof(buf));
 }
 
 // Read data from controller memory/register (report 0x17)
@@ -173,8 +174,8 @@ static bool wii_u_read_data(bthid_device_t* device, uint32_t address, uint16_t s
     buf[6] = (uint8_t)((size >> 8) & 0xFF);  // Size high byte
     buf[7] = (uint8_t)(size & 0xFF);         // Size low byte
 
-    printf("[WII_U_PRO] Read %d bytes from 0x%06lX on CONTROL channel\n", size, (unsigned long)address);
-    return btstack_wiimote_send_control(device->conn_index, buf, sizeof(buf));
+    printf("[WII_U_PRO] Read %d bytes from 0x%06lX\n", size, (unsigned long)address);
+    return btstack_wiimote_send_raw(device->conn_index, buf, sizeof(buf));
 }
 
 // Write data to controller memory/register (report 0x16)
@@ -199,8 +200,8 @@ static bool wii_u_write_data(bthid_device_t* device, uint32_t address, uint8_t d
     buf[6] = 0x01;  // Size = 1 byte
     buf[7] = data;
 
-    printf("[WII_U_PRO] Write 0x%02X to 0x%06lX on CONTROL channel\n", data, (unsigned long)address);
-    return btstack_wiimote_send_control(device->conn_index, buf, sizeof(buf));
+    printf("[WII_U_PRO] Write 0x%02X to 0x%06lX\n", data, (unsigned long)address);
+    return btstack_wiimote_send_raw(device->conn_index, buf, sizeof(buf));
 }
 
 // Request extension data report mode
