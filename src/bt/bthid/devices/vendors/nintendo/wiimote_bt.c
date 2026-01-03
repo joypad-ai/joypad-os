@@ -42,9 +42,35 @@
 #define WII_BTN_MINUS   0x1000
 #define WII_BTN_HOME    0x8000
 
-// Nunchuk buttons (from extension byte, inverted)
-#define WII_BTN_Z       0x10000
-#define WII_BTN_C       0x20000
+// Nunchuk buttons (from extension byte 5, inverted)
+#define WII_BTN_Z       0x01  // Bit 0
+#define WII_BTN_C       0x02  // Bit 1
+
+// Classic Controller buttons (from extension bytes 4-5, inverted)
+// Byte 4: BDR, BDD, BLT, B-, BH, B+, BRT, (1)
+#define WII_CC_BTN_RT       0x0002  // Right trigger click
+#define WII_CC_BTN_PLUS     0x0004
+#define WII_CC_BTN_HOME     0x0008
+#define WII_CC_BTN_MINUS    0x0010
+#define WII_CC_BTN_LT       0x0020  // Left trigger click
+#define WII_CC_BTN_DOWN     0x0040
+#define WII_CC_BTN_RIGHT    0x0080
+// Byte 5: BZL, BB, BY, BA, BX, BZR, BDL, BDU
+#define WII_CC_BTN_UP       0x0100
+#define WII_CC_BTN_LEFT     0x0200
+#define WII_CC_BTN_ZR       0x0400
+#define WII_CC_BTN_X        0x0800
+#define WII_CC_BTN_A        0x1000
+#define WII_CC_BTN_Y        0x2000
+#define WII_CC_BTN_B        0x4000
+#define WII_CC_BTN_ZL       0x8000
+
+// Extension types
+typedef enum {
+    WII_EXT_NONE,
+    WII_EXT_NUNCHUK,
+    WII_EXT_CLASSIC,
+} wiimote_ext_type_t;
 
 // Report IDs
 #define WII_REPORT_STATUS       0x20
@@ -95,7 +121,7 @@ typedef struct {
     uint32_t init_time;
     uint8_t init_retries;
     uint32_t last_keepalive;
-    bool nunchuk_connected;
+    wiimote_ext_type_t ext_type;
     bool extension_connected;
     uint8_t player_led;
 } wiimote_data_t;
@@ -202,7 +228,7 @@ static bool wiimote_init(bthid_device_t* device)
             wiimote_data[i].event.dev_addr = device->conn_index;
             wiimote_data[i].event.instance = 0;
             wiimote_data[i].event.button_count = 11;  // Wiimote has fewer buttons
-            wiimote_data[i].nunchuk_connected = false;
+            wiimote_data[i].ext_type = WII_EXT_NONE;
             wiimote_data[i].extension_connected = false;
 
             device->driver_data = &wiimote_data[i];
@@ -252,29 +278,75 @@ static void wiimote_process_report(bthid_device_t* device, const uint8_t* data, 
             if (raw_buttons & WII_BTN_PLUS)  buttons |= JP_BUTTON_S2;
             if (raw_buttons & WII_BTN_HOME)  buttons |= JP_BUTTON_A1;
 
-            // Parse Nunchuk extension if present (report 0x32: buttons + 8 ext bytes)
-            if (report_id == WII_REPORT_BUTTONS_EXT8 && len >= 11) {
-                if (wii->nunchuk_connected) {
-                    // Extension bytes at offset 3-10
-                    // Byte 3: joystick X (0-255, center ~128)
-                    // Byte 4: joystick Y (0-255, center ~128)
-                    // Bytes 5-7: accelerometer
-                    // Byte 8: buttons (inverted) - bit 0 = Z, bit 1 = C
-                    uint8_t joy_x = data[3];
-                    uint8_t joy_y = data[4];
-                    uint8_t ext_buttons = ~data[8];  // Invert
+            // Parse extension data (report 0x32: buttons + 8 ext bytes)
+            if (report_id == WII_REPORT_BUTTONS_EXT8 && len >= 9) {
+                // Extension bytes at offset 3-10
+                const uint8_t* ext = &data[3];
 
-                    if (ext_buttons & 0x01) buttons |= JP_BUTTON_L2;  // Z
-                    if (ext_buttons & 0x02) buttons |= JP_BUTTON_L1;  // C
+                if (wii->ext_type == WII_EXT_NUNCHUK) {
+                    // Nunchuk format (6 bytes):
+                    // Byte 0: joystick X (0-255, center ~128)
+                    // Byte 1: joystick Y (0-255, center ~128)
+                    // Bytes 2-4: accelerometer
+                    // Byte 5: buttons (inverted) - bit 0 = Z, bit 1 = C
+                    uint8_t ext_buttons = ~ext[5];  // Invert
 
-                    wii->event.analog[ANALOG_X] = joy_x;
-                    wii->event.analog[ANALOG_Y] = 255 - joy_y;  // Invert Y
-                } else {
-                    // Debug: print extension data to help diagnose
+                    if (ext_buttons & WII_BTN_Z) buttons |= JP_BUTTON_L2;
+                    if (ext_buttons & WII_BTN_C) buttons |= JP_BUTTON_L1;
+
+                    wii->event.analog[ANALOG_X] = ext[0];
+                    wii->event.analog[ANALOG_Y] = 255 - ext[1];  // Invert Y
+
+                } else if (wii->ext_type == WII_EXT_CLASSIC) {
+                    // Classic Controller format (6 bytes):
+                    // Byte 0: RX<4:3>, LX<5:0>
+                    // Byte 1: RX<2:1>, LY<5:0>
+                    // Byte 2: RX<0>, LT<4:3>, RY<4:0>
+                    // Byte 3: LT<2:0>, RT<4:0>
+                    // Byte 4-5: Buttons (inverted)
+                    uint8_t lx = ext[0] & 0x3F;
+                    uint8_t ly = ext[1] & 0x3F;
+                    uint8_t rx = ((ext[0] >> 6) & 0x03) | ((ext[1] >> 4) & 0x0C) | ((ext[2] >> 3) & 0x10);
+                    uint8_t ry = ext[2] & 0x1F;
+                    uint8_t lt = ((ext[2] >> 5) & 0x03) | ((ext[3] >> 2) & 0x1C);
+                    uint8_t rt = ext[3] & 0x1F;
+
+                    // Scale 6-bit sticks (0-63) to 8-bit (0-255)
+                    wii->event.analog[ANALOG_X] = (lx << 2) | (lx >> 4);
+                    wii->event.analog[ANALOG_Y] = 255 - ((ly << 2) | (ly >> 4));  // Invert Y
+                    // Scale 5-bit right stick (0-31) to 8-bit
+                    wii->event.analog[ANALOG_Z] = (rx << 3) | (rx >> 2);
+                    wii->event.analog[ANALOG_RX] = 255 - ((ry << 3) | (ry >> 2));  // Invert Y
+                    // Scale 5-bit triggers (0-31) to 8-bit
+                    wii->event.analog[ANALOG_RZ] = (lt << 3) | (lt >> 2);      // Left trigger
+                    wii->event.analog[ANALOG_SLIDER] = (rt << 3) | (rt >> 2);  // Right trigger
+
+                    // Buttons (inverted)
+                    uint16_t cc_buttons = ~((ext[4] << 0) | (ext[5] << 8));
+
+                    // Nintendo layout: B=bottom, A=right, Y=left, X=top
+                    if (cc_buttons & WII_CC_BTN_B)     buttons |= JP_BUTTON_B1;  // Bottom
+                    if (cc_buttons & WII_CC_BTN_A)     buttons |= JP_BUTTON_B2;  // Right
+                    if (cc_buttons & WII_CC_BTN_Y)     buttons |= JP_BUTTON_B3;  // Left
+                    if (cc_buttons & WII_CC_BTN_X)     buttons |= JP_BUTTON_B4;  // Top
+                    if (cc_buttons & WII_CC_BTN_ZL)    buttons |= JP_BUTTON_L1;
+                    if (cc_buttons & WII_CC_BTN_ZR)    buttons |= JP_BUTTON_R1;
+                    if (cc_buttons & WII_CC_BTN_LT)    buttons |= JP_BUTTON_L2;
+                    if (cc_buttons & WII_CC_BTN_RT)    buttons |= JP_BUTTON_R2;
+                    if (cc_buttons & WII_CC_BTN_MINUS) buttons |= JP_BUTTON_S1;
+                    if (cc_buttons & WII_CC_BTN_PLUS)  buttons |= JP_BUTTON_S2;
+                    if (cc_buttons & WII_CC_BTN_HOME)  buttons |= JP_BUTTON_A1;
+                    if (cc_buttons & WII_CC_BTN_UP)    buttons |= JP_BUTTON_DU;
+                    if (cc_buttons & WII_CC_BTN_DOWN)  buttons |= JP_BUTTON_DD;
+                    if (cc_buttons & WII_CC_BTN_LEFT)  buttons |= JP_BUTTON_DL;
+                    if (cc_buttons & WII_CC_BTN_RIGHT) buttons |= JP_BUTTON_DR;
+
+                } else if (wii->extension_connected) {
+                    // Debug: unknown extension type
                     static uint32_t last_ext_debug = 0;
-                    if (time_us_32() - last_ext_debug > 2000000) {  // Every 2 seconds
-                        printf("[WIIMOTE] Ext data (nunchuk not detected): %02X %02X %02X %02X %02X %02X\n",
-                               data[3], data[4], data[5], data[6], data[7], data[8]);
+                    if (time_us_32() - last_ext_debug > 2000000) {
+                        printf("[WIIMOTE] Ext data (unknown type): %02X %02X %02X %02X %02X %02X\n",
+                               ext[0], ext[1], ext[2], ext[3], ext[4], ext[5]);
                         last_ext_debug = time_us_32();
                     }
                 }
@@ -343,23 +415,31 @@ static void wiimote_process_report(bthid_device_t* device, const uint8_t* data, 
                 printf("[WIIMOTE] Extension type: %02X %02X %02X %02X %02X %02X\n",
                        data[6], data[7], data[8], data[9], data[10], data[11]);
 
-                // Nunchuk identifiers:
-                // Decrypted: 00 00 A4 20 00 00
-                // Encrypted: FF 00 A4 20 00 00 (first byte 0xFF when encrypted)
+                // Extension identifiers (after A4 20 signature):
+                // Nunchuk:           00 00 A4 20 00 00  (or FF 00 when encrypted)
+                // Classic Controller: 00 00 A4 20 01 01  (or FD FD when encrypted)
+                // Classic Pro:       01 00 A4 20 01 01
+                // Wii U Pro:         00 00 A4 20 01 20
                 // Key bytes are A4 20 at positions 2-3 (data[8-9])
-                if (data[8] == 0xA4 && data[9] == 0x20 && data[10] == 0x00 && data[11] == 0x00) {
-                    printf("[WIIMOTE] Nunchuk detected! (encrypted=%d)\n", data[6] == 0xFF);
-                    wii->nunchuk_connected = true;
-                }
-                // Wii U Pro Controller: 00 00 A4 20 01 20
-                else if (data[8] == 0xA4 && data[9] == 0x20 && data[10] == 0x01 && data[11] == 0x20) {
-                    printf("[WIIMOTE] Wii U Pro extension detected\n");
-                    // Don't set nunchuk_connected, this is handled by wii_u_pro driver
-                }
-                // Any other extension with A4 20 signature - treat as generic extension
-                else if (data[8] == 0xA4 && data[9] == 0x20) {
-                    printf("[WIIMOTE] Unknown A4 20 extension, treating as Nunchuk\n");
-                    wii->nunchuk_connected = true;
+
+                if (data[8] == 0xA4 && data[9] == 0x20) {
+                    if (data[10] == 0x00 && data[11] == 0x00) {
+                        printf("[WIIMOTE] Nunchuk detected! (encrypted=%d)\n", data[6] == 0xFF);
+                        wii->ext_type = WII_EXT_NUNCHUK;
+                    }
+                    else if (data[10] == 0x01 && data[11] == 0x01) {
+                        printf("[WIIMOTE] Classic Controller detected! (Pro=%d)\n", data[6] == 0x01);
+                        wii->ext_type = WII_EXT_CLASSIC;
+                    }
+                    else if (data[10] == 0x01 && data[11] == 0x20) {
+                        printf("[WIIMOTE] Wii U Pro extension detected\n");
+                        // Don't set ext_type, this is handled by wii_u_pro driver
+                    }
+                    else {
+                        printf("[WIIMOTE] Unknown extension %02X %02X, treating as Nunchuk\n",
+                               data[10], data[11]);
+                        wii->ext_type = WII_EXT_NUNCHUK;
+                    }
                 }
             } else if (error != 0) {
                 printf("[WIIMOTE] Extension read error: %d\n", error);
