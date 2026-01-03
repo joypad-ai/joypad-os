@@ -100,6 +100,13 @@ typedef enum {
 #define WII_REPORT_BUTTONS_IR_EXT9 0x36  // Buttons + IR + 9 extension
 #define WII_REPORT_BUTTONS_ACC_IR_EXT6 0x37  // Buttons + accel + IR + 6 ext
 
+// Accelerometer orientation detection
+// When Wiimote is held sideways (NES style), X-axis deviates from center (~101 or ~155)
+// When pointing at screen (vertical), X-axis stays near center (~128)
+#define WII_ACCEL_CENTER    128
+#define WII_ACCEL_THRESH_ON  20  // Threshold to switch TO horizontal (lower = more sensitive)
+#define WII_ACCEL_THRESH_OFF 12  // Threshold to switch FROM horizontal (hysteresis)
+
 // Output report IDs
 #define WII_CMD_LED             0x11
 #define WII_CMD_REPORT_MODE     0x12
@@ -129,6 +136,12 @@ typedef enum {
     WII_STATE_READY
 } wiimote_state_t;
 
+// Wiimote orientation (based on accelerometer)
+typedef enum {
+    WII_ORIENT_HORIZONTAL,  // Sideways like NES controller (D-pad on left)
+    WII_ORIENT_VERTICAL,    // Pointing at screen (D-pad on top)
+} wiimote_orient_t;
+
 typedef struct {
     input_event_t event;
     bool initialized;
@@ -140,6 +153,7 @@ typedef struct {
     bool extension_connected;
     uint8_t player_led;
     bool rumble_on;
+    wiimote_orient_t orientation;
 } wiimote_data_t;
 
 static wiimote_data_t wiimote_data[BTHID_MAX_DEVICES];
@@ -201,9 +215,9 @@ static bool wiimote_read_data(bthid_device_t* device, uint32_t address, uint16_t
 
 static void wiimote_set_report_mode(bthid_device_t* device, bool has_extension)
 {
-    // 0x32 = buttons + 8 ext bytes (good for Nunchuk)
-    // 0x30 = buttons only (no extension)
-    uint8_t mode = has_extension ? 0x32 : 0x30;
+    // 0x35 = buttons + accel + 16 ext bytes (for orientation detection + extension)
+    // 0x31 = buttons + accel only (for orientation detection, no extension)
+    uint8_t mode = has_extension ? 0x35 : 0x31;
     uint8_t buf[4] = { 0xA2, WII_CMD_REPORT_MODE, 0x00, mode };
     printf("[WIIMOTE] Setting report mode 0x%02X\n", mode);
     btstack_wiimote_send_raw(device->conn_index, buf, sizeof(buf));
@@ -215,6 +229,64 @@ static void wiimote_set_rumble(bthid_device_t* device, bool on)
 {
     uint8_t buf[3] = { 0xA2, 0x10, on ? 0x01 : 0x00 };
     btstack_wiimote_send_raw(device->conn_index, buf, sizeof(buf));
+}
+
+// Detect orientation from accelerometer data with hysteresis
+// Returns WII_ORIENT_HORIZONTAL if held sideways (X-axis has gravity)
+// Returns WII_ORIENT_VERTICAL otherwise
+static wiimote_orient_t wiimote_detect_orientation(uint8_t accel_x, wiimote_orient_t current)
+{
+    // Calculate X-axis deviation from center (zero-G)
+    int x_dev = (int)accel_x - WII_ACCEL_CENTER;
+    if (x_dev < 0) x_dev = -x_dev;
+
+    // Use hysteresis to prevent flapping
+    if (current == WII_ORIENT_VERTICAL) {
+        // Currently vertical - need higher threshold to switch to horizontal
+        if (x_dev >= WII_ACCEL_THRESH_ON) {
+            return WII_ORIENT_HORIZONTAL;
+        }
+    } else {
+        // Currently horizontal - need lower threshold to switch to vertical
+        if (x_dev < WII_ACCEL_THRESH_OFF) {
+            return WII_ORIENT_VERTICAL;
+        }
+    }
+
+    return current;  // Stay in current state
+}
+
+// Rotate controls based on orientation
+// Vertical (pointing at screen): no rotation needed
+// Horizontal (sideways NES-style): rotate D-pad and swap face buttons
+static uint32_t wiimote_rotate_controls(uint32_t buttons, wiimote_orient_t orient)
+{
+    if (orient == WII_ORIENT_VERTICAL) {
+        return buttons;  // No rotation
+    }
+
+    // Horizontal orientation: rotate D-pad 90° counter-clockwise
+    uint32_t dpad = buttons & (JP_BUTTON_DU | JP_BUTTON_DD | JP_BUTTON_DL | JP_BUTTON_DR);
+    uint32_t face = buttons & (JP_BUTTON_B1 | JP_BUTTON_B2 | JP_BUTTON_B3 | JP_BUTTON_B4);
+    uint32_t other = buttons & ~(JP_BUTTON_DU | JP_BUTTON_DD | JP_BUTTON_DL | JP_BUTTON_DR |
+                                  JP_BUTTON_B1 | JP_BUTTON_B2 | JP_BUTTON_B3 | JP_BUTTON_B4);
+
+    // Rotate D-pad counter-clockwise
+    uint32_t rotated_dpad = 0;
+    if (dpad & JP_BUTTON_DU) rotated_dpad |= JP_BUTTON_DL;  // Up -> Left
+    if (dpad & JP_BUTTON_DL) rotated_dpad |= JP_BUTTON_DD;  // Left -> Down
+    if (dpad & JP_BUTTON_DD) rotated_dpad |= JP_BUTTON_DR;  // Down -> Right
+    if (dpad & JP_BUTTON_DR) rotated_dpad |= JP_BUTTON_DU;  // Right -> Up
+
+    // Swap face buttons: B1↔B3, B2↔B4
+    // Makes 1/2 buttons become primary when held sideways
+    uint32_t swapped_face = 0;
+    if (face & JP_BUTTON_B1) swapped_face |= JP_BUTTON_B3;  // B -> B3
+    if (face & JP_BUTTON_B2) swapped_face |= JP_BUTTON_B4;  // A -> B4
+    if (face & JP_BUTTON_B3) swapped_face |= JP_BUTTON_B1;  // 1 -> B1
+    if (face & JP_BUTTON_B4) swapped_face |= JP_BUTTON_B2;  // 2 -> B2
+
+    return other | rotated_dpad | swapped_face;
 }
 
 // ============================================================================
@@ -285,7 +357,7 @@ static void wiimote_process_report(bthid_device_t* device, const uint8_t* data, 
 
             uint32_t buttons = 0;
 
-            // D-pad
+            // D-pad (will be rotated based on orientation if no extension)
             if (raw_buttons & WII_BTN_UP)    buttons |= JP_BUTTON_DU;
             if (raw_buttons & WII_BTN_DOWN)  buttons |= JP_BUTTON_DD;
             if (raw_buttons & WII_BTN_LEFT)  buttons |= JP_BUTTON_DL;
@@ -302,10 +374,55 @@ static void wiimote_process_report(bthid_device_t* device, const uint8_t* data, 
             if (raw_buttons & WII_BTN_PLUS)  buttons |= JP_BUTTON_S2;
             if (raw_buttons & WII_BTN_HOME)  buttons |= JP_BUTTON_A1;
 
-            // Parse extension data (report 0x32: buttons + 8 ext bytes)
+            // Parse accelerometer from reports that include it
+            // Report 0x31: [0]=id, [1-2]=buttons, [3-5]=accel
+            // Report 0x35: [0]=id, [1-2]=buttons, [3-5]=accel, [6-21]=extension
+            bool has_accel = (report_id == WII_REPORT_BUTTONS_ACC ||
+                              report_id == WII_REPORT_BUTTONS_ACC_EXT16 ||
+                              report_id == WII_REPORT_BUTTONS_ACC_IR ||
+                              report_id == WII_REPORT_BUTTONS_ACC_IR_EXT6);
+
+            if (has_accel && len >= 6) {
+                uint8_t accel_x = data[3];
+                uint8_t accel_y = data[4];
+                uint8_t accel_z = data[5];
+
+                // Debug: log accelerometer values periodically
+                static uint32_t last_accel_debug = 0;
+                if (time_us_32() - last_accel_debug > 1000000) {
+                    printf("[WIIMOTE] Accel: X=%d Y=%d Z=%d (x_dev=%d)\n",
+                           accel_x, accel_y, accel_z,
+                           accel_x > 128 ? accel_x - 128 : 128 - accel_x);
+                    last_accel_debug = time_us_32();
+                }
+
+                // Detect orientation from accelerometer (with hysteresis)
+                wiimote_orient_t new_orient = wiimote_detect_orientation(accel_x, wii->orientation);
+
+                // Only log orientation changes
+                if (new_orient != wii->orientation) {
+                    printf("[WIIMOTE] Orientation: %s\n",
+                           new_orient == WII_ORIENT_HORIZONTAL ? "HORIZONTAL" : "VERTICAL");
+                    wii->orientation = new_orient;
+                }
+            }
+
+            // Determine extension data offset based on report type
+            const uint8_t* ext = NULL;
+            int ext_len = 0;
+
             if (report_id == WII_REPORT_BUTTONS_EXT8 && len >= 9) {
-                // Extension bytes at offset 3-10
-                const uint8_t* ext = &data[3];
+                // Report 0x32: extension at offset 3 (8 bytes)
+                ext = &data[3];
+                ext_len = 8;
+            } else if (report_id == WII_REPORT_BUTTONS_ACC_EXT16 && len >= 22) {
+                // Report 0x35: extension at offset 6 (16 bytes, but we only need first 6)
+                ext = &data[6];
+                ext_len = 16;
+            }
+
+            // Parse extension data
+            if (ext != NULL && ext_len >= 6) {
 
                 if (wii->ext_type == WII_EXT_NUNCHUK) {
                     // Nunchuk format (6 bytes):
@@ -434,6 +551,13 @@ static void wiimote_process_report(bthid_device_t* device, const uint8_t* data, 
                         last_ext_debug = time_us_32();
                     }
                 }
+            }
+
+            // Apply control rotation based on orientation for Wiimote-only mode
+            // When extension is connected (Nunchuk, CC, etc.), the extension has its own controls
+            // so we don't rotate the Wiimote core buttons
+            if (wii->ext_type == WII_EXT_NONE && !wii->extension_connected) {
+                buttons = wiimote_rotate_controls(buttons, wii->orientation);
             }
 
             wii->event.buttons = buttons;
