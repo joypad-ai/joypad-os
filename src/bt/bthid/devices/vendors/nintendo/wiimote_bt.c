@@ -125,6 +125,7 @@ typedef struct {
     wiimote_ext_type_t ext_type;
     bool extension_connected;
     uint8_t player_led;
+    bool rumble_on;
 } wiimote_data_t;
 
 static wiimote_data_t wiimote_data[BTHID_MAX_DEVICES];
@@ -191,6 +192,14 @@ static void wiimote_set_report_mode(bthid_device_t* device, bool has_extension)
     uint8_t mode = has_extension ? 0x32 : 0x30;
     uint8_t buf[4] = { 0xA2, WII_CMD_REPORT_MODE, 0x00, mode };
     printf("[WIIMOTE] Setting report mode 0x%02X\n", mode);
+    btstack_wiimote_send_raw(device->conn_index, buf, sizeof(buf));
+}
+
+// Set rumble on/off
+// Report 0x10: rumble only, bit 0 = on/off
+static void wiimote_set_rumble(bthid_device_t* device, bool on)
+{
+    uint8_t buf[3] = { 0xA2, 0x10, on ? 0x01 : 0x00 };
     btstack_wiimote_send_raw(device->conn_index, buf, sizeof(buf));
 }
 
@@ -617,11 +626,22 @@ static void wiimote_task(bthid_device_t* device)
             break;
 
         case WII_STATE_READY:
-            // Monitor feedback system for LED changes (player number passthrough)
+            // Monitor feedback system for LED and rumble changes
             {
                 int player_idx = find_player_index(wii->event.dev_addr, wii->event.instance);
                 if (player_idx >= 0) {
                     feedback_state_t* fb = feedback_get_state(player_idx);
+
+                    // Check rumble from feedback system
+                    if (fb->rumble_dirty) {
+                        bool rumble_wanted = (fb->rumble.left > 0 || fb->rumble.right > 0);
+                        if (rumble_wanted != wii->rumble_on) {
+                            if (btstack_wiimote_can_send(device->conn_index)) {
+                                wii->rumble_on = rumble_wanted;
+                                wiimote_set_rumble(device, rumble_wanted);
+                            }
+                        }
+                    }
 
                     // Check LED from feedback system
                     // Feedback pattern: bits 0-3 for players 1-4 (0x01, 0x02, 0x04, 0x08)
@@ -638,8 +658,12 @@ static void wiimote_task(bthid_device_t* device)
                         if (btstack_wiimote_can_send(device->conn_index)) {
                             wii->player_led = led;
                             wiimote_set_leds_raw(device, led);
-                            feedback_clear_dirty(player_idx);
                         }
+                    }
+
+                    // Clear dirty flags after processing
+                    if (fb->rumble_dirty || fb->led_dirty) {
+                        feedback_clear_dirty(player_idx);
                     }
                 }
             }

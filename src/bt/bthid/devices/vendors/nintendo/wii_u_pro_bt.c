@@ -97,6 +97,7 @@ typedef struct {
     input_event_t event;
     bool initialized;
     uint8_t player_led;
+    bool rumble_on;
     wii_u_state_t state;
     uint32_t init_time;         // Time when we should try init
     uint8_t init_retries;
@@ -149,6 +150,14 @@ static void wii_u_set_leds(bthid_device_t* device, uint8_t player)
         led_pattern = (1 << (player + 3));  // LED1=0x10, LED2=0x20, etc.
     }
     wii_u_set_leds_raw(device, led_pattern);
+}
+
+// Set rumble on/off
+// Report 0x10: rumble only, bit 0 = on/off
+static void wii_u_set_rumble(bthid_device_t* device, bool on)
+{
+    uint8_t buf[3] = { 0xA2, 0x10, on ? 0x01 : 0x00 };
+    btstack_wiimote_send_raw(device->conn_index, buf, sizeof(buf));
 }
 
 // Request status report (report 0x15)
@@ -721,11 +730,22 @@ static void wii_u_task(bthid_device_t* device)
             break;
 
         case WII_U_STATE_READY:
-            // Monitor feedback system for LED changes (player number passthrough)
+            // Monitor feedback system for LED and rumble changes
             {
                 int player_idx = find_player_index(wii->event.dev_addr, wii->event.instance);
                 if (player_idx >= 0) {
                     feedback_state_t* fb = feedback_get_state(player_idx);
+
+                    // Check rumble from feedback system
+                    if (fb->rumble_dirty) {
+                        bool rumble_wanted = (fb->rumble.left > 0 || fb->rumble.right > 0);
+                        if (rumble_wanted != wii->rumble_on) {
+                            if (btstack_wiimote_can_send(device->conn_index)) {
+                                wii->rumble_on = rumble_wanted;
+                                wii_u_set_rumble(device, rumble_wanted);
+                            }
+                        }
+                    }
 
                     // Check LED from feedback system
                     // Feedback pattern: bits 0-3 for players 1-4 (0x01, 0x02, 0x04, 0x08)
@@ -744,8 +764,12 @@ static void wii_u_task(bthid_device_t* device)
                         if (btstack_wiimote_can_send(device->conn_index)) {
                             wii->player_led = led;
                             wii_u_set_leds_raw(device, led);
-                            feedback_clear_dirty(player_idx);
                         }
+                    }
+
+                    // Clear dirty flags after processing
+                    if (fb->rumble_dirty || fb->led_dirty) {
+                        feedback_clear_dirty(player_idx);
                     }
                 }
             }
