@@ -105,9 +105,13 @@ Optimized for shooters (Doom, PO'ed, etc.):
 
 ## Hardware Requirements
 
-- **Board**: Adafruit KB2040 (default), Waveshare RP2040-Zero
+- **Board**: Waveshare RP2040-Zero
 - **Protocol**: PBUS serial via PIO state machines
-- **GPIO Pins**:
+- **Level Shifters**: Bidirectional 3.3V↔5V level shifter required
+  - RP2040 GPIO is 3.3V and NOT 5V tolerant
+  - All signal lines (CLK, DATA_OUT, DATA_IN, CS_CTRL) need shifting
+  - Recommended: [4-channel BSS138 bidirectional level shifter](https://aliexpress.com/item/32771873030.html) (per FCare's design)
+- **GPIO Pins** (matches [FCare's USBTo3DO](https://github.com/FCare/USBTo3DO) board):
   - CLK (Pin 2) - Clock input from 3DO
   - DATA_OUT (Pin 3) - Data output to 3DO
   - DATA_IN (Pin 4) - Data input from next controller
