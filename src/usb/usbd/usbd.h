@@ -109,6 +109,15 @@ bool usbd_set_mode(usb_output_mode_t mode);
 // Get mode name string
 const char* usbd_get_mode_name(usb_output_mode_t mode);
 
+// Cycle to next USB output mode (for button handlers)
+// Cycles: HID → XInput → PS3 → PS4 → Switch → HID
+// Call usbd_set_mode() with result to apply
+usb_output_mode_t usbd_get_next_mode(void);
+
+// Reset to default HID mode (for button handlers)
+// Returns true if mode was changed
+bool usbd_reset_to_hid(void);
+
 // Output interface for app integration
 extern const OutputInterface usbd_output_interface;
 

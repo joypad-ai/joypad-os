@@ -67,50 +67,24 @@ static void on_button_event(button_event_t event)
 
         case BUTTON_EVENT_DOUBLE_CLICK: {
             // Double-click to cycle USB output mode
-            printf("[app:bt2usb] Button double-click - switching USB output mode...\n");
+            printf("[app:bt2usb] Double-click - switching USB output mode...\n");
             tud_task();
             sleep_ms(50);
             tud_task();
 
-            // Cycle to next mode
-            usb_output_mode_t current = usbd_get_mode();
-            usb_output_mode_t next;
-            switch (current) {
-                case USB_OUTPUT_MODE_HID:
-                    next = USB_OUTPUT_MODE_XINPUT;
-                    break;
-                case USB_OUTPUT_MODE_XINPUT:
-                    next = USB_OUTPUT_MODE_PS3;
-                    break;
-                case USB_OUTPUT_MODE_PS3:
-                    next = USB_OUTPUT_MODE_PS4;
-                    break;
-                case USB_OUTPUT_MODE_PS4:
-                    next = USB_OUTPUT_MODE_SWITCH;
-                    break;
-                case USB_OUTPUT_MODE_SWITCH:
-                    next = USB_OUTPUT_MODE_PSCLASSIC;
-                    break;
-                case USB_OUTPUT_MODE_PSCLASSIC:
-                    next = USB_OUTPUT_MODE_XBOX_ORIGINAL;
-                    break;
-                case USB_OUTPUT_MODE_XBOX_ORIGINAL:
-                    next = USB_OUTPUT_MODE_XBONE;
-                    break;
-                case USB_OUTPUT_MODE_XBONE:
-                default:
-                    next = USB_OUTPUT_MODE_HID;
-                    break;
-            }
-            printf("[app:bt2usb] Switching from %s to %s\n",
-                   usbd_get_mode_name(current), usbd_get_mode_name(next));
-            tud_task();
-            sleep_ms(50);
-            tud_task();
-
+            usb_output_mode_t next = usbd_get_next_mode();
+            printf("[app:bt2usb] Switching to %s\n", usbd_get_mode_name(next));
             usbd_set_mode(next);
             break;
         }
+
+        case BUTTON_EVENT_TRIPLE_CLICK:
+            // Triple-click to reset to default HID mode
+            printf("[app:bt2usb] Triple-click - resetting to HID mode...\n");
+            if (!usbd_reset_to_hid()) {
+                printf("[app:bt2usb] Already in HID mode\n");
+            }
+            break;
 
         case BUTTON_EVENT_HOLD:
             // Long press to clear all Bluetooth bonds

@@ -398,6 +398,34 @@ const char* usbd_get_mode_name(usb_output_mode_t mode)
     return "Unknown";
 }
 
+usb_output_mode_t usbd_get_next_mode(void)
+{
+    // Cycle through common modes: HID → XInput → PS3 → PS4 → Switch → HID
+    // (Skip less common: PS Classic, Xbox Original, Xbox One, XAC)
+    switch (output_mode) {
+        case USB_OUTPUT_MODE_HID:
+            return USB_OUTPUT_MODE_XINPUT;
+        case USB_OUTPUT_MODE_XINPUT:
+            return USB_OUTPUT_MODE_PS3;
+        case USB_OUTPUT_MODE_PS3:
+            return USB_OUTPUT_MODE_PS4;
+        case USB_OUTPUT_MODE_PS4:
+            return USB_OUTPUT_MODE_SWITCH;
+        case USB_OUTPUT_MODE_SWITCH:
+        default:
+            return USB_OUTPUT_MODE_HID;
+    }
+}
+
+bool usbd_reset_to_hid(void)
+{
+    if (output_mode != USB_OUTPUT_MODE_HID) {
+        usbd_set_mode(USB_OUTPUT_MODE_HID);
+        return true;
+    }
+    return false;
+}
+
 // ============================================================================
 // EVENT-DRIVEN TAP CALLBACK
 // ============================================================================

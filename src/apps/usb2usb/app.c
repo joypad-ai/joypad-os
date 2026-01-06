@@ -44,53 +44,21 @@ static void on_button_event(button_event_t event)
 
         case BUTTON_EVENT_DOUBLE_CLICK: {
             // Double-click to cycle USB output mode
-            printf("[app:usb2usb] Button double-click - switching USB output mode...\n");
-            // Flush CDC and give USB stack time to transmit
+            printf("[app:usb2usb] Double-click - switching USB output mode...\n");
             tud_task();
             sleep_ms(50);
             tud_task();
 
-            // Cycle to next mode: HID → XInput → PS3 → PS4 → Switch → HID
-            // (Skip PS Classic, Xbox modes - less common/Mac-incompatible)
-            usb_output_mode_t current = usbd_get_mode();
-            usb_output_mode_t next;
-            switch (current) {
-                case USB_OUTPUT_MODE_HID:
-                    next = USB_OUTPUT_MODE_XINPUT;
-                    break;
-                case USB_OUTPUT_MODE_XINPUT:
-                    next = USB_OUTPUT_MODE_PS3;
-                    break;
-                case USB_OUTPUT_MODE_PS3:
-                    next = USB_OUTPUT_MODE_PS4;
-                    break;
-                case USB_OUTPUT_MODE_PS4:
-                    next = USB_OUTPUT_MODE_SWITCH;
-                    break;
-                case USB_OUTPUT_MODE_SWITCH:
-                default:
-                    next = USB_OUTPUT_MODE_HID;
-                    break;
-            }
-            printf("[app:usb2usb] Switching from %s to %s\n",
-                   usbd_get_mode_name(current), usbd_get_mode_name(next));
-            tud_task();
-            sleep_ms(50);
-            tud_task();
-
-            usbd_set_mode(next);  // This will reset the device
+            usb_output_mode_t next = usbd_get_next_mode();
+            printf("[app:usb2usb] Switching to %s\n", usbd_get_mode_name(next));
+            usbd_set_mode(next);
             break;
         }
 
         case BUTTON_EVENT_TRIPLE_CLICK:
             // Triple-click to reset to default HID mode
             printf("[app:usb2usb] Triple-click - resetting to HID mode...\n");
-            if (usbd_get_mode() != USB_OUTPUT_MODE_HID) {
-                tud_task();
-                sleep_ms(50);
-                tud_task();
-                usbd_set_mode(USB_OUTPUT_MODE_HID);
-            } else {
+            if (!usbd_reset_to_hid()) {
                 printf("[app:usb2usb] Already in HID mode\n");
             }
             break;
