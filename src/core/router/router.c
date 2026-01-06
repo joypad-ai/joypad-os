@@ -10,6 +10,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+// CDC input streaming (optional, for web config)
+#ifdef CONFIG_USB
+#include "usb/usbd/cdc/cdc_commands.h"
+#endif
+
 // ============================================================================
 // AUTO-ASSIGN CONFIGURATION
 // ============================================================================
@@ -586,6 +591,11 @@ static inline void router_merge_mode(const input_event_t* event, output_target_t
 void router_submit_input(const input_event_t* event) {
     if (!event) return;
     if (route_count == 0) return;
+
+    // Stream input to CDC for web config (if enabled)
+#ifdef CONFIG_USB
+    cdc_commands_send_input_event(event->buttons, event->analog);
+#endif
 
     // Find first active route to determine output target
     output_target_t output = OUTPUT_TARGET_USB_DEVICE;

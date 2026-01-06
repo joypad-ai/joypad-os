@@ -6,6 +6,14 @@
 
 #include "app.h"
 #include "core/router/router.h"
+
+// Build info fallbacks (normally set by CMake)
+#ifndef GIT_COMMIT
+#define GIT_COMMIT "not-defined"
+#endif
+#ifndef BUILD_TIME
+#define BUILD_TIME "not-defined"
+#endif
 #include "core/services/players/manager.h"
 #include "core/services/players/feedback.h"
 #include "core/services/button/button.h"
@@ -29,6 +37,9 @@ static void on_button_event(button_event_t event)
         case BUTTON_EVENT_CLICK:
             printf("[app:usb2usb] Button click - current mode: %s\n",
                    usbd_get_mode_name(usbd_get_mode()));
+            // Debug: print build info
+            printf("[DEBUG] GIT_COMMIT: '%s'\n", GIT_COMMIT);
+            printf("[DEBUG] BUILD_TIME: '%s'\n", BUILD_TIME);
             break;
 
         case BUTTON_EVENT_DOUBLE_CLICK: {
@@ -123,7 +134,7 @@ const OutputInterface** app_get_output_interfaces(uint8_t* count)
 
 void app_init(void)
 {
-    printf("[app:usb2usb] Initializing USB2USB v%s\n", APP_VERSION);
+    printf("[app:usb2usb] Initializing USB2USB v%s\n", JOYPAD_VERSION);
 
     // Initialize button service
     button_init();

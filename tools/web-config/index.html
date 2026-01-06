@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Joypad Config</title>
+    <style>
+        :root {
+            --bg: #1a1a2e;
+            --bg-card: #16213e;
+            --bg-input: #0f0f1a;
+            --accent: #e94560;
+            --accent-hover: #ff6b6b;
+            --text: #eee;
+            --text-muted: #888;
+            --border: #333;
+            --success: #4ecca3;
+            --warning: #ffc107;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        h1 {
+            font-size: 24px;
+            font-weight: 600;
+        }
+
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--text-muted);
+        }
+
+        .status-dot.connected {
+            background: var(--success);
+        }
+
+        button {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background: var(--accent-hover);
+        }
+
+        button:disabled {
+            background: var(--text-muted);
+            cursor: not-allowed;
+        }
+
+        button.secondary {
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+        }
+
+        button.secondary:hover {
+            background: var(--border);
+        }
+
+        .card {
+            background: var(--bg-card);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .card h2 {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .card-content {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .label {
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+
+        .value {
+            font-weight: 500;
+        }
+
+        select {
+            background: var(--bg-input);
+            color: var(--text);
+            border: 1px solid var(--border);
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 14px;
+            min-width: 200px;
+        }
+
+        select:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .input-display {
+            background: var(--bg-input);
+            border-radius: 8px;
+            padding: 15px;
+            font-family: monospace;
+            font-size: 13px;
+        }
+
+        .input-display .buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+
+        .input-display .btn {
+            background: var(--border);
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        .input-display .btn.pressed {
+            background: var(--accent);
+        }
+
+        .input-display .axes {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+        }
+
+        .axis {
+            text-align: center;
+        }
+
+        .axis-bar {
+            height: 6px;
+            background: var(--border);
+            border-radius: 3px;
+            margin-top: 4px;
+            overflow: hidden;
+        }
+
+        .axis-bar-fill {
+            height: 100%;
+            background: var(--accent);
+            transition: width 0.05s;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .connect-prompt {
+            text-align: center;
+            padding: 60px 20px;
+        }
+
+        .connect-prompt p {
+            color: var(--text-muted);
+            margin-bottom: 20px;
+        }
+
+        .log {
+            background: var(--bg-input);
+            border-radius: 8px;
+            padding: 15px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .log-entry {
+            margin-bottom: 4px;
+            color: var(--text-muted);
+        }
+
+        .log-entry.error {
+            color: var(--accent);
+        }
+
+        .log-entry.success {
+            color: var(--success);
+        }
+
+        .device-info {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+
+        .danger-zone {
+            border: 1px solid var(--accent);
+            border-radius: 8px;
+            padding: 15px;
+        }
+
+        .danger-zone h3 {
+            color: var(--accent);
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+
+        .danger-zone .buttons {
+            display: flex;
+            gap: 10px;
+        }
+
+        @media (max-width: 600px) {
+            .device-info {
+                grid-template-columns: 1fr;
+            }
+
+            .row {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 8px;
+            }
+
+            select {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Joypad Config</h1>
+            <div class="status">
+                <div class="status-dot" id="statusDot"></div>
+                <span id="statusText">Disconnected</span>
+                <button id="connectBtn">Connect</button>
+            </div>
+        </header>
+
+        <!-- Connect Prompt -->
+        <div id="connectPrompt" class="connect-prompt">
+            <p>Connect your Joypad device to configure it.</p>
+            <button id="connectBtn2">Connect Device</button>
+            <p style="margin-top: 20px; font-size: 12px;">
+                Requires Chrome, Edge, or Opera with Web Serial API support.
+            </p>
+        </div>
+
+        <!-- Main Content (hidden until connected) -->
+        <div id="mainContent" class="hidden">
+            <!-- Device Info -->
+            <div class="card">
+                <h2>Device</h2>
+                <div class="card-content">
+                    <div class="device-info">
+                        <div class="row">
+                            <span class="label">App</span>
+                            <span class="value" id="deviceApp">-</span>
+                        </div>
+                        <div class="row">
+                            <span class="label">Version</span>
+                            <span class="value" id="deviceVersion">-</span>
+                        </div>
+                        <div class="row">
+                            <span class="label">Board</span>
+                            <span class="value" id="deviceBoard">-</span>
+                        </div>
+                        <div class="row">
+                            <span class="label">Serial</span>
+                            <span class="value" id="deviceSerial">-</span>
+                        </div>
+                        <div class="row">
+                            <span class="label">Commit</span>
+                            <span class="value" id="deviceCommit">-</span>
+                        </div>
+                        <div class="row">
+                            <span class="label">Build</span>
+                            <span class="value" id="deviceBuild">-</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- USB Output Mode -->
+            <div class="card">
+                <h2>USB Output Mode</h2>
+                <div class="card-content">
+                    <div class="row">
+                        <span class="label">Current Mode</span>
+                        <select id="modeSelect">
+                            <option value="">Loading...</option>
+                        </select>
+                    </div>
+                    <p style="font-size: 12px; color: var(--text-muted);">
+                        Changing mode will reboot the device.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Profile -->
+            <div class="card">
+                <h2>Button Profile</h2>
+                <div class="card-content">
+                    <div class="row">
+                        <span class="label">Active Profile</span>
+                        <select id="profileSelect">
+                            <option value="">Loading...</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Input Test -->
+            <div class="card">
+                <h2>Input Test</h2>
+                <div class="card-content">
+                    <div class="row">
+                        <span class="label">Live Input</span>
+                        <button id="streamBtn" class="secondary">Start Streaming</button>
+                    </div>
+                    <div class="input-display" id="inputDisplay">
+                        <div class="buttons" id="inputButtons">
+                            <span class="btn">B1</span>
+                            <span class="btn">B2</span>
+                            <span class="btn">B3</span>
+                            <span class="btn">B4</span>
+                            <span class="btn">L1</span>
+                            <span class="btn">R1</span>
+                            <span class="btn">L2</span>
+                            <span class="btn">R2</span>
+                            <span class="btn">S1</span>
+                            <span class="btn">S2</span>
+                            <span class="btn">L3</span>
+                            <span class="btn">R3</span>
+                            <span class="btn">DU</span>
+                            <span class="btn">DD</span>
+                            <span class="btn">DL</span>
+                            <span class="btn">DR</span>
+                            <span class="btn">A1</span>
+                        </div>
+                        <div class="axes">
+                            <div class="axis">
+                                <div>LX: <span id="axisLX">128</span></div>
+                                <div class="axis-bar"><div class="axis-bar-fill" id="axisLXBar" style="width: 50%"></div></div>
+                            </div>
+                            <div class="axis">
+                                <div>LY: <span id="axisLY">128</span></div>
+                                <div class="axis-bar"><div class="axis-bar-fill" id="axisLYBar" style="width: 50%"></div></div>
+                            </div>
+                            <div class="axis">
+                                <div>RX: <span id="axisRX">128</span></div>
+                                <div class="axis-bar"><div class="axis-bar-fill" id="axisRXBar" style="width: 50%"></div></div>
+                            </div>
+                            <div class="axis">
+                                <div>RY: <span id="axisRY">128</span></div>
+                                <div class="axis-bar"><div class="axis-bar-fill" id="axisRYBar" style="width: 50%"></div></div>
+                            </div>
+                            <div class="axis">
+                                <div>L2: <span id="axisL2">0</span></div>
+                                <div class="axis-bar"><div class="axis-bar-fill" id="axisL2Bar" style="width: 0%"></div></div>
+                            </div>
+                            <div class="axis">
+                                <div>R2: <span id="axisR2">0</span></div>
+                                <div class="axis-bar"><div class="axis-bar-fill" id="axisR2Bar" style="width: 0%"></div></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Danger Zone -->
+            <div class="card">
+                <h2>Advanced</h2>
+                <div class="card-content">
+                    <div class="danger-zone">
+                        <h3>Danger Zone</h3>
+                        <div class="buttons">
+                            <button id="clearBtBtn" class="secondary">Clear BT Bonds</button>
+                            <button id="resetBtn" class="secondary">Factory Reset</button>
+                            <button id="rebootBtn" class="secondary">Reboot</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Log -->
+            <div class="card">
+                <h2>Log</h2>
+                <div class="log" id="log"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="cdc-protocol.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

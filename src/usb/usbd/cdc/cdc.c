@@ -3,6 +3,8 @@
 // Copyright 2024 Robert Dale Smith
 
 #include "cdc.h"
+#include "cdc_protocol.h"
+#include "cdc_commands.h"
 #include "../usbd.h"
 #include "core/services/storage/flash.h"
 #include "tusb.h"
@@ -14,10 +16,13 @@
 
 #if CFG_TUD_CDC > 0
 
-// Command buffer for parsing incoming data
+// Command buffer for text commands (legacy support)
 #define CMD_BUFFER_SIZE 64
 static char cmd_buffer[CMD_BUFFER_SIZE];
 static uint8_t cmd_pos = 0;
+
+// Protocol mode detection
+static bool binary_mode = false;  // Switch to binary after receiving 0xAA
 
 // Debug output enabled flag (runtime toggle)
 static bool debug_enabled = true;
@@ -76,6 +81,10 @@ static stdio_driver_t cdc_stdio_driver = {
 void cdc_init(void)
 {
     debug_enabled = true;
+    binary_mode = false;
+
+    // Initialize binary protocol command handlers
+    cdc_commands_init();
 
 #if CFG_TUD_CDC >= 2
     // Register CDC debug port as stdio output
@@ -184,28 +193,42 @@ static void cdc_process_command(const char* cmd)
 
 void cdc_task(void)
 {
+    cdc_protocol_t* proto = cdc_commands_get_protocol();
+
     // Process incoming data on the data port
     while (cdc_data_available() > 0) {
         int32_t ch = cdc_data_read_byte();
         if (ch < 0) break;
 
-        // Handle end of line (CR or LF)
-        if (ch == '\r' || ch == '\n') {
-            if (cmd_pos > 0) {
-                cmd_buffer[cmd_pos] = '\0';
-                cdc_process_command(cmd_buffer);
-                cmd_pos = 0;
-            }
+        // Check for binary protocol sync byte
+        if (ch == CDC_SYNC_BYTE && !binary_mode) {
+            binary_mode = true;
+            cmd_pos = 0;  // Clear any pending text
         }
-        // Handle backspace
-        else if (ch == '\b' || ch == 0x7F) {
-            if (cmd_pos > 0) {
-                cmd_pos--;
+
+        if (binary_mode) {
+            // Binary framed protocol
+            cdc_protocol_rx_byte(proto, (uint8_t)ch);
+        } else {
+            // Legacy text protocol
+            // Handle end of line (CR or LF)
+            if (ch == '\r' || ch == '\n') {
+                if (cmd_pos > 0) {
+                    cmd_buffer[cmd_pos] = '\0';
+                    cdc_process_command(cmd_buffer);
+                    cmd_pos = 0;
+                }
             }
-        }
-        // Accumulate characters
-        else if (cmd_pos < CMD_BUFFER_SIZE - 1) {
-            cmd_buffer[cmd_pos++] = (char)ch;
+            // Handle backspace
+            else if (ch == '\b' || ch == 0x7F) {
+                if (cmd_pos > 0) {
+                    cmd_pos--;
+                }
+            }
+            // Accumulate characters
+            else if (cmd_pos < CMD_BUFFER_SIZE - 1) {
+                cmd_buffer[cmd_pos++] = (char)ch;
+            }
         }
     }
 }

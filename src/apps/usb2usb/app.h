@@ -10,8 +10,9 @@
 // ============================================================================
 // APP METADATA
 // ============================================================================
-#define APP_NAME "USB2USB"
-#define APP_VERSION "1.0.0"
+#ifndef APP_NAME
+#define APP_NAME "usb2usb"
+#endif
 #define APP_DESCRIPTION "USB to USB HID gamepad adapter"
 #define APP_AUTHOR "RobertDaleSmith"
 

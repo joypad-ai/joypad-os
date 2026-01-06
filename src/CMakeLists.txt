@@ -13,6 +13,33 @@ pico_sdk_init()
 
 set(FAMILY rp2040)
 
+# ============================================================================
+# VERSION AND BUILD INFO
+# ============================================================================
+
+# Read version from VERSION file
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/../VERSION" JOYPAD_VERSION)
+string(STRIP "${JOYPAD_VERSION}" JOYPAD_VERSION)
+
+# Get git commit hash
+execute_process(
+    COMMAND git rev-parse --short HEAD
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    OUTPUT_VARIABLE GIT_COMMIT
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+)
+if(NOT GIT_COMMIT)
+    set(GIT_COMMIT "unknown")
+endif()
+
+# Get build timestamp
+string(TIMESTAMP BUILD_TIME "%Y-%m-%d %H:%M:%S")
+
+message(STATUS "Joypad Version: ${JOYPAD_VERSION}")
+message(STATUS "Git Commit: ${GIT_COMMIT}")
+message(STATUS "Build Time: ${BUILD_TIME}")
+
 # External libraries
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/tusb_xinput xinput_host)
 
@@ -162,6 +189,8 @@ set(BTSTACK_SOURCES
 set(USB_DEVICE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd/usbd.c
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd/cdc/cdc.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd/cdc/cdc_protocol.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd/cdc/cdc_commands.c
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd/tud_xid.c
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd/tud_xinput.c
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd/tud_xbone.c
@@ -228,6 +257,13 @@ function(joypad_target_common TARGET)
     pico_add_extra_outputs(${TARGET})
     pico_generate_pio_header(${TARGET} ${CMAKE_CURRENT_LIST_DIR}/core/services/leds/neopixel/ws2812.pio)
     target_include_directories(${TARGET} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/common)
+    # Add version and build info to all targets
+    target_compile_definitions(${TARGET} PRIVATE
+        JOYPAD_VERSION="${JOYPAD_VERSION}"
+        GIT_COMMIT="${GIT_COMMIT}"
+        BUILD_TIME="${BUILD_TIME}"
+        BOARD_NAME="${PICO_BOARD}"
+    )
 endfunction()
 
 # Add BTstack support to a target
@@ -492,6 +528,7 @@ target_compile_definitions(joypad_usb_waveshare_rp2350a PRIVATE
     BOARD_TUH_RHPORT=1
     WS2812_PIN=16
     USE_BOOTSEL_BUTTON=1
+    APP_NAME="usb2usb"
 )
 target_sources(joypad_usb_waveshare_rp2350a PUBLIC ${COMMON_SOURCES} ${USB_DEVICE_SOURCES}
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2usb/app.c
