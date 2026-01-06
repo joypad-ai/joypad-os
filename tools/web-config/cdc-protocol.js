@@ -343,6 +343,10 @@ class CDCProtocol {
         return this.sendCommand('REBOOT');
     }
 
+    async bootsel() {
+        return this.sendCommand('BOOTSEL');
+    }
+
     async getMode() {
         return this.sendCommand('MODE.GET');
     }

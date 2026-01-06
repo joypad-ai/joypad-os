@@ -50,6 +50,7 @@ class JoypadConfigApp {
         document.getElementById('clearBtBtn').addEventListener('click', () => this.clearBtBonds());
         document.getElementById('resetBtn').addEventListener('click', () => this.factoryReset());
         document.getElementById('rebootBtn').addEventListener('click', () => this.reboot());
+        document.getElementById('bootselBtn').addEventListener('click', () => this.bootsel());
 
         // Register event handler
         this.protocol.onEvent((event) => this.handleEvent(event));
@@ -251,6 +252,16 @@ class JoypadConfigApp {
             this.updateConnectionUI(false);
         } catch (e) {
             this.log(`Failed to reboot: ${e.message}`, 'error');
+        }
+    }
+
+    async bootsel() {
+        try {
+            await this.protocol.bootsel();
+            this.log('Entering bootloader mode...', 'success');
+            this.updateConnectionUI(false);
+        } catch (e) {
+            this.log(`Failed to enter bootloader: ${e.message}`, 'error');
         }
     }
 

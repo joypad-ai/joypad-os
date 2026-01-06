@@ -9,6 +9,7 @@
 #include "core/services/profiles/profile.h"
 #include "hardware/watchdog.h"
 #include "pico/unique_id.h"
+#include "pico/bootrom.h"
 #include "tusb.h"
 #include <string.h>
 #include <stdio.h>
@@ -176,6 +177,18 @@ static void cmd_reboot(const char* json)
     // Reboot
     watchdog_enable(100, false);
     while(1);
+}
+
+static void cmd_bootsel(const char* json)
+{
+    (void)json;
+    send_ok();
+    // Flush response
+    tud_task();
+    sleep_ms(50);
+    tud_task();
+    // Reboot into BOOTSEL/UF2 bootloader mode
+    reset_usb_boot(0, 0);
 }
 
 static void cmd_mode_get(const char* json)
@@ -377,6 +390,7 @@ static const cmd_entry_t commands[] = {
     {"INFO", cmd_info},
     {"PING", cmd_ping},
     {"REBOOT", cmd_reboot},
+    {"BOOTSEL", cmd_bootsel},
     {"MODE.GET", cmd_mode_get},
     {"MODE.SET", cmd_mode_set},
     {"MODE.LIST", cmd_mode_list},
