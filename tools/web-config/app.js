@@ -384,9 +384,10 @@ class JoypadConfigApp {
     }
 
     updateInputDisplay(buttons, axes) {
-        // Update buttons
-        this.inputButtons.forEach((btn, i) => {
-            const pressed = (buttons & (1 << i)) !== 0;
+        // Update buttons using data-bit attribute for correct bit position
+        this.inputButtons.forEach((btn) => {
+            const bit = parseInt(btn.dataset.bit);
+            const pressed = (buttons & (1 << bit)) !== 0;
             btn.classList.toggle('pressed', pressed);
         });
 
@@ -409,9 +410,10 @@ class JoypadConfigApp {
     }
 
     updateOutputDisplay(buttons, axes) {
-        // Update buttons
-        this.outputButtons.forEach((btn, i) => {
-            const pressed = (buttons & (1 << i)) !== 0;
+        // Update buttons using data-bit attribute for correct bit position
+        this.outputButtons.forEach((btn) => {
+            const bit = parseInt(btn.dataset.bit);
+            const pressed = (buttons & (1 << bit)) !== 0;
             btn.classList.toggle('pressed', pressed);
         });
 
