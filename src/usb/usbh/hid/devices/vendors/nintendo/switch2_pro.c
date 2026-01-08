@@ -456,23 +456,33 @@ static void output_rumble(uint8_t dev_addr, uint8_t instance, uint8_t rumble_lef
   bool sent = false;
 
   if (inst->pid == SWITCH2_GC_PID) {
-    // GameCube controller: may use different rumble format
-    // Skip rumble for now until we figure out the correct format
-    // The HD haptic format causes the controller to disconnect
+    // GameCube controller: simple on/off rumble via report ID 0x03
+    // Format: byte 1 = counter (0x50), byte 2 = rumble state (0x01=on, 0x00=off)
+    memset(switch2_haptic_buf, 0, sizeof(switch2_haptic_buf));
+    switch2_haptic_buf[0] = 0x03;  // Report ID
+    switch2_haptic_buf[1] = 0x50 | (haptic_counter & 0x0F);
+    haptic_counter = (haptic_counter + 1) & 0x0F;
+    // Simple on/off: any rumble value > 0 means on
+    switch2_haptic_buf[2] = (left_intensity || right_intensity) ? 0x01 : 0x00;
+
+    sent = tuh_hid_send_report(dev_addr, instance, 0x03, switch2_haptic_buf + 1, 63);
     if (changed) {
-      printf("[SWITCH2] GC rumble: skipping (format unknown)\r\n");
+      printf("[SWITCH2] GC rumble %s: %s\r\n",
+             switch2_haptic_buf[2] ? "ON" : "OFF", sent ? "OK" : "FAIL");
     }
-    return;
-  }
+  } else {
+    // Pro controller: HD haptics via report ID 0x02
+    encode_haptic(left_intensity, &switch2_haptic_buf[2]);   // Left motor: bytes 2-6
+    encode_haptic(right_intensity, &switch2_haptic_buf[18]); // Right motor: bytes 18-22
+    switch2_haptic_buf[0] = 0x02;  // Report ID
+    switch2_haptic_buf[1] = 0x50 | (haptic_counter & 0x0F);
+    switch2_haptic_buf[17] = switch2_haptic_buf[1];  // Duplicate counter
+    haptic_counter = (haptic_counter + 1) & 0x0F;
 
-  // Pro controller: HD haptics via report ID 0x02
-  encode_haptic(left_intensity, &switch2_haptic_buf[2]);   // Left motor: bytes 2-6
-  encode_haptic(right_intensity, &switch2_haptic_buf[18]); // Right motor: bytes 18-22
-  switch2_haptic_buf[0] = 0x02;  // Report ID
-
-  sent = tuh_hid_send_report(dev_addr, instance, 0x02, switch2_haptic_buf + 1, 63);
-  if (changed) {
-    printf("[SWITCH2] HID send: %s\r\n", sent ? "OK" : "FAIL");
+    sent = tuh_hid_send_report(dev_addr, instance, 0x02, switch2_haptic_buf + 1, 63);
+    if (changed) {
+      printf("[SWITCH2] HID send: %s\r\n", sent ? "OK" : "FAIL");
+    }
   }
 }
 
