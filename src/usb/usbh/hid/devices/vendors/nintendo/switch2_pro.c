@@ -453,11 +453,24 @@ static void output_rumble(uint8_t dev_addr, uint8_t instance, uint8_t rumble_lef
     right_intensity = 64;
   }
 
+  bool sent = false;
+
+  if (inst->pid == SWITCH2_GC_PID) {
+    // GameCube controller: may use different rumble format
+    // Skip rumble for now until we figure out the correct format
+    // The HD haptic format causes the controller to disconnect
+    if (changed) {
+      printf("[SWITCH2] GC rumble: skipping (format unknown)\r\n");
+    }
+    return;
+  }
+
+  // Pro controller: HD haptics via report ID 0x02
   encode_haptic(left_intensity, &switch2_haptic_buf[2]);   // Left motor: bytes 2-6
   encode_haptic(right_intensity, &switch2_haptic_buf[18]); // Right motor: bytes 18-22
+  switch2_haptic_buf[0] = 0x02;  // Report ID
 
-  // Send via HID (Report ID 0x02)
-  bool sent = tuh_hid_send_report(dev_addr, instance, 0x02, switch2_haptic_buf + 1, 63);
+  sent = tuh_hid_send_report(dev_addr, instance, 0x02, switch2_haptic_buf + 1, 63);
   if (changed) {
     printf("[SWITCH2] HID send: %s\r\n", sent ? "OK" : "FAIL");
   }
