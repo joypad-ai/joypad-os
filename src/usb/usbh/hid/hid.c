@@ -234,6 +234,7 @@ void tuh_hid_umount_cb(uint8_t dev_addr, uint8_t instance)
     break;
   case CONTROLLER_KEYBOARD:
   case CONTROLLER_SWITCH:
+  case CONTROLLER_SWITCH2:
     device_interfaces[dev_type]->unmount(dev_addr, instance);
     break;
   default:

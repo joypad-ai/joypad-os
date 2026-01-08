@@ -59,7 +59,7 @@ static const uint8_t SWITCH2_CMD_0A_02[] = {
 // Player LED patterns (cumulative)
 static const uint8_t SWITCH2_LED_PATTERNS[] = { 0x01, 0x03, 0x07, 0x0F };
 
-#define SWITCH2_INIT_CMD_COUNT 17
+#define SWITCH2_INIT_CMD_COUNT 18  // 17 commands + extra ENABLE_HAPTICS at end
 
 // Stick calibration data
 typedef struct {
@@ -79,7 +79,9 @@ typedef struct {
   uint8_t rumble_right;
   uint8_t player_led;
   uint32_t last_haptic_ms;  // Timestamp of last haptic send
+  uint32_t init_delay_ms;   // Timestamp for deferred init
   uint16_t pid;             // Product ID (to distinguish Pro vs GameCube)
+  bool haptics_enabled;     // True after reinit on player assign
   // Stick calibration (captured on first reports assuming sticks at rest)
   stick_cal_t cal_lx, cal_ly, cal_rx, cal_ry;
   uint8_t cal_samples;  // Number of samples collected for calibration
@@ -193,6 +195,9 @@ static const uint8_t* get_init_cmd(uint8_t index, uint8_t* len, uint8_t player_l
       memset(&player_led_cmd[9], 0, 7);
       *len = 16;
       return player_led_cmd;
+    case 17: // Extra ENABLE_HAPTICS at end (fixes fresh power cycle)
+      *len = sizeof(SWITCH2_CMD_ENABLE_HAPTICS);
+      return SWITCH2_CMD_ENABLE_HAPTICS;
     default:
       *len = 0;
       return NULL;
@@ -201,6 +206,12 @@ static const uint8_t* get_init_cmd(uint8_t index, uint8_t* len, uint8_t player_l
 
 // Find bulk OUT endpoint on interface 1
 static bool find_bulk_endpoint(uint8_t dev_addr, uint8_t* ep_out, uint8_t* itf_num) {
+  // Safety: check device is still mounted
+  if (!tuh_mounted(dev_addr)) {
+    printf("[SWITCH2] Device not mounted, skipping bulk endpoint search\r\n");
+    return false;
+  }
+
   tusb_xfer_result_t result = tuh_descriptor_get_configuration_sync(
     dev_addr, 0, switch2_config_buf, sizeof(switch2_config_buf));
 
@@ -210,6 +221,13 @@ static bool find_bulk_endpoint(uint8_t dev_addr, uint8_t* ep_out, uint8_t* itf_n
   }
 
   tusb_desc_configuration_t* cfg = (tusb_desc_configuration_t*)switch2_config_buf;
+
+  // Safety: validate wTotalLength
+  if (cfg->wTotalLength > sizeof(switch2_config_buf) || cfg->wTotalLength < sizeof(tusb_desc_configuration_t)) {
+    printf("[SWITCH2] Invalid config descriptor length: %d\r\n", cfg->wTotalLength);
+    return false;
+  }
+
   uint8_t const* p_desc = switch2_config_buf;
   uint8_t const* end = switch2_config_buf + cfg->wTotalLength;
 
@@ -251,8 +269,17 @@ static void bulk_xfer_complete_cb(tuh_xfer_t* xfer) {
   uint8_t dev_addr = (uint8_t)(xfer->user_data & 0xFF);
   uint8_t instance = (uint8_t)((xfer->user_data >> 8) & 0xFF);
 
+  // Safety: ignore callback if transfer failed (device likely disconnected)
+  if (xfer->result != XFER_RESULT_SUCCESS) {
+    return;
+  }
+
   if (dev_addr < MAX_DEVICES && instance < CFG_TUH_HID) {
-    switch2_devices[dev_addr].instances[instance].xfer_pending = false;
+    // Safety: check if device is still valid (ep_out != 0 means initialized)
+    switch2_instance_t* inst = &switch2_devices[dev_addr].instances[instance];
+    if (inst->ep_out != 0) {
+      inst->xfer_pending = false;
+    }
   }
 }
 
@@ -430,13 +457,43 @@ static void output_rumble(uint8_t dev_addr, uint8_t instance, uint8_t rumble_lef
   encode_haptic(right_intensity, &switch2_haptic_buf[18]); // Right motor: bytes 18-22
 
   // Send via HID (Report ID 0x02)
-  tuh_hid_send_report(dev_addr, instance, 0x02, switch2_haptic_buf + 1, 63);
+  bool sent = tuh_hid_send_report(dev_addr, instance, 0x02, switch2_haptic_buf + 1, 63);
+  if (changed) {
+    printf("[SWITCH2] HID send: %s\r\n", sent ? "OK" : "FAIL");
+  }
+}
+
+// Re-run full init sequence on player assignment
+// This fixes haptics not working after fresh power cycle
+static void reinit_on_player_assign(uint8_t dev_addr, uint8_t instance) {
+  switch2_instance_t* inst = &switch2_devices[dev_addr].instances[instance];
+
+  // Check endpoint is valid
+  if (inst->ep_out == 0) {
+    return;
+  }
+
+  printf("[SWITCH2] Re-running init on player assign\r\n");
+
+  // Reset to init state - will run full sequence again
+  inst->state = SWITCH2_STATE_INIT_SEQUENCE;
+  inst->cmd_index = 0;
+  inst->cmd_sent = false;
+  inst->xfer_pending = false;
+  inst->haptics_enabled = true;  // Mark so we don't do this again
 }
 
 // Send player LED update via bulk endpoint
 // LED command format: [0x09, 0x91, 0x00, 0x07, 0x00, 0x08, 0x00, 0x00, pattern, ...]
 static void output_player_led(uint8_t dev_addr, uint8_t instance, uint8_t player_index) {
   switch2_instance_t* inst = &switch2_devices[dev_addr].instances[instance];
+
+  // On first player assignment, re-run full init sequence
+  // This fixes rumble not working after fresh power cycle
+  if (!inst->haptics_enabled && player_index < 4) {
+    reinit_on_player_assign(dev_addr, instance);
+    return;  // Will send LED after init completes
+  }
 
   // Only send if player LED changed
   if (inst->player_led == player_index) {
@@ -483,10 +540,56 @@ static void output_player_led(uint8_t dev_addr, uint8_t instance, uint8_t player
 void task_switch2_pro(uint8_t dev_addr, uint8_t instance, device_output_config_t* config) {
   switch2_instance_t* inst = &switch2_devices[dev_addr].instances[instance];
 
+  // Debug: trace rumble calls
+  if (config->rumble_left || config->rumble_right) {
+    printf("[SWITCH2] task: state=%d rumble L=%d R=%d\r\n",
+           inst->state, config->rumble_left, config->rumble_right);
+  }
+
   // Handle rumble and player LED when ready
   if (inst->state == SWITCH2_STATE_READY) {
     output_rumble(dev_addr, instance, config->rumble_left, config->rumble_right);
     output_player_led(dev_addr, instance, config->player_index);
+    return;
+  }
+
+  // Deferred bulk endpoint init (avoids crash on PIO USB if done too early)
+  if (inst->state == SWITCH2_STATE_FIND_ENDPOINT) {
+    uint32_t now = to_ms_since_boot(get_absolute_time());
+    // Wait 100ms after mount before accessing config descriptor
+    if (now - inst->init_delay_ms < 100) {
+      return;
+    }
+
+    printf("[SWITCH2] Deferred init: finding bulk endpoint...\r\n");
+
+    uint8_t ep_out = 0, itf_num = 0;
+    if (!find_bulk_endpoint(dev_addr, &ep_out, &itf_num)) {
+      printf("[SWITCH2] No bulk endpoint - rumble/LED disabled\r\n");
+      inst->state = SWITCH2_STATE_READY;
+      return;
+    }
+
+    // Open endpoint
+    tusb_desc_endpoint_t ep_desc = {
+      .bLength = sizeof(tusb_desc_endpoint_t),
+      .bDescriptorType = TUSB_DESC_ENDPOINT,
+      .bEndpointAddress = ep_out,
+      .bmAttributes = { .xfer = TUSB_XFER_BULK },
+      .wMaxPacketSize = 64,
+      .bInterval = 0
+    };
+
+    if (!tuh_edpt_open(dev_addr, &ep_desc)) {
+      printf("[SWITCH2] Failed to open endpoint 0x%02X - rumble/LED disabled\r\n", ep_out);
+      inst->state = SWITCH2_STATE_READY;
+      return;
+    }
+
+    printf("[SWITCH2] Opened bulk OUT endpoint 0x%02X\r\n", ep_out);
+    inst->ep_out = ep_out;
+    inst->itf_num = itf_num;
+    inst->state = SWITCH2_STATE_INIT_SEQUENCE;
     return;
   }
 
@@ -524,7 +627,7 @@ void task_switch2_pro(uint8_t dev_addr, uint8_t instance, device_output_config_t
   const uint8_t* cmd = get_init_cmd(inst->cmd_index, &cmd_len, player_led);
 
   if (cmd && cmd_len > 0) {
-    printf("[SWITCH2] Sending cmd %d/17: 0x%02X\r\n", inst->cmd_index + 1, cmd[0]);
+    printf("[SWITCH2] Sending cmd %d/18: 0x%02X\r\n", inst->cmd_index + 1, cmd[0]);
     if (send_command(dev_addr, instance, inst->ep_out, cmd, cmd_len)) {
       inst->xfer_pending = true;
       inst->cmd_sent = true;
@@ -554,35 +657,10 @@ static bool init_switch2_pro(uint8_t dev_addr, uint8_t instance) {
 
   switch2_devices[dev_addr].instance_count++;
 
-  // Find bulk endpoint
-  uint8_t ep_out = 0, itf_num = 0;
-  if (!find_bulk_endpoint(dev_addr, &ep_out, &itf_num)) {
-    printf("[SWITCH2] Failed to find bulk endpoint\r\n");
-    inst->state = SWITCH2_STATE_FAILED;
-    return false;
-  }
-
-  // Open endpoint
-  tusb_desc_endpoint_t ep_desc = {
-    .bLength = sizeof(tusb_desc_endpoint_t),
-    .bDescriptorType = TUSB_DESC_ENDPOINT,
-    .bEndpointAddress = ep_out,
-    .bmAttributes = { .xfer = TUSB_XFER_BULK },
-    .wMaxPacketSize = 64,
-    .bInterval = 0
-  };
-
-  if (!tuh_edpt_open(dev_addr, &ep_desc)) {
-    printf("[SWITCH2] Failed to open endpoint 0x%02X\r\n", ep_out);
-    inst->state = SWITCH2_STATE_FAILED;
-    return false;
-  }
-
-  printf("[SWITCH2] Opened bulk OUT endpoint 0x%02X\r\n", ep_out);
-
-  inst->ep_out = ep_out;
-  inst->itf_num = itf_num;
-  inst->state = SWITCH2_STATE_INIT_SEQUENCE;
+  // Defer bulk endpoint init - do it in task() after device is fully ready
+  // This avoids crashes on PIO USB when accessing config descriptor too early
+  inst->state = SWITCH2_STATE_FIND_ENDPOINT;
+  inst->init_delay_ms = to_ms_since_boot(get_absolute_time());
 
   return true;
 }
@@ -591,6 +669,12 @@ static bool init_switch2_pro(uint8_t dev_addr, uint8_t instance) {
 void unmount_switch2_pro(uint8_t dev_addr, uint8_t instance) {
   printf("[SWITCH2] Unmount dev=%d instance=%d\r\n", dev_addr, instance);
 
+  // Clear ep_out first to signal to callbacks that device is gone
+  // This prevents the bulk_xfer_complete_cb from accessing stale state
+  switch2_devices[dev_addr].instances[instance].ep_out = 0;
+  switch2_devices[dev_addr].instances[instance].state = SWITCH2_STATE_IDLE;
+
+  // Now safe to clear the rest
   memset(&switch2_devices[dev_addr].instances[instance], 0, sizeof(switch2_instance_t));
 
   if (switch2_devices[dev_addr].instance_count > 0) {
