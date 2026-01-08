@@ -2417,17 +2417,12 @@ static void encode_haptic(uint8_t* out, uint8_t intensity)
 }
 
 // Send rumble command to Switch 2 controller via BLE
-// Based on joypad-web USB Report ID 0x02 format, adapted for BLE
+// Pro uses HD haptics, GameCube uses simple on/off
 static void switch2_send_rumble(hci_con_handle_t con_handle, uint8_t left, uint8_t right)
 {
-    // Output buffer format (matching joypad-web):
-    // [0]: padding/report byte
-    // [1]: Counter (0x5X)
-    // [2-6]: Left haptic (5 bytes)
-    // [7-16]: padding
-    // [17]: Counter duplicate
-    // [18-22]: Right haptic (5 bytes)
-    // [23-63]: padding (64 bytes total for USB, may be shorter for BLE)
+    // Get connection to check PID
+    ble_connection_t* conn = find_connection_by_handle(con_handle);
+
     uint8_t buf[64];
     memset(buf, 0, sizeof(buf));
 
@@ -2435,17 +2430,32 @@ static void switch2_send_rumble(hci_con_handle_t con_handle, uint8_t left, uint8
     uint8_t counter = 0x50 | (sw2_rumble_tid & 0x0F);
     sw2_rumble_tid++;
 
-    buf[1] = counter;
-    buf[17] = counter;  // Duplicate counter
+    if (conn && conn->pid == 0x2073) {
+        // GameCube controller: simple on/off rumble
+        // Format: byte 1 = counter, byte 2 = on/off state
+        buf[1] = counter;
+        buf[2] = (left || right) ? 0x01 : 0x00;
 
-    // Encode left motor haptic (bytes 2-6)
-    encode_haptic(&buf[2], left);
+        gatt_client_write_value_of_characteristic_without_response(
+            con_handle, SW2_OUTPUT_REPORT_HANDLE, 21, buf);
+    } else {
+        // Pro controller: HD haptics format
+        // [1]: Counter (0x5X)
+        // [2-6]: Left haptic (5 bytes)
+        // [17]: Counter duplicate
+        // [18-22]: Right haptic (5 bytes)
+        buf[1] = counter;
+        buf[17] = counter;  // Duplicate counter
 
-    // Encode right motor haptic (bytes 18-22)
-    encode_haptic(&buf[18], right);
+        // Encode left motor haptic (bytes 2-6)
+        encode_haptic(&buf[2], left);
 
-    gatt_client_write_value_of_characteristic_without_response(
-        con_handle, SW2_OUTPUT_REPORT_HANDLE, sizeof(buf), buf);
+        // Encode right motor haptic (bytes 18-22)
+        encode_haptic(&buf[18], right);
+
+        gatt_client_write_value_of_characteristic_without_response(
+            con_handle, SW2_OUTPUT_REPORT_HANDLE, sizeof(buf), buf);
+    }
 }
 
 // Check feedback system and send rumble/LED if needed (called from task loop)
