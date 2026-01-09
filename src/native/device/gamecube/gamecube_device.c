@@ -78,12 +78,13 @@ uint8_t gc_last_rumble = 0;
 uint8_t gc_kb_counter = 0;
 
 // Helper function to scale analog values relative to center (128)
+// Clamps to 1-255 range - some GameCube games reject 0 as invalid
 static inline uint8_t scale_toward_center(uint8_t val, float scale, uint8_t center)
 {
   int16_t rel = (int16_t)val - (int16_t)center;
   int16_t scaled = (int16_t)(rel * scale);
   int16_t result = scaled + (int16_t)center;
-  if (result < 0) result = 0;
+  if (result < 1) result = 1;
   if (result > 255) result = 255;
   return (uint8_t)result;
 }
@@ -304,10 +305,11 @@ static void map_usbr_to_gc_report(const profile_output_t* output, gc_report_t* r
     report->start = ((buttons & GC_BUTTON_START) != 0) ? 1 : 0;
 
     // Analog sticks (invert Y: HID uses 0=up, GameCube uses 0=down)
-    report->stick_x = output->left_x;
-    report->stick_y = 255 - output->left_y;
-    report->cstick_x = output->right_x;
-    report->cstick_y = 255 - output->right_y;
+    // Clamp to 1-255 range - some games reject 0 as invalid
+    report->stick_x = output->left_x < 1 ? 1 : output->left_x;
+    report->stick_y = (255 - output->left_y) < 1 ? 1 : (255 - output->left_y);
+    report->cstick_x = output->right_x < 1 ? 1 : output->right_x;
+    report->cstick_y = (255 - output->right_y) < 1 ? 1 : (255 - output->right_y);
 
     // Trigger analog values
     report->l_analog = output->l2_analog;
