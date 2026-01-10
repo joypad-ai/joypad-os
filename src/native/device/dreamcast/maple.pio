@@ -1,0 +1,132 @@
+;
+; Maple TX/RX PIO code by Charlie Cole
+; Ported to Joypad for Dreamcast controller emulation
+;
+
+.program maple_tx
+.side_set 1
+.define HOLD	12 ; Cycles to hold after clocking data
+.define SETTLE	 6 ; Cycles to hold data before clocking
+.define MID		 6 ; Cycles before starting transitions for next bit
+
+	set pindirs, 0		side 1 ; Set to input
+
+	; set up loop
+	pull				side 1 [HOLD] ; Used to align back to 32 bits. Will block here until packet ready to send
+	out x,32			side 1 ; size of packet in bit pairs - 1
+	set pindirs, 3		side 1 ; Set pins to output (drive the bus)
+
+	; Send the sync pulses to start the packet
+	set y,3				side 1
+	set pins, 2			side 1 [HOLD]
+syncloop:
+	nop					side 0 [HOLD]
+	jmp y-- syncloop	side 1 [HOLD]
+	set pins, 3			side 1 [MID]
+	nop 				side 0 [HOLD]
+
+	; Send the actual data
+dataloop:
+	out y, 1			side 0
+	set pins, 1			side 0 [MID-1]
+	jmp !y, send_zero	side 0
+
+	; Send a one
+	nop					side 1 [SETTLE]
+	set pins, 2			side 1 [HOLD]
+	jmp outro			side 1 [MID]
+
+send_zero:
+	nop					side 0 [SETTLE]
+	set pins, 0			side 0 [HOLD]
+	nop					side 1 [MID]
+
+outro:
+	out pins, 1			side 1 [SETTLE]
+	jmp x-- dataloop	side 0 [HOLD-1]
+
+	; Send the tail sequence to signify end of packet
+	set pins, 1			side 0 [HOLD]
+	nop					side 1 [HOLD]
+	nop					side 0 [HOLD]
+	set pins, 0			side 0 [HOLD]
+	set pins, 1			side 0 [HOLD]
+	set pins, 0			side 0 [HOLD]
+	set pins, 1			side 0 [HOLD]
+	set pins, 3			side 1 [HOLD]
+
+% c-sdk {
+static inline void maple_tx_program_init(PIO TXPio, uint SM, uint Offset, uint Pin1, uint Pin5, float ClockDivider)
+{
+    pio_sm_config SMConfig = maple_tx_program_get_default_config(Offset);
+	assert(Pin5 == Pin1 + 1); // Need to be consecutive for set to control both pins
+
+    sm_config_set_out_pins(&SMConfig, Pin1, 1); // Only want to output on pin 1 (so we can shift directly)
+	sm_config_set_set_pins(&SMConfig, Pin1, 2); // But we need to set direction of both pins to take control of bus
+	sm_config_set_sideset_pins(&SMConfig, Pin5); // Possibly could do without on second thoughts but saves some instructions
+
+	sm_config_set_out_shift(&SMConfig, false, true, 32); // Autopull every 32 bits (makes DMA more efficient to do it this way)
+	sm_config_set_clkdiv(&SMConfig, ClockDivider);
+	sm_config_set_fifo_join(&SMConfig, PIO_FIFO_JOIN_TX); // Not using RX FIFO so double TX FIFO length
+
+	// Set the pin direction to input at the PIO but high when used as output
+	pio_sm_set_pins_with_mask(TXPio, SM, (1u << Pin1) | (1u << Pin5), (1u << Pin1) | (1u << Pin5));
+    pio_sm_set_pindirs_with_mask(TXPio, SM, 0, (1u << Pin1) | (1u << Pin5));
+
+	// Set this pin's GPIO function (connect PIO to the pad)
+    pio_gpio_init(TXPio, Pin1);
+    pio_gpio_init(TXPio, Pin5);
+
+    pio_sm_init(TXPio, SM, Offset, &SMConfig); // Load our configuration, and jump to the start of the program
+    pio_sm_set_enabled(TXPio, SM, true); // Set the state machine running
+}
+%}
+
+; Just shifts in pins whenever there's a change
+; Done as three programs as hard to deal with multiple input pins due to lack of masking
+
+; Waits for signal from other programs and then shifts current state of pins
+.program maple_rx_triple1
+	wait 1 irq 7
+	in pins, 2
+
+; Waits for transition on the maple bus pin 1 (data) then signals maple_rx_triple1
+.program maple_rx_triple2
+	wait 0 pin 0
+	irq 7
+	wait 1 pin 0
+	irq 7
+
+; Waits for transition on the maple bus pin 5 (data) then signals maple_rx_triple1
+.program maple_rx_triple3
+	wait 0 pin 1
+	irq 7
+	wait 1 pin 1
+	irq 7
+
+% c-sdk {
+static inline void maple_rx_triple_program_init(PIO RXPio, uint* Offset, uint Pin1, uint Pin5, float ClockDivider)
+{
+	assert(Pin5 == Pin1 + 1);
+	for (int SM = 0; SM < 3; SM++)
+	{
+		// Both pins inputs
+		pio_sm_set_consecutive_pindirs(RXPio, SM, Pin1, 2, false);
+
+		pio_sm_config c =
+			(SM == 0)?maple_rx_triple1_program_get_default_config(Offset[0]):
+			((SM == 1)?maple_rx_triple2_program_get_default_config(Offset[1]):
+			maple_rx_triple3_program_get_default_config(Offset[2]));
+
+		sm_config_set_in_pins(&c, Pin1);
+
+		// autopush every 8 bits (gives possibly 3 missed transitions which is enough to still detect end of packet)
+		sm_config_set_in_shift(&c, false, true, 8);
+		sm_config_set_clkdiv(&c, ClockDivider);
+		sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX); // Not using transmit FIFO so use it for recieving
+
+		// Load our configuration, and jump to the start of the program
+		pio_sm_init(RXPio, SM, Offset[SM], &c);
+	}
+}
+%}

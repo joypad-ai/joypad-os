@@ -415,6 +415,22 @@ joypad_target_common(joypad_loopy)
 joypad_add_btstack(joypad_loopy)
 pico_generate_pio_header(joypad_loopy ${CMAKE_CURRENT_LIST_DIR}/native/device/loopy/loopy.pio)
 
+# --- Dreamcast ---
+add_executable(joypad_dc)
+target_compile_definitions(joypad_dc PRIVATE CONFIG_DC=1 CONFIG_USB_HOST=1)
+target_sources(joypad_dc PUBLIC ${COMMON_SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/device/dreamcast/dreamcast_device.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2dc/app.c
+)
+target_include_directories(joypad_dc PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2dc
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/device/dreamcast
+)
+target_link_libraries(joypad_dc PRIVATE ${COMMON_LIBRARIES} hardware_dma)
+joypad_target_common(joypad_dc)
+joypad_add_btstack(joypad_dc)
+pico_generate_pio_header(joypad_dc ${CMAKE_CURRENT_LIST_DIR}/native/device/dreamcast/maple.pio)
+
 # --- 3DO ---
 add_executable(joypad_3do)
 target_compile_definitions(joypad_3do PRIVATE CONFIG_3DO=1)
