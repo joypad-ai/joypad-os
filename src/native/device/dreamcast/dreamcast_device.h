@@ -19,10 +19,11 @@
 // Maple Bus uses differential signaling on two consecutive pins
 //
 // Reference implementations:
-//   - USB4Maple (RP2040): GPIO 14/15
 //   - MaplePad: GPIO 11/12
+//   - USB4Maple (RP2040): GPIO 14/15
 //
-// TODO: Switch to GPIO 14/15 to match USB4Maple once working.
+// KB2040 uses GPIO 2/3 for convenience. WS2812_PIN=17 avoids conflict.
+// TODO: Make configurable via web config per board.
 
 #define MAPLE_PIN1      2   // Data line A (Dreamcast controller Pin 1)
 #define MAPLE_PIN5      3   // Data line B (Dreamcast controller Pin 5)
@@ -118,7 +119,7 @@ typedef struct {
 #define DC_MAP_B4     DC_BTN_Y
 #define DC_MAP_L1     DC_BTN_Z      // L1 -> Z (no L bumper on DC)
 #define DC_MAP_R1     DC_BTN_C      // R1 -> C (no R bumper on DC, use C)
-#define DC_MAP_S1     0             // Select - no equivalent
+#define DC_MAP_S1     DC_BTN_D      // Select -> D (arcade stick 2nd start)
 #define DC_MAP_S2     DC_BTN_START  // Start
 #define DC_MAP_DU     DC_BTN_UP
 #define DC_MAP_DD     DC_BTN_DOWN

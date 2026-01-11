@@ -364,6 +364,7 @@ static uint16_t map_buttons_to_dc(uint32_t jp_buttons)
     if (jp_buttons & JP_BUTTON_B4) dc_buttons |= DC_MAP_B4;
     if (jp_buttons & JP_BUTTON_L1) dc_buttons |= DC_MAP_L1;
     if (jp_buttons & JP_BUTTON_R1) dc_buttons |= DC_MAP_R1;
+    if (jp_buttons & JP_BUTTON_S1) dc_buttons |= DC_MAP_S1;
     if (jp_buttons & JP_BUTTON_S2) dc_buttons |= DC_MAP_S2;
     if (jp_buttons & JP_BUTTON_DU) dc_buttons |= DC_MAP_DU;
     if (jp_buttons & JP_BUTTON_DD) dc_buttons |= DC_MAP_DD;
@@ -628,24 +629,16 @@ void dreamcast_task(void)
     dreamcast_update_output();
 
     // Process packets from core1 and send responses
-    // Process up to 4 packets per call to avoid blocking main loop
-    for (int i = 0; i < 4 && packet_end_read != packet_end_write; i++) {
-        uint32_t end_of_packet = packet_ends[packet_end_read];
-        packet_end_read = (packet_end_read + 1) & 15;
-        packet_count++;
+    while (packet_end_read != packet_end_write) {
+        // CRITICAL: If we have a pending response, we MUST send it before processing
+        // more packets. Otherwise the next packet could overwrite NextPacketSend and
+        // we'd lose a response, causing the Dreamcast to think we disconnected.
+        if (NextPacketSend != SEND_NOTHING) {
+            // Wait for DMA to finish (blocking but necessary for reliable comms)
+            while (dma_channel_is_busy(tx_dma_channel)) {
+                tight_loop_contents();
+            }
 
-        // Copy and byte-swap packet data
-        for (uint32_t j = start_of_packet; j < end_of_packet; j += 4) {
-            *(uint32_t *)&Packet[j - start_of_packet] =
-                __builtin_bswap32(*(uint32_t *)&RxBuffer[j & (RX_BUFFER_SIZE - 1)]);
-        }
-
-        uint32_t packet_size = end_of_packet - start_of_packet;
-        ConsumePacket(packet_size);
-        start_of_packet = ((end_of_packet + 3) & ~3);
-
-        // Send response immediately if DMA is ready
-        if (NextPacketSend != SEND_NOTHING && !dma_channel_is_busy(tx_dma_channel)) {
             switch (NextPacketSend) {
             case SEND_CONTROLLER_INFO:
                 SendPacket((uint32_t *)&InfoPacket, sizeof(InfoPacket) / sizeof(uint32_t));
@@ -661,6 +654,42 @@ void dreamcast_task(void)
             }
             NextPacketSend = SEND_NOTHING;
         }
+
+        uint32_t end_of_packet = packet_ends[packet_end_read];
+        packet_end_read = (packet_end_read + 1) & 15;
+        packet_count++;
+
+        // Copy and byte-swap packet data
+        for (uint32_t j = start_of_packet; j < end_of_packet; j += 4) {
+            *(uint32_t *)&Packet[j - start_of_packet] =
+                __builtin_bswap32(*(uint32_t *)&RxBuffer[j & (RX_BUFFER_SIZE - 1)]);
+        }
+
+        uint32_t packet_size = end_of_packet - start_of_packet;
+        ConsumePacket(packet_size);
+        start_of_packet = ((end_of_packet + 3) & ~3);
+    }
+
+    // Send any final pending response
+    if (NextPacketSend != SEND_NOTHING) {
+        while (dma_channel_is_busy(tx_dma_channel)) {
+            tight_loop_contents();
+        }
+
+        switch (NextPacketSend) {
+        case SEND_CONTROLLER_INFO:
+            SendPacket((uint32_t *)&InfoPacket, sizeof(InfoPacket) / sizeof(uint32_t));
+            break;
+        case SEND_CONTROLLER_STATUS:
+            SendControllerStatus();
+            break;
+        case SEND_ACK:
+            SendPacket((uint32_t *)&ACKPacket, sizeof(ACKPacket) / sizeof(uint32_t));
+            break;
+        default:
+            break;
+        }
+        NextPacketSend = SEND_NOTHING;
     }
 }
 
