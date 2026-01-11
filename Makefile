@@ -54,6 +54,7 @@ CONSOLE_ngc_rp2040zero := joypad_ngc_rp2040zero
 CONSOLE_nuon := joypad_nuon
 CONSOLE_loopy := joypad_loopy
 CONSOLE_dc := joypad_dc
+CONSOLE_n642dc := joypad_n642dc
 CONSOLE_snes3do := joypad_snes3do
 CONSOLE_uart := joypad_uart
 CONSOLE_usb := joypad_usb
@@ -74,6 +75,7 @@ APP_usb2gc_rp2040zero := rp2040zero ngc_rp2040zero usb2gc_rp2040zero USB/BT Game
 APP_usb2nuon_kb2040 := kb2040 nuon usb2nuon_kb2040 USB/BT Nuon
 APP_usb2loopy_kb2040 := kb2040 loopy usb2loopy_kb2040 USB/BT Loopy
 APP_usb2dc_kb2040 := kb2040 dc usb2dc_kb2040 USB/BT Dreamcast
+APP_n642dc_kb2040 := kb2040 n642dc n642dc_kb2040 N64 Dreamcast
 APP_usb23do_rp2040zero := rp2040zero 3do usb23do_rp2040zero USB/BT 3DO
 APP_snes23do_rp2040zero := rp2040zero snes3do snes23do_rp2040zero SNES 3DO
 APP_usb2uart_kb2040 := kb2040 uart usb2uart_kb2040 USB/BT UART
@@ -132,6 +134,7 @@ help:
 	@echo "  make usb2nuon_kb2040    - USB/BT -> Nuon (KB2040)"
 	@echo "  make usb2loopy_kb2040   - USB/BT -> Loopy (KB2040)"
 	@echo "  make usb2dc_kb2040      - USB/BT -> Dreamcast (KB2040)"
+	@echo "  make n642dc_kb2040      - N64 -> Dreamcast (KB2040)"
 	@echo "  make usb23do_rp2040zero - USB/BT -> 3DO (RP2040-Zero)"
 	@echo "  make snes23do_rp2040zero - SNES -> 3DO (RP2040-Zero)"
 	@echo "  make usb2uart_kb2040    - USB -> UART/ESP32 (KB2040)"
@@ -229,6 +232,10 @@ usb2loopy_kb2040:
 .PHONY: usb2dc_kb2040
 usb2dc_kb2040:
 	$(call build_app,usb2dc_kb2040)
+
+.PHONY: n642dc_kb2040
+n642dc_kb2040:
+	$(call build_app,n642dc_kb2040)
 
 .PHONY: usb23do_rp2040zero
 usb23do_rp2040zero:
@@ -405,6 +412,10 @@ flash-usb2loopy_kb2040:
 .PHONY: flash-usb2dc_kb2040
 flash-usb2dc_kb2040:
 	@$(MAKE) --no-print-directory _flash_app APP_NAME=usb2dc_kb2040
+
+.PHONY: flash-n642dc_kb2040
+flash-n642dc_kb2040:
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=n642dc_kb2040
 
 .PHONY: flash-usb23do_rp2040zero
 flash-usb23do_rp2040zero:

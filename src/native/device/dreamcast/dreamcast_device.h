@@ -17,9 +17,15 @@
 // GPIO PIN ASSIGNMENTS (KB2040)
 // ============================================================================
 // Maple Bus uses differential signaling on two consecutive pins
+//
+// Reference implementations:
+//   - USB4Maple (RP2040): GPIO 14/15
+//   - MaplePad: GPIO 11/12
+//
+// TODO: Switch to GPIO 14/15 to match USB4Maple once working.
 
-#define MAPLE_PIN1      2   // Data line A (must be consecutive with PIN5)
-#define MAPLE_PIN5      3   // Data line B (PIN1 + 1)
+#define MAPLE_PIN1      2   // Data line A (Dreamcast controller Pin 1)
+#define MAPLE_PIN5      3   // Data line B (Dreamcast controller Pin 5)
 
 // ============================================================================
 // MAPLE BUS PROTOCOL CONSTANTS

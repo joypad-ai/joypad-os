@@ -43,8 +43,8 @@
 #define LED_DEFAULT_PATTERN 0
 
 // Neopixel (WS2812) board LED patterns by player count
-#define NEOPIXEL_PATTERN_0 pattern_reds
-#define NEOPIXEL_PATTERN_1 pattern_red
+#define NEOPIXEL_PATTERN_0 pattern_oranges
+#define NEOPIXEL_PATTERN_1 pattern_orange
 #define NEOPIXEL_PATTERN_2 pattern_blue
 #define NEOPIXEL_PATTERN_3 pattern_green
 #define NEOPIXEL_PATTERN_4 pattern_purple

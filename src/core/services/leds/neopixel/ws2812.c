@@ -18,20 +18,27 @@
 #define NUM_PIXELS WS2812_NUM_PIXELS
 
 // NeoPixel power control and pin configuration (board-specific)
-#ifdef ADAFRUIT_FEATHER_RP2040_USB_HOST
-#define WS2812_PIN 21
-#define WS2812_POWER_PIN 20
-#define IS_RGBW true
-#elif defined(ADAFRUIT_MACROPAD_RP2040)
-#define WS2812_PIN 19
-#define IS_RGBW false  // MacroPad uses WS2812B (RGB, not RGBW)
-#elif defined(PICO_DEFAULT_WS2812_PIN)
-#define WS2812_PIN PICO_DEFAULT_WS2812_PIN
-#define IS_RGBW true
-#else
-// default to pin 2 if the board doesn't have a default WS2812 pin defined
-#define WS2812_PIN 2
-#define IS_RGBW true
+// WS2812_PIN can be overridden via compile definition
+#ifndef WS2812_PIN
+  #ifdef ADAFRUIT_FEATHER_RP2040_USB_HOST
+    #define WS2812_PIN 21
+    #define WS2812_POWER_PIN 20
+  #elif defined(ADAFRUIT_MACROPAD_RP2040)
+    #define WS2812_PIN 19
+  #elif defined(PICO_DEFAULT_WS2812_PIN)
+    #define WS2812_PIN PICO_DEFAULT_WS2812_PIN
+  #else
+    // default to pin 2 if the board doesn't have a default WS2812 pin defined
+    #define WS2812_PIN 2
+  #endif
+#endif
+
+#ifndef IS_RGBW
+  #ifdef ADAFRUIT_MACROPAD_RP2040
+    #define IS_RGBW false  // MacroPad uses WS2812B (RGB, not RGBW)
+  #else
+    #define IS_RGBW true
+  #endif
 #endif
 
 #include "core/services/codes/codes.h"
@@ -177,6 +184,22 @@ void pattern_red(uint len, uint t) {
     }
 }
 
+void pattern_orange(uint len, uint t) {
+    for (uint i = 0; i < len; ++i) {
+        put_pixel(urgb_u32(64, 24, 0)); // orange
+    }
+}
+
+void pattern_oranges(uint len, uint t) {
+    int max = 100;
+    t %= max;
+    for (int i = 0; i < len; ++i) {
+        uint8_t intensity = t;
+        put_pixel(urgb_u32(intensity, intensity / 3, 0)); // orange gradient
+        if (++t >= max) t = 0;
+    }
+}
+
 void pattern_green(uint len, uint t) {
     for (uint i = 0; i < len; ++i) {
         put_pixel(urgb_u32(0, 64, 0)); // green
@@ -319,12 +342,21 @@ void neopixel_init()
     gpio_put(WS2812_POWER_PIN, 1);
 #endif
 
-    // Use PIO0 for NeoPixel (PIO USB uses PIO1 when CONFIG_USB is defined)
+    // PIO selection:
+    // - CONFIG_DC: Use PIO1 SM3 (maple_tx needs 29 instructions on PIO0, ws2812 needs 4, total 33 > 32 limit)
+    //              maple_rx uses hardcoded SM 0,1,2 on PIO1, so ws2812 must use SM 3
+    // - Others: Use PIO0 (PIO USB uses PIO1 when CONFIG_USB is defined)
+#ifdef CONFIG_DC
+    pio = pio1;  // Share PIO1 with maple_rx (10 instructions + 4 = 14, fits in 32)
+    sm = 3;      // maple_rx uses SM 0,1,2, so we must use SM 3
+    pio_sm_claim(pio, sm);
+#else
     pio = pio0;
+    sm = pio_claim_unused_sm(pio, true);
+#endif
 
     // Load neopixel program and config state machine to run it.
     uint offset = pio_add_program(pio, &ws2812_program);
-    sm = pio_claim_unused_sm(pio, true);
     ws2812_program_init(pio, sm, offset, WS2812_PIN, 800000, IS_RGBW);
     // Initialize all pixels with startup color (orange)
     for (uint i = 0; i < NUM_PIXELS; ++i) {

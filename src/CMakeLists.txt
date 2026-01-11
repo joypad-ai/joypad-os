@@ -203,6 +203,13 @@ set(SNES_HOST_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/lib/SNESpad/src/snespad.c
 )
 
+# N64 host sources
+set(N64_HOST_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/host/n64/n64_host.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/lib/joybus-pio/src/joybus.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/lib/joybus-pio/src/N64Controller.c
+)
+
 # Controller app common sources
 set(CONTROLLER_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/pad/pad_input.c
@@ -417,9 +424,10 @@ pico_generate_pio_header(joypad_loopy ${CMAKE_CURRENT_LIST_DIR}/native/device/lo
 
 # --- Dreamcast ---
 add_executable(joypad_dc)
-target_compile_definitions(joypad_dc PRIVATE CONFIG_DC=1 CONFIG_USB_HOST=1)
+target_compile_definitions(joypad_dc PRIVATE CONFIG_DC=1 CONFIG_USB_HOST=1 WS2812_PIN=17)
 target_sources(joypad_dc PUBLIC ${COMMON_SOURCES}
     ${CMAKE_CURRENT_SOURCE_DIR}/native/device/dreamcast/dreamcast_device.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/device/dreamcast/maple_state_machine.c
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2dc/app.c
 )
 target_include_directories(joypad_dc PUBLIC
@@ -430,6 +438,27 @@ target_link_libraries(joypad_dc PRIVATE ${COMMON_LIBRARIES} hardware_dma)
 joypad_target_common(joypad_dc)
 joypad_add_btstack(joypad_dc)
 pico_generate_pio_header(joypad_dc ${CMAKE_CURRENT_LIST_DIR}/native/device/dreamcast/maple.pio)
+
+# --- N64 to Dreamcast ---
+add_executable(joypad_n642dc)
+target_compile_definitions(joypad_n642dc PRIVATE CONFIG_N642DC=1)
+target_sources(joypad_n642dc PUBLIC ${COMMON_SOURCES}
+    ${N64_HOST_SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/device/dreamcast/dreamcast_device.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/device/dreamcast/maple_state_machine.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/n642dc/app.c
+)
+target_include_directories(joypad_n642dc PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/n642dc
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/host/n64
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/device/dreamcast
+    ${CMAKE_CURRENT_SOURCE_DIR}/lib/joybus-pio/include
+)
+target_link_libraries(joypad_n642dc PRIVATE ${COMMON_LIBRARIES} hardware_dma)
+joypad_target_common(joypad_n642dc)
+# No BTstack for n642dc - uses native N64 input, not USB host
+pico_generate_pio_header(joypad_n642dc ${CMAKE_CURRENT_LIST_DIR}/lib/joybus-pio/src/joybus.pio)
+pico_generate_pio_header(joypad_n642dc ${CMAKE_CURRENT_LIST_DIR}/native/device/dreamcast/maple.pio)
 
 # --- 3DO ---
 add_executable(joypad_3do)
