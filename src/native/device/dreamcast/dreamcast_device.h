@@ -24,9 +24,8 @@
 //
 // KB2040 uses GPIO 2/3 for convenience. WS2812_PIN=17 avoids conflict.
 // TODO: Make configurable via web config per board.
-
-#define MAPLE_PIN1      2   // Data line A (Dreamcast controller Pin 1)
-#define MAPLE_PIN5      3   // Data line B (Dreamcast controller Pin 5)
+#define MAPLE_PIN1      2    // Data line A (Dreamcast controller Pin 1)
+#define MAPLE_PIN5      3    // Data line B (Dreamcast controller Pin 5)
 
 // ============================================================================
 // MAPLE BUS PROTOCOL CONSTANTS
@@ -142,6 +141,14 @@ void dreamcast_task(void);
 
 // Update output state from router
 void __not_in_flash_func(dreamcast_update_output)(void);
+
+// Direct state update for low-latency input sources (bypasses router)
+// buttons: DC format (active-low: 0xFFFF = none pressed)
+// axes: 0-255 with 128 = center
+void dreamcast_set_controller_state(uint8_t port, uint16_t buttons,
+                                     uint8_t joy_x, uint8_t joy_y,
+                                     uint8_t joy2_x, uint8_t joy2_y,
+                                     uint8_t lt, uint8_t rt);
 
 // OutputInterface accessor
 #include "core/output_interface.h"

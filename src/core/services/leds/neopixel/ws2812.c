@@ -335,6 +335,11 @@ const struct {
 
 void neopixel_init()
 {
+#ifdef CONFIG_NO_NEOPIXEL
+    // NeoPixel disabled for this build (e.g., n642dc needs PIO space for joybus)
+    return;
+#endif
+
 #ifdef WS2812_POWER_PIN
     // Enable NeoPixel power (required on some Adafruit boards)
     gpio_init(WS2812_POWER_PIN);
@@ -343,10 +348,9 @@ void neopixel_init()
 #endif
 
     // PIO selection:
-    // - CONFIG_DC: Use PIO1 SM3 (maple_tx needs 29 instructions on PIO0, ws2812 needs 4, total 33 > 32 limit)
-    //              maple_rx uses hardcoded SM 0,1,2 on PIO1, so ws2812 must use SM 3
-    // - Others: Use PIO0 (PIO USB uses PIO1 when CONFIG_USB is defined)
-#ifdef CONFIG_DC
+    // - CONFIG_DC: Use PIO1 SM3 (share with maple_rx which uses SM0/1/2)
+    // - Others: Use PIO0
+#if defined(CONFIG_DC)
     pio = pio1;  // Share PIO1 with maple_rx (10 instructions + 4 = 14, fits in 32)
     sm = 3;      // maple_rx uses SM 0,1,2, so we must use SM 3
     pio_sm_claim(pio, sm);
@@ -384,6 +388,10 @@ bool neopixel_is_indicating(void)
 
 void neopixel_task(int pat)
 {
+#ifdef CONFIG_NO_NEOPIXEL
+    return;
+#endif
+
     current_time = get_absolute_time();
 
     // Handle profile indicator state machine

@@ -104,7 +104,31 @@ static inline void maple_tx_program_init(PIO TXPio, uint SM, uint Offset, uint P
 	wait 1 pin 1
 	irq 7
 
+; Minimal idle program for SM3 - keeps PIO1 active which maple_rx seems to require
+; Uses side-set like ws2812 does - that might be the key
+.program maple_idle
+.side_set 1
+.wrap_target
+	nop side 0
+.wrap
+
 % c-sdk {
+// Use an unused GPIO for side-set (GPIO 18 is unused on KB2040 n642dc)
+#define MAPLE_IDLE_PIN 18
+
+static inline void maple_idle_program_init(PIO pio, uint sm, uint offset)
+{
+	// Connect GPIO to PIO (like ws2812 does)
+	pio_gpio_init(pio, MAPLE_IDLE_PIN);
+	pio_sm_set_consecutive_pindirs(pio, sm, MAPLE_IDLE_PIN, 1, true);  // Output
+
+	pio_sm_config c = maple_idle_program_get_default_config(offset);
+	sm_config_set_sideset_pins(&c, MAPLE_IDLE_PIN);
+	sm_config_set_clkdiv(&c, 1.0f);
+	pio_sm_init(pio, sm, offset, &c);
+	pio_sm_set_enabled(pio, sm, true);
+}
+
 static inline void maple_rx_triple_program_init(PIO RXPio, uint* Offset, uint Pin1, uint Pin5, float ClockDivider)
 {
 	assert(Pin5 == Pin1 + 1);

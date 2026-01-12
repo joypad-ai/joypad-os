@@ -152,7 +152,8 @@ static FACKPacket ACKPacket;
 // CONTROLLER STATE
 // ============================================================================
 
-static dc_controller_state_t dc_state[MAX_PLAYERS];
+// Controller state - volatile for cross-core access (Core 0 writes, Core 1 reads)
+static volatile dc_controller_state_t dc_state[MAX_PLAYERS];
 static uint8_t dc_rumble[MAX_PLAYERS];
 
 // ============================================================================
@@ -544,6 +545,8 @@ static void SetupMapleRX(void)
     offsets[1] = pio_add_program(RXPIO, &maple_rx_triple2_program);
     offsets[2] = pio_add_program(RXPIO, &maple_rx_triple3_program);
 
+    printf("[DC] maple_rx offsets: %d, %d, %d (PIO1)\n", offsets[0], offsets[1], offsets[2]);
+
     // Clock divider of 3.0 (from MaplePad)
     maple_rx_triple_program_init(RXPIO, offsets, MAPLE_PIN1, MAPLE_PIN5, 3.0f);
 
@@ -618,7 +621,9 @@ void dreamcast_task(void)
 
     if (!setup_done) {
         // First call - setup TX and RX
+        printf("[DC] Setting up Maple TX (PIO0)...\n");
         SetupMapleTX();
+        printf("[DC] Setting up Maple RX (PIO1)...\n");
         SetupMapleRX();
         setup_done = true;
         printf("[DC] Maple TX/RX started\n");
@@ -691,6 +696,27 @@ void dreamcast_task(void)
         }
         NextPacketSend = SEND_NOTHING;
     }
+}
+
+// ============================================================================
+// DIRECT STATE UPDATE (for low-latency input sources like N64)
+// ============================================================================
+
+void dreamcast_set_controller_state(uint8_t port, uint16_t buttons,
+                                     uint8_t joy_x, uint8_t joy_y,
+                                     uint8_t joy2_x, uint8_t joy2_y,
+                                     uint8_t lt, uint8_t rt)
+{
+    if (port >= MAX_PLAYERS) return;
+
+    // Direct write to volatile state - Core 1 reads this immediately
+    dc_state[port].buttons = buttons;
+    dc_state[port].joy_x = joy_x;
+    dc_state[port].joy_y = joy_y;
+    dc_state[port].joy2_x = joy2_x;
+    dc_state[port].joy2_y = joy2_y;
+    dc_state[port].lt = lt;
+    dc_state[port].rt = rt;
 }
 
 // ============================================================================

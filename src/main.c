@@ -73,16 +73,23 @@ static void core1_wrapper(void) {
 // Core 0 main loop - pinned in SRAM for consistent timing
 static void __not_in_flash_func(core0_main)(void)
 {
+  printf("[joypad] Entering main loop\n");
+  static bool first_loop = true;
   while (1)
   {
+    if (first_loop) printf("[joypad] Loop: leds\n");
     leds_task();
+    if (first_loop) printf("[joypad] Loop: players\n");
     players_task();
+    if (first_loop) printf("[joypad] Loop: storage\n");
     storage_task();
+    if (first_loop) printf("[joypad] Loop: app\n");
     app_task();
 
     // Poll all input interfaces declared by the app
     for (uint8_t i = 0; i < input_count; i++) {
       if (inputs[i] && inputs[i]->task) {
+        if (first_loop) printf("[joypad] Loop: input %s\n", inputs[i]->name);
         inputs[i]->task();
       }
     }
@@ -90,9 +97,11 @@ static void __not_in_flash_func(core0_main)(void)
     // Run all output interface tasks
     for (uint8_t i = 0; i < output_count; i++) {
       if (outputs[i] && outputs[i]->task) {
+        if (first_loop) printf("[joypad] Loop: output %s\n", outputs[i]->name);
         outputs[i]->task();
       }
     }
+    first_loop = false;
   }
 }
 
