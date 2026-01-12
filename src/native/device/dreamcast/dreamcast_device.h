@@ -107,24 +107,23 @@ typedef struct {
 } dc_controller_state_t;
 
 // ============================================================================
-// BUTTON MAPPING (JP_BUTTON_* to DC buttons)
+// BUTTON MAPPING (JP_BUTTON_* to DC)
 // ============================================================================
-
-// Default mapping: W3C gamepad order to Dreamcast
-// B1 (Cross/A) -> A, B2 (Circle/B) -> B, B3 (Square/X) -> X, B4 (Triangle/Y) -> Y
-#define DC_MAP_B1     DC_BTN_A
-#define DC_MAP_B2     DC_BTN_B
-#define DC_MAP_B3     DC_BTN_X
-#define DC_MAP_B4     DC_BTN_Y
-#define DC_MAP_L1     DC_BTN_Z      // L1 -> Z (no L bumper on DC)
-#define DC_MAP_R1     DC_BTN_C      // R1 -> C (no R bumper on DC, use C)
-#define DC_MAP_S1     DC_BTN_D      // Select -> D (arcade stick 2nd start)
-#define DC_MAP_S2     DC_BTN_START  // Start
-#define DC_MAP_DU     DC_BTN_UP
-#define DC_MAP_DD     DC_BTN_DOWN
-#define DC_MAP_DL     DC_BTN_LEFT
-#define DC_MAP_DR     DC_BTN_RIGHT
-#define DC_MAP_A1     DC_BTN_START  // Guide/Home -> Start
+//
+// JP -> DC mapping:
+//   B1-B4      -> A, B, X, Y (face buttons)
+//   L1/R1      -> L/R triggers (digital, combined with L2/R2 analog)
+//   L2/R2      -> L/R triggers (analog)
+//   L3/R3      -> Z, C (extra face buttons)
+//   S1         -> D (arcade stick 2nd start)
+//   S2         -> Start
+//   D-pad      -> D-pad
+//   A1 (guide) -> Start
+//
+// This allows:
+//   - N64: L/R (L1/R1) -> DC triggers, C-Up/C-Right (L3/R3) -> DC Z/C
+//   - USB: Bumpers (L1/R1) -> DC triggers, Triggers (L2/R2) -> DC triggers
+//
 
 // ============================================================================
 // FUNCTION DECLARATIONS
@@ -141,14 +140,6 @@ void dreamcast_task(void);
 
 // Update output state from router
 void __not_in_flash_func(dreamcast_update_output)(void);
-
-// Direct state update for low-latency input sources (bypasses router)
-// buttons: DC format (active-low: 0xFFFF = none pressed)
-// axes: 0-255 with 128 = center
-void dreamcast_set_controller_state(uint8_t port, uint16_t buttons,
-                                     uint8_t joy_x, uint8_t joy_y,
-                                     uint8_t joy2_x, uint8_t joy2_y,
-                                     uint8_t lt, uint8_t rt);
 
 // OutputInterface accessor
 #include "core/output_interface.h"

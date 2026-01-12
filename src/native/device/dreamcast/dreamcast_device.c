@@ -359,19 +359,30 @@ static uint16_t map_buttons_to_dc(uint32_t jp_buttons)
 {
     uint16_t dc_buttons = 0;
 
-    if (jp_buttons & JP_BUTTON_B1) dc_buttons |= DC_MAP_B1;
-    if (jp_buttons & JP_BUTTON_B2) dc_buttons |= DC_MAP_B2;
-    if (jp_buttons & JP_BUTTON_B3) dc_buttons |= DC_MAP_B3;
-    if (jp_buttons & JP_BUTTON_B4) dc_buttons |= DC_MAP_B4;
-    if (jp_buttons & JP_BUTTON_L1) dc_buttons |= DC_MAP_L1;
-    if (jp_buttons & JP_BUTTON_R1) dc_buttons |= DC_MAP_R1;
-    if (jp_buttons & JP_BUTTON_S1) dc_buttons |= DC_MAP_S1;
-    if (jp_buttons & JP_BUTTON_S2) dc_buttons |= DC_MAP_S2;
-    if (jp_buttons & JP_BUTTON_DU) dc_buttons |= DC_MAP_DU;
-    if (jp_buttons & JP_BUTTON_DD) dc_buttons |= DC_MAP_DD;
-    if (jp_buttons & JP_BUTTON_DL) dc_buttons |= DC_MAP_DL;
-    if (jp_buttons & JP_BUTTON_DR) dc_buttons |= DC_MAP_DR;
-    if (jp_buttons & JP_BUTTON_A1) dc_buttons |= DC_MAP_A1;
+    // Face buttons B1-B4 -> A, B, X, Y
+    if (jp_buttons & JP_BUTTON_B1) dc_buttons |= DC_BTN_A;
+    if (jp_buttons & JP_BUTTON_B2) dc_buttons |= DC_BTN_B;
+    if (jp_buttons & JP_BUTTON_B3) dc_buttons |= DC_BTN_X;
+    if (jp_buttons & JP_BUTTON_B4) dc_buttons |= DC_BTN_Y;
+
+    // L1/R1/L2/R2 -> triggers (handled in analog section, not buttons)
+
+    // L3/R3 -> extra face buttons Z/C
+    if (jp_buttons & JP_BUTTON_L3) dc_buttons |= DC_BTN_Z;
+    if (jp_buttons & JP_BUTTON_R3) dc_buttons |= DC_BTN_C;
+
+    // S1 -> D, S2 -> Start
+    if (jp_buttons & JP_BUTTON_S1) dc_buttons |= DC_BTN_D;
+    if (jp_buttons & JP_BUTTON_S2) dc_buttons |= DC_BTN_START;
+
+    // D-pad
+    if (jp_buttons & JP_BUTTON_DU) dc_buttons |= DC_BTN_UP;
+    if (jp_buttons & JP_BUTTON_DD) dc_buttons |= DC_BTN_DOWN;
+    if (jp_buttons & JP_BUTTON_DL) dc_buttons |= DC_BTN_LEFT;
+    if (jp_buttons & JP_BUTTON_DR) dc_buttons |= DC_BTN_RIGHT;
+
+    // A1 (guide) -> Start
+    if (jp_buttons & JP_BUTTON_A1) dc_buttons |= DC_BTN_START;
 
     // Dreamcast uses active-low (0 = pressed)
     return ~dc_buttons;
@@ -398,8 +409,18 @@ void __not_in_flash_func(dreamcast_update_output)(void)
         dc_state[port].joy_y = event->analog[ANALOG_LY];
         dc_state[port].joy2_x = event->analog[ANALOG_RX];
         dc_state[port].joy2_y = event->analog[ANALOG_RY];
-        dc_state[port].lt = event->analog[ANALOG_L2];
-        dc_state[port].rt = event->analog[ANALOG_R2];
+
+        // L trigger: L1 (bumper) OR L2 (trigger) - accepts both
+        // L1 = N64 L, L2 = N64 Z or USB analog trigger
+        uint8_t lt = event->analog[ANALOG_L2];
+        if (event->buttons & (JP_BUTTON_L1 | JP_BUTTON_L2)) lt = 255;
+        dc_state[port].lt = lt;
+
+        // R trigger: R1 (bumper) OR R2 (trigger) - accepts both
+        // R1 = N64 R, R2 = USB analog trigger
+        uint8_t rt = event->analog[ANALOG_R2];
+        if (event->buttons & (JP_BUTTON_R1 | JP_BUTTON_R2)) rt = 255;
+        dc_state[port].rt = rt;
     }
 }
 
@@ -698,26 +719,6 @@ void dreamcast_task(void)
     }
 }
 
-// ============================================================================
-// DIRECT STATE UPDATE (for low-latency input sources like N64)
-// ============================================================================
-
-void dreamcast_set_controller_state(uint8_t port, uint16_t buttons,
-                                     uint8_t joy_x, uint8_t joy_y,
-                                     uint8_t joy2_x, uint8_t joy2_y,
-                                     uint8_t lt, uint8_t rt)
-{
-    if (port >= MAX_PLAYERS) return;
-
-    // Direct write to volatile state - Core 1 reads this immediately
-    dc_state[port].buttons = buttons;
-    dc_state[port].joy_x = joy_x;
-    dc_state[port].joy_y = joy_y;
-    dc_state[port].joy2_x = joy2_x;
-    dc_state[port].joy2_y = joy2_y;
-    dc_state[port].lt = lt;
-    dc_state[port].rt = rt;
-}
 
 // ============================================================================
 // FEEDBACK ACCESSORS

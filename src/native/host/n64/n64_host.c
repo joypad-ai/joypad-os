@@ -13,9 +13,6 @@
 #include <hardware/pio.h>
 #include <stdio.h>
 
-#ifdef CONFIG_N642DC
-#include "native/device/dreamcast/dreamcast_device.h"
-#endif
 
 // ============================================================================
 // INTERNAL STATE
@@ -29,6 +26,8 @@ static bool rumble_state[N64_MAX_PORTS] = {false};
 static uint32_t prev_buttons[N64_MAX_PORTS] = {0};
 static int8_t prev_stick_x[N64_MAX_PORTS] = {0};
 static int8_t prev_stick_y[N64_MAX_PORTS] = {0};
+static bool prev_l[N64_MAX_PORTS] = {false};
+static bool prev_r[N64_MAX_PORTS] = {false};
 
 // ============================================================================
 // BUTTON MAPPING: N64 -> JP
@@ -39,19 +38,22 @@ static uint32_t map_n64_to_jp(const n64_report_t* report)
 {
     uint32_t buttons = 0x00000000;
 
-    // Face buttons
-    if (report->a)      buttons |= JP_BUTTON_B1;  // N64 A -> B1
-    if (report->b)      buttons |= JP_BUTTON_B2;  // N64 B -> B2
+    // Face buttons (matching DC layout: A, B, X, Y)
+    if (report->a)       buttons |= JP_BUTTON_B1;  // N64 A -> B1 (DC A)
+    if (report->c_down)  buttons |= JP_BUTTON_B2;  // N64 C-Down -> B2 (DC B)
+    if (report->b)       buttons |= JP_BUTTON_B3;  // N64 B -> B3 (DC X)
+    if (report->c_left)  buttons |= JP_BUTTON_B4;  // N64 C-Left -> B4 (DC Y)
 
-    // C-buttons mapped to right stick (will use analog) and some buttons
-    // C-Down/C-Left for B3/B4 as secondary face buttons
-    if (report->c_down)  buttons |= JP_BUTTON_B3;
-    if (report->c_left)  buttons |= JP_BUTTON_B4;
+    // Remaining C-buttons to stick clicks (for DC Z/C)
+    if (report->c_up)    buttons |= JP_BUTTON_L3;  // C-Up -> L3 (DC Z)
+    if (report->c_right) buttons |= JP_BUTTON_R3;  // C-Right -> R3 (DC C)
 
-    // Shoulder buttons
+    // N64 L/R are shoulder buttons -> L1/R1
     if (report->l)      buttons |= JP_BUTTON_L1;  // N64 L -> L1
     if (report->r)      buttons |= JP_BUTTON_R1;  // N64 R -> R1
-    if (report->z)      buttons |= JP_BUTTON_L2;  // N64 Z -> L2 (trigger)
+
+    // N64 Z is a trigger -> L2 (unique for profile remapping)
+    if (report->z)      buttons |= JP_BUTTON_L2;  // N64 Z -> L2
 
     // Start
     if (report->start)  buttons |= JP_BUTTON_S2;  // Start -> S2
@@ -65,50 +67,24 @@ static uint32_t map_n64_to_jp(const n64_report_t* report)
     return buttons;
 }
 
-// Convert N64 signed stick (-128 to +127) to unsigned (0-255, 128 = center)
+// Convert N64 signed stick to unsigned (0-255, 128 = center)
+// N64 sticks typically only reach ±80 to ±85, not ±128
+// Scale up to use full range
+#define N64_STICK_MAX 80  // Typical max deflection
+
 static uint8_t convert_stick_axis(int8_t value)
 {
-    // N64 stick: -128 to +127 (center = 0)
-    // Output: 0 to 255 (center = 128)
-    return (uint8_t)(value + 128);
+    // Scale from N64 range [-80, +80] to [-128, +127]
+    int32_t scaled = ((int32_t)value * 127) / N64_STICK_MAX;
+
+    // Clamp to valid range
+    if (scaled > 127) scaled = 127;
+    if (scaled < -128) scaled = -128;
+
+    // Convert to unsigned (0-255, center = 128)
+    return (uint8_t)(scaled + 128);
 }
 
-#ifdef CONFIG_N642DC
-// Direct N64 to Dreamcast button mapping (bypasses router for minimum latency)
-// Returns DC format: active-low (0xFFFF = none pressed)
-static uint16_t map_n64_to_dc(const n64_report_t* report)
-{
-    uint16_t dc_buttons = 0;
-
-    // N64 A -> DC A, N64 B -> DC B
-    if (report->a)      dc_buttons |= DC_BTN_A;
-    if (report->b)      dc_buttons |= DC_BTN_B;
-
-    // N64 C-buttons -> DC X/Y (makes sense for fighting games)
-    if (report->c_up)    dc_buttons |= DC_BTN_Y;
-    if (report->c_down)  dc_buttons |= DC_BTN_X;
-    if (report->c_left)  dc_buttons |= DC_BTN_C;  // Extra button
-    if (report->c_right) dc_buttons |= DC_BTN_Z;  // Extra button
-
-    // N64 L/R -> DC L/R triggers (digital part)
-    // Note: DC triggers are analog, we'll handle that separately
-
-    // N64 Z -> DC Z (or could be L trigger)
-    if (report->z)      dc_buttons |= DC_BTN_Z;
-
-    // N64 Start -> DC Start
-    if (report->start)  dc_buttons |= DC_BTN_START;
-
-    // D-pad
-    if (report->dpad_up)    dc_buttons |= DC_BTN_UP;
-    if (report->dpad_down)  dc_buttons |= DC_BTN_DOWN;
-    if (report->dpad_left)  dc_buttons |= DC_BTN_LEFT;
-    if (report->dpad_right) dc_buttons |= DC_BTN_RIGHT;
-
-    // DC uses active-low (0 = pressed)
-    return ~dc_buttons;
-}
-#endif
 
 // Convert C-buttons to right analog stick
 static void map_c_buttons_to_analog(const n64_report_t* report, uint8_t* rx, uint8_t* ry)
@@ -209,37 +185,30 @@ void n64_host_task(void)
         uint8_t stick_x = convert_stick_axis(report.stick_x);
         uint8_t stick_y = convert_stick_axis(-report.stick_y);  // Invert Y for standard convention
 
-#ifdef CONFIG_N642DC
-        // Direct path to Dreamcast - bypasses router for minimum latency
-        // Core 1 handles DC communication, so this just updates shared state
-        uint16_t dc_buttons = map_n64_to_dc(&report);
-
-        // N64 L/R as analog triggers (full press = 255)
-        uint8_t lt = report.l ? 255 : 0;
-        uint8_t rt = report.r ? 255 : 0;
-
-        // Update DC state directly - Core 1 reads this when DC requests controller state
-        dreamcast_set_controller_state(port, dc_buttons,
-                                        stick_x, stick_y,
-                                        128, 128,  // No right stick on N64
-                                        lt, rt);
-#else
-        // Standard path via router for other apps
+        // Map buttons and analog via router
         uint32_t buttons = map_n64_to_jp(&report);
 
         // Map C-buttons to right stick
         uint8_t c_rx, c_ry;
         map_c_buttons_to_analog(&report, &c_rx, &c_ry);
 
+        // N64 L/R as analog triggers (full press = 255)
+        uint8_t lt = report.l ? 255 : 0;
+        uint8_t rt = report.r ? 255 : 0;
+
         // Only submit if state changed
         if (buttons == prev_buttons[port] &&
             report.stick_x == prev_stick_x[port] &&
-            report.stick_y == prev_stick_y[port]) {
+            report.stick_y == prev_stick_y[port] &&
+            report.l == prev_l[port] &&
+            report.r == prev_r[port]) {
             continue;
         }
         prev_buttons[port] = buttons;
         prev_stick_x[port] = report.stick_x;
         prev_stick_y[port] = report.stick_y;
+        prev_l[port] = report.l;
+        prev_r[port] = report.r;
 
         // Build input event
         input_event_t event;
@@ -253,10 +222,11 @@ void n64_host_task(void)
         event.analog[ANALOG_LY] = stick_y;
         event.analog[ANALOG_RX] = c_rx;
         event.analog[ANALOG_RY] = c_ry;
+        event.analog[ANALOG_L2] = lt;
+        event.analog[ANALOG_R2] = rt;
 
         // Submit to router
         router_submit_input(&event);
-#endif
     }
 }
 
