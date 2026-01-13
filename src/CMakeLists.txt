@@ -441,8 +441,8 @@ pico_generate_pio_header(joypad_dc ${CMAKE_CURRENT_LIST_DIR}/native/device/dream
 
 # --- N64 to Dreamcast ---
 add_executable(joypad_n642dc)
-# Uses Core 0 TX (no CONFIG_DC_CORE1_TX) - this was working before rumble changes
-target_compile_definitions(joypad_n642dc PRIVATE CONFIG_N642DC=1 CONFIG_DC=1 CONFIG_NO_NEOPIXEL=1 N64_PIN_DATA=29)
+# Core 0: N64 joybus polling, Core 1: Maple RX + processing + TX
+target_compile_definitions(joypad_n642dc PRIVATE CONFIG_N642DC=1 CONFIG_DC=1 CONFIG_DC_CORE1_TX=1 CONFIG_NO_NEOPIXEL=1 N64_PIN_DATA=29)
 target_sources(joypad_n642dc PUBLIC ${COMMON_SOURCES}
     ${N64_HOST_SOURCES}
     ${CMAKE_CURRENT_SOURCE_DIR}/native/device/dreamcast/dreamcast_device.c

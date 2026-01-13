@@ -163,9 +163,6 @@ void n64_host_task(void)
 {
     if (!initialized) return;
 
-    static bool first_task = true;
-    if (first_task) printf("[n64_host] task: starting poll loop\n");
-
     // Check feedback system for rumble updates (works with any output: DC, USB, etc.)
     for (int port = 0; port < N64_MAX_PORTS; port++) {
         feedback_state_t* feedback = feedback_get_state(port);
@@ -182,14 +179,9 @@ void n64_host_task(void)
     for (int port = 0; port < N64_MAX_PORTS; port++) {
         N64Controller* controller = &n64_controllers[port];
 
-        if (first_task) printf("[n64_host] task: polling port %d\n", port);
-
         // Poll the controller
         n64_report_t report;
         bool success = N64Controller_Poll(controller, &report, rumble_state[port]);
-
-        if (first_task) printf("[n64_host] task: poll returned %d\n", success);
-        first_task = false;
 
         if (!success) {
             // Controller not responding, skip
