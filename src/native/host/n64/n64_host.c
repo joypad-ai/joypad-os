@@ -201,6 +201,26 @@ void n64_host_task(void)
                     disconnect_debounce[port] = 0;
                     rumble_pak_initialized[port] = false;  // Real disconnect - reset pak
                     printf("[n64_host] Port %d: disconnected\n", port);
+
+                    // Send cleared input to prevent stuck buttons
+                    input_event_t event;
+                    init_input_event(&event);
+                    event.dev_addr = 0xE0 + port;
+                    event.instance = 0;
+                    event.type = INPUT_TYPE_GAMEPAD;
+                    event.buttons = 0;
+                    event.analog[ANALOG_LX] = 128;
+                    event.analog[ANALOG_LY] = 128;
+                    event.analog[ANALOG_RX] = 128;
+                    event.analog[ANALOG_RY] = 128;
+                    router_submit_input(&event);
+
+                    // Reset previous state tracking
+                    prev_buttons[port] = 0;
+                    prev_stick_x[port] = 0;
+                    prev_stick_y[port] = 0;
+                    prev_l[port] = false;
+                    prev_r[port] = false;
                 }
             }
         } else {
