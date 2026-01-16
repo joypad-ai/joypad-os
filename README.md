@@ -38,9 +38,10 @@ Joypad OS is the real-time nervous system of the Joypad platform.
 
 | Output | Features | Documentation |
 |--------|----------|---------------|
-| **USB Device** | HID Gamepad, XInput, Xbox OG, Xbox One, PS3, PS4, PS Classic, Switch | [Docs](docs/BUILD.md) |
+| **USB Device** | HID Gamepad, XInput, Xbox OG, Xbox One, XAC, PS3, PS4, PS Classic, Switch | [Docs](docs/BUILD.md) |
 | **PCEngine / TurboGrafx-16** | Multitap (5 players), Mouse, 2/3/6-button | [Docs](docs/consoles/PCENGINE.md) |
 | **GameCube / Wii** | Profiles, Rumble, Keyboard mode | [Docs](docs/consoles/GAMECUBE.md) |
+| **Sega Dreamcast** | ~~VMU emulation~~, Rumble, Profiles | [Docs](docs/consoles/DREAMCAST.md) |
 | **Nuon DVD Players** | Controller, Spinner (Tempest 3000), IGR | [Docs](docs/consoles/NUON.md) |
 | **3DO Interactive Multiplayer** | 8 players, Mouse, Extension passthrough | [Docs](docs/consoles/3DO.md) |
 | **Casio Loopy** | 4 players (experimental) | [Docs](docs/consoles/LOOPY.md) |
@@ -57,16 +58,28 @@ Pre-built adapters available at **[controlleradapter.com](https://controlleradap
 
 ---
 
-## Supported USB Devices
+## Supported Input Devices
 
-**Controllers:**
-- Xbox (OG/360/One/Series X|S)
+**USB Controllers:**
+- Xbox (OG/360/One/Series X|S, 360 Wireless Adapter)
 - PlayStation (Classic/DS3/DS4/DualSense)
-- Nintendo Switch (Pro/Joy-Cons)
-- 8BitDo (PCE 2.4g, M30, Adapters)
+- Nintendo (Switch Pro, Switch 2 Pro, NSO GameCube, GameCube adapter)
+- 8BitDo (PCE 2.4g, M30, BT Adapters)
+- Hori (Horipad, Pokken Tournament)
+- Logitech Wingman
+- Sega Astro City Mini
+- Google Stadia
+- Raphnet adapters (PCEngine, etc.)
 - Generic HID gamepads
 
+**Bluetooth Controllers (via USB dongle or Pico W):**
+- PlayStation (DS3/DS4/DualSense)
+- Nintendo (Switch Pro, Switch 2 Pro, Wii U Pro, Wiimote)
+- Xbox (One/Series Bluetooth models)
+- Google Stadia
+
 **Peripherals:**
+- USB Bluetooth dongles (connect BT controllers via USB host)
 - USB Keyboards (full HID support)
 - USB Mice (PCEngine mouse, Nuon spinner, 3DO mouse)
 - USB Hubs (up to 8 devices for 3DO)
@@ -103,10 +116,10 @@ git clone https://github.com/joypad-ai/joypad-os.git
 cd joypad-os && make init
 
 # Build specific product
-make usb2gc         # GameCube adapter
-make usb2pce        # PCEngine adapter
-make usb2nuon       # Nuon adapter
-make usb23do        # 3DO adapter
+make usb2pce_kb2040   # PCEngine adapter
+make usb2gc_kb2040    # GameCube adapter
+make usb2dc_kb2040    # Dreamcast adapter
+make usb2nuon_kb2040  # Nuon adapter
 ```
 
 ### Build Commands
@@ -116,13 +129,26 @@ make init          # Initialize submodules (one-time setup)
 make all           # Build all products
 make clean         # Clean build artifacts
 
-# Build specific products
-make usb2pce       # USB2PCE (KB2040 + PCEngine)
-make usb2gc        # USB2GC (KB2040 + GameCube)
-make usb2nuon      # USB2Nuon (KB2040 + Nuon)
-make usb23do       # USB23DO (KB2040 + 3DO)
-make usb2loopy     # USB2Loopy (KB2040 + Casio Loopy)
-make snes23do      # SNES23DO (SNES→3DO bridge)
+# Console adapters (USB/BT input)
+make usb2pce_kb2040       # PCEngine (KB2040)
+make usb2gc_kb2040        # GameCube (KB2040)
+make usb2gc_rp2040zero    # GameCube (RP2040-Zero)
+make usb2dc_kb2040        # Dreamcast (KB2040)
+make usb2nuon_kb2040      # Nuon (KB2040)
+make usb2loopy_kb2040     # Casio Loopy (KB2040)
+make usb23do_rp2040zero   # 3DO (RP2040-Zero)
+
+# Native controller adapters
+make n642dc_kb2040        # N64 → Dreamcast (KB2040)
+make n642usb_kb2040       # N64 → USB (KB2040)
+make snes2usb_kb2040      # SNES → USB (KB2040)
+make snes23do_rp2040zero  # SNES → 3DO (RP2040-Zero)
+
+# USB/BT passthrough
+make usb2usb_feather      # USB → USB (Feather USB Host)
+make usb2usb_rp2040zero   # USB → USB (RP2040-Zero)
+make usb2usb_rp2350usba   # USB → USB (Waveshare RP2350-USB-A)
+make bt2usb_pico_w        # Bluetooth → USB (Pico W)
 ```
 
 Output firmware files appear in `releases/` directory.
@@ -141,6 +167,7 @@ Output firmware files appear in `releases/` directory.
 
 - **[GameCube/Wii](docs/consoles/GAMECUBE.md)** - Profiles, keyboard mode, rumble
 - **[PCEngine/TurboGrafx-16](docs/consoles/PCENGINE.md)** - Multitap, mouse, button modes
+- **[Sega Dreamcast](docs/consoles/DREAMCAST.md)** - ~~VMU emulation~~, rumble, profiles
 - **[Nuon](docs/consoles/NUON.md)** - Controller, Tempest 3000 spinner, IGR
 - **[3DO](docs/consoles/3DO.md)** - 8-player support, mouse, profiles
 - **[Casio Loopy](docs/consoles/LOOPY.md)** - Experimental support
@@ -175,6 +202,7 @@ Joypad OS uses a modular architecture:
 - [Ha Thach](https://github.com/hathach/) - [TinyUSB](https://github.com/hathach/tinyusb)
 - [David Shadoff](https://github.com/dshadoff) - [PCEMouse](https://github.com/dshadoff/PC_Engine_RP2040_Projects/tree/main/PCEMouse) foundation
 - [FCare](https://github.com/FCare) - [USBTo3DO](https://github.com/FCare/USBTo3DO) 3DO protocol implementation
+- [mackieks](https://github.com/mackieks) - [MaplePad](https://github.com/mackieks/MaplePad) Dreamcast Maple Bus implementation
 - [Ryzee119](https://github.com/Ryzee119) - [tusb_xinput](https://github.com/Ryzee119/tusb_xinput/)
 - [SelvinPL](https://github.com/SelvinPL/) - [lufa-hid-parser](https://gist.github.com/SelvinPL/99fd9af4566e759b6553e912b6a163f9)
 - [JonnyHaystack](https://github.com/JonnyHaystack/) - [joybus-pio](https://github.com/JonnyHaystack/joybus-pio)
