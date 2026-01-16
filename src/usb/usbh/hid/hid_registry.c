@@ -22,6 +22,7 @@
 #include "devices/vendors/logitech/logitech_wingman.h"
 #include "devices/vendors/sega/sega_astrocity.h"
 #include "devices/vendors/google/google_stadia.h"
+#include "devices/vendors/raphnet/raphnet_pce.h"
 // Include other devices here
 
 DeviceInterface* device_interfaces[CONTROLLER_TYPE_COUNT] = {0};
@@ -42,6 +43,7 @@ void register_devices() {
     device_interfaces[CONTROLLER_SWITCH] = &switch_pro_interface;
     device_interfaces[CONTROLLER_SWITCH2] = &switch2_pro_interface;
     device_interfaces[CONTROLLER_STADIA] = &google_stadia_interface;
+    device_interfaces[CONTROLLER_RAPHNET_PCE] = &raphnet_pce_interface;
     device_interfaces[CONTROLLER_DINPUT] = &hid_gamepad_interface;
     device_interfaces[CONTROLLER_KEYBOARD] = &hid_keyboard_interface;
     device_interfaces[CONTROLLER_MOUSE] = &hid_mouse_interface;
