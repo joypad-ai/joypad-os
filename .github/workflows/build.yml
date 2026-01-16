@@ -112,12 +112,13 @@ jobs:
           path: artifacts/usb2nuon/*.uf2
           if-no-files-found: ignore
 
-      - name: Upload usb2loopy artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: joypad_${{ steps.commit.outputs.hash }}_usb2loopy
-          path: artifacts/usb2loopy/*.uf2
-          if-no-files-found: ignore
+      # usb2loopy excluded until more mature
+      # - name: Upload usb2loopy artifacts
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: joypad_${{ steps.commit.outputs.hash }}_usb2loopy
+      #     path: artifacts/usb2loopy/*.uf2
+      #     if-no-files-found: ignore
 
       - name: Upload usb2dc artifacts
         uses: actions/upload-artifact@v4
@@ -140,12 +141,13 @@ jobs:
           path: artifacts/usb23do/*.uf2
           if-no-files-found: ignore
 
-      - name: Upload snes23do artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: joypad_${{ steps.commit.outputs.hash }}_snes23do
-          path: artifacts/snes23do/*.uf2
-          if-no-files-found: ignore
+      # snes23do excluded until more mature
+      # - name: Upload snes23do artifacts
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: joypad_${{ steps.commit.outputs.hash }}_snes23do
+      #     path: artifacts/snes23do/*.uf2
+      #     if-no-files-found: ignore
 
       - name: Upload usb2uart artifacts
         uses: actions/upload-artifact@v4

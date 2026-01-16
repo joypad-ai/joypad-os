@@ -93,10 +93,12 @@ APP_controller_alpakka_pico := pico controller_alpakka controller_alpakka_pico G
 APP_controller_macropad := macropad controller_macropad controller_macropad GPIO USB
 
 # All apps (note: controller_macropad not included - build explicitly with 'make controller_macropad')
-APPS := usb2pce_kb2040 usb2gc_kb2040 usb2gc_rp2040zero usb2nuon_kb2040 usb2loopy_kb2040 usb2dc_kb2040 n642dc_kb2040 usb23do_rp2040zero snes23do_rp2040zero usb2uart_kb2040 usb2usb_feather usb2usb_rp2040zero usb2usb_rp2350usba bt2usb_pico_w bt2usb_pico2_w snes2usb_kb2040 n642usb_kb2040 controller_fisherprice_kb2040 controller_alpakka_pico
+# Note: usb2loopy_kb2040, snes23do_rp2040zero excluded until more mature
+APPS := usb2pce_kb2040 usb2gc_kb2040 usb2gc_rp2040zero usb2nuon_kb2040 usb2dc_kb2040 n642dc_kb2040 usb23do_rp2040zero usb2uart_kb2040 usb2usb_feather usb2usb_rp2040zero usb2usb_rp2350usba bt2usb_pico_w bt2usb_pico2_w snes2usb_kb2040 n642usb_kb2040 controller_fisherprice_kb2040 controller_alpakka_pico
 
 # Stable apps for release
-RELEASE_APPS := usb2pce_kb2040 usb2gc_kb2040 usb2gc_rp2040zero usb2nuon_kb2040 usb2loopy_kb2040 usb23do_rp2040zero usb2usb_feather usb2usb_rp2040zero bt2usb_pico_w snes2usb_kb2040 snes23do_rp2040zero
+# Note: usb2loopy_kb2040, snes23do_rp2040zero excluded until more mature
+RELEASE_APPS := usb2pce_kb2040 usb2gc_kb2040 usb2gc_rp2040zero usb2nuon_kb2040 usb23do_rp2040zero usb2usb_feather usb2usb_rp2040zero bt2usb_pico_w snes2usb_kb2040
 
 # Release directory
 RELEASE_DIR := releases
