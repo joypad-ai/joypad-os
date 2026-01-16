@@ -266,9 +266,9 @@ void n64_host_task(void)
         uint8_t c_rx, c_ry;
         map_c_buttons_to_analog(&report, &c_rx, &c_ry);
 
-        // N64 L/R as analog triggers (full press = 255)
-        uint8_t lt = report.l ? 255 : 0;
-        uint8_t rt = report.r ? 255 : 0;
+        // N64 has no analog triggers - L/R are digital buttons (L1/R1)
+        uint8_t lt = 0;
+        uint8_t rt = 0;
 
         // Only submit if state changed
         if (buttons == prev_buttons[port] &&
