@@ -294,6 +294,8 @@ jobs:
           commit_user_name: ${{ github.actor }}
           commit_user_email: ${{ github.actor }}@users.noreply.github.com
           commit_author: ${{ github.actor }} <${{ github.actor }}@users.noreply.github.com>
+        env:
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
 
       - name: Read VERSION file
         id: version
