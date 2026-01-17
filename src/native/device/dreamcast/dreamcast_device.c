@@ -721,9 +721,9 @@ static uint16_t map_buttons_to_dc(uint32_t jp_buttons)
     if (jp_buttons & JP_BUTTON_B3) dc_buttons |= DC_BTN_X;
     if (jp_buttons & JP_BUTTON_B4) dc_buttons |= DC_BTN_Y;
 
-    // L1/R1 -> triggers (handled in analog section)
-    // L2 -> D button (N64 Z, distinct from L trigger for in-game remapping)
-    if (jp_buttons & JP_BUTTON_L2) dc_buttons |= DC_BTN_D;
+    // L2/R2 -> triggers (handled in analog section)
+    // R1 (N64 Z, GC Z) -> D button (extra action button)
+    if (jp_buttons & JP_BUTTON_R1) dc_buttons |= DC_BTN_D;
 
     // L3/R3 -> extra face buttons Z/C
     if (jp_buttons & JP_BUTTON_L3) dc_buttons |= DC_BTN_Z;
@@ -768,17 +768,16 @@ void __not_in_flash_func(dreamcast_update_output)(void)
         dc_state[port].joy2_x = event->analog[ANALOG_RX];
         dc_state[port].joy2_y = event->analog[ANALOG_RY];
 
-        // L trigger: L1 (bumper) or analog L2 - NOT digital L2
-        // L1 = N64 L, analog L2 = USB analog trigger
-        // Digital L2 (N64 Z) goes to D button instead for distinct mapping
+        // L trigger: L2 (analog + digital) - consistent with GC/N64 mapping
+        // N64 L -> L2, GC L -> L2, USB L2 -> L2
         uint8_t lt = event->analog[ANALOG_L2];
-        if (event->buttons & JP_BUTTON_L1) lt = 255;
+        if (event->buttons & JP_BUTTON_L2) lt = 255;
         dc_state[port].lt = lt;
 
-        // R trigger: R1 (bumper) OR R2 (trigger) - accepts both
-        // R1 = N64 R, R2 = USB analog trigger
+        // R trigger: R2 (analog + digital) - consistent with GC/N64 mapping
+        // N64 R -> R2, GC R -> R2, USB R2 -> R2
         uint8_t rt = event->analog[ANALOG_R2];
-        if (event->buttons & (JP_BUTTON_R1 | JP_BUTTON_R2)) rt = 255;
+        if (event->buttons & JP_BUTTON_R2) rt = 255;
         dc_state[port].rt = rt;
     }
 }

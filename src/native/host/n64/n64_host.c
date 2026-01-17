@@ -54,12 +54,12 @@ static uint32_t map_n64_to_jp(const n64_report_t* report)
     if (report->c_up)    buttons |= JP_BUTTON_L3;  // C-Up -> L3 (DC Z)
     if (report->c_right) buttons |= JP_BUTTON_R3;  // C-Right -> R3 (DC C)
 
-    // N64 L/R are shoulder buttons -> L1/R1
-    if (report->l)      buttons |= JP_BUTTON_L1;  // N64 L -> L1
-    if (report->r)      buttons |= JP_BUTTON_R1;  // N64 R -> R1
+    // N64 L/R are the primary triggers -> L2/R2 (consistent with GC/DC)
+    if (report->l)      buttons |= JP_BUTTON_L2;  // N64 L -> L2
+    if (report->r)      buttons |= JP_BUTTON_R2;  // N64 R -> R2
 
-    // N64 Z is a trigger -> L2 (unique for profile remapping)
-    if (report->z)      buttons |= JP_BUTTON_L2;  // N64 Z -> L2
+    // N64 Z is the shoulder/bumper button -> R1 (consistent with GC Z)
+    if (report->z)      buttons |= JP_BUTTON_R1;  // N64 Z -> R1
 
     // Start
     if (report->start)  buttons |= JP_BUTTON_S2;  // Start -> S2
