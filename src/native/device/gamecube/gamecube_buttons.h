@@ -18,9 +18,9 @@
 // These aliases equal the JP_BUTTON_* values they represent on GameCube.
 // The mapping reflects the default/natural position on a GameCube controller.
 
-// Face buttons
-#define GC_BUTTON_A         JP_BUTTON_B1  // A (large green button)
-#define GC_BUTTON_B         JP_BUTTON_B2  // B (small red button)
+// Face buttons (matching gc_host input mapping)
+#define GC_BUTTON_A         JP_BUTTON_B2  // A (large green button)
+#define GC_BUTTON_B         JP_BUTTON_B1  // B (small red button)
 #define GC_BUTTON_X         JP_BUTTON_B4  // X (right of A)
 #define GC_BUTTON_Y         JP_BUTTON_B3  // Y (above A)
 

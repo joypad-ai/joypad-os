@@ -290,7 +290,7 @@ static void map_usbr_to_gc_report(const profile_output_t* output, gc_report_t* r
     report->dpad_right = ((buttons & JP_BUTTON_DR) != 0) ? 1 : 0;
 
     // Face buttons (USBR → GC mapping via aliases)
-    // GC_BUTTON_A = JP_BUTTON_B1, GC_BUTTON_B = JP_BUTTON_B2, etc.
+    // GC_BUTTON_A = JP_BUTTON_B2, GC_BUTTON_B = JP_BUTTON_B1 (matches gc_host input)
     report->a = ((buttons & GC_BUTTON_A) != 0) ? 1 : 0;
     report->b = ((buttons & GC_BUTTON_B) != 0) ? 1 : 0;
     report->x = ((buttons & GC_BUTTON_X) != 0) ? 1 : 0;
