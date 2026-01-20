@@ -820,6 +820,18 @@ void profile_apply(const profile_t* profile,
     output->l2_analog = l2;
     output->r2_analog = r2;
 
+    // Set L2/R2 digital buttons based on analog threshold (if threshold > 0)
+    // Threshold of 0 means disabled (never trigger digital from analog)
+    // This replaces the input driver threshold logic, allowing per-profile control
+    if (profile) {
+        if (profile->l2_threshold > 0 && l2 >= profile->l2_threshold) {
+            output->buttons |= JP_BUTTON_L2;
+        }
+        if (profile->r2_threshold > 0 && r2 >= profile->r2_threshold) {
+            output->buttons |= JP_BUTTON_R2;
+        }
+    }
+
     // Process button combos first (before individual mappings)
     // Combos can add buttons and optionally consume their input buttons
     // Note: Router uses active-high (1 = pressed, 0 = released)
