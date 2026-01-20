@@ -238,13 +238,11 @@ static void gc_adapter_mode_init(void)
     gc_adapter_report.report_id = GC_ADAPTER_REPORT_ID_INPUT;
 
     // Initialize all ports with rumble available but no controller
+    // Real adapter uses all zeros for unconnected ports (status 0x04)
     // Ports are marked CONNECTED (0x14) when they receive input
     for (int i = 0; i < 4; i++) {
         gc_adapter_report.port[i].status = GC_ADAPTER_STATUS_RUMBLE;
-        gc_adapter_report.port[i].stick_x = 128;
-        gc_adapter_report.port[i].stick_y = 128;
-        gc_adapter_report.port[i].cstick_x = 128;
-        gc_adapter_report.port[i].cstick_y = 128;
+        // All analog values stay 0 for unconnected ports (matches real adapter)
     }
 
     memset(&gc_adapter_rumble, 0, sizeof(gc_adapter_out_report_t));
