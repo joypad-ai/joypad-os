@@ -672,6 +672,41 @@ if (PICO_BOARD STREQUAL "pico_w" OR PICO_BOARD STREQUAL "pico2_w")
     joypad_target_common(joypad_bt2usb)
     pico_enable_stdio_usb(joypad_bt2usb 0)
     pico_enable_stdio_uart(joypad_bt2usb 1)
+
+    # --- WiFi to USB (Pico W / Pico 2 W WiFi AP mode) ---
+    add_executable(joypad_wifi2usb)
+    target_compile_definitions(joypad_wifi2usb PRIVATE
+        CONFIG_WIFI2USB=1
+        CONFIG_USB=1
+        DISABLE_USB_HOST=1
+        USE_BOOTSEL_BUTTON=1
+        CYW43_LWIP=1
+        # WiFi AP mode, no Bluetooth
+        PICO_CYW43_ARCH_POLL=1
+    )
+    target_sources(joypad_wifi2usb PUBLIC
+        ${CORE_SOURCES}
+        ${USB_DEVICE_SOURCES}
+        ${CMAKE_CURRENT_SOURCE_DIR}/wifi/jocp/jocp_input.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/wifi/jocp/wifi_transport.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/wifi/jocp/dhcpserver.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/apps/wifi2usb/app.c
+    )
+    target_include_directories(joypad_wifi2usb PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/apps/wifi2usb
+        ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd
+        ${CMAKE_CURRENT_SOURCE_DIR}/wifi/jocp
+    )
+    target_link_libraries(joypad_wifi2usb PRIVATE
+        pico_stdlib
+        pico_multicore
+        pico_cyw43_arch_lwip_poll
+        tinyusb_device
+        tinyusb_board
+    )
+    joypad_target_common(joypad_wifi2usb)
+    pico_enable_stdio_usb(joypad_wifi2usb 0)
+    pico_enable_stdio_uart(joypad_wifi2usb 1)
 endif()
 
 # --- SNES to USB ---

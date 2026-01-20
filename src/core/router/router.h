@@ -35,6 +35,7 @@ typedef enum {
 typedef enum {
     INPUT_SOURCE_USB_HOST,
     INPUT_SOURCE_BLE_CENTRAL,
+    INPUT_SOURCE_WIFI,              // WiFi JOCP input
     INPUT_SOURCE_NATIVE_SNES,
     INPUT_SOURCE_NATIVE_N64,
     INPUT_SOURCE_NATIVE_GC,

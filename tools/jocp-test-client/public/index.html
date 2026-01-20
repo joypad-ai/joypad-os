@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JOCP Test Client</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        h1 { text-align: center; margin-bottom: 20px; color: #00d4aa; }
+        .status {
+            text-align: center;
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .status.connected { background: #1e4620; }
+        .status.disconnected { background: #462020; }
+
+        .controller {
+            max-width: 600px;
+            margin: 0 auto;
+            background: #16213e;
+            border-radius: 16px;
+            padding: 20px;
+        }
+
+        /* Button grid */
+        .button-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+        .button-group {
+            display: grid;
+            gap: 8px;
+        }
+        .dpad {
+            grid-template-columns: repeat(3, 50px);
+            grid-template-rows: repeat(3, 50px);
+        }
+        .face-buttons {
+            grid-template-columns: repeat(3, 50px);
+            grid-template-rows: repeat(3, 50px);
+        }
+
+        .btn {
+            width: 50px;
+            height: 50px;
+            border: none;
+            border-radius: 8px;
+            background: #2d4263;
+            color: #fff;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.1s;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+        .btn:active, .btn.pressed {
+            background: #00d4aa;
+            color: #000;
+            transform: scale(0.95);
+        }
+        .btn.hidden { visibility: hidden; }
+
+        /* Shoulder buttons */
+        .shoulders {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+        .shoulder-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .shoulder-group .btn {
+            width: 80px;
+            height: 40px;
+        }
+
+        /* Triggers */
+        .triggers {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+        .trigger-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .trigger-group label {
+            font-size: 12px;
+            margin-bottom: 4px;
+        }
+        .trigger-slider {
+            width: 100px;
+            height: 20px;
+        }
+        .trigger-value {
+            font-size: 12px;
+            color: #888;
+        }
+
+        /* Sticks */
+        .sticks {
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 20px;
+        }
+        .stick-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .stick {
+            width: 120px;
+            height: 120px;
+            background: #2d4263;
+            border-radius: 50%;
+            position: relative;
+            touch-action: none;
+        }
+        .stick-knob {
+            width: 40px;
+            height: 40px;
+            background: #00d4aa;
+            border-radius: 50%;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            transition: none;
+        }
+        .stick-label {
+            margin-top: 8px;
+            font-size: 14px;
+        }
+        .stick-values {
+            font-size: 12px;
+            color: #888;
+        }
+
+        /* System buttons */
+        .system-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        .system-buttons .btn {
+            width: 60px;
+            height: 30px;
+            font-size: 11px;
+        }
+
+        /* Gamepad status */
+        .gamepad-status {
+            text-align: center;
+            padding: 10px;
+            background: #0f3460;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+        .gamepad-status.active { background: #1e4620; }
+
+        /* Debug */
+        .debug {
+            margin-top: 20px;
+            padding: 10px;
+            background: #000;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>JOCP Test Client</h1>
+
+    <div id="status" class="status disconnected">Connecting...</div>
+
+    <div class="controller">
+        <!-- Triggers -->
+        <div class="triggers">
+            <div class="trigger-group">
+                <label>L2</label>
+                <input type="range" class="trigger-slider" id="lt" min="0" max="65535" value="0">
+                <span class="trigger-value" id="lt-value">0</span>
+            </div>
+            <div class="trigger-group">
+                <label>R2</label>
+                <input type="range" class="trigger-slider" id="rt" min="0" max="65535" value="0">
+                <span class="trigger-value" id="rt-value">0</span>
+            </div>
+        </div>
+
+        <!-- Shoulders -->
+        <div class="shoulders">
+            <div class="shoulder-group">
+                <button class="btn" data-button="8">L1</button>
+            </div>
+            <div class="shoulder-group">
+                <button class="btn" data-button="9">R1</button>
+            </div>
+        </div>
+
+        <!-- D-pad and Face buttons -->
+        <div class="button-row">
+            <div class="button-group dpad">
+                <div class="btn hidden"></div>
+                <button class="btn" data-button="4">U</button>
+                <div class="btn hidden"></div>
+                <button class="btn" data-button="6">L</button>
+                <div class="btn hidden"></div>
+                <button class="btn" data-button="7">R</button>
+                <div class="btn hidden"></div>
+                <button class="btn" data-button="5">D</button>
+                <div class="btn hidden"></div>
+            </div>
+
+            <div class="button-group face-buttons">
+                <div class="btn hidden"></div>
+                <button class="btn" data-button="3">Y</button>
+                <div class="btn hidden"></div>
+                <button class="btn" data-button="2">X</button>
+                <div class="btn hidden"></div>
+                <button class="btn" data-button="1">B</button>
+                <div class="btn hidden"></div>
+                <button class="btn" data-button="0">A</button>
+                <div class="btn hidden"></div>
+            </div>
+        </div>
+
+        <!-- Sticks -->
+        <div class="sticks">
+            <div class="stick-container">
+                <div class="stick" id="left-stick">
+                    <div class="stick-knob" id="left-knob"></div>
+                </div>
+                <span class="stick-label">Left Stick</span>
+                <span class="stick-values" id="left-values">0, 0</span>
+            </div>
+            <div class="stick-container">
+                <div class="stick" id="right-stick">
+                    <div class="stick-knob" id="right-knob"></div>
+                </div>
+                <span class="stick-label">Right Stick</span>
+                <span class="stick-values" id="right-values">0, 0</span>
+            </div>
+        </div>
+
+        <!-- System buttons -->
+        <div class="system-buttons">
+            <button class="btn" data-button="17">Select</button>
+            <button class="btn" data-button="18">Guide</button>
+            <button class="btn" data-button="16">Start</button>
+        </div>
+
+        <!-- Stick clicks -->
+        <div class="system-buttons">
+            <button class="btn" data-button="12">L3</button>
+            <button class="btn" data-button="13">R3</button>
+        </div>
+
+        <div id="gamepad-status" class="gamepad-status">
+            Connect a gamepad and press any button
+        </div>
+    </div>
+
+    <div class="debug" id="debug"></div>
+
+    <script>
+        // JOCP button bit positions (from jocp.h)
+        const JOCP_BUTTONS = {
+            0: 0,    // A/South
+            1: 1,    // B/East
+            2: 2,    // X/West
+            3: 3,    // Y/North
+            4: 4,    // D-Up
+            5: 5,    // D-Down
+            6: 6,    // D-Left
+            7: 7,    // D-Right
+            8: 8,    // L1
+            9: 9,    // R1
+            10: 10,  // L2 digital
+            11: 11,  // R2 digital
+            12: 12,  // L3
+            13: 13,  // R3
+            14: 14,  // L Paddle 1
+            15: 15,  // R Paddle 1
+            16: 16,  // Start
+            17: 17,  // Back/Select
+            18: 18,  // Guide
+            19: 19,  // Capture
+        };
+
+        // W3C Gamepad API to JOCP button mapping
+        const GAMEPAD_TO_JOCP = {
+            0: 0,   // A → South
+            1: 1,   // B → East
+            2: 2,   // X → West
+            3: 3,   // Y → North
+            4: 8,   // LB → L1
+            5: 9,   // RB → R1
+            6: 10,  // LT → L2 (digital)
+            7: 11,  // RT → R2 (digital)
+            8: 17,  // Back → Select
+            9: 16,  // Start → Start
+            10: 12, // LS → L3
+            11: 13, // RS → R3
+            12: 4,  // DU
+            13: 5,  // DD
+            14: 6,  // DL
+            15: 7,  // DR
+            16: 18, // Guide
+        };
+
+        // State
+        let ws = null;
+        let connected = false;
+        let gamepadIndex = null;
+        let controllerState = {
+            buttons: 0,
+            lx: 0, ly: 0,
+            rx: 0, ry: 0,
+            lt: 0, rt: 0
+        };
+
+        const statusEl = document.getElementById('status');
+        const gamepadStatusEl = document.getElementById('gamepad-status');
+        const debugEl = document.getElementById('debug');
+
+        function log(msg) {
+            const time = new Date().toLocaleTimeString();
+            debugEl.innerHTML = `[${time}] ${msg}<br>` + debugEl.innerHTML;
+            if (debugEl.children.length > 50) {
+                debugEl.lastChild.remove();
+            }
+        }
+
+        // WebSocket connection
+        function connect() {
+            ws = new WebSocket(`ws://${location.host}`);
+
+            ws.onopen = () => {
+                connected = true;
+                statusEl.textContent = 'Connected to server';
+                statusEl.className = 'status connected';
+                log('WebSocket connected');
+            };
+
+            ws.onclose = () => {
+                connected = false;
+                statusEl.textContent = 'Disconnected - reconnecting...';
+                statusEl.className = 'status disconnected';
+                log('WebSocket disconnected');
+                setTimeout(connect, 2000);
+            };
+
+            ws.onerror = (e) => {
+                log('WebSocket error');
+            };
+        }
+
+        // Send state to server
+        function sendState() {
+            if (!connected) return;
+            ws.send(JSON.stringify({
+                type: 'state',
+                ...controllerState
+            }));
+        }
+
+        // Button press handlers (touch/mouse)
+        function setupButtons() {
+            document.querySelectorAll('.btn[data-button]').forEach(btn => {
+                const buttonId = parseInt(btn.dataset.button);
+
+                const press = (e) => {
+                    e.preventDefault();
+                    btn.classList.add('pressed');
+                    controllerState.buttons |= (1 << buttonId);
+                    sendState();
+                };
+
+                const release = (e) => {
+                    e.preventDefault();
+                    btn.classList.remove('pressed');
+                    controllerState.buttons &= ~(1 << buttonId);
+                    sendState();
+                };
+
+                btn.addEventListener('mousedown', press);
+                btn.addEventListener('mouseup', release);
+                btn.addEventListener('mouseleave', release);
+                btn.addEventListener('touchstart', press);
+                btn.addEventListener('touchend', release);
+            });
+        }
+
+        // Trigger sliders
+        function setupTriggers() {
+            const lt = document.getElementById('lt');
+            const rt = document.getElementById('rt');
+            const ltValue = document.getElementById('lt-value');
+            const rtValue = document.getElementById('rt-value');
+
+            lt.addEventListener('input', () => {
+                controllerState.lt = parseInt(lt.value);
+                ltValue.textContent = lt.value;
+                sendState();
+            });
+
+            rt.addEventListener('input', () => {
+                controllerState.rt = parseInt(rt.value);
+                rtValue.textContent = rt.value;
+                sendState();
+            });
+        }
+
+        // Virtual stick handling
+        function setupSticks() {
+            setupStick('left-stick', 'left-knob', 'left-values', (x, y) => {
+                controllerState.lx = x;
+                controllerState.ly = y;
+                sendState();
+            });
+
+            setupStick('right-stick', 'right-knob', 'right-values', (x, y) => {
+                controllerState.rx = x;
+                controllerState.ry = y;
+                sendState();
+            });
+        }
+
+        function setupStick(stickId, knobId, valuesId, callback) {
+            const stick = document.getElementById(stickId);
+            const knob = document.getElementById(knobId);
+            const values = document.getElementById(valuesId);
+            let dragging = false;
+
+            const updatePosition = (clientX, clientY) => {
+                const rect = stick.getBoundingClientRect();
+                const centerX = rect.left + rect.width / 2;
+                const centerY = rect.top + rect.height / 2;
+                const maxRadius = rect.width / 2 - 20;
+
+                let dx = clientX - centerX;
+                let dy = clientY - centerY;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance > maxRadius) {
+                    dx = dx / distance * maxRadius;
+                    dy = dy / distance * maxRadius;
+                }
+
+                knob.style.left = (50 + dx / rect.width * 100) + '%';
+                knob.style.top = (50 + dy / rect.height * 100) + '%';
+
+                // Convert to -32768 to 32767
+                const x = Math.round(dx / maxRadius * 32767);
+                const y = Math.round(dy / maxRadius * 32767);
+                values.textContent = `${x}, ${y}`;
+                callback(x, y);
+            };
+
+            const start = (e) => {
+                dragging = true;
+                const touch = e.touches ? e.touches[0] : e;
+                updatePosition(touch.clientX, touch.clientY);
+            };
+
+            const move = (e) => {
+                if (!dragging) return;
+                e.preventDefault();
+                const touch = e.touches ? e.touches[0] : e;
+                updatePosition(touch.clientX, touch.clientY);
+            };
+
+            const end = () => {
+                dragging = false;
+                knob.style.left = '50%';
+                knob.style.top = '50%';
+                values.textContent = '0, 0';
+                callback(0, 0);
+            };
+
+            stick.addEventListener('mousedown', start);
+            stick.addEventListener('touchstart', start);
+            document.addEventListener('mousemove', move);
+            document.addEventListener('touchmove', move, { passive: false });
+            document.addEventListener('mouseup', end);
+            document.addEventListener('touchend', end);
+        }
+
+        // Physical gamepad handling
+        function pollGamepads() {
+            const gamepads = navigator.getGamepads();
+
+            for (let i = 0; i < gamepads.length; i++) {
+                const gp = gamepads[i];
+                if (!gp) continue;
+
+                if (gamepadIndex === null) {
+                    gamepadIndex = i;
+                    gamepadStatusEl.textContent = `Gamepad: ${gp.id}`;
+                    gamepadStatusEl.classList.add('active');
+                    log(`Gamepad connected: ${gp.id}`);
+                }
+
+                if (i !== gamepadIndex) continue;
+
+                // Buttons
+                let buttons = 0;
+                gp.buttons.forEach((btn, idx) => {
+                    if (btn.pressed && GAMEPAD_TO_JOCP[idx] !== undefined) {
+                        buttons |= (1 << GAMEPAD_TO_JOCP[idx]);
+                    }
+                });
+                controllerState.buttons = buttons;
+
+                // Update button visuals
+                document.querySelectorAll('.btn[data-button]').forEach(btnEl => {
+                    const buttonId = parseInt(btnEl.dataset.button);
+                    if (buttons & (1 << buttonId)) {
+                        btnEl.classList.add('pressed');
+                    } else {
+                        btnEl.classList.remove('pressed');
+                    }
+                });
+
+                // Sticks (axes 0-3)
+                if (gp.axes.length >= 2) {
+                    controllerState.lx = Math.round(gp.axes[0] * 32767);
+                    controllerState.ly = Math.round(gp.axes[1] * 32767);
+                    document.getElementById('left-values').textContent =
+                        `${controllerState.lx}, ${controllerState.ly}`;
+
+                    const leftKnob = document.getElementById('left-knob');
+                    leftKnob.style.left = (50 + gp.axes[0] * 33) + '%';
+                    leftKnob.style.top = (50 + gp.axes[1] * 33) + '%';
+                }
+
+                if (gp.axes.length >= 4) {
+                    controllerState.rx = Math.round(gp.axes[2] * 32767);
+                    controllerState.ry = Math.round(gp.axes[3] * 32767);
+                    document.getElementById('right-values').textContent =
+                        `${controllerState.rx}, ${controllerState.ry}`;
+
+                    const rightKnob = document.getElementById('right-knob');
+                    rightKnob.style.left = (50 + gp.axes[2] * 33) + '%';
+                    rightKnob.style.top = (50 + gp.axes[3] * 33) + '%';
+                }
+
+                // Triggers (buttons 6 and 7 have analog value)
+                if (gp.buttons.length > 6) {
+                    controllerState.lt = Math.round(gp.buttons[6].value * 65535);
+                    document.getElementById('lt').value = controllerState.lt;
+                    document.getElementById('lt-value').textContent = controllerState.lt;
+                }
+
+                if (gp.buttons.length > 7) {
+                    controllerState.rt = Math.round(gp.buttons[7].value * 65535);
+                    document.getElementById('rt').value = controllerState.rt;
+                    document.getElementById('rt-value').textContent = controllerState.rt;
+                }
+
+                sendState();
+            }
+
+            requestAnimationFrame(pollGamepads);
+        }
+
+        // Gamepad connect/disconnect
+        window.addEventListener('gamepadconnected', (e) => {
+            if (gamepadIndex === null) {
+                gamepadIndex = e.gamepad.index;
+                gamepadStatusEl.textContent = `Gamepad: ${e.gamepad.id}`;
+                gamepadStatusEl.classList.add('active');
+                log(`Gamepad connected: ${e.gamepad.id}`);
+            }
+        });
+
+        window.addEventListener('gamepaddisconnected', (e) => {
+            if (e.gamepad.index === gamepadIndex) {
+                gamepadIndex = null;
+                gamepadStatusEl.textContent = 'Connect a gamepad and press any button';
+                gamepadStatusEl.classList.remove('active');
+                log('Gamepad disconnected');
+            }
+        });
+
+        // Initialize
+        connect();
+        setupButtons();
+        setupTriggers();
+        setupSticks();
+        pollGamepads();
+
+        log('JOCP Test Client initialized');
+    </script>
+</body>
+</html>

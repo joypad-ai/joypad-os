@@ -10,6 +10,7 @@ Joypad OS (formerly **USBRetro**) is firmware for RP2040-based adapters that pro
 - USB HID controllers, keyboards, mice
 - USB X-input (Xbox controllers)
 - Bluetooth controllers (via USB BT dongle or Pico W)
+- WiFi controllers (via JOCP protocol on Pico W)
 - Native controllers (SNES, N64, GameCube via joybus)
 
 **Outputs:**
@@ -17,7 +18,7 @@ Joypad OS (formerly **USBRetro**) is firmware for RP2040-based adapters that pro
 - USB Device: HID gamepad, XInput, DirectInput, PS3/PS4/Switch modes
 - UART: ESP32 Bluetooth bridge
 
-Uses TinyUSB for USB, BTstack for Bluetooth, and RP2040 PIO for timing-critical console protocols.
+Uses TinyUSB for USB, BTstack for Bluetooth, LWIP for WiFi networking, and RP2040 PIO for timing-critical console protocols.
 
 ## Build Commands
 
@@ -44,6 +45,7 @@ make n642usb_kb2040    # N64 → USB HID
 make gc2usb_kb2040     # GameCube → USB HID
 make n642dc_kb2040     # N64 → Dreamcast
 make bt2usb_pico_w     # BT-only → USB HID (Pico W)
+make wifi2usb_pico_w   # WiFi → USB HID (Pico W)
 
 # Build all
 make all
@@ -68,6 +70,7 @@ Output: `releases/joypad_<commit>_<app>_<board>.uf2`
 | `usb2loopy` | KB2040 | USB/BT | Loopy |
 | `usb2usb` | Feather/RP2040-Zero | USB/BT | USB HID |
 | `bt2usb` | Pico W/Pico 2 W | BT-only | USB HID |
+| `wifi2usb` | Pico W/Pico 2 W | WiFi (JOCP) | USB HID |
 | `snes2usb` | KB2040 | SNES | USB HID |
 | `n642usb` | KB2040 | N64 | USB HID |
 | `gc2usb` | KB2040 | GameCube | USB HID |
@@ -104,6 +107,7 @@ src/
 │   ├── usb23do/                # USB/BT → 3DO
 │   ├── usb2loopy/              # USB/BT → Loopy
 │   ├── usb2usb/                # USB/BT → USB HID
+│   ├── wifi2usb/               # WiFi → USB HID (JOCP protocol)
 │   ├── usb2uart/               # USB → UART bridge
 │   ├── snes2usb/               # SNES → USB HID
 │   ├── snes23do/               # SNES → 3DO
@@ -121,6 +125,12 @@ src/
 │   ├── bthid/                  # BT HID device drivers
 │   │   └── devices/            # BT controller drivers
 │   └── transport/              # BT transport layer
+├── wifi/                       # WiFi support (Pico W)
+│   └── jocp/                   # JOCP protocol implementation
+│       ├── jocp.h              # Protocol definitions
+│       ├── jocp_input.c        # Packet parsing/conversion
+│       ├── wifi_transport.c/h  # WiFi AP, UDP/TCP servers
+│       └── dhcpserver.c/h      # DHCP server
 └── native/
     ├── device/                 # Console outputs (we emulate devices)
     │   ├── pcengine/           # PCEngine multitap (PIO)
@@ -144,9 +154,10 @@ Input Sources                    Router                      Output Targets
 USB HID ──────┐                                              ┌──→ PCEngine
 USB X-input ──┤                                              ├──→ GameCube
 Bluetooth ────┼──→ router_submit_input() ──→ router ──→ ────┼──→ Dreamcast
-Native SNES ──┤                              │               ├──→ Nuon, 3DO
-Native N64 ───┤                              │               ├──→ USB Device
-Native GC ────┘                              │               └──→ UART
+WiFi (JOCP) ──┤                              │               ├──→ Nuon, 3DO
+Native SNES ──┤                              │               ├──→ USB Device
+Native N64 ───┤                              │               └──→ UART
+Native GC ────┘
                                     profile_apply()
                                     (button remapping)
 ```

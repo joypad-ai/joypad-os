@@ -65,6 +65,7 @@ CONSOLE_usb := joypad_usb
 CONSOLE_usb_rp2040zero := joypad_usb_rp2040zero
 CONSOLE_usb_rp2350usba := joypad_usb_rp2350usba
 CONSOLE_bt2usb := joypad_bt2usb
+CONSOLE_wifi2usb := joypad_wifi2usb
 CONSOLE_snes2usb := joypad_snes2usb
 CONSOLE_n642usb := joypad_n642usb
 CONSOLE_gc2usb := joypad_gc2usb
@@ -91,6 +92,8 @@ APP_usb2usb_rp2040zero := rp2040zero usb_rp2040zero usb2usb_rp2040zero USB/BT US
 APP_usb2usb_rp2350usba := rp2350usba usb_rp2350usba usb2usb_rp2350usba USB/BT USB
 APP_bt2usb_pico_w := pico_w bt2usb bt2usb_pico_w Bluetooth USB
 APP_bt2usb_pico2_w := pico2_w bt2usb bt2usb_pico2_w Bluetooth USB
+APP_wifi2usb_pico_w := pico_w wifi2usb wifi2usb_pico_w WiFi USB
+APP_wifi2usb_pico2_w := pico2_w wifi2usb wifi2usb_pico2_w WiFi USB
 APP_snes2usb_kb2040 := kb2040 snes2usb snes2usb_kb2040 SNES USB
 APP_n642usb_kb2040 := kb2040 n642usb n642usb_kb2040 N64 USB
 APP_gc2usb_kb2040 := kb2040 gc2usb gc2usb_kb2040 GameCube USB
@@ -154,6 +157,7 @@ help:
 	@echo "  make usb2usb_rp2040zero - USB/BT -> USB HID (RP2040-Zero)"
 	@echo "  make usb2usb_rp2350usba - USB/BT -> USB HID (Waveshare RP2350A)"
 	@echo "  make bt2usb_pico_w      - Bluetooth -> USB HID (Pico W)"
+	@echo "  make wifi2usb_pico_w    - WiFi -> USB HID (Pico W)"
 	@echo "  make snes2usb_kb2040    - SNES -> USB HID (KB2040)"
 	@echo "  make n642usb_kb2040     - N64 -> USB HID (KB2040)"
 	@echo "  make gc2usb_kb2040      - GameCube -> USB HID (KB2040)"
@@ -286,6 +290,14 @@ bt2usb_pico_w:
 .PHONY: bt2usb_pico2_w
 bt2usb_pico2_w:
 	$(call build_app,bt2usb_pico2_w)
+
+.PHONY: wifi2usb_pico_w
+wifi2usb_pico_w:
+	$(call build_app,wifi2usb_pico_w)
+
+.PHONY: wifi2usb_pico2_w
+wifi2usb_pico2_w:
+	$(call build_app,wifi2usb_pico2_w)
 
 .PHONY: snes2usb_kb2040
 snes2usb_kb2040:
@@ -479,6 +491,14 @@ flash-usb2usb_rp2350usba:
 .PHONY: flash-bt2usb_pico_w
 flash-bt2usb_pico_w:
 	@$(MAKE) --no-print-directory _flash_app APP_NAME=bt2usb_pico_w
+
+.PHONY: flash-wifi2usb_pico_w
+flash-wifi2usb_pico_w:
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=wifi2usb_pico_w
+
+.PHONY: flash-wifi2usb_pico2_w
+flash-wifi2usb_pico2_w:
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=wifi2usb_pico2_w
 
 .PHONY: flash-snes2usb_kb2040
 flash-snes2usb_kb2040:
