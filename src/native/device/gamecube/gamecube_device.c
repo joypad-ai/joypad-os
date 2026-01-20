@@ -308,8 +308,9 @@ static void map_usbr_to_gc_report(const profile_output_t* output, gc_report_t* r
     uint8_t l_threshold = profile ? profile->l2_threshold : 250;
     uint8_t r_threshold = profile ? profile->r2_threshold : 250;
 
-    report->l = ((buttons & GC_BUTTON_L) != 0 || output->l2_analog >= l_threshold) ? 1 : 0;
-    report->r = ((buttons & GC_BUTTON_R) != 0 || output->r2_analog >= r_threshold) ? 1 : 0;
+    // Threshold of 0 means disabled (never trigger digital from analog)
+    report->l = ((buttons & GC_BUTTON_L) != 0 || (l_threshold > 0 && output->l2_analog >= l_threshold)) ? 1 : 0;
+    report->r = ((buttons & GC_BUTTON_R) != 0 || (r_threshold > 0 && output->r2_analog >= r_threshold)) ? 1 : 0;
 
     // Start
     report->start = ((buttons & GC_BUTTON_START) != 0) ? 1 : 0;

@@ -111,11 +111,26 @@ Optimized for shooters (Doom, PO'ed, etc.):
   - RP2040 GPIO is 3.3V and NOT 5V tolerant
   - All signal lines (CLK, DATA_OUT, DATA_IN, CS_CTRL) need shifting
   - Recommended: [4-channel BSS138 bidirectional level shifter](https://aliexpress.com/item/32771873030.html) (per FCare's design)
-- **GPIO Pins** (matches [FCare's USBTo3DO](https://github.com/FCare/USBTo3DO) board):
-  - CLK (Pin 2) - Clock input from 3DO
-  - DATA_OUT (Pin 3) - Data output to 3DO
-  - DATA_IN (Pin 4) - Data input from next controller
-  - CS_CTRL (Pin 5) - Chip select / control
+
+### Wiring Diagram
+
+![USB-2-3DO Wiring Diagram](../images/Joypad_3DO.png)
+
+| RP2040-Zero | BD-LCC (Low) | BD-LCC (High) | DB9-Female | DB9-Male |
+|-------------|--------------|---------------|------------|----------|
+| 5V | - | HV | - | - |
+| GND | G | G | - | - |
+| GPIO 2 | L1 | H1 | Pin 1 | Pin 1 |
+| GPIO 3 | L2 | H2 | Pin 2 | Pin 2 |
+| GPIO 4 | LV | HV | - | - |
+| GPIO 5 | G | G | Pin 6 | Pin 6 |
+| GPIO 6 | L3 | H3 | Pin 3 | Pin 3 |
+| GPIO 7 | L4 | H4 | Pin 4 | Pin 4 |
+| - | - | - | Pin 5 (5V) | Pin 5 |
+| - | - | - | Pin 9 (GND) | Pin 9 |
+
+- **DB9-Female**: Connects to 3DO console
+- **DB9-Male**: Passthrough for daisy-chaining native controllers
 
 ### 3DO Controller Port Pinout
 

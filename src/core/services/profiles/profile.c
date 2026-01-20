@@ -820,6 +820,26 @@ void profile_apply(const profile_t* profile,
     output->l2_analog = l2;
     output->r2_analog = r2;
 
+    // Set L2/R2 digital buttons based on analog threshold (if threshold > 0)
+    // When threshold is set, it OVERRIDES input L2/R2 (e.g. DualSense's early digital)
+    // Threshold of 0 means passthrough (use input driver's L2/R2 as-is)
+    if (profile) {
+        if (profile->l2_threshold > 0) {
+            // Clear input L2, use only threshold-based activation
+            output->buttons &= ~JP_BUTTON_L2;
+            if (l2 >= profile->l2_threshold) {
+                output->buttons |= JP_BUTTON_L2;
+            }
+        }
+        if (profile->r2_threshold > 0) {
+            // Clear input R2, use only threshold-based activation
+            output->buttons &= ~JP_BUTTON_R2;
+            if (r2 >= profile->r2_threshold) {
+                output->buttons |= JP_BUTTON_R2;
+            }
+        }
+    }
+
     // Process button combos first (before individual mappings)
     // Combos can add buttons and optionally consume their input buttons
     // Note: Router uses active-high (1 = pressed, 0 = released)
@@ -861,6 +881,8 @@ void profile_apply(const profile_t* profile,
     }
 
     // Build output button state (active-high: 1 = pressed, 0 = released)
+    // Use output->buttons which includes threshold-based L2/R2 for XInput
+    uint32_t buttons_with_triggers = output->buttons;
     uint32_t output_buttons = 0;
     uint32_t mapped_inputs = 0;
 
@@ -868,8 +890,8 @@ void profile_apply(const profile_t* profile,
     for (uint8_t i = 0; i < profile->button_map_count; i++) {
         const button_map_entry_t* entry = &profile->button_map[i];
 
-        // Check if input button is pressed (active-high: pressed = bit set)
-        bool pressed = ((input_buttons & entry->input) != 0);
+        // Check if input button is pressed (includes threshold-based L2/R2)
+        bool pressed = ((buttons_with_triggers & entry->input) != 0);
 
         if (pressed) {
             // Set output button(s)
@@ -887,7 +909,7 @@ void profile_apply(const profile_t* profile,
 
     // Passthrough unmapped buttons (active-high)
     uint32_t unmapped_inputs = ~mapped_inputs;
-    uint32_t pressed_unmapped = input_buttons & unmapped_inputs;
+    uint32_t pressed_unmapped = buttons_with_triggers & unmapped_inputs;
     output_buttons |= pressed_unmapped;
 
     // Output is active-high
@@ -950,7 +972,7 @@ void profile_apply(const profile_t* profile,
     }
 
     // Apply trigger behavior (if triggers weren't overridden by button mappings)
-    // Note: active-high (bit set = pressed)
+    // Note: Use output->buttons which includes threshold-based L2/R2 for XInput controllers
     if (!output->l2_analog_override) {
         switch (profile->l2_behavior) {
             case TRIGGER_DISABLED:
@@ -961,13 +983,14 @@ void profile_apply(const profile_t* profile,
                 output->l2_analog = 0;
                 break;
             case TRIGGER_FULL_PRESS:
-                if (input_buttons & JP_BUTTON_L2) {
+                if (output->buttons & JP_BUTTON_L2) {
                     output->l2_analog = 255;
                 }
                 break;
             case TRIGGER_LIGHT_PRESS:
-                if (input_buttons & JP_BUTTON_L2) {
+                if (output->buttons & JP_BUTTON_L2) {
                     output->l2_analog = profile->l2_analog_value;
+                    output->buttons &= ~JP_BUTTON_L2;  // Analog only, no digital
                 }
                 break;
             case TRIGGER_INSTANT:
@@ -991,13 +1014,14 @@ void profile_apply(const profile_t* profile,
                 output->r2_analog = 0;
                 break;
             case TRIGGER_FULL_PRESS:
-                if (input_buttons & JP_BUTTON_R2) {
+                if (output->buttons & JP_BUTTON_R2) {
                     output->r2_analog = 255;
                 }
                 break;
             case TRIGGER_LIGHT_PRESS:
-                if (input_buttons & JP_BUTTON_R2) {
+                if (output->buttons & JP_BUTTON_R2) {
                     output->r2_analog = profile->r2_analog_value;
+                    output->buttons &= ~JP_BUTTON_R2;  // Analog only, no digital
                 }
                 break;
             case TRIGGER_INSTANT:

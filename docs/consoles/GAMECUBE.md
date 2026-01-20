@@ -132,10 +132,21 @@ Mario Kart Wii optimized:
 
 ## Hardware Requirements
 
-- **Board**: Adafruit KB2040 (default), Pico, QT Py, Waveshare
+- **Board**: Adafruit KB2040 (default), RP2040-Zero, Pico, QT Py
 - **Clock**: 130MHz (overclocked for joybus timing)
 - **Protocol**: GameCube joybus via PIO
 - **Connector**: GameCube controller cable
+
+### Wiring Diagram (RP2040-Zero)
+
+![USB-2-GC Wiring Diagram](../images/Joypad_NGC.png)
+
+| RP2040-Zero | GameCube Port |
+|-------------|---------------|
+| 5V | 5V |
+| GND | GND |
+| 3V3 | 3.3V |
+| GPIO 7 | Data |
 
 ### GameCube Controller Cable Pinout
 
@@ -146,11 +157,6 @@ Pin 3: GND
 Pin 4: GND
 Pin 6: 3.3V (optional, some boards)
 ```
-
-**Connection:**
-- Data pin → RP2040 GPIO (configurable)
-- Share ground with RP2040
-- 5V for power
 
 ## Technical Details
 
