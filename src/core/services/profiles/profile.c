@@ -962,7 +962,7 @@ void profile_apply(const profile_t* profile,
     }
 
     // Apply trigger behavior (if triggers weren't overridden by button mappings)
-    // Note: active-high (bit set = pressed)
+    // Note: Use output->buttons which includes threshold-based L2/R2 for XInput controllers
     if (!output->l2_analog_override) {
         switch (profile->l2_behavior) {
             case TRIGGER_DISABLED:
@@ -973,12 +973,12 @@ void profile_apply(const profile_t* profile,
                 output->l2_analog = 0;
                 break;
             case TRIGGER_FULL_PRESS:
-                if (input_buttons & JP_BUTTON_L2) {
+                if (output->buttons & JP_BUTTON_L2) {
                     output->l2_analog = 255;
                 }
                 break;
             case TRIGGER_LIGHT_PRESS:
-                if (input_buttons & JP_BUTTON_L2) {
+                if (output->buttons & JP_BUTTON_L2) {
                     output->l2_analog = profile->l2_analog_value;
                 }
                 break;
@@ -1003,12 +1003,12 @@ void profile_apply(const profile_t* profile,
                 output->r2_analog = 0;
                 break;
             case TRIGGER_FULL_PRESS:
-                if (input_buttons & JP_BUTTON_R2) {
+                if (output->buttons & JP_BUTTON_R2) {
                     output->r2_analog = 255;
                 }
                 break;
             case TRIGGER_LIGHT_PRESS:
-                if (input_buttons & JP_BUTTON_R2) {
+                if (output->buttons & JP_BUTTON_R2) {
                     output->r2_analog = profile->r2_analog_value;
                 }
                 break;
