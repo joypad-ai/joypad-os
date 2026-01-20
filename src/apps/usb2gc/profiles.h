@@ -51,8 +51,9 @@ static const button_map_entry_t gc_mkwii_map[] = {
     MAP_BUTTON(JP_BUTTON_R1, GC_BUTTON_B),
     MAP_BUTTON_ANALOG(JP_BUTTON_R1, GC_BUTTON_R, ANALOG_TARGET_NONE, 0),
 
-    // Cross (X) -> R analog only
+    // Cross (X) -> R analog only (disable button passthrough to prevent B)
     MAP_ANALOG_ONLY(JP_BUTTON_B1, ANALOG_TARGET_R2_FULL),
+    MAP_DISABLED(JP_BUTTON_B1),
 
     // System
     MAP_BUTTON(JP_BUTTON_S2, GC_BUTTON_START), // Options -> Start
