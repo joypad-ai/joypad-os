@@ -8,3 +8,4 @@ src/build
 releases/
 src/build/
 .dev
+node_modules/
