@@ -459,6 +459,24 @@ joypad_target_common(joypad_dc)
 joypad_add_btstack(joypad_dc)
 pico_generate_pio_header(joypad_dc ${CMAKE_CURRENT_LIST_DIR}/native/device/dreamcast/maple.pio)
 
+# --- NEOGEO ---
+add_executable(joypad_neogeo)
+target_compile_definitions(joypad_neogeo PRIVATE CONFIG_NEOGEO=1)
+if (PICO_BOARD STREQUAL "pico")
+    target_compile_definitions(joypad_neogeo PRIVATE RPI_PICO_BUILD=1)
+endif()
+target_sources(joypad_neogeo PUBLIC ${COMMON_SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/device/neogeo/neogeo_device.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2neogeo/app.c
+)
+target_include_directories(joypad_neogeo PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2neogeo
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/device/neogeo
+)
+target_link_libraries(joypad_neogeo PRIVATE ${COMMON_LIBRARIES})
+joypad_target_common(joypad_neogeo)
+joypad_add_btstack(joypad_neogeo)
+
 # --- N64 to Dreamcast ---
 add_executable(joypad_n642dc)
 # Core 0 TX mode required: joybus uses PIO1 SM3, conflicts with Core 1 TX
