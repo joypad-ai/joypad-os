@@ -47,8 +47,11 @@ let controllerState = {
 
 let sequenceNumber = 0;
 
-// Create UDP socket
+// Create UDP socket and bind to receive rumble feedback
 const udpSocket = dgram.createSocket('udp4');
+udpSocket.bind(CONFIG.donglePort, () => {
+    console.log(`UDP socket bound to port ${CONFIG.donglePort} for rumble feedback`);
+});
 
 // Build JOCP input packet (76 bytes)
 function buildJocpPacket() {
@@ -223,6 +226,55 @@ Environment variables:
   HTTP_PORT   - HTTP server port (default: 3000)
   POLL_RATE   - Packets per second (default: 125)
 `);
+});
+
+// Handle incoming UDP packets (feedback from dongle)
+udpSocket.on('message', (msg, rinfo) => {
+    if (msg.length < 12) return;  // Too short for header
+
+    const magic = msg.readUInt16LE(0);
+    const version = msg.readUInt8(2);
+    const msgType = msg.readUInt8(3);
+
+    if (magic !== JOCP_MAGIC || version !== JOCP_VERSION) return;
+
+    // OUTPUT_CMD = 0x04
+    if (msgType === 0x04 && msg.length >= 13) {
+        const cmdType = msg.readUInt8(12);
+
+        let feedback = null;
+
+        // RUMBLE = 0x01
+        if (cmdType === 0x01 && msg.length >= 19) {
+            const leftAmp = msg.readUInt8(13);
+            const rightAmp = msg.readUInt8(15);
+            console.log(`Rumble: L=${leftAmp} R=${rightAmp}`);
+            feedback = { type: 'rumble', left: leftAmp, right: rightAmp };
+        }
+        // PLAYER_LED = 0x02
+        else if (cmdType === 0x02 && msg.length >= 14) {
+            const index = msg.readUInt8(13);
+            console.log(`Player LED: ${index}`);
+            feedback = { type: 'player_led', index };
+        }
+        // RGB_LED = 0x03
+        else if (cmdType === 0x03 && msg.length >= 16) {
+            const r = msg.readUInt8(13);
+            const g = msg.readUInt8(14);
+            const b = msg.readUInt8(15);
+            console.log(`RGB LED: ${r}, ${g}, ${b}`);
+            feedback = { type: 'rgb_led', r, g, b };
+        }
+
+        // Forward to browser
+        if (feedback) {
+            wss.clients.forEach(ws => {
+                if (ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify(feedback));
+                }
+            });
+        }
+    }
 });
 
 // Handle UDP errors

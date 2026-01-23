@@ -184,6 +184,96 @@
         }
         .keyboard-help strong { color: #00d4aa; }
 
+        .rumble-display {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .rumble-label {
+            font-size: 12px;
+            color: #666;
+        }
+        .rumble-motor {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+        }
+        .rumble-motor span {
+            font-size: 10px;
+            color: #666;
+        }
+        .rumble-bar {
+            width: 40px;
+            height: 8px;
+            background: #2d4263;
+            border-radius: 4px;
+            overflow: hidden;
+            position: relative;
+        }
+        .rumble-bar::after {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            height: 100%;
+            width: var(--rumble, 0%);
+            background: #ff6b6b;
+            transition: width 0.05s;
+        }
+        .rumble-bar.active {
+            animation: shake 0.1s infinite;
+        }
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-2px); }
+            75% { transform: translateX(2px); }
+        }
+
+        .feedback-display {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 15px;
+            padding: 10px;
+            background: #0f3460;
+            border-radius: 8px;
+        }
+        .led-display {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+        .player-led {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: #2d4263;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            font-weight: bold;
+            color: #666;
+            border: 2px solid #3d5273;
+        }
+        .player-led.active {
+            background: #1e4620;
+            color: #4ade80;
+            border-color: #4ade80;
+        }
+        .rgb-led {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            background: #333;
+            border: 2px solid #444;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.5);
+        }
+        .rgb-led.active {
+            box-shadow: 0 0 15px var(--rgb-color, #fff), inset 0 0 5px rgba(255,255,255,0.3);
+        }
+
         /* Debug */
         .debug {
             margin-top: 20px;
@@ -290,7 +380,25 @@
         </div>
 
         <div class="keyboard-help">
-            <strong>Keyboard:</strong> WASD=Stick | Arrows=D-pad | IJKL=YXAB | Q/E=L1/R1 | Enter=Start | Backspace=Select
+            <strong>Keyboard:</strong> WASD=Stick | Arrows=D-pad | IJKL=YXAB | Q/E=L1/R1 | U/O=L2/R2 | Enter=Start
+        </div>
+
+        <div class="feedback-display">
+            <div class="rumble-display">
+                <div class="rumble-motor">
+                    <div class="rumble-bar" id="rumble-left"></div>
+                    <span>L</span>
+                </div>
+                <div class="rumble-label">RUMBLE</div>
+                <div class="rumble-motor">
+                    <div class="rumble-bar" id="rumble-right"></div>
+                    <span>R</span>
+                </div>
+            </div>
+            <div class="led-display">
+                <div class="player-led" id="player-led">P<span id="player-num">-</span></div>
+                <div class="rgb-led" id="rgb-led"></div>
+            </div>
         </div>
     </div>
 
@@ -387,6 +495,56 @@
             ws.onerror = (e) => {
                 log('WebSocket error');
             };
+
+            ws.onmessage = (event) => {
+                try {
+                    const msg = JSON.parse(event.data);
+                    handleFeedback(msg);
+                } catch (e) {}
+            };
+        }
+
+        // Handle feedback from dongle (rumble, LEDs)
+        function handleFeedback(msg) {
+            if (msg.type === 'rumble') {
+                const leftBar = document.getElementById('rumble-left');
+                const rightBar = document.getElementById('rumble-right');
+
+                leftBar.style.setProperty('--rumble', (msg.left / 255 * 100) + '%');
+                rightBar.style.setProperty('--rumble', (msg.right / 255 * 100) + '%');
+
+                leftBar.classList.toggle('active', msg.left > 0);
+                rightBar.classList.toggle('active', msg.right > 0);
+
+                // Try to use Gamepad Haptic API if available
+                if (gamepadIndex !== null) {
+                    const gp = navigator.getGamepads()[gamepadIndex];
+                    if (gp && gp.vibrationActuator) {
+                        gp.vibrationActuator.playEffect('dual-rumble', {
+                            duration: 100,
+                            strongMagnitude: msg.left / 255,
+                            weakMagnitude: msg.right / 255
+                        }).catch(() => {});
+                    }
+                }
+
+                if (msg.left > 0 || msg.right > 0) {
+                    log(`Rumble: L=${msg.left} R=${msg.right}`);
+                }
+            } else if (msg.type === 'player_led') {
+                const playerLed = document.getElementById('player-led');
+                const playerNum = document.getElementById('player-num');
+                playerNum.textContent = msg.index || '-';
+                playerLed.classList.toggle('active', msg.index > 0);
+                log(`Player LED: ${msg.index}`);
+            } else if (msg.type === 'rgb_led') {
+                const rgbLed = document.getElementById('rgb-led');
+                const color = `rgb(${msg.r}, ${msg.g}, ${msg.b})`;
+                rgbLed.style.setProperty('--rgb-color', color);
+                rgbLed.style.background = color;
+                rgbLed.classList.toggle('active', msg.r > 0 || msg.g > 0 || msg.b > 0);
+                log(`RGB LED: ${msg.r}, ${msg.g}, ${msg.b}`);
+            }
         }
 
         // Send state to server
@@ -636,6 +794,8 @@
             'KeyE': 9,   // R1
             'KeyZ': 10,  // L2 digital
             'KeyC': 11,  // R2 digital
+            'KeyU': 10,  // L2 (alt)
+            'KeyO': 11,  // R2 (alt)
 
             // Stick clicks
             'KeyF': 12,  // L3
@@ -727,7 +887,7 @@
                 }
             });
 
-            log('Keyboard controls: WASD=stick, Arrows=D-pad, IJKL=YXAB, Q/E=L1/R1, Enter=Start');
+            log('Keyboard controls: WASD=stick, Arrows=D-pad, IJKL=YXAB, Q/E=L1/R1, U/O=L2/R2, Enter=Start');
         }
 
         // Initialize
