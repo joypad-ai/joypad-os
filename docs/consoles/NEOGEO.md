@@ -33,8 +33,8 @@ Standard arcade mapping for 1L6B in 1L8B fightsticks:
 
 | USB Input | NEOGEO/SuperGun Output |
 |-----------|-----------------|
-| B1 (Cross/B) | B4 / K1 / D |
-| B2 (Circle/A) | B5 / K2 / Select |
+| B1 (Cross/A) | B4 / K1 / D |
+| B2 (Circle/B) | B5 / K2 / Select |
 | B3 (Square/X) | B1 / P1 / A |
 | B4 (Triangle/Y) | B2 / P2 / B |
 | L1 (LB/L) | - (disabled) |
@@ -54,8 +54,8 @@ Arcade mapping for 1L6B in 1L8B fightsticks aling to right:
 
 | USB Input | NEOGEO/SuperGun Output |
 |-----------|-----------------|
-| B1 (Cross/B) | - (disabled) |
-| B2 (Circle/A) | B4 / K1 / D |
+| B1 (Cross/A) | - (disabled) |
+| B2 (Circle/B) | B4 / K1 / D |
 | B3 (Square/X) | - (disabled) |
 | B4 (Triangle/Y) | B1 / P1 / A |
 | L1 (LB/L) | B3 / P3 / C |
@@ -71,8 +71,8 @@ NEOGEO MVS mapping 1L4B in 1L8B fightsticks:
 
 | USB Input | NEOGEO/SuperGun Output |
 |-----------|-----------------|
-| B1 (Cross/B) | B1 / P1 / A |
-| B2 (Circle/A) | B5 / K2 / Select |
+| B1 (Cross/A) | B1 / P1 / A |
+| B2 (Circle/B) | B5 / K2 / Select |
 | B3 (Square/X) | B2 / P2 / B |
 | B4 (Triangle/Y) | B3 / P3 / C |
 | L1 (LB/L) | - (disabled) |
@@ -88,8 +88,8 @@ NEOGEO MVS Big Red mapping in 1L8B fightsticks:
 
 | USB Input | NEOGEO/SuperGun Output |
 |-----------|-----------------|
-| B1 (Cross/B) | B1 / P1 / A |
-| B2 (Circle/A) | B5 / K2 / Select |
+| B1 (Cross/A) | B1 / P1 / A |
+| B2 (Circle/B) | B5 / K2 / Select |
 | B3 (Square/X) | - (disabled) |
 | B4 (Triangle/Y) | B2 / P2 / B |
 | L1 (LB/L) | B4 / K1 / D |
@@ -105,8 +105,8 @@ NEOGEO MVS U4 mapping in 1L8B fightsticks:
 
 | USB Input | NEOGEO/SuperGun Output |
 |-----------|-----------------|
-| B1 (Cross/B) | B5 / K2 / Select |
-| B2 (Circle/A) | B6 / K3 |
+| B1 (Cross/A) | B5 / K2 / Select |
+| B2 (Circle/B) | B6 / K3 |
 | B3 (Square/X) | B1 / P1 / A |
 | B4 (Triangle/Y) | B2 / P2 / B |
 | L1 (LB/L) | B4 / K1 / D |
@@ -122,8 +122,8 @@ NEOGEO AES pad mapping aling to classic diamond controllers:
 
 | USB Input | NEOGEO/SuperGun Output |
 |-----------|-----------------|
-| B1 (Cross/B) | B1 / P1 / A |
-| B2 (Circle/A) | B2 / P2 / B |
+| B1 (Cross/A) | B1 / P1 / A |
+| B2 (Circle/B) | B2 / P2 / B |
 | B3 (Square/X) | B3 / P3 / C |
 | B4 (Triangle/Y) | B4 / K1 / D |
 | L1 (LB/L) | B6 / K3 |
@@ -139,8 +139,8 @@ NEOGEO AES pad mapping to KOF style in controllers:
 
 | USB Input | NEOGEO/SuperGun Output |
 |-----------|-----------------|
-| B1 (Cross/B) | B2 / P2 / B |
-| B2 (Circle/A) | B4 / K1 / D |
+| B1 (Cross/A) | B2 / P2 / B |
+| B2 (Circle/B) | B4 / K1 / D |
 | B3 (Square/X) | B1 / P1 / A |
 | B4 (Triangle/Y) | B3 / P3 / C |
 | L1 (LB/L) | B6 / K3 |
