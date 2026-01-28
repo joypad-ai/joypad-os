@@ -78,11 +78,36 @@ static struct {
 
 // check if device is Sony PlayStation 4 controllers
 bool is_sony_ds4(uint16_t vid, uint16_t pid) {
-  return ( (vid == 0x054c && (pid == 0x09cc || pid == 0x05c4)) // Sony DualShock4 
-    || (vid == 0x0f0d && pid == 0x005e) // Hori FC4 
-    || (vid == 0x0f0d && pid == 0x00ee) // Hori PS4 Mini (PS4-099U) 
-    || (vid == 0x1f4f && pid == 0x1002) // ASW GG xrd controller
+  return ( 
+    // Sony
+    (vid == 0x054c && (pid == 0x09cc || pid == 0x05c4)) // Sony DualShock4 
+    || (vid == 0x054c && pid == 0x0ba0) // Sony PS4 Wireless Adapter PC
+    // HORI
+    || (vid == 0x0f0d && pid == 0x005e) // Hori Fighting Commander 4 (FC4)
+    || (vid == 0x0f0d && pid == 0x0066) // HORIPAD FPS+ (PS4)
+    || (vid == 0x0f0d && pid == 0x008a) // HORI Real Arcade Pro (RAP) V HAYABUSA (Modo PS4)
+    || (vid == 0x0f0d && pid == 0x00ee) // Hori Wired Controller Light (PS4 Mini / PS4-099U)
+    // RAZER
     || (vid == 0x1532 && pid == 0x0401) // Razer Panthera PS4 Controller (GP2040-CE PS4 Mode)
+    || (vid == 0x1532 && pid == 0x1004) // Razer Raiju Ultimate (High-end Pro controller)
+    || (vid == 0x1532 && pid == 0x1008) // Razer Panthera EVO (Late model Arcade Stick)
+    // Brook
+    || (vid == 0x0c12 && pid == 0x0c30) // Brook Universal Fighting Board (Multi-console PCB)
+    || (vid == 0x0c12 && pid == 0x0ef7) // Brook Fighting Board PS3/PS4 (PS4 Mode)
+    // Mad Catz
+    || (vid == 0x0738 && pid == 0x8180) // Mad Catz Fight Stick Alpha (Compact Stick)
+    || (vid == 0x0738 && pid == 0x8384) // Mad Catz SFV Arcade FightStick TES+ (PS4 Mode)
+    || (vid == 0x0738 && pid == 0x8481) // Mad Catz SFV Arcade FightStick TE2+ (PS4 Mode)
+    // Quanba
+    || (vid == 0x2c22 && pid == 0x2000) // Qanba Drone (Entry-level Arcade Stick)
+    || (vid == 0x2c22 && pid == 0x2200) // Qanba Crystal (Arcade Stick with LEDs)
+    || (vid == 0x2c22 && pid == 0x2300) // Qanba Obsidian (Professional Arcade Stick)
+    // Other
+    || (vid == 0x0c12 && pid == 0x1e1b) // Feir Wired FR-225C (Budget PS4 controller)
+    || (vid == 0x146b && pid == 0x0d09) // Nacon Daija Arcade Stick (PS4 Mode)
+    || (vid == 0x20d6 && pid == 0x792a) // PowerA FUSION Wired FightPad (6-button layout)
+    || (vid == 0x1f4f && pid == 0x1002) // ASW Guilty Gear xrd Controller (Collector's Edition)
+    || (vid == 0x04d8 && pid == 0x1529) // Universal PCB Project (UPCB Open Source)
   );
 }
 

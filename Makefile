@@ -57,6 +57,7 @@ CONSOLE_ngc_rp2040zero := joypad_ngc_rp2040zero
 CONSOLE_nuon := joypad_nuon
 CONSOLE_loopy := joypad_loopy
 CONSOLE_dc := joypad_dc
+CONSOLE_neogeo := joypad_neogeo
 CONSOLE_n642dc := joypad_n642dc
 CONSOLE_snes3do := joypad_snes3do
 CONSOLE_uart := joypad_uart
@@ -80,6 +81,7 @@ APP_usb2gc_rp2040zero := rp2040zero ngc_rp2040zero usb2gc_rp2040zero USB/BT Game
 APP_usb2nuon_kb2040 := kb2040 nuon usb2nuon_kb2040 USB/BT Nuon
 APP_usb2loopy_kb2040 := kb2040 loopy usb2loopy_kb2040 USB/BT Loopy
 APP_usb2dc_kb2040 := kb2040 dc usb2dc_kb2040 USB/BT Dreamcast
+APP_usb2neogeo_kb2040 := kb2040 neogeo usb2neogeo_kb2040 USB/BT NEOGEO
 APP_n642dc_kb2040 := kb2040 n642dc n642dc_kb2040 N64 Dreamcast
 APP_usb23do_rp2040zero := rp2040zero 3do usb23do_rp2040zero USB/BT 3DO
 APP_snes23do_rp2040zero := rp2040zero snes3do snes23do_rp2040zero SNES 3DO
@@ -143,6 +145,7 @@ help:
 	@echo "  make usb2nuon_kb2040    - USB/BT -> Nuon (KB2040)"
 	@echo "  make usb2loopy_kb2040   - USB/BT -> Loopy (KB2040)"
 	@echo "  make usb2dc_kb2040      - USB/BT -> Dreamcast (KB2040)"
+	@echo "  make usb2neogeo_kb2040  - USB/BT -> NEOGEO (KB2040)"
 	@echo "  make n642dc_kb2040      - N64 -> Dreamcast (KB2040)"
 	@echo "  make usb23do_rp2040zero - USB/BT -> 3DO (RP2040-Zero)"
 	@echo "  make snes23do_rp2040zero - SNES -> 3DO (RP2040-Zero)"
@@ -243,6 +246,10 @@ usb2loopy_kb2040:
 .PHONY: usb2dc_kb2040
 usb2dc_kb2040:
 	$(call build_app,usb2dc_kb2040)
+
+.PHONY: usb2neogeo_kb2040
+usb2neogeo_kb2040:
+	$(call build_app,usb2neogeo_kb2040)
 
 .PHONY: n642dc_kb2040
 n642dc_kb2040:
@@ -361,6 +368,15 @@ loopy:
 	@cd src/build && $(MAKE) --no-print-directory $(CONSOLE_loopy) -j$(JOBS)
 	@echo "$(GREEN)✓ Loopy built successfully$(NC)"
 	@echo "  Output: src/build/$(CONSOLE_loopy).uf2"
+	@echo ""
+
+.PHONY: neogeo
+neogeo:
+	@echo "$(YELLOW)Building NEOGEO (KB2040)...$(NC)"
+	@cd src && rm -rf build && sh $(BOARD_SCRIPT_kb2040)
+	@cd src/build && $(MAKE) --no-print-directory $(CONSOLE_neogeo) -j$(JOBS)
+	@echo "$(GREEN)✓ NEOGEO built successfully$(NC)"
+	@echo "  Output: src/build/$(CONSOLE_neogeo).uf2"
 	@echo ""
 
 # Build all apps

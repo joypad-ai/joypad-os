@@ -64,7 +64,27 @@ void ds3_on_get_report_complete(uint8_t dev_addr, uint8_t instance) {
 
 // check if device is Sony PlayStation 3 controllers
 bool is_sony_ds3(uint16_t vid, uint16_t pid) {
-  return ((vid == 0x054c && pid == 0x0268)); // Sony DualShock3
+  return (
+    (vid == 0x054c && pid == 0x0268)    // Sony DualShock3
+    // HORI
+    || (vid == 0x0f0d && pid == 0x0010) // HORI Fighting Stick 3
+    || (vid == 0x0f0d && pid == 0x0011) // HORI Real Arcade Pro 3 (RAP 3 SA/SE)
+    || (vid == 0x0f0d && pid == 0x0026) // HORI Real Arcade Pro 3 Premium VLX
+    || (vid == 0x0f0d && pid == 0x0027) // HORI Fighting Stick V3
+    || (vid == 0x0f0d && pid == 0x008b) // HORI RAP V HAYABUSA Controller (PS3 Mode)
+    // Mad Catz
+    || (vid == 0x0738 && pid == 0x3180) // Mad Catz Fight Stick Alpha (PS3 Mode)
+    || (vid == 0x0738 && pid == 0x8818) // Mad Catz SFIV Tournament Edition Round 1 (PS3)
+    || (vid == 0x0738 && pid == 0x8838) // Mad Catz SFIV Tournament Edition Round 2 (PS3)
+    // Quanba
+    || (vid == 0x2c22 && pid == 0x2302) // Qanba Obsidian (PS3 Mode)
+    || (vid == 0x2c22 && pid == 0x2500) // Qanba Dragon (PS3 Mode)
+    // Other
+    || (vid == 0x146b && pid == 0x0904) // Nacon Daija Arcade Stick (PS3 Mode)
+    || (vid == 0x1292 && pid == 0x4e47) // Fire NEOGEOX Arcade Stick (PS3 HID Mode)
+    || (vid == 0x0079 && pid == 0x0006) // Generic Zero Delay USB Encoder (Standard PC/PS3)
+    || (vid == 0x046d && pid == 0xc216) // Logitech F310 (DirectInput / PS3 Mode)
+  ); 
 }
 
 // check if 2 reports are different enough

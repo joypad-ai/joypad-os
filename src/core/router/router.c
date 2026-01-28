@@ -371,6 +371,7 @@ bool router_add_route(input_source_t input, output_target_t output, uint8_t prio
         output == OUTPUT_TARGET_PCENGINE ? "PCEngine" :
         output == OUTPUT_TARGET_NUON ? "Nuon" :
         output == OUTPUT_TARGET_XBOXONE ? "XboxOne" :
+        output == OUTPUT_TARGET_NEOGEO ? "NEOGEO" :
         output == OUTPUT_TARGET_LOOPY ? "Loopy" : "?",
         priority);
 
