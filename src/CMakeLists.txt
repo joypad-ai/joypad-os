@@ -409,6 +409,25 @@ joypad_target_common(joypad_ngc_rp2040zero)
 joypad_add_btstack(joypad_ngc_rp2040zero)
 pico_generate_pio_header(joypad_ngc_rp2040zero ${CMAKE_CURRENT_LIST_DIR}/lib/joybus-pio/src/joybus.pio)
 
+# --- N64 Output ---
+add_executable(joypad_n64)
+target_compile_definitions(joypad_n64 PRIVATE CONFIG_N64=1 CONFIG_USB_HOST=1)
+target_sources(joypad_n64 PUBLIC ${COMMON_SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/device/n64/n64_device.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/lib/joybus-pio/src/joybus.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/lib/joybus-pio/src/N64Console.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2n64/app.c
+)
+target_include_directories(joypad_n64 PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2n64
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/device/n64
+    ${CMAKE_CURRENT_SOURCE_DIR}/lib/joybus-pio/include
+)
+target_link_libraries(joypad_n64 PRIVATE ${COMMON_LIBRARIES} hardware_flash)
+joypad_target_common(joypad_n64)
+joypad_add_btstack(joypad_n64)
+pico_generate_pio_header(joypad_n64 ${CMAKE_CURRENT_LIST_DIR}/lib/joybus-pio/src/joybus.pio)
+
 # --- Nuon ---
 add_executable(joypad_nuon)
 target_compile_definitions(joypad_nuon PRIVATE CONFIG_NUON=1)
