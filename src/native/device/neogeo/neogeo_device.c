@@ -30,10 +30,6 @@ static void neogeo_early_gpio_init(void)
 #include "core/services/profiles/profile.h"
 #include "core/services/profiles/profile_indicator.h"
 #include "core/services/codes/codes.h"
-#include "core/router/router.h"
-
-// Forward declarations
-void read_inputs(void);
 
 // ============================================================================
 // PROFILE SYSTEM (Delegates to core profile service)
@@ -84,7 +80,7 @@ void neogeo_init()
 void neogeo_task()
 {  
   // Continuously read input
-  read_inputs();
+  update_output();
 }
 
 //
@@ -100,9 +96,9 @@ void __not_in_flash_func(core1_task)(void) {
 }
 
 //
-// read_inputs - reads button state from router and caches it (HEAVY - once per scan)
+// update_output - reads button state from router and caches it (HEAVY - once per scan)
 //
-void __not_in_flash_func(read_inputs)(void)
+void __not_in_flash_func(update_output)(void)
 {
   static uint32_t last_buttons = 0;  // Remember last button state for combo detection
   const input_event_t* event = router_get_output(OUTPUT_TARGET_NEOGEO, 0);
@@ -170,7 +166,7 @@ const OutputInterface neogeo_output_interface = {
     .name = "NEOGEO",
     .target = OUTPUT_TARGET_NEOGEO,
     .init = neogeo_init,
-    .core1_task = core1_task,
+    .core1_task = NULL,
     .task = neogeo_task,  // NEOGEO needs periodic scan detection task
     .get_rumble = NULL,
     .get_player_led = NULL,

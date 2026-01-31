@@ -50,7 +50,7 @@ Standard arcade mapping for 1L6B in 1L8B fightsticks:
 
 ### Type A Profile
 
-Arcade mapping for 1L6B in 1L8B fightsticks aling to right:
+Arcade mapping for 1L6B in 1L8B fightsticks alinged to right:
 
 | USB Input | NEOGEO/SuperGun Output |
 |-----------|-----------------|
@@ -111,8 +111,8 @@ NEOGEO MVS U4 mapping in 1L8B fightsticks:
 | B4 (Triangle/Y) | B2 / P2 / B |
 | L1 (LB/L) | B4 / K1 / D |
 | R1 (RB/R) | B3 / P3 / C |
-| L2 (LT/ZL) | - (disabled |
-| R2 (RT/ZR) | - (disabled |
+| L2 (LT/ZL) | - (disabled) |
+| R2 (RT/ZR) | - (disabled) |
 
 ![USB-2-NEOGEO Type D Profile](../images/usb2neogeo_typed.svg)
 
@@ -128,8 +128,8 @@ NEOGEO AES pad mapping aling to classic diamond controllers:
 | B4 (Triangle/Y) | B4 / K1 / D |
 | L1 (LB/L) | B6 / K3 |
 | R1 (RB/R) | B5 / K2 / Select |
-| L2 (LT/ZL) | - (disabled |
-| L2 (LT/ZL) | - (disabled |
+| L2 (LT/ZL) | - (disabled) |
+| L2 (LT/ZL) | - (disabled) |
 
 ![USB-2-NEOGEO Pad A Profile](../images/usb2neogeo_pada.svg)
 
@@ -145,8 +145,8 @@ NEOGEO AES pad mapping to KOF style in controllers:
 | B4 (Triangle/Y) | B3 / P3 / C |
 | L1 (LB/L) | B6 / K3 |
 | R1 (RB/R) | B5 / K2 / Select |
-| L2 (LT/ZL) | - (disabled |
-| L2 (LT/ZL) | - (disabled |
+| L2 (LT/ZL) | - (disabled) |
+| L2 (LT/ZL) | - (disabled) |
 
 ![USB-2-NEOGEO Pad B Profile](../images/usb2neogeo_padb.svg)
 
