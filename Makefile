@@ -1,6 +1,10 @@
 # Joypad Top-Level Makefile
 # Builds firmware for all product variants
 
+# Load local environment overrides (gitignored)
+-include .env
+export
+
 # Default target
 .DEFAULT_GOAL := help
 

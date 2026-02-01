@@ -9,3 +9,4 @@ releases/
 src/build/
 .dev
 node_modules/
+.env

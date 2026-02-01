@@ -13,6 +13,11 @@ pico_sdk_init()
 
 set(FAMILY rp2040)
 
+# Enable TinyUSB debug logging if JOYPAD_DEBUG is set (via .env or environment)
+if(DEFINED ENV{JOYPAD_DEBUG})
+    add_compile_definitions(CFG_TUSB_DEBUG=$ENV{JOYPAD_DEBUG})
+endif()
+
 # ============================================================================
 # VERSION AND BUILD INFO
 # ============================================================================
