@@ -32,7 +32,7 @@ static uint8_t keyboard_led_state = 0;
 // Gaming-optimized: triggers for fire/aim, face buttons for actions
 static const kbmouse_button_map_t default_button_map[] = {
     // Face buttons (common game actions)
-    { JP_BUTTON_B1, KBMOUSE_ACTION_KEY, HID_KEY_SPACE_REAL },        // A/Cross -> Space (jump)
+    { JP_BUTTON_B1, KBMOUSE_ACTION_KEY, HID_KEY_SPACE },              // A/Cross -> Space (jump)
     { JP_BUTTON_B2, KBMOUSE_ACTION_KEY, HID_KEY_E },                 // B/Circle -> E (interact)
     { JP_BUTTON_B3, KBMOUSE_ACTION_KEY, HID_KEY_R },                 // X/Square -> R (reload)
     { JP_BUTTON_B4, KBMOUSE_ACTION_KEY, HID_KEY_Q },                 // Y/Triangle -> Q (ability/swap)
