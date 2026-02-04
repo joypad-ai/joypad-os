@@ -876,6 +876,10 @@ bool btstack_driver_set_config(uint8_t dev_addr, uint8_t itf_num)
     usb_state.connected = true;
     printf("[HCI_USB] Bluetooth dongle configured\n");
 
+    // Signal usbh layer that BT hardware is present (enables BTstack loop)
+    extern void usbh_set_bt_available(bool available);
+    usbh_set_bt_available(true);
+
 #if USE_BTSTACK
     // Now that dongle is connected, power on BTstack
     printf("[HCI_USB] Powering on BTstack...\n");

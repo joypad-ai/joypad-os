@@ -491,7 +491,7 @@ void __not_in_flash_func(update_output)(void)
   // output_quad_x was accumulated in post_input_event() - need console-local accumulator
   output_quad_x    = crc_data_packet(0, 1);  // Disabled for now
 
-  codes_task();
+  codes_task_for_output(OUTPUT_TARGET_NUON);
 
 }
 

@@ -304,7 +304,7 @@ void __not_in_flash_func(update_output)(void)
   //               ((bytes[1] & 0xff) << 8) | // ROW1
   //               ((bytes[2] & 0xff) << 16); // ROW2
 
-  codes_task();
+  codes_task_for_output(OUTPUT_TARGET_LOOPY);
 }
 
 // post_input_event removed - replaced by router architecture

@@ -150,7 +150,7 @@ void __not_in_flash_func(update_output)(void)
 
   gpio_put_masked(NEOGEO_GPIO_MASK, ~neogeo_buttons);
 
-  codes_task();
+  codes_task_for_output(OUTPUT_TARGET_NEOGEO);
 }
 
 // post_input_event removed - replaced by router architecture

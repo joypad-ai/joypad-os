@@ -26,6 +26,15 @@ extern void xinput_task(void);
 #include "btd/hci_transport_h2_tinyusb.h"
 #include "bt/transport/bt_transport.h"
 extern const bt_transport_t bt_transport_usb;
+
+// Runtime flag: only run BTstack loop when BT hardware is actually present.
+// Avoids ~1-3ms overhead per main loop iteration when no dongle is connected.
+static bool bt_hardware_present = false;
+
+void usbh_set_bt_available(bool available)
+{
+    bt_hardware_present = available;
+}
 #endif
 
 // PIO USB pin definitions (configurable per board)
@@ -94,6 +103,11 @@ void usbh_init(void)
 #if CFG_TUH_BTD
     // Initialize Bluetooth transport (for USB BT dongle support)
     bt_init(&bt_transport_usb);
+
+    // Pico W has onboard BT - enable BTstack loop at startup
+#if defined(CYW43_WL_GPIO_ON) || defined(PICO_CYW43_SUPPORTED)
+    bt_hardware_present = true;
+#endif
 #endif
 
     printf("[usbh] Initialization complete\n");
@@ -113,8 +127,10 @@ void usbh_task(void)
 #endif
 
 #if CFG_TUH_BTD
-    hci_transport_h2_tinyusb_process();
-    bt_task();
+    if (bt_hardware_present) {
+        hci_transport_h2_tinyusb_process();
+        bt_task();
+    }
 #endif
 }
 

@@ -397,7 +397,7 @@ void __not_in_flash_func(read_inputs)(void)
     pce_state.ext_byte[i] = ext;
   }
 
-  codes_task();
+  codes_task_for_output(OUTPUT_TARGET_PCENGINE);
 }
 
 //

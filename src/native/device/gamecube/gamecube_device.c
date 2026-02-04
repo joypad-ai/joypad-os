@@ -440,7 +440,7 @@ void __not_in_flash_func(update_output)(void)
     new_report.keyboard.counter = gc_kb_counter;
   }
 
-  codes_task();
+  codes_task_for_output(OUTPUT_TARGET_GAMECUBE);
 
   // Atomically update global report
   gc_report = new_report;

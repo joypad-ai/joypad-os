@@ -83,7 +83,17 @@ static void __not_in_flash_func(core0_main)(void)
     players_task();
     if (first_loop) printf("[joypad] Loop: storage\n");
     storage_task();
-    // Run output interface tasks FIRST (ensures DC maple is set up before input polling)
+
+    // Poll all input interfaces FIRST so output reads freshest data this iteration
+    // (Eliminates one-loop-iteration latency vs polling input after output)
+    for (uint8_t i = 0; i < input_count; i++) {
+      if (inputs[i] && inputs[i]->task) {
+        if (first_loop) printf("[joypad] Loop: input %s\n", inputs[i]->name);
+        inputs[i]->task();
+      }
+    }
+
+    // Run output interface tasks (reads router state populated by input above)
     for (uint8_t i = 0; i < output_count; i++) {
       if (outputs[i] && outputs[i]->task) {
         if (first_loop) printf("[joypad] Loop: output %s\n", outputs[i]->name);
@@ -93,14 +103,6 @@ static void __not_in_flash_func(core0_main)(void)
 
     if (first_loop) printf("[joypad] Loop: app\n");
     app_task();
-
-    // Poll all input interfaces declared by the app
-    for (uint8_t i = 0; i < input_count; i++) {
-      if (inputs[i] && inputs[i]->task) {
-        if (first_loop) printf("[joypad] Loop: input %s\n", inputs[i]->name);
-        inputs[i]->task();
-      }
-    }
     first_loop = false;
   }
 }
