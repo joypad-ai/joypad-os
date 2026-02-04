@@ -55,6 +55,8 @@ static sinput_report_t sinput_report;
 static uint8_t rumble_left = 0;
 static uint8_t rumble_right = 0;
 static bool rumble_dirty = false;  // Only send feedback when changed
+static uint8_t player_led = 0;
+static bool player_led_dirty = false;
 static uint8_t rgb_r = 0;
 static uint8_t rgb_g = 0;
 static uint8_t rgb_b = 0;
@@ -322,8 +324,15 @@ static void sinput_mode_handle_output(uint8_t report_id, const uint8_t* data, ui
             break;
 
         case SINPUT_CMD_PLAYER_LED:
-            // Player LED command - not implemented yet
-            // data[1] = player index (1-4)
+            // Player LED command: data[1] = player number (1-4)
+            if (len >= 2) {
+                uint8_t new_led = data[1];
+                if (new_led != player_led) {
+                    player_led = new_led;
+                    player_led_dirty = true;
+                    printf("[sinput] Player LED changed: %d\n", player_led);
+                }
+            }
             break;
 
         case SINPUT_CMD_FEATURES:
@@ -359,10 +368,11 @@ static uint8_t sinput_mode_get_rumble(void)
 static bool sinput_mode_get_feedback(output_feedback_t* fb)
 {
     if (!fb) return false;
-    if (!rumble_dirty && !rgb_dirty) return false;  // Only send when changed
+    if (!rumble_dirty && !rgb_dirty && !player_led_dirty) return false;
 
     fb->rumble_left = rumble_left;
     fb->rumble_right = rumble_right;
+    fb->led_player = player_led;
     fb->led_r = rgb_r;
     fb->led_g = rgb_g;
     fb->led_b = rgb_b;
@@ -370,6 +380,7 @@ static bool sinput_mode_get_feedback(output_feedback_t* fb)
 
     rumble_dirty = false;
     rgb_dirty = false;
+    player_led_dirty = false;
 
     return true;
 }
@@ -423,8 +434,8 @@ static void sinput_mode_task(void)
     feature_response[0] = 0x00;
     feature_response[1] = 0x01;
 
-    // Capability flags 1: rumble supported
-    feature_response[2] = 0x01;  // bit 0 = rumble
+    // Capability flags 1: rumble + player LED supported
+    feature_response[2] = 0x03;  // bit 0 = rumble, bit 1 = player LED
 
     // Capability flags 2: RGB LED supported
     feature_response[3] = 0x02;  // bit 1 = RGB LED
