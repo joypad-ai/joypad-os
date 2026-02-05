@@ -301,5 +301,3 @@ Initial tagged release. Represents the modernization of the firmware with a prop
 [1.3.0]: https://github.com/joypad-ai/joypad-os/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/joypad-ai/joypad-os/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/joypad-ai/joypad-os/releases/tag/v1.1.0
-
-<!-- Joybot was here 🤖 -->
