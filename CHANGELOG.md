@@ -8,6 +8,12 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+*No unreleased changes.*
+
+---
+
+## [1.6.0] — 2026-02-04
+
 ### Added
 - Microsoft SideWinder Dual Strike USB HID driver with hat D-pad/analog mode toggle
 - ANALOG_RZ as 7th analog axis for twist/spinner inputs
@@ -287,7 +293,8 @@ Initial tagged release. Represents the modernization of the firmware with a prop
 
 ---
 
-[Unreleased]: https://github.com/joypad-ai/joypad-os/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/joypad-ai/joypad-os/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/joypad-ai/joypad-os/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/joypad-ai/joypad-os/compare/v1.4.1...v1.5.0
 [1.4.1]: https://github.com/joypad-ai/joypad-os/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/joypad-ai/joypad-os/compare/v1.3.0...v1.4.0
