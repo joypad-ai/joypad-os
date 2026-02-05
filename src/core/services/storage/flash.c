@@ -1,10 +1,11 @@
 // core/services/storage/flash.c - Persistent settings storage in flash memory
 //
-// Uses journaled storage for BT-safe writes:
-// - 4KB sector = 16 x 256-byte slots (ring buffer)
+// Uses dual-sector journaled storage for BT-safe writes:
+// - Two 4KB sectors = 32 x 256-byte slots total
 // - Each save writes to next empty slot (page program only, ~1ms)
-// - Sector erase (~45ms) only when full AND BT is idle
-// - This allows settings to be saved during active BT connections
+// - When one sector fills, erase the OTHER sector and continue there
+// - This allows sector erases while valid data remains readable
+// - No need to defer erases for BT - always safe to erase inactive sector
 
 #include "core/services/storage/flash.h"
 #include "pico/stdlib.h"
@@ -17,6 +18,7 @@
 #include <stdio.h>
 
 // BT connection check (weak symbol - overridden when BT is enabled)
+// Note: With dual-sector design, we no longer need to defer erases for BT
 __attribute__((weak)) uint8_t btstack_classic_get_connection_count(void) { return 0; }
 
 // Helper to flush debug output before critical sections
@@ -34,33 +36,39 @@ static void flush_output(void)
 // Flash memory layout
 // - RP2040/RP2350 flash is memory-mapped at XIP_BASE (0x10000000)
 // - BTstack uses 8KB (2 sectors) for Bluetooth bond storage
-// - We use the sector before BTstack for settings storage
+// - We use TWO sectors before BTstack for settings storage (dual-sector journal)
 // - Flash writes require erasing entire 4KB sectors
 // - Flash page writes are 256-byte aligned
 //
 // Layout differs by platform:
 // - RP2040: BTstack at end of flash (last 2 sectors)
 // - RP2350 (A2): BTstack 1 sector from end (due to RP2350-E10 errata)
+//
+// Dual-sector layout (from end):
+//   [... code ...] [Sector B] [Sector A] [BTstack 8KB] [end]
+// Sector A is at the original offset (preserves existing user data on upgrade)
 
 #define SETTINGS_MAGIC 0x47435052  // "GCPR" - GameCube Profile
 #define BTSTACK_FLASH_SIZE (FLASH_SECTOR_SIZE * 2)  // 8KB for BTstack
 
 #if PICO_RP2350 && PICO_RP2350_A2_SUPPORTED
-// RP2350 layout: [... | settings | btstack (2 sectors) | reserved (1 sector)]
-#define FLASH_TARGET_OFFSET (PICO_FLASH_SIZE_BYTES - FLASH_SECTOR_SIZE - BTSTACK_FLASH_SIZE - FLASH_SECTOR_SIZE)
+// RP2350 layout: [... | sector B | sector A | btstack (2 sectors) | reserved (1 sector)]
+#define FLASH_SECTOR_A_OFFSET (PICO_FLASH_SIZE_BYTES - FLASH_SECTOR_SIZE - BTSTACK_FLASH_SIZE - FLASH_SECTOR_SIZE)
+#define FLASH_SECTOR_B_OFFSET (FLASH_SECTOR_A_OFFSET - FLASH_SECTOR_SIZE)
 #else
-// RP2040 layout: [... | settings | btstack (2 sectors)]
-#define FLASH_TARGET_OFFSET (PICO_FLASH_SIZE_BYTES - BTSTACK_FLASH_SIZE - FLASH_SECTOR_SIZE)
+// RP2040 layout: [... | sector B | sector A | btstack (2 sectors)]
+#define FLASH_SECTOR_A_OFFSET (PICO_FLASH_SIZE_BYTES - BTSTACK_FLASH_SIZE - FLASH_SECTOR_SIZE)
+#define FLASH_SECTOR_B_OFFSET (FLASH_SECTOR_A_OFFSET - FLASH_SECTOR_SIZE)
 #endif
 
 // Journal configuration
 #define JOURNAL_SLOT_SIZE FLASH_PAGE_SIZE  // 256 bytes per slot
-#define JOURNAL_SLOT_COUNT (FLASH_SECTOR_SIZE / JOURNAL_SLOT_SIZE)  // 16 slots
+#define SLOTS_PER_SECTOR (FLASH_SECTOR_SIZE / JOURNAL_SLOT_SIZE)  // 16 slots per sector
+#define TOTAL_SLOT_COUNT (SLOTS_PER_SECTOR * 2)  // 32 slots total
 #define SAVE_DEBOUNCE_MS 5000  // Wait 5 seconds after last change before writing
 
 // Pending save state
 static bool save_pending = false;
-static bool erase_pending = false;  // Sector full, waiting for BT idle to erase
 static absolute_time_t last_change_time;
 static flash_t pending_settings;
 static uint32_t current_sequence = 0;  // Current sequence number
@@ -69,16 +77,21 @@ static uint32_t current_sequence = 0;  // Current sequence number
 static flash_t runtime_settings;
 static bool runtime_settings_loaded = false;
 
-// Check if BT has active connections
-static bool bt_is_active(void)
+// Get flash offset for a slot index (0-31)
+// Slots 0-15 are in sector A, slots 16-31 are in sector B
+static uint32_t get_slot_offset(uint8_t slot_index)
 {
-    return btstack_classic_get_connection_count() > 0;
+    if (slot_index < SLOTS_PER_SECTOR) {
+        return FLASH_SECTOR_A_OFFSET + (slot_index * JOURNAL_SLOT_SIZE);
+    } else {
+        return FLASH_SECTOR_B_OFFSET + ((slot_index - SLOTS_PER_SECTOR) * JOURNAL_SLOT_SIZE);
+    }
 }
 
-// Get pointer to a journal slot
+// Get pointer to a journal slot (0-31)
 static const flash_t* get_slot(uint8_t slot_index)
 {
-    return (const flash_t*)(XIP_BASE + FLASH_TARGET_OFFSET + (slot_index * JOURNAL_SLOT_SIZE));
+    return (const flash_t*)(XIP_BASE + get_slot_offset(slot_index));
 }
 
 // Check if a slot is empty (erased state = 0xFFFFFFFF)
@@ -88,14 +101,14 @@ static bool is_slot_empty(uint8_t slot_index)
     return slot->sequence == 0xFFFFFFFF;
 }
 
-// Find the newest valid entry (highest sequence number)
-// Returns slot index, or -1 if no valid entries
+// Find the newest valid entry (highest sequence number) across both sectors
+// Returns slot index (0-31), or -1 if no valid entries
 static int find_newest_slot(void)
 {
     int newest_slot = -1;
     uint32_t highest_seq = 0;
 
-    for (uint8_t i = 0; i < JOURNAL_SLOT_COUNT; i++) {
+    for (uint8_t i = 0; i < TOTAL_SLOT_COUNT; i++) {
         const flash_t* slot = get_slot(i);
 
         // Check for valid magic and non-empty sequence
@@ -110,29 +123,67 @@ static int find_newest_slot(void)
     return newest_slot;
 }
 
-// Find the next empty slot
-// Returns slot index, or -1 if sector is full
+// Find the next empty slot, searching from the sector containing newest data
+// Returns slot index (0-31), or -1 if both sectors are full (shouldn't happen)
 static int find_empty_slot(void)
 {
-    for (uint8_t i = 0; i < JOURNAL_SLOT_COUNT; i++) {
-        if (is_slot_empty(i)) {
-            return i;
+    int newest = find_newest_slot();
+
+    // Determine which sector to search first (the one with newest data)
+    // If no data yet, start with sector A (preserves upgrade compatibility)
+    bool start_with_a = (newest < 0 || newest < SLOTS_PER_SECTOR);
+
+    if (start_with_a) {
+        // Search sector A first (slots 0-15)
+        for (uint8_t i = 0; i < SLOTS_PER_SECTOR; i++) {
+            if (is_slot_empty(i)) {
+                return i;
+            }
+        }
+        // Sector A full - search sector B (slots 16-31)
+        for (uint8_t i = SLOTS_PER_SECTOR; i < TOTAL_SLOT_COUNT; i++) {
+            if (is_slot_empty(i)) {
+                return i;
+            }
+        }
+    } else {
+        // Search sector B first (slots 16-31)
+        for (uint8_t i = SLOTS_PER_SECTOR; i < TOTAL_SLOT_COUNT; i++) {
+            if (is_slot_empty(i)) {
+                return i;
+            }
+        }
+        // Sector B full - search sector A (slots 0-15)
+        for (uint8_t i = 0; i < SLOTS_PER_SECTOR; i++) {
+            if (is_slot_empty(i)) {
+                return i;
+            }
         }
     }
-    return -1;  // Sector full
+
+    return -1;  // Both sectors full (shouldn't happen with proper erase logic)
+}
+
+// Get which sector a slot is in (0 = A, 1 = B)
+static uint8_t get_slot_sector(uint8_t slot_index)
+{
+    return (slot_index < SLOTS_PER_SECTOR) ? 0 : 1;
 }
 
 void flash_init(void)
 {
     save_pending = false;
-    erase_pending = false;
 
-    // Find current sequence number from flash
+    // Find current sequence number from flash (searches both sectors)
     int newest = find_newest_slot();
     if (newest >= 0) {
         current_sequence = get_slot(newest)->sequence;
+        printf("[flash] Found newest slot %d (sector %c, seq=%lu)\n",
+               newest, (newest < SLOTS_PER_SECTOR) ? 'A' : 'B',
+               (unsigned long)current_sequence);
     } else {
         current_sequence = 0;
+        printf("[flash] No valid settings found, starting fresh\n");
     }
 
     // Load runtime settings
@@ -188,11 +239,15 @@ static void __no_inline_not_in_flash_func(page_program_worker)(void* param)
 }
 
 // Sector erase worker - erases entire sector (~45ms)
-// NOT safe during BT - only call when BT is idle
+// With dual-sector design, we always erase the inactive sector, so this is safe
+typedef struct {
+    uint32_t offset;
+} sector_erase_params_t;
+
 static void __no_inline_not_in_flash_func(sector_erase_worker)(void* param)
 {
-    (void)param;
-    flash_range_erase(FLASH_TARGET_OFFSET, FLASH_SECTOR_SIZE);
+    sector_erase_params_t* p = (sector_erase_params_t*)param;
+    flash_range_erase(p->offset, FLASH_SECTOR_SIZE);
 }
 
 // Write a single page to flash (BT-safe, ~1ms)
@@ -201,7 +256,7 @@ static bool flash_write_page(uint8_t slot_index, const flash_t* settings)
     static flash_t write_buffer;  // Static to persist during flash ops
     memcpy(&write_buffer, settings, sizeof(flash_t));
 
-    uint32_t offset = FLASH_TARGET_OFFSET + (slot_index * JOURNAL_SLOT_SIZE);
+    uint32_t offset = get_slot_offset(slot_index);
 
     page_program_params_t params = {
         .offset = offset,
@@ -221,21 +276,26 @@ static bool flash_write_page(uint8_t slot_index, const flash_t* settings)
     return true;
 }
 
-// Erase the sector (NOT BT-safe, ~45ms)
-static void flash_erase_sector(void)
+// Erase a specific sector (0 = A, 1 = B)
+// Safe to call anytime - we only erase the sector without valid data
+static void flash_erase_sector(uint8_t sector)
 {
-    printf("[flash] Erasing sector at offset 0x%X...\n", FLASH_TARGET_OFFSET);
+    uint32_t offset = (sector == 0) ? FLASH_SECTOR_A_OFFSET : FLASH_SECTOR_B_OFFSET;
+    printf("[flash] Erasing sector %c at offset 0x%lX...\n",
+           (sector == 0) ? 'A' : 'B', (unsigned long)offset);
     flush_output();
 
+    sector_erase_params_t params = { .offset = offset };
+
     // Try flash_safe_execute first
-    int result = flash_safe_execute(sector_erase_worker, NULL, UINT32_MAX);
+    int result = flash_safe_execute(sector_erase_worker, &params, UINT32_MAX);
 
     if (result != PICO_OK) {
         printf("[flash] flash_safe_execute failed (%d), trying direct erase...\n", result);
         flush_output();
 
         uint32_t ints = save_and_disable_interrupts();
-        flash_range_erase(FLASH_TARGET_OFFSET, FLASH_SECTOR_SIZE);
+        flash_range_erase(offset, FLASH_SECTOR_SIZE);
         restore_interrupts(ints);
     }
 
@@ -243,6 +303,7 @@ static void flash_erase_sector(void)
 }
 
 // Force immediate save (bypasses debouncing)
+// With dual-sector design, this is always safe - we erase the OTHER sector
 void flash_save_now(const flash_t* settings)
 {
     static flash_t write_settings;
@@ -254,25 +315,22 @@ void flash_save_now(const flash_t* settings)
     int slot = find_empty_slot();
 
     if (slot < 0) {
-        // Sector full - need to erase first
-        if (bt_is_active()) {
-            // BT active - defer erase, keep settings pending
-            printf("[flash] Sector full, BT active - deferring erase\n");
-            erase_pending = true;
-            memcpy(&pending_settings, &write_settings, sizeof(flash_t));
-            save_pending = true;
-            return;
-        }
+        // Both sectors full - find newest slot and erase the OTHER sector
+        int newest = find_newest_slot();
+        uint8_t newest_sector = (newest >= 0) ? get_slot_sector(newest) : 0;
+        uint8_t erase_sector = (newest_sector == 0) ? 1 : 0;
 
-        // BT idle - safe to erase
-        flash_erase_sector();
-        slot = 0;
-        erase_pending = false;
+        printf("[flash] Both sectors full, erasing sector %c\n",
+               (erase_sector == 0) ? 'A' : 'B');
+        flash_erase_sector(erase_sector);
+
+        // Write to first slot of erased sector
+        slot = (erase_sector == 0) ? 0 : SLOTS_PER_SECTOR;
     }
 
     printf("[flash] Writing to slot %d (seq=%lu) at offset 0x%lX\n",
            slot, (unsigned long)write_settings.sequence,
-           (unsigned long)(FLASH_TARGET_OFFSET + slot * JOURNAL_SLOT_SIZE));
+           (unsigned long)get_slot_offset(slot));
 
     flash_write_page(slot, &write_settings);
 
@@ -286,51 +344,16 @@ void flash_save_now(const flash_t* settings)
     save_pending = false;
 }
 
-// Force immediate save, ignoring BT-active check (use before device reset)
+// Force immediate save - same as flash_save_now() with dual-sector design
+// Kept for API compatibility
 void flash_save_force(const flash_t* settings)
 {
-    static flash_t write_settings;
-    memcpy(&write_settings, settings, sizeof(flash_t));
-    write_settings.magic = SETTINGS_MAGIC;
-    write_settings.sequence = ++current_sequence;
-
-    // Find next empty slot
-    int slot = find_empty_slot();
-
-    if (slot < 0) {
-        // Sector full - erase regardless of BT state (we're resetting anyway)
-        printf("[flash] Sector full, forcing erase before reset\n");
-        flash_erase_sector();
-        slot = 0;
-        erase_pending = false;
-    }
-
-    printf("[flash] Force writing to slot %d (seq=%lu)\n",
-           slot, (unsigned long)write_settings.sequence);
-
-    flash_write_page(slot, &write_settings);
-    save_pending = false;
+    flash_save_now(settings);
 }
 
 // Task function to handle debounced flash writes (call from main loop)
 void flash_task(void)
 {
-    // Check if we have a pending erase waiting for BT to be idle
-    if (erase_pending && !bt_is_active()) {
-        printf("[flash] BT now idle, performing deferred erase and write\n");
-        flash_erase_sector();
-        erase_pending = false;
-
-        // Now write the pending settings to slot 0
-        if (save_pending) {
-            pending_settings.sequence = ++current_sequence;
-            printf("[flash] Writing deferred settings to slot 0\n");
-            flash_write_page(0, &pending_settings);
-            save_pending = false;
-        }
-        return;
-    }
-
     if (!save_pending) {
         return;
     }
@@ -342,28 +365,17 @@ void flash_task(void)
     }
 }
 
-// Called when BT disconnects - check if we have pending erases
+// Called when BT disconnects - kept for API compatibility
+// With dual-sector design, no deferred erases needed
 void flash_on_bt_disconnect(void)
 {
-    if (erase_pending && !bt_is_active()) {
-        printf("[flash] BT disconnected, performing deferred erase\n");
-        flash_erase_sector();
-        erase_pending = false;
-
-        // Write pending settings to slot 0
-        if (save_pending) {
-            pending_settings.sequence = ++current_sequence;
-            printf("[flash] Writing deferred settings to slot 0\n");
-            flash_write_page(0, &pending_settings);
-            save_pending = false;
-        }
-    }
+    // No-op with dual-sector design
 }
 
-// Check if there's a pending write/erase waiting
+// Check if there's a pending write waiting
 bool flash_has_pending_write(void)
 {
-    return save_pending || erase_pending;
+    return save_pending;
 }
 
 // ============================================================================
