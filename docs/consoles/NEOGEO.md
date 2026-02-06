@@ -179,6 +179,28 @@ NEOGEO AES pad mapping to KOF style in controllers:
 
 ## Technical Details
 
+### Latency Testing
+
+Input latency is tested using the  [MiSTer FPGA Input Latency](https://github.com/misteraddons/inputlatency) methodology, but adapted for usb2neogeo use. While the original methodology measures input lag from USB gamepads on a MiSTer FPGA, this setup replaces the MiSTer with the adapter itself.
+
+The process uses an Arduino script that triggers an input on the gamepad via PIN 5. In the original MiSTer setup, the core catches the input and sends a response back to the Arduino via the User Port to PIN 2, triggering an interrupt to calculate the elapsed time.
+
+With this usb2neogeo, the MiSTer is not required. The adapter receives the USB gamepad inputs and routes them directly to the NEOGEO port. This output is then used as the interrupt signal for the Arduino to measure the precise delay between the physical button "press" and the adapter's output.
+
+![USB-2-NEOGEO Latency Diagram](../images/usb2neogeo_latency_diagram.png)
+
+### Test Results
+*Note: Outliers filtered using 0.02 lower and 0.995 upper quantiles to ensure statistical accuracy.*
+
+| Setup (Input > Output) | Min (ms) | Avg (ms) | Max (ms) | Std Dev |
+| :--- | :---: | :---: | :---: | :---: |
+| **GP2040 (PS3)** > joypad-usb2neogeo | 0.24 | 0.74 | 1.25 | 0.28 |
+| **GP2040 (PS4)** > joypad-usb2neogeo | 0.24 | 0.73 | 1.26 | 0.28 |
+| **GP2040 (SW)** > joypad-usb2neogeo | 0.18 | 0.67 | 1.18 | 0.28 |
+| **GP2040 (360)** > joypad-usb2neogeo | 0.18 | 0.67 | 1.19 | 0.28 |
+
+Full results can be found in the [Google Sheet](https://docs.google.com/spreadsheets/d/1ma0BHUg47wCR22bKXtgvrcKsxsszNW7GJkHwfwUbp0M/edit?usp=sharing).
+
 ### Profile Persistence
 
 - Uses last 4KB of flash memory
