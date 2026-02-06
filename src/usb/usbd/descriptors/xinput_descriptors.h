@@ -121,30 +121,77 @@ static const tusb_desc_device_t xinput_device_descriptor = {
     .bNumConfigurations = 0x01
 };
 
-// XInput interface descriptor with proprietary HID-like descriptor
-// Total: 9 (config) + 9 (interface) + 16 (xinput) + 7 (EP IN) + 7 (EP OUT) = 48 bytes
-#define XINPUT_CONFIG_TOTAL_LEN  48
+// Xbox 360 security interface class/subclass/protocol
+#define XINPUT_SEC_INTERFACE_CLASS     0xFF
+#define XINPUT_SEC_INTERFACE_SUBCLASS  0xFD
+#define XINPUT_SEC_INTERFACE_PROTOCOL  0x13
 
-#define TUD_XINPUT_DESC_LEN  (9 + 16 + 7 + 7)  // Interface + XInput desc + EP IN + EP OUT
+// XInput proprietary descriptor types
+#define XINPUT_DESC_TYPE_VENDOR  0x21  // Gamepad/Audio/Plugin vendor descriptor
+#define XINPUT_DESC_TYPE_SEC    0x41  // Security interface descriptor
 
-#define TUD_XINPUT_DESCRIPTOR(_itfnum, _epin, _epout) \
-    /* Interface */ \
-    9, TUSB_DESC_INTERFACE, _itfnum, 0, 2, \
-    XINPUT_INTERFACE_CLASS, XINPUT_INTERFACE_SUBCLASS, XINPUT_INTERFACE_PROTOCOL, 0x00, \
-    /* XInput proprietary descriptor (0x21) */ \
-    16, 0x21, 0x00, 0x01, 0x01, 0x24, 0x81, 0x14, 0x03, 0x00, 0x03, 0x13, 0x01, 0x00, 0x03, 0x00, \
-    /* Endpoint IN */ \
-    7, TUSB_DESC_ENDPOINT, _epin, TUSB_XFER_INTERRUPT, U16_TO_U8S_LE(32), 1, \
-    /* Endpoint OUT */ \
-    7, TUSB_DESC_ENDPOINT, _epout, TUSB_XFER_INTERRUPT, U16_TO_U8S_LE(32), 8
+// Full 4-interface Xbox 360 wired controller configuration descriptor (153 bytes)
+// Matches a real Xbox 360 wired controller to pass console authentication.
+// Reference: https://github.com/InvoxiPlayGames/libxsm3
+//            https://github.com/OpenStickCommunity/GP2040-CE
+#define XINPUT_CONFIG_TOTAL_LEN  153
 
-// Configuration descriptor
 static const uint8_t xinput_config_descriptor[] = {
-    // Config descriptor
-    TUD_CONFIG_DESCRIPTOR(1, 1, 0, XINPUT_CONFIG_TOTAL_LEN, 0x80, 250),  // 500mA
-    // XInput Interface
-    TUD_XINPUT_DESCRIPTOR(0, 0x81, 0x01),
+    // Configuration descriptor (9 bytes)
+    0x09, 0x02,                         // bLength, bDescriptorType
+    U16_TO_U8S_LE(XINPUT_CONFIG_TOTAL_LEN), // wTotalLength (153)
+    0x04,                               // bNumInterfaces
+    0x01,                               // bConfigurationValue
+    0x00,                               // iConfiguration
+    0xA0,                               // bmAttributes (bus powered, remote wakeup)
+    0xFA,                               // bMaxPower (500mA)
+
+    // ---- Interface 0: Gamepad (SubClass 0x5D, Protocol 0x01) ----
+    0x09, 0x04, 0x00, 0x00, 0x02, 0xFF, 0x5D, 0x01, 0x00,
+    // Gamepad vendor descriptor (type 0x21, 17 bytes)
+    0x11, 0x21, 0x00, 0x01, 0x01, 0x25, 0x81, 0x14,
+    0x00, 0x00, 0x00, 0x00, 0x13, 0x02, 0x08, 0x00, 0x00,
+    // EP 0x81 IN - Interrupt, 32 bytes, 4ms
+    0x07, 0x05, 0x81, 0x03, 0x20, 0x00, 0x04,
+    // EP 0x02 OUT - Interrupt, 32 bytes, 8ms
+    0x07, 0x05, 0x02, 0x03, 0x20, 0x00, 0x08,
+
+    // ---- Interface 1: Audio (SubClass 0x5D, Protocol 0x03) ----
+    0x09, 0x04, 0x01, 0x00, 0x04, 0xFF, 0x5D, 0x03, 0x00,
+    // Audio vendor descriptor (type 0x21, 27 bytes)
+    0x1B, 0x21, 0x00, 0x01, 0x01, 0x01, 0x83, 0x40,
+    0x01, 0x04, 0x20, 0x16, 0x85, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x16, 0x06, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00,
+    // EP 0x83 IN - Interrupt, 32 bytes, 2ms
+    0x07, 0x05, 0x83, 0x03, 0x20, 0x00, 0x02,
+    // EP 0x04 OUT - Interrupt, 32 bytes, 4ms
+    0x07, 0x05, 0x04, 0x03, 0x20, 0x00, 0x04,
+    // EP 0x85 IN - Interrupt, 32 bytes, 64ms
+    0x07, 0x05, 0x85, 0x03, 0x20, 0x00, 0x40,
+    // EP 0x06 OUT - Interrupt, 32 bytes, 16ms
+    0x07, 0x05, 0x06, 0x03, 0x20, 0x00, 0x10,
+
+    // ---- Interface 2: Plugin Module (SubClass 0x5D, Protocol 0x02) ----
+    0x09, 0x04, 0x02, 0x00, 0x01, 0xFF, 0x5D, 0x02, 0x00,
+    // Plugin vendor descriptor (type 0x21, 9 bytes)
+    0x09, 0x21, 0x00, 0x01, 0x01, 0x22, 0x86, 0x03, 0x00,
+    // EP 0x86 IN - Interrupt, 32 bytes, 16ms
+    0x07, 0x05, 0x86, 0x03, 0x20, 0x00, 0x10,
+
+    // ---- Interface 3: Security (SubClass 0xFD, Protocol 0x13) ----
+    // 0 endpoints, iInterface=4 (XSM3 security string)
+    0x09, 0x04, 0x03, 0x00, 0x00, 0xFF, 0xFD, 0x13, 0x04,
+    // Security descriptor (type 0x41, 6 bytes)
+    0x06, 0x41, 0x00, 0x01, 0x01, 0x03,
 };
+
+_Static_assert(sizeof(xinput_config_descriptor) == XINPUT_CONFIG_TOTAL_LEN,
+               "xinput_config_descriptor must be 153 bytes");
+
+// XSM3 Security string for iInterface=4 (string descriptor index 4)
+#define XINPUT_SECURITY_STRING  "Xbox Security Method 3, Version 1.00, " \
+    "\xa9 2005 Microsoft Corporation. All rights reserved."
 
 // String descriptors
 #define XINPUT_MANUFACTURER  "Microsoft"

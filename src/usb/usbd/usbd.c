@@ -1568,6 +1568,19 @@ uint16_t const *tud_descriptor_string_cb(uint8_t index, uint16_t langid)
         return _xbone_str;
     }
 
+    // XInput security string (index 4) needs a larger buffer (~90 chars)
+    if (output_mode == USB_OUTPUT_MODE_XINPUT && index == 4) {
+        static uint16_t _xinput_sec_str[96];
+        const char* sec_str = XINPUT_SECURITY_STRING;
+        uint8_t sec_len = strlen(sec_str);
+        if (sec_len > 95) sec_len = 95;
+        for (uint8_t i = 0; i < sec_len; i++) {
+            _xinput_sec_str[1 + i] = (uint8_t)sec_str[i];
+        }
+        _xinput_sec_str[0] = (TUSB_DESC_STRING << 8) | (2 * sec_len + 2);
+        return _xinput_sec_str;
+    }
+
     static uint16_t _desc_str[32];
     const char *str = NULL;
     uint8_t chr_count;

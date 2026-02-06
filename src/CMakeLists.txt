@@ -215,6 +215,11 @@ set(USB_DEVICE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd/drivers/tud_xbone.c
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd/drivers/xgip_protocol.c
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd/kbmouse/kbmouse.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/lib/libxsm3/xsm3.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/lib/libxsm3/usbdsec.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/lib/libxsm3/excrypt_des.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/lib/libxsm3/excrypt_parve.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/lib/libxsm3/excrypt_sha.c
 )
 
 # SNES host sources
@@ -250,7 +255,7 @@ set(CONTROLLER_SOURCES
 set(COMMON_SOURCES ${CORE_SOURCES} ${USB_HOST_SOURCES})
 
 # Common libraries for USB host apps
-set(COMMON_LIBRARIES pico_stdlib pico_multicore hardware_pio tinyusb_host tinyusb_board xinput_host)
+set(COMMON_LIBRARIES pico_stdlib pico_multicore hardware_pio pico_rand tinyusb_host tinyusb_board xinput_host)
 
 # BTstack compile definitions (shared by all USB host apps)
 # Note: Most BTstack feature flags are in bt/btstack/btstack_config.h
@@ -279,7 +284,7 @@ set(BTSTACK_EXTRA_SOURCES
 )
 
 # Controller libraries
-set(CONTROLLER_LIBRARIES pico_stdlib pico_multicore hardware_pio hardware_adc hardware_i2c hardware_pwm hardware_spi tinyusb_device tinyusb_board)
+set(CONTROLLER_LIBRARIES pico_stdlib pico_multicore hardware_pio hardware_adc hardware_i2c hardware_pwm hardware_spi pico_rand tinyusb_device tinyusb_board)
 
 # ============================================================================
 # HELPER FUNCTIONS
@@ -290,7 +295,7 @@ function(joypad_target_common TARGET)
     target_compile_options(${TARGET} PRIVATE -O3)
     pico_add_extra_outputs(${TARGET})
     pico_generate_pio_header(${TARGET} ${CMAKE_CURRENT_LIST_DIR}/core/services/leds/neopixel/ws2812.pio)
-    target_include_directories(${TARGET} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/common)
+    target_include_directories(${TARGET} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/common ${CMAKE_CURRENT_SOURCE_DIR}/lib/libxsm3)
     # Add version and build info to all targets
     target_compile_definitions(${TARGET} PRIVATE
         JOYPAD_VERSION="${JOYPAD_VERSION}"
@@ -668,6 +673,7 @@ if (PICO_BOARD STREQUAL "pico_w" OR PICO_BOARD STREQUAL "pico2_w")
     target_link_libraries(joypad_bt2usb PRIVATE
         pico_stdlib
         pico_multicore
+        pico_rand
         pico_cyw43_arch_poll
         pico_btstack_ble
         pico_btstack_classic
@@ -710,6 +716,7 @@ if (PICO_BOARD STREQUAL "pico_w" OR PICO_BOARD STREQUAL "pico2_w")
     target_link_libraries(joypad_wifi2usb PRIVATE
         pico_stdlib
         pico_multicore
+        pico_rand
         pico_cyw43_arch_lwip_poll
         pico_btstack_cyw43
         pico_btstack_ble
@@ -736,7 +743,7 @@ target_include_directories(joypad_snes2usb PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/native/host/snes
     ${CMAKE_CURRENT_SOURCE_DIR}/lib/SNESpad/src
 )
-target_link_libraries(joypad_snes2usb PRIVATE pico_stdlib pico_multicore hardware_pio tinyusb_device tinyusb_board)
+target_link_libraries(joypad_snes2usb PRIVATE pico_stdlib pico_multicore hardware_pio pico_rand tinyusb_device tinyusb_board)
 joypad_target_common(joypad_snes2usb)
 
 # --- N642USB (N64 -> USB HID) ---
@@ -752,7 +759,7 @@ target_include_directories(joypad_n642usb PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/native/host/n64
     ${CMAKE_CURRENT_SOURCE_DIR}/lib/joybus-pio/include
 )
-target_link_libraries(joypad_n642usb PRIVATE pico_stdlib pico_multicore hardware_pio tinyusb_device tinyusb_board)
+target_link_libraries(joypad_n642usb PRIVATE pico_stdlib pico_multicore hardware_pio pico_rand tinyusb_device tinyusb_board)
 joypad_target_common(joypad_n642usb)
 pico_generate_pio_header(joypad_n642usb ${CMAKE_CURRENT_LIST_DIR}/lib/joybus-pio/src/joybus.pio)
 
@@ -773,7 +780,7 @@ target_include_directories(joypad_gc2usb PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/native/host/gc
     ${CMAKE_CURRENT_SOURCE_DIR}/lib/joybus-pio/include
 )
-target_link_libraries(joypad_gc2usb PRIVATE pico_stdlib pico_multicore hardware_pio tinyusb_device tinyusb_board)
+target_link_libraries(joypad_gc2usb PRIVATE pico_stdlib pico_multicore hardware_pio pico_rand tinyusb_device tinyusb_board)
 joypad_target_common(joypad_gc2usb)
 pico_generate_pio_header(joypad_gc2usb ${CMAKE_CURRENT_LIST_DIR}/lib/joybus-pio/src/joybus.pio)
 

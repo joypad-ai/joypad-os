@@ -53,6 +53,9 @@ static void xinput_mode_init(void)
     xinput_report.report_size = sizeof(xinput_in_report_t);
     memset(&xinput_output, 0, sizeof(xinput_out_report_t));
     xinput_output_available = false;
+
+    // Initialize XSM3 auth for Xbox 360 console compatibility
+    tud_xinput_xsm3_init();
 }
 
 static bool xinput_mode_is_ready(void)
@@ -107,6 +110,9 @@ static bool xinput_mode_send_report(uint8_t player_index,
 
 static void xinput_mode_task(void)
 {
+    // Process XSM3 auth state machine (Xbox 360 console authentication)
+    tud_xinput_xsm3_process();
+
     // Check for rumble output from host
     if (tud_xinput_get_output(&xinput_output)) {
         xinput_output_available = true;
