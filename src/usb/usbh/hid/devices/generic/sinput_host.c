@@ -89,8 +89,8 @@ void process_sinput_host(uint8_t dev_addr, uint8_t instance, uint8_t const* repo
   if (len < sizeof(sinput_report_t) - 1) return;  // -1 for report_id already consumed
 
   sinput_report_t rpt;
-  memcpy(&rpt, report, sizeof(sinput_report_t) - 1);
   rpt.report_id = report_id;
+  memcpy(&rpt.plug_status, report, sizeof(sinput_report_t) - 1);
 
   // Skip unchanged reports
   if (!diff_sinput_report(&prev_reports[dev_addr], &rpt)) return;
