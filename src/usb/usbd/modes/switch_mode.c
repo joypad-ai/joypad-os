@@ -62,10 +62,6 @@ static bool switch_mode_send_report(uint8_t player_index,
                                      const input_event_t* event,
                                      const profile_output_t* profile_out,
                                      uint32_t buttons)
-static bool switch_mode_send_report(uint8_t player_index,
-                                     const input_event_t* event,
-                                     const profile_output_t* profile_out,
-                                     uint32_t buttons)
 {
     (void)player_index;
     (void)event;
@@ -79,7 +75,8 @@ static bool switch_mode_send_report(uint8_t player_index,
     if (buttons & JP_BUTTON_L1) switch_report.buttons |= SWITCH_MASK_L;     // L
     if (buttons & JP_BUTTON_R1) switch_report.buttons |= SWITCH_MASK_R;     // R
     
-    // ZL et ZR : On vérifie le bouton numérique OU la gâchette analogique (Modif Pokken)
+    // --- SPECIAL POKKEN : ZL et ZR ---
+    // On active si le bouton numérique est là... OU si la gâchette analogique est pressée (>30)
     if ((buttons & JP_BUTTON_L2) || (profile_out->l2_analog > 30)) {
         switch_report.buttons |= SWITCH_MASK_ZL;    // ZL
     }
