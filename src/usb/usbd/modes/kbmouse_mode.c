@@ -7,6 +7,7 @@
 #include "../usbd.h"
 #include "../kbmouse/kbmouse.h"
 #include "descriptors/kbmouse_descriptors.h"
+#include "descriptors/sinput_descriptors.h"
 #include "core/buttons.h"
 #include <string.h>
 
@@ -16,7 +17,6 @@
 
 static kbmouse_keyboard_report_t kbmouse_kb_report;
 static kbmouse_mouse_report_t kbmouse_mouse_report;
-static bool send_keyboard_next = true;
 
 // ============================================================================
 // MODE INTERFACE IMPLEMENTATION
@@ -27,12 +27,13 @@ static void kbmouse_mode_init(void)
     kbmouse_init();
     memset(&kbmouse_kb_report, 0, sizeof(kbmouse_kb_report));
     memset(&kbmouse_mouse_report, 0, sizeof(kbmouse_mouse_report));
-    send_keyboard_next = true;
 }
 
 static bool kbmouse_mode_is_ready(void)
 {
-    return tud_hid_ready();
+    // Both keyboard and mouse interfaces must be ready
+    return tud_hid_n_ready(ITF_NUM_HID_KEYBOARD) &&
+           tud_hid_n_ready(ITF_NUM_HID_MOUSE);
 }
 
 static bool kbmouse_mode_send_report(uint8_t player_index,
@@ -46,62 +47,60 @@ static bool kbmouse_mode_send_report(uint8_t player_index,
     // Convert gamepad to keyboard/mouse reports
     kbmouse_convert(buttons, profile_out, &kbmouse_kb_report, &kbmouse_mouse_report);
 
-    // Alternate between keyboard and mouse reports
-    if (send_keyboard_next) {
-        send_keyboard_next = false;
-        return tud_hid_keyboard_report(KBMOUSE_REPORT_ID_KEYBOARD,
-                                       kbmouse_kb_report.modifier,
-                                       kbmouse_kb_report.keycode);
-    } else {
-        send_keyboard_next = true;
-        return tud_hid_mouse_report(KBMOUSE_REPORT_ID_MOUSE,
-                                    kbmouse_mouse_report.buttons,
-                                    kbmouse_mouse_report.x,
-                                    kbmouse_mouse_report.y,
-                                    kbmouse_mouse_report.wheel,
-                                    kbmouse_mouse_report.pan);
-    }
+    // Send keyboard and mouse on separate interfaces (no report IDs needed)
+    bool kb_ok = tud_hid_n_keyboard_report(ITF_NUM_HID_KEYBOARD, 0,
+                                            kbmouse_kb_report.modifier,
+                                            kbmouse_kb_report.keycode);
+    bool mouse_ok = tud_hid_n_mouse_report(ITF_NUM_HID_MOUSE, 0,
+                                            kbmouse_mouse_report.buttons,
+                                            kbmouse_mouse_report.x,
+                                            kbmouse_mouse_report.y,
+                                            kbmouse_mouse_report.wheel,
+                                            kbmouse_mouse_report.pan);
+
+    return kb_ok || mouse_ok;
 }
 
 // Special handling for when no new input - still need to send mouse for continuous movement
 bool kbmouse_mode_send_idle_mouse(void)
 {
-    if (!tud_hid_ready()) return false;
+    if (!tud_hid_n_ready(ITF_NUM_HID_MOUSE)) return false;
 
-    if (!send_keyboard_next) {
-        send_keyboard_next = true;
-        return tud_hid_mouse_report(KBMOUSE_REPORT_ID_MOUSE,
-                                    kbmouse_mouse_report.buttons,
-                                    kbmouse_mouse_report.x,
-                                    kbmouse_mouse_report.y,
-                                    kbmouse_mouse_report.wheel,
-                                    kbmouse_mouse_report.pan);
-    }
-    return false;
+    return tud_hid_n_mouse_report(ITF_NUM_HID_MOUSE, 0,
+                                   kbmouse_mouse_report.buttons,
+                                   kbmouse_mouse_report.x,
+                                   kbmouse_mouse_report.y,
+                                   kbmouse_mouse_report.wheel,
+                                   kbmouse_mouse_report.pan);
 }
 
 static void kbmouse_mode_handle_output(uint8_t report_id, const uint8_t* data, uint16_t len)
 {
-    // Keyboard LED output report (Report ID 1, 1 byte)
+    // Keyboard LED output report (1 byte)
     // bit 0 = NumLock, bit 1 = CapsLock, bit 2 = ScrollLock
-    if (report_id == KBMOUSE_REPORT_ID_KEYBOARD && len >= 1) {
+    // In composite mode, report_id is 0 (no report IDs in standalone descriptors)
+    (void)report_id;
+    if (len >= 1) {
         kbmouse_set_led_state(data[0]);
     }
 }
 
 static const uint8_t* kbmouse_mode_get_device_descriptor(void)
 {
-    return (const uint8_t*)&kbmouse_device_descriptor;
+    // Share SInput device descriptor (same composite USB device)
+    return (const uint8_t*)&sinput_device_descriptor;
 }
 
 static const uint8_t* kbmouse_mode_get_config_descriptor(void)
 {
-    return kbmouse_config_descriptor;
+    // Composite config descriptor is built in usbd.c (desc_configuration_sinput)
+    return NULL;
 }
 
 static const uint8_t* kbmouse_mode_get_report_descriptor(void)
 {
-    return kbmouse_report_descriptor;
+    // Not used - composite mode routes by interface in tud_hid_descriptor_report_cb
+    return NULL;
 }
 
 // ============================================================================

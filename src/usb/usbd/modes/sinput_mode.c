@@ -226,7 +226,7 @@ static void sinput_mode_init(void)
 
 static bool sinput_mode_is_ready(void)
 {
-    return tud_hid_ready();
+    return tud_hid_n_ready(ITF_NUM_HID_GAMEPAD);
 }
 
 static bool sinput_mode_send_report(uint8_t player_index,
@@ -285,10 +285,10 @@ static bool sinput_mode_send_report(uint8_t player_index,
         sinput_report.gyro_z = 0;
     }
 
-    // Send report (skip report_id byte since TinyUSB handles it)
-    return tud_hid_report(SINPUT_REPORT_ID_INPUT,
-                          ((uint8_t*)&sinput_report) + 1,
-                          sizeof(sinput_report) - 1);
+    // Send report on gamepad interface (skip report_id byte since TinyUSB handles it)
+    return tud_hid_n_report(ITF_NUM_HID_GAMEPAD, SINPUT_REPORT_ID_INPUT,
+                            ((uint8_t*)&sinput_report) + 1,
+                            sizeof(sinput_report) - 1);
 }
 
 static void sinput_mode_handle_output(uint8_t report_id, const uint8_t* data, uint16_t len)
@@ -405,7 +405,8 @@ static const uint8_t* sinput_mode_get_device_descriptor(void)
 
 static const uint8_t* sinput_mode_get_config_descriptor(void)
 {
-    return sinput_config_descriptor;
+    // Composite config descriptor is built in usbd.c (desc_configuration_sinput)
+    return NULL;
 }
 
 static const uint8_t* sinput_mode_get_report_descriptor(void)
@@ -417,7 +418,7 @@ static const uint8_t* sinput_mode_get_report_descriptor(void)
 static void sinput_mode_task(void)
 {
     if (!feature_request_pending) return;
-    if (!tud_hid_ready()) return;
+    if (!tud_hid_n_ready(ITF_NUM_HID_GAMEPAD)) return;
 
     feature_request_pending = false;
 
@@ -506,7 +507,7 @@ static void sinput_mode_task(void)
     feature_response[23] = board_id.id[7];
 
     printf("[sinput] Sending feature response (24 bytes)\n");
-    tud_hid_report(SINPUT_REPORT_ID_FEATURES, feature_response, sizeof(feature_response));
+    tud_hid_n_report(ITF_NUM_HID_GAMEPAD, SINPUT_REPORT_ID_FEATURES, feature_response, sizeof(feature_response));
 }
 
 // ============================================================================

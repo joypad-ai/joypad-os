@@ -92,6 +92,16 @@ typedef enum {
 #define USB_DPAD_MASK_RIGHT    (1U << 3)
 
 // ============================================================================
+// HID INTERFACE NUMBERS (for composite device)
+// ============================================================================
+
+// SInput composite: gamepad + keyboard + mouse on separate HID interfaces
+// Non-composite modes only use ITF_NUM_HID_GAMEPAD (= 0)
+#define ITF_NUM_HID_GAMEPAD     0
+#define ITF_NUM_HID_KEYBOARD    1
+#define ITF_NUM_HID_MOUSE       2
+
+// ============================================================================
 // PUBLIC API
 // ============================================================================
 

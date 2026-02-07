@@ -393,6 +393,31 @@ bool usbd_set_mode(usb_output_mode_t mode)
            mode_names[output_mode], mode_names[mode]);
     flush_debug_output();
 
+    // Fast switch: SInput <-> KB/Mouse share the same USB descriptor (composite device)
+    // No re-enumeration needed — just switch the mode logic
+    bool is_sinput_family_old = (output_mode == USB_OUTPUT_MODE_SINPUT ||
+                                  output_mode == USB_OUTPUT_MODE_KEYBOARD_MOUSE);
+    bool is_sinput_family_new = (mode == USB_OUTPUT_MODE_SINPUT ||
+                                  mode == USB_OUTPUT_MODE_KEYBOARD_MOUSE);
+    if (is_sinput_family_old && is_sinput_family_new) {
+        printf("[usbd] Fast switch (same USB descriptor)\n");
+        flush_debug_output();
+
+        output_mode = mode;
+        flash_settings.usb_output_mode = (uint8_t)mode;
+        flash_save_force(&flash_settings);
+
+        // Re-init the new mode
+        const usbd_mode_t* new_mode = usbd_modes[mode];
+        if (new_mode && new_mode->init) {
+            new_mode->init();
+        }
+        current_mode = new_mode;
+
+        printf("[usbd] Fast switch complete: %s\n", mode_names[mode]);
+        return true;
+    }
+
     // Save mode to flash immediately (we're about to reset)
     printf("[usbd] Setting flash_settings.usb_output_mode = %d\n", mode);
     flush_debug_output();
@@ -1315,34 +1340,43 @@ const OutputInterface usbd_output_interface = {
 // INTERFACE AND ENDPOINT NUMBERS
 // ============================================================================
 
-// Interface numbers
+// Interface numbers (SInput composite: 3 HID + CDC)
+// HID interface numbers are defined in usbd.h (ITF_NUM_HID_GAMEPAD=0, KEYBOARD=1, MOUSE=2)
 enum {
-    ITF_NUM_HID = 0,
 #if CFG_TUD_CDC >= 1
-    ITF_NUM_CDC_0,        // CDC 0 control interface (data port)
-    ITF_NUM_CDC_0_DATA,   // CDC 0 data interface
+    ITF_NUM_CDC_0 = ITF_NUM_HID_MOUSE + 1,  // CDC 0 control interface (data port)
+    ITF_NUM_CDC_0_DATA,                       // CDC 0 data interface
 #endif
 #if CFG_TUD_CDC >= 2
-    ITF_NUM_CDC_1,        // CDC 1 control interface (debug port)
-    ITF_NUM_CDC_1_DATA,   // CDC 1 data interface
+    ITF_NUM_CDC_1,             // CDC 1 control interface (debug port)
+    ITF_NUM_CDC_1_DATA,        // CDC 1 data interface
 #endif
     ITF_NUM_TOTAL
 };
 
-// Endpoint numbers
-#define EPNUM_HID           0x81
-#define EPNUM_HID_OUT       0x01  // HID OUT endpoint for rumble/output reports
+// Backward compatibility alias for non-composite modes
+#define ITF_NUM_HID         ITF_NUM_HID_GAMEPAD
+
+// Endpoint numbers (shifted to accommodate 3 HID interfaces)
+#define EPNUM_HID_GAMEPAD       0x81  // Gamepad IN
+#define EPNUM_HID_GAMEPAD_OUT   0x01  // Gamepad OUT (rumble/output reports)
+#define EPNUM_HID_KEYBOARD      0x82  // Keyboard IN
+#define EPNUM_HID_MOUSE         0x83  // Mouse IN
+
+// Backward compatibility aliases
+#define EPNUM_HID           EPNUM_HID_GAMEPAD
+#define EPNUM_HID_OUT       EPNUM_HID_GAMEPAD_OUT
 
 #if CFG_TUD_CDC >= 1
-#define EPNUM_CDC_0_NOTIF   0x82
-#define EPNUM_CDC_0_OUT     0x03
-#define EPNUM_CDC_0_IN      0x83
+#define EPNUM_CDC_0_NOTIF   0x84
+#define EPNUM_CDC_0_OUT     0x05
+#define EPNUM_CDC_0_IN      0x85
 #endif
 
 #if CFG_TUD_CDC >= 2
-#define EPNUM_CDC_1_NOTIF   0x84
-#define EPNUM_CDC_1_OUT     0x05
-#define EPNUM_CDC_1_IN      0x85
+#define EPNUM_CDC_1_NOTIF   0x86
+#define EPNUM_CDC_1_OUT     0x07
+#define EPNUM_CDC_1_IN      0x87
 #endif
 
 // ============================================================================
@@ -1396,7 +1430,8 @@ uint8_t const *tud_descriptor_device_cb(void)
         case USB_OUTPUT_MODE_XAC:
             return (uint8_t const *)&xac_device_descriptor;
         case USB_OUTPUT_MODE_KEYBOARD_MOUSE:
-            return (uint8_t const *)&kbmouse_device_descriptor;
+            // Share SInput device descriptor (same composite USB device)
+            return (uint8_t const *)&sinput_device_descriptor;
         case USB_OUTPUT_MODE_GC_ADAPTER:
             return (uint8_t const *)&gc_adapter_device_descriptor;
         case USB_OUTPUT_MODE_HID:
@@ -1430,36 +1465,22 @@ static const uint8_t desc_configuration_hid[] = {
 #endif
 };
 
-// KB/Mouse mode configuration descriptor (HID keyboard+mouse + CDC)
-#define CONFIG_TOTAL_LEN_KBMOUSE (TUD_CONFIG_DESC_LEN + TUD_HID_DESC_LEN + (CFG_TUD_CDC * TUD_CDC_DESC_LEN))
-
-static const uint8_t desc_configuration_kbmouse[] = {
-    // Config: bus powered, max 100mA
-    TUD_CONFIG_DESCRIPTOR(1, ITF_NUM_TOTAL, 0, CONFIG_TOTAL_LEN_KBMOUSE, TUSB_DESC_CONFIG_ATT_REMOTE_WAKEUP, 100),
-
-    // Interface 0: HID keyboard+mouse composite
-    TUD_HID_DESCRIPTOR(ITF_NUM_HID, 0, HID_ITF_PROTOCOL_NONE, sizeof(kbmouse_report_descriptor), EPNUM_HID, CFG_TUD_HID_EP_BUFSIZE, 1),
-
-#if CFG_TUD_CDC >= 1
-    // CDC 0: Data port (commands, config)
-    TUD_CDC_DESCRIPTOR(ITF_NUM_CDC_0, 4, EPNUM_CDC_0_NOTIF, 8, EPNUM_CDC_0_OUT, EPNUM_CDC_0_IN, 64),
-#endif
-
-#if CFG_TUD_CDC >= 2
-    // CDC 1: Debug port (logging)
-    TUD_CDC_DESCRIPTOR(ITF_NUM_CDC_1, 5, EPNUM_CDC_1_NOTIF, 8, EPNUM_CDC_1_OUT, EPNUM_CDC_1_IN, 64),
-#endif
-};
-
-// SInput mode configuration descriptor (HID + CDC for web config)
-#define CONFIG_TOTAL_LEN_SINPUT (TUD_CONFIG_DESC_LEN + TUD_HID_INOUT_DESC_LEN + (CFG_TUD_CDC * TUD_CDC_DESC_LEN))
+// SInput composite configuration descriptor (gamepad + keyboard + mouse + CDC)
+// Shared by both SInput and KB/Mouse modes for instant switching
+#define CONFIG_TOTAL_LEN_SINPUT (TUD_CONFIG_DESC_LEN + TUD_HID_INOUT_DESC_LEN + TUD_HID_DESC_LEN + TUD_HID_DESC_LEN + (CFG_TUD_CDC * TUD_CDC_DESC_LEN))
 
 static const uint8_t desc_configuration_sinput[] = {
     // Config: bus powered, max 500mA
     TUD_CONFIG_DESCRIPTOR(1, ITF_NUM_TOTAL, 0, CONFIG_TOTAL_LEN_SINPUT, TUSB_DESC_CONFIG_ATT_REMOTE_WAKEUP, 500),
 
-    // Interface 0: HID gamepad with IN and OUT endpoints for rumble
-    TUD_HID_INOUT_DESCRIPTOR(ITF_NUM_HID, 0, HID_ITF_PROTOCOL_NONE, sizeof(sinput_report_descriptor), EPNUM_HID_OUT, EPNUM_HID, CFG_TUD_HID_EP_BUFSIZE, 1),
+    // Interface 0: HID gamepad with IN and OUT endpoints (for rumble/LEDs)
+    TUD_HID_INOUT_DESCRIPTOR(ITF_NUM_HID_GAMEPAD, 0, HID_ITF_PROTOCOL_NONE, sizeof(sinput_report_descriptor), EPNUM_HID_GAMEPAD_OUT, EPNUM_HID_GAMEPAD, CFG_TUD_HID_EP_BUFSIZE, 1),
+
+    // Interface 1: HID keyboard (IN only)
+    TUD_HID_DESCRIPTOR(ITF_NUM_HID_KEYBOARD, 0, HID_ITF_PROTOCOL_NONE, sizeof(sinput_keyboard_report_descriptor), EPNUM_HID_KEYBOARD, 16, 1),
+
+    // Interface 2: HID mouse (IN only)
+    TUD_HID_DESCRIPTOR(ITF_NUM_HID_MOUSE, 0, HID_ITF_PROTOCOL_NONE, sizeof(sinput_mouse_report_descriptor), EPNUM_HID_MOUSE, 8, 1),
 
 #if CFG_TUD_CDC >= 1
     // CDC 0: Data port (commands, config)
@@ -1495,7 +1516,8 @@ uint8_t const *tud_descriptor_configuration_cb(uint8_t index)
         case USB_OUTPUT_MODE_XAC:
             return xac_config_descriptor;
         case USB_OUTPUT_MODE_KEYBOARD_MOUSE:
-            return desc_configuration_kbmouse;
+            // Share SInput composite descriptor (same USB device)
+            return desc_configuration_sinput;
         case USB_OUTPUT_MODE_GC_ADAPTER:
             return gc_adapter_config_descriptor;
         case USB_OUTPUT_MODE_HID:
@@ -1599,7 +1621,8 @@ uint16_t const *tud_descriptor_string_cb(uint8_t index, uint16_t langid)
             break;
         case STRID_MANUFACTURER:
             // Mode-specific manufacturer
-            if (output_mode == USB_OUTPUT_MODE_SINPUT) {
+            if (output_mode == USB_OUTPUT_MODE_SINPUT ||
+                output_mode == USB_OUTPUT_MODE_KEYBOARD_MOUSE) {
                 str = SINPUT_MANUFACTURER;
             } else if (output_mode == USB_OUTPUT_MODE_XINPUT) {
                 str = XINPUT_MANUFACTURER;
@@ -1613,8 +1636,6 @@ uint16_t const *tud_descriptor_string_cb(uint8_t index, uint16_t langid)
                 str = PS4_MANUFACTURER;
             } else if (output_mode == USB_OUTPUT_MODE_XAC) {
                 str = XAC_MANUFACTURER;
-            } else if (output_mode == USB_OUTPUT_MODE_KEYBOARD_MOUSE) {
-                str = USB_KBMOUSE_MANUFACTURER;
             } else if (output_mode == USB_OUTPUT_MODE_GC_ADAPTER) {
                 str = GC_ADAPTER_MANUFACTURER;
             } else {
@@ -1623,7 +1644,8 @@ uint16_t const *tud_descriptor_string_cb(uint8_t index, uint16_t langid)
             break;
         case STRID_PRODUCT:
             // Mode-specific product
-            if (output_mode == USB_OUTPUT_MODE_SINPUT) {
+            if (output_mode == USB_OUTPUT_MODE_SINPUT ||
+                output_mode == USB_OUTPUT_MODE_KEYBOARD_MOUSE) {
                 str = SINPUT_PRODUCT;
             } else if (output_mode == USB_OUTPUT_MODE_XINPUT) {
                 str = XINPUT_PRODUCT;
@@ -1637,8 +1659,6 @@ uint16_t const *tud_descriptor_string_cb(uint8_t index, uint16_t langid)
                 str = PS4_PRODUCT;
             } else if (output_mode == USB_OUTPUT_MODE_XAC) {
                 str = XAC_PRODUCT;
-            } else if (output_mode == USB_OUTPUT_MODE_KEYBOARD_MOUSE) {
-                str = USB_KBMOUSE_PRODUCT;
             } else if (output_mode == USB_OUTPUT_MODE_GC_ADAPTER) {
                 str = GC_ADAPTER_PRODUCT;
             } else {
@@ -1678,11 +1698,18 @@ uint16_t const *tud_descriptor_string_cb(uint8_t index, uint16_t langid)
 // HID Callbacks
 uint8_t const *tud_hid_descriptor_report_cb(uint8_t itf)
 {
-    (void)itf;
-    // Return mode-specific HID report descriptor
-    if (output_mode == USB_OUTPUT_MODE_SINPUT) {
-        return sinput_report_descriptor;
+    // SInput and KB/Mouse modes: route by interface (composite device)
+    if (output_mode == USB_OUTPUT_MODE_SINPUT ||
+        output_mode == USB_OUTPUT_MODE_KEYBOARD_MOUSE) {
+        switch (itf) {
+            case ITF_NUM_HID_GAMEPAD:  return sinput_report_descriptor;
+            case ITF_NUM_HID_KEYBOARD: return sinput_keyboard_report_descriptor;
+            case ITF_NUM_HID_MOUSE:    return sinput_mouse_report_descriptor;
+            default:                   return sinput_report_descriptor;
+        }
     }
+
+    // All other modes: single HID interface (itf is always 0)
     if (output_mode == USB_OUTPUT_MODE_SWITCH) {
         return switch_report_descriptor;
     }
@@ -1701,12 +1728,6 @@ uint8_t const *tud_hid_descriptor_report_cb(uint8_t itf)
             return mode->get_report_descriptor();
         }
     }
-    if (output_mode == USB_OUTPUT_MODE_KEYBOARD_MOUSE) {
-        const usbd_mode_t* mode = usbd_modes[USB_OUTPUT_MODE_KEYBOARD_MOUSE];
-        if (mode && mode->get_report_descriptor) {
-            return mode->get_report_descriptor();
-        }
-    }
 #if CFG_TUD_GC_ADAPTER
     if (output_mode == USB_OUTPUT_MODE_GC_ADAPTER) {
         const usbd_mode_t* mode = usbd_modes[USB_OUTPUT_MODE_GC_ADAPTER];
@@ -1720,7 +1741,13 @@ uint8_t const *tud_hid_descriptor_report_cb(uint8_t itf)
 
 uint16_t tud_hid_get_report_cb(uint8_t itf, uint8_t report_id, hid_report_type_t report_type, uint8_t *buffer, uint16_t reqlen)
 {
-    (void)itf;
+    // SInput/KB/Mouse composite: route by interface
+    if ((output_mode == USB_OUTPUT_MODE_SINPUT ||
+         output_mode == USB_OUTPUT_MODE_KEYBOARD_MOUSE) &&
+        itf != ITF_NUM_HID_GAMEPAD) {
+        // Keyboard/mouse interfaces don't have get_report handlers
+        return 0;
+    }
 
     // PS3 feature reports: delegate to mode interface
     if (output_mode == USB_OUTPUT_MODE_PS3) {
@@ -1751,18 +1778,30 @@ uint16_t tud_hid_get_report_cb(uint8_t itf, uint8_t report_id, hid_report_type_t
 
 void tud_hid_set_report_cb(uint8_t itf, uint8_t report_id, hid_report_type_t report_type, uint8_t const *buffer, uint16_t bufsize)
 {
-    (void)itf;
+    printf("[usbd] set_report_cb: itf=%d report_id=%d type=%d len=%d mode=%d\n",
+           itf, report_id, report_type, bufsize, output_mode);
 
-    printf("[usbd] set_report_cb: report_id=%d type=%d len=%d mode=%d\n",
-           report_id, report_type, bufsize, output_mode);
-
-    // Keyboard LED output report (KB/Mouse mode) - delegate to mode interface
-    if (output_mode == USB_OUTPUT_MODE_KEYBOARD_MOUSE) {
-        const usbd_mode_t* mode = usbd_modes[USB_OUTPUT_MODE_KEYBOARD_MOUSE];
-        if (mode && mode->handle_output) {
-            mode->handle_output(report_id, buffer, bufsize);
+    // SInput/KB/Mouse composite: route by interface
+    if (output_mode == USB_OUTPUT_MODE_SINPUT ||
+        output_mode == USB_OUTPUT_MODE_KEYBOARD_MOUSE) {
+        if (itf == ITF_NUM_HID_GAMEPAD) {
+            // Gamepad output report (rumble, LEDs) → SInput handler
+            const usbd_mode_t* mode = usbd_modes[USB_OUTPUT_MODE_SINPUT];
+            if (mode && mode->handle_output) {
+                mode->handle_output(report_id, buffer, bufsize);
+            }
             return;
         }
+        if (itf == ITF_NUM_HID_KEYBOARD) {
+            // Keyboard LED output report → KB/Mouse handler
+            const usbd_mode_t* mode = usbd_modes[USB_OUTPUT_MODE_KEYBOARD_MOUSE];
+            if (mode && mode->handle_output) {
+                mode->handle_output(report_id, buffer, bufsize);
+            }
+            return;
+        }
+        // Mouse interface has no output reports
+        return;
     }
 
     // PS3 output report: delegate to mode interface
@@ -1785,15 +1824,6 @@ void tud_hid_set_report_cb(uint8_t itf, uint8_t report_id, hid_report_type_t rep
             ps4_mode_set_feature_report(report_id, buffer, bufsize);
         }
         return;
-    }
-
-    // SInput output report: delegate to mode interface (rumble, LEDs)
-    if (output_mode == USB_OUTPUT_MODE_SINPUT) {
-        const usbd_mode_t* mode = usbd_modes[USB_OUTPUT_MODE_SINPUT];
-        if (mode && mode->handle_output) {
-            mode->handle_output(report_id, buffer, bufsize);
-            return;
-        }
     }
 
 #if CFG_TUD_GC_ADAPTER
