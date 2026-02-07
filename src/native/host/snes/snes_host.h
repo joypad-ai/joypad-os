@@ -63,6 +63,10 @@ void snes_host_task(void);
 // Returns: -1=none, 0=SNES controller, 1=NES, 2=mouse, 3=keyboard
 int8_t snes_host_get_device_type(uint8_t port);
 
+// Set rumble motor intensities for a SNES rumble controller (LRG protocol)
+// Values are 0-255, scaled internally to 0-15. Safe on non-rumble controllers.
+void snes_host_set_rumble(uint8_t port, uint8_t left, uint8_t right);
+
 // Check if any SNES controller is connected
 bool snes_host_is_connected(void);
 

@@ -284,6 +284,18 @@ void snes_host_task(void)
     }
 }
 
+void snes_host_set_rumble(uint8_t port, uint8_t left, uint8_t right)
+{
+    if (!initialized || port >= SNES_MAX_PORTS) return;
+
+    // Only send rumble to SNES controllers — mouse and keyboard use IOBit
+    // for other purposes (speed cycling, caps lock LED)
+    snespad_t* pad = &snes_pads[port];
+    if (pad->type != SNESPAD_CONTROLLER) return;
+
+    snespad_set_rumble(pad, left, right);
+}
+
 int8_t snes_host_get_device_type(uint8_t port)
 {
     if (!initialized || port >= SNES_MAX_PORTS) {

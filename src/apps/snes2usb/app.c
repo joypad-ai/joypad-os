@@ -8,6 +8,7 @@
 #include "core/router/router.h"
 #include "core/services/players/manager.h"
 #include "core/services/profiles/profile.h"
+#include "core/services/players/feedback.h"
 #include "core/input_interface.h"
 #include "core/output_interface.h"
 #include "usb/usbd/usbd.h"
@@ -98,5 +99,18 @@ void app_init(void)
 
 void app_task(void)
 {
-    // Nothing extra needed - USB device task handles everything
+    // Forward rumble from USB host to SNES controller
+    if (usbd_output_interface.get_feedback) {
+        output_feedback_t fb;
+        if (usbd_output_interface.get_feedback(&fb) && fb.dirty) {
+            feedback_set_rumble(0, fb.rumble_left, fb.rumble_right);
+        }
+    }
+
+    // Apply feedback to SNES controller
+    feedback_state_t* state = feedback_get_state(0);
+    if (state && state->rumble_dirty) {
+        snes_host_set_rumble(0, state->rumble.left, state->rumble.right);
+        feedback_clear_dirty(0);
+    }
 }
