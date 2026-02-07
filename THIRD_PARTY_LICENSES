@@ -1,0 +1,24 @@
+Third-Party Software Notices
+============================
+
+This project (Apache-2.0) incorporates the following third-party components:
+
+
+libxsm3 - Xbox Security Method 3
+---------------------------------
+Source: https://github.com/InvoxiPlayGames/libxsm3
+License: LGPL-2.1-or-later
+Location: src/lib/libxsm3/
+Copyright: (C) 2022-2023 InvoxiPlayGames
+
+Xbox 360 console authentication (XSM3) implementation. Statically linked into
+firmware. Full source is provided in src/lib/libxsm3/ with modifications noted
+in xsm3.c per LGPL-2.1 Section 2(b). The complete LGPL-2.1 license text is at
+src/lib/libxsm3/LICENSE.
+
+Contains ExCrypt crypto primitives (excrypt_*.c/h) from:
+  https://github.com/emoose/ExCrypt (BSD-3-Clause)
+With DES implementation referencing:
+  https://github.com/fffaraz/cppDES
+And SHA-1 implementation referencing:
+  https://github.com/mohaps/TinySHA1

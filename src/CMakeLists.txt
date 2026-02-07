@@ -215,6 +215,8 @@ set(USB_DEVICE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd/drivers/tud_xbone.c
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd/drivers/xgip_protocol.c
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd/kbmouse/kbmouse.c
+    # libxsm3 - Xbox Security Method 3 (LGPL-2.1-or-later)
+    # https://github.com/InvoxiPlayGames/libxsm3
     ${CMAKE_CURRENT_SOURCE_DIR}/lib/libxsm3/xsm3.c
     ${CMAKE_CURRENT_SOURCE_DIR}/lib/libxsm3/usbdsec.c
     ${CMAKE_CURRENT_SOURCE_DIR}/lib/libxsm3/excrypt_des.c

@@ -17,6 +17,12 @@
     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 */
 
+// Modified 2024-2025 by Robert Dale Smith for Joypad OS (RP2040 embedded target):
+//   - Replaced stdlib rand()/srand() with Pico SDK hardware RNG (get_rand_32)
+//   - Replaced stdio printf with no-op macro for embedded use
+//   - Removed unused devkit identification data
+//   - Made xsm3_generate_kv_keys() static
+
 #include <stddef.h>
 #include <string.h>
 #include <stdbool.h>
