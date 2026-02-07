@@ -62,6 +62,10 @@ static bool switch_mode_send_report(uint8_t player_index,
                                      const input_event_t* event,
                                      const profile_output_t* profile_out,
                                      uint32_t buttons)
+static bool switch_mode_send_report(uint8_t player_index,
+                                     const input_event_t* event,
+                                     const profile_output_t* profile_out,
+                                     uint32_t buttons)
 {
     (void)player_index;
     (void)event;
@@ -74,8 +78,15 @@ static bool switch_mode_send_report(uint8_t player_index,
     if (buttons & JP_BUTTON_B4) switch_report.buttons |= SWITCH_MASK_X;     // B4 (top)    -> X
     if (buttons & JP_BUTTON_L1) switch_report.buttons |= SWITCH_MASK_L;     // L
     if (buttons & JP_BUTTON_R1) switch_report.buttons |= SWITCH_MASK_R;     // R
-    if (buttons & JP_BUTTON_L2) switch_report.buttons |= SWITCH_MASK_ZL;    // ZL
-    if (buttons & JP_BUTTON_R2) switch_report.buttons |= SWITCH_MASK_ZR;    // ZR
+    
+    // ZL et ZR : On vérifie le bouton numérique OU la gâchette analogique (Modif Pokken)
+    if ((buttons & JP_BUTTON_L2) || (profile_out->l2_analog > 30)) {
+        switch_report.buttons |= SWITCH_MASK_ZL;    // ZL
+    }
+    if ((buttons & JP_BUTTON_R2) || (profile_out->r2_analog > 30)) {
+        switch_report.buttons |= SWITCH_MASK_ZR;    // ZR
+    }
+
     if (buttons & JP_BUTTON_S1) switch_report.buttons |= SWITCH_MASK_MINUS; // Minus
     if (buttons & JP_BUTTON_S2) switch_report.buttons |= SWITCH_MASK_PLUS;  // Plus
     if (buttons & JP_BUTTON_L3) switch_report.buttons |= SWITCH_MASK_L3;
