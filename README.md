@@ -38,12 +38,13 @@ Joypad OS is the real-time nervous system of the Joypad platform.
 
 | Output | Features | Documentation |
 |--------|----------|---------------|
-| **USB Device** | HID Gamepad, XInput, Xbox OG, Xbox One, XAC, PS3, PS4, PS Classic, Switch | [Docs](docs/BUILD.md) |
+| **USB Device** | HID Gamepad, XInput, Xbox OG, Xbox One, XAC, PS3, PS4, PS Classic, Switch | [Docs](docs/USB_OUTPUT.md) |
 | **PCEngine / TurboGrafx-16** | Multitap (5 players), Mouse, 2/3/6-button | [Docs](docs/consoles/PCENGINE.md) |
 | **GameCube / Wii** | Profiles, Rumble, Keyboard mode | [Docs](docs/consoles/GAMECUBE.md) |
 | **Sega Dreamcast** | ~~VMU emulation~~, Rumble, Profiles | [Docs](docs/consoles/DREAMCAST.md) |
 | **Nuon DVD Players** | Controller, Spinner (Tempest 3000), IGR | [Docs](docs/consoles/NUON.md) |
 | **3DO Interactive Multiplayer** | 8 players, Mouse, Extension passthrough | [Docs](docs/consoles/3DO.md) |
+| **Neo Geo / SuperGun** | Profiles, 1L6B layouts | [Docs](docs/consoles/NEOGEO.md) |
 | **Casio Loopy** | 4 players (experimental) | [Docs](docs/consoles/LOOPY.md) |
 
 ---
@@ -153,6 +154,10 @@ Output firmware files appear in `releases/` directory.
 - **[Hardware Compatibility](docs/HARDWARE.md)** - Supported controllers, boards, DIY builds
 - **[Build Guide](docs/BUILD.md)** - Developer setup, architecture
 
+### USB Output & Web Config
+
+- **[USB Output Modes](docs/USB_OUTPUT.md)** - Mode switching, Xbox 360 support, web config at [config.joypad.ai](https://config.joypad.ai)
+
 ### Console-Specific Guides
 
 - **[GameCube/Wii](docs/consoles/GAMECUBE.md)** - Profiles, keyboard mode, rumble
@@ -160,6 +165,7 @@ Output firmware files appear in `releases/` directory.
 - **[Sega Dreamcast](docs/consoles/DREAMCAST.md)** - ~~VMU emulation~~, rumble, profiles
 - **[Nuon](docs/consoles/NUON.md)** - Controller, Tempest 3000 spinner, IGR
 - **[3DO](docs/consoles/3DO.md)** - 8-player support, mouse, profiles
+- **[Neo Geo / SuperGun](docs/consoles/NEOGEO.md)** - Profiles, arcade layouts
 - **[Casio Loopy](docs/consoles/LOOPY.md)** - Experimental support
 
 ---
