@@ -12,6 +12,42 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [1.7.0] — 2026-02-09
+
+### Added
+- **Xbox 360 console authentication (XSM3)** — adapters now authenticate with Xbox 360 consoles via XInput mode
+- **PC Engine Mini USB output mode** — emulates HORI PCEngine PAD (VID 0x0F0D / PID 0x0138) for PC Engine Mini / TG-16 Mini consoles, with turbo fire support (10/15/20 Hz)
+- **SInput USB host driver** — full-fidelity controller passthrough for SInput-compatible devices
+- **SInput composite USB device** — gamepad, keyboard, and mouse interfaces in a single device
+- **SNES rumble support** via LRG protocol
+- **SNES d-pad mode toggle** and Home button combo in SNES host driver
+- **Debug log streaming** over data CDC instead of separate debug port
+- **Flash dual-sector journal** for BT-safe settings persistence with `flash_save_force()` for pre-reset saves
+- LGPL-2.1 compliance for libxsm3 (modification notice, attribution, THIRD_PARTY_LICENSES)
+- USB output interface documentation with web config and Xbox 360 details
+- Neo Geo added to README with links to USB output docs and web config
+
+### Fixed
+- **TRIGGER_LIGHT_PRESS** now caps analog proportionally at all trigger values — fixes SSBM light shield being all-or-nothing (PR #68)
+- **SInput host report parsing** off-by-one — memcpy destination was shifting all fields by one byte, causing SInput devices to be misidentified as DirectInput
+- **XSM3 auth routing** so Xbox 360 console authentication actually works end-to-end
+- **DS5 USB lightbar** RGB not reflecting feedback system colors
+- **DS4 lightbar** feedback — set default player LED colors on assignment
+- **DS3 gyro/accel** normalized to SInput convention for consistent IMU output
+- **3DO profile switching** combo detection
+- SSBM profile: L2 digital threshold set to 0 so light shield never produces a digital press
+- Skip log ring buffer writes when debug streaming is off (performance)
+
+### Changed
+- XInput product string changed to "Xbox 360 Controller" for better host compatibility
+
+### Docs
+- Neo Geo: latency test results and diagram (PR #67, community contribution by @herzmx)
+- PC Engine: clarified pinout naming (CLR vs OE) and code variable mapping
+- Updated wiring diagram images for NGC-2-USB, USB-2-3DO, USB-2-NGC
+
+---
+
 ## [1.6.0] — 2026-02-04
 
 ### Added
