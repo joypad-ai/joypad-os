@@ -246,7 +246,17 @@ void xinput_task(void)
     // Get per-player feedback state
     feedback_state_t* fb = feedback_get_state(i);
     uint8_t rumble = fb ? (fb->rumble.left > fb->rumble.right ? fb->rumble.left : fb->rumble.right) : 0;
-    uint8_t led = i + 1;
+
+    // Derive LED quadrant from feedback pattern (set by host console)
+    // Pattern bitmask: 0x01=P1, 0x02=P2, 0x04=P3, 0x08=P4
+    // XInput quadrant: 1=P1, 2=P2, 3=P3, 4=P4, 0=off
+    uint8_t led = i + 1;  // Default to player slot
+    if (fb && fb->led.pattern) {
+      if (fb->led.pattern & 0x01) led = 1;
+      else if (fb->led.pattern & 0x02) led = 2;
+      else if (fb->led.pattern & 0x04) led = 3;
+      else if (fb->led.pattern & 0x08) led = 4;
+    }
 
     // Only send if values changed (non-blocking)
     if (led != last_led[i]) {
