@@ -1037,6 +1037,18 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                 classic_state.pending_valid = true;
                 classic_state.pending_outgoing = true;  // We initiated this connection
 
+                // If name is unavailable, request it and defer connection to
+                // REMOTE_NAME_REQUEST_COMPLETE. Wiimote-family devices (Wii U Pro,
+                // Wiimote) need the name to route through the correct connection
+                // path (direct L2CAP vs HID Host), and their name is not always
+                // included in the Extended Inquiry Response.
+                if (!name[0]) {
+                    printf("[BTSTACK_HOST] Name unavailable at inquiry, requesting before connect...\n");
+                    classic_state.pending_hid_connect = true;
+                    gap_remote_name_request(addr, 0, 0);
+                    break;
+                }
+
                 if (is_wiimote) {
                     // Wiimotes don't work well with BTstack's hid_host layer
                     // Use direct L2CAP channel creation instead (like USB Host Shield)
@@ -1414,18 +1426,18 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                             conn->name[sizeof(conn->name) - 1] = '\0';
                             printf("[BTSTACK_HOST] Updated conn[%d] name: %s\n", i, conn->name);
 
-                            // If this is a Wiimote and PID wasn't set, detect it now and update BTHID
-                            if (conn->hid_ready && conn->vendor_id == 0x057E && conn->product_id == 0) {
-                                // "Nintendo RVL-CNT-01-UC" = Wii U Pro Controller (PID 0x0330)
+                            // If this is a Wiimote/Wii U Pro detected by name, set VID/PID and update BTHID
+                            // VID may be 0 if SDP didn't return PnP info (Wiimote-family devices lack PnP SDP)
+                            if (conn->hid_ready && strstr(name, "Nintendo RVL") != NULL) {
+                                conn->vendor_id = 0x057E;  // Nintendo
                                 if (strstr(name, "-UC") != NULL) {
                                     conn->product_id = 0x0330;
                                     printf("[BTSTACK_HOST] Late Wii U Pro detection, updating BTHID with PID=0x0330\n");
-                                    bthid_update_device_info(i, conn->name, conn->vendor_id, conn->product_id);
-                                } else if (strstr(name, "RVL-CNT-01") != NULL) {
+                                } else {
                                     conn->product_id = 0x0306;
                                     printf("[BTSTACK_HOST] Late Wiimote detection, updating BTHID with PID=0x0306\n");
-                                    bthid_update_device_info(i, conn->name, conn->vendor_id, conn->product_id);
                                 }
+                                bthid_update_device_info(i, conn->name, conn->vendor_id, conn->product_id);
                             }
                         }
                         break;
@@ -1459,6 +1471,76 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                     memcpy(wiimote_conn.class_of_device, &classic_state.pending_cod, 3);
                     strncpy(wiimote_conn.name, name, sizeof(wiimote_conn.name) - 1);
                     wiimote_conn.name[sizeof(wiimote_conn.name) - 1] = '\0';
+                }
+
+                // Deferred outgoing connection: name was unavailable at inquiry time,
+                // so we requested it before connecting. Now that the name has resolved,
+                // connect using the appropriate path (direct L2CAP for Wiimotes, HID Host otherwise).
+                if (classic_state.pending_valid &&
+                    classic_state.pending_outgoing &&
+                    classic_state.pending_hid_connect &&
+                    memcmp(name_addr, classic_state.pending_addr, 6) == 0) {
+                    // Update pending name
+                    strncpy(classic_state.pending_name, name, sizeof(classic_state.pending_name) - 1);
+                    classic_state.pending_name[sizeof(classic_state.pending_name) - 1] = '\0';
+                    classic_state.pending_hid_connect = false;
+
+                    bool deferred_is_wiimote = (strstr(name, "Nintendo RVL") != NULL);
+
+                    if (deferred_is_wiimote) {
+                        printf("[BTSTACK_HOST] Deferred connect: Wiimote detected, using direct L2CAP\n");
+                        classic_state.pending_hid_connect = true;
+
+                        memset(&wiimote_conn, 0, sizeof(wiimote_conn));
+                        wiimote_conn.active = true;
+                        wiimote_conn.state = WIIMOTE_STATE_IDLE;
+                        memcpy(wiimote_conn.addr, name_addr, 6);
+                        strncpy(wiimote_conn.name, name, sizeof(wiimote_conn.name) - 1);
+                        wiimote_conn.class_of_device[0] = classic_state.pending_cod & 0xFF;
+                        wiimote_conn.class_of_device[1] = (classic_state.pending_cod >> 8) & 0xFF;
+                        wiimote_conn.class_of_device[2] = (classic_state.pending_cod >> 16) & 0xFF;
+
+                        classic_connection_t* conn = find_free_classic_connection();
+                        if (conn) {
+                            int conn_index = conn - classic_state.connections;
+                            memset(conn, 0, sizeof(*conn));
+                            conn->active = true;
+                            conn->hid_cid = 0xFFFF;
+                            memcpy(conn->addr, name_addr, 6);
+                            strncpy(conn->name, name, sizeof(conn->name) - 1);
+                            conn->class_of_device[0] = classic_state.pending_cod & 0xFF;
+                            conn->class_of_device[1] = (classic_state.pending_cod >> 8) & 0xFF;
+                            conn->class_of_device[2] = (classic_state.pending_cod >> 16) & 0xFF;
+                            wiimote_conn.conn_index = conn_index;
+                        }
+
+                        uint8_t status = gap_connect(name_addr, BD_ADDR_TYPE_ACL);
+                        if (status != ERROR_CODE_SUCCESS && status != ERROR_CODE_COMMAND_DISALLOWED) {
+                            printf("[BTSTACK_HOST] gap_connect failed: 0x%02X\n", status);
+                            wiimote_conn.active = false;
+                            classic_state.pending_hid_connect = false;
+                        }
+                    } else {
+                        printf("[BTSTACK_HOST] Deferred connect: standard gamepad, using HID Host\n");
+                        uint16_t hid_cid;
+                        uint8_t status = hid_host_connect(name_addr, HID_PROTOCOL_MODE_REPORT, &hid_cid);
+                        if (status == ERROR_CODE_SUCCESS) {
+                            printf("[BTSTACK_HOST] hid_host_connect started, cid=0x%04X\n", hid_cid);
+                            classic_connection_t* conn = find_free_classic_connection();
+                            if (conn) {
+                                memset(conn, 0, sizeof(*conn));
+                                conn->active = true;
+                                conn->hid_cid = hid_cid;
+                                memcpy(conn->addr, name_addr, 6);
+                                strncpy(conn->name, name, sizeof(conn->name) - 1);
+                                conn->class_of_device[0] = classic_state.pending_cod & 0xFF;
+                                conn->class_of_device[1] = (classic_state.pending_cod >> 8) & 0xFF;
+                                conn->class_of_device[2] = (classic_state.pending_cod >> 16) & 0xFF;
+                            }
+                        } else {
+                            printf("[BTSTACK_HOST] hid_host_connect failed: %d\n", status);
+                        }
+                    }
                 }
             }
             break;
