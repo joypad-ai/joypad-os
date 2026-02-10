@@ -12,6 +12,23 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [1.7.1] — 2026-02-09
+
+### Added
+- **usb2dc_rp2040zero** build target — USB4Maple-compatible Dreamcast adapter (Maple bus on GPIO 14/15), drop-in firmware replacement for existing USB4Maple hardware
+- **usb2usb_pico** build target — USB adapter for Raspberry Pi Pico (PIO USB host on GP16/GP17)
+- **usb2usb_pico_w** build target — USB adapter for Raspberry Pi Pico W (PIO USB host on GP16/GP17)
+- **usb2usb_pico2_w** build target — USB adapter for Raspberry Pi Pico 2 W (PIO USB host on GP16/GP17)
+- Dreamcast console documentation with wiring diagrams for KB2040 and RP2040-Zero
+
+### Fixed
+- **PS3 console authentication** — DS3 USB output mode now completes the multi-step HID feature report handshake (echo efByte, add GET_REPORT 0xF5 handler, generate non-zero BT addresses from board ID)
+- **Wii U Pro Controller BT detection** — defer connection when inquiry name is unavailable, fix late name detection for incoming reconnections
+- **XInput host player LED** — was hardcoded to player slot index instead of reading from feedback state
+- Maple bus pin defines now overridable via `#ifndef` guards for board-specific pinouts
+
+---
+
 ## [1.7.0] — 2026-02-09
 
 ### Added
