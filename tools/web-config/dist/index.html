@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Joypad Config</title>
+  <script type="module" crossorigin>(function(){const e=document.createElement("link").relList;if(e&&e.supports&&e.supports("modulepreload"))return;for(const o of document.querySelectorAll('link[rel="modulepreload"]'))n(o);new MutationObserver(o=>{for(const i of o)if(i.type==="childList")for(const s of i.addedNodes)s.tagName==="LINK"&&s.rel==="modulepreload"&&n(s)}).observe(document,{childList:!0,subtree:!0});function t(o){const i={};return o.integrity&&(i.integrity=o.integrity),o.referrerPolicy&&(i.referrerPolicy=o.referrerPolicy),o.crossOrigin==="use-credentials"?i.credentials="include":o.crossOrigin==="anonymous"?i.credentials="omit":i.credentials="same-origin",i}function n(o){if(o.ep)return;o.ep=!0;const i=t(o);fetch(o.href,i)}})();const p=170,B=1,E=2,C=3,I=5,S=2e3;function y(c){let e=65535;for(const t of c){e^=t<<8;for(let n=0;n<8;n++)e&32768?e=(e<<1^4129)&65535:e=e<<1&65535}return e}function b(c,e,t){const n=typeof t=="string"?new TextEncoder().encode(t):t,o=new Uint8Array(5+n.length+2);o[0]=p,o[1]=n.length&255,o[2]=n.length>>8&255,o[3]=c,o[4]=e,o.set(n,5);const i=new Uint8Array(2+n.length);i[0]=c,i[1]=e,i.set(n,2);const s=y(i);return o[5+n.length]=s&255,o[5+n.length+1]=s>>8&255,o}class m{constructor(){this.port=null,this.reader=null,this.writer=null,this.seq=0,this.rxBuffer=new Uint8Array(0),this.pendingCommands=new Map,this.eventCallbacks=[],this.connected=!1,this.readLoopRunning=!1}static isSupported(){return"serial"in navigator}async connect(){if(!m.isSupported())throw new Error("Web Serial not supported in this browser");return this.port=await navigator.serial.requestPort({filters:[]}),await this.port.open({baudRate:115200}),this.writer=this.port.writable.getWriter(),this.reader=this.port.readable.getReader(),this.connected=!0,this._startReadLoop(),!0}async disconnect(){if(this.connected=!1,this.readLoopRunning=!1,this.reader){try{await this.reader.cancel(),this.reader.releaseLock()}catch{}this.reader=null}if(this.writer){try{this.writer.releaseLock()}catch{}this.writer=null}if(this.port){try{await this.port.close()}catch{}this.port=null}for(const[e,t]of this.pendingCommands)t.reject(new Error("Disconnected"));this.pendingCommands.clear()}onEvent(e){return this.eventCallbacks.push(e),()=>{const t=this.eventCallbacks.indexOf(e);t>=0&&this.eventCallbacks.splice(t,1)}}async sendCommand(e,t=null){if(!this.connected)throw new Error("Not connected");const n=this.seq;this.seq=this.seq+1&255;const o=JSON.stringify({cmd:e,...t&&{args:t}}),i=b(B,n,o),s=new Promise((r,l)=>{const d=setTimeout(()=>{this.pendingCommands.delete(n),l(new Error(`Timeout waiting for response to ${e}`))},S);this.pendingCommands.set(n,{resolve:r,reject:l,timeout:d,cmd:e})});return await this.writer.write(i),s}async _startReadLoop(){for(this.readLoopRunning=!0;this.readLoopRunning&&this.reader;)try{const{value:e,done:t}=await this.reader.read();if(t)break;const n=new Uint8Array(this.rxBuffer.length+e.length);n.set(this.rxBuffer),n.set(e,this.rxBuffer.length),this.rxBuffer=n,this._processBuffer()}catch(e){this.readLoopRunning&&console.error("Read error:",e);break}}_processBuffer(){for(console.log("[CDC] Processing buffer, length:",this.rxBuffer.length,"data:",Array.from(this.rxBuffer.slice(0,20)).map(e=>e.toString(16).padStart(2,"0")).join(" "));this.rxBuffer.length>=7;){const e=this.rxBuffer.indexOf(p);if(console.log("[CDC] Sync byte index:",e),e===-1){console.log("[CDC] No sync byte found, clearing buffer"),this.rxBuffer=new Uint8Array(0);break}if(e>0&&(console.log("[CDC] Skipping",e,"bytes to sync"),this.rxBuffer=this.rxBuffer.slice(e)),this.rxBuffer.length<3)break;const t=this.rxBuffer[1]|this.rxBuffer[2]<<8,n=5+t+2;if(console.log("[CDC] Packet length field:",t,"total packet:",n,"buffer has:",this.rxBuffer.length),this.rxBuffer.length<n){console.log("[CDC] Not enough data yet, waiting...");break}const o=this.rxBuffer[3],i=this.rxBuffer[4],s=this.rxBuffer.slice(5,5+t),r=this.rxBuffer[5+t]|this.rxBuffer[6+t]<<8,l=new Uint8Array(2+t);l[0]=o,l[1]=i,l.set(s,2);const d=y(l);if(console.log("[CDC] Packet type:",o,"seq:",i,"CRC recv:",r.toString(16),"calc:",d.toString(16)),this.rxBuffer=this.rxBuffer.slice(n),r!==d){console.warn("[CDC] CRC mismatch! Dropping packet");continue}this._handlePacket(o,i,s)}}_handlePacket(e,t,n){let o;const i=new TextDecoder().decode(n);console.log("[CDC] Received packet type:",e,"seq:",t,"payload:",i);try{o=JSON.parse(i),console.log("[CDC] Parsed JSON:",o)}catch(s){console.error("[CDC] JSON parse error:",s),o={raw:Array.from(n)}}if(e===E){const s=this.pendingCommands.get(t);s&&(clearTimeout(s.timeout),this.pendingCommands.delete(t),o.ok===!1?s.reject(new Error(o.error||"Unknown error")):s.resolve(o))}else if(e===C)for(const s of this.eventCallbacks)try{s(o)}catch(r){console.error("Event callback error:",r)}else if(e===I){const s=this.pendingCommands.get(t);s&&(clearTimeout(s.timeout),this.pendingCommands.delete(t),s.reject(new Error("NAK received")))}}async getInfo(){return this.sendCommand("INFO")}async ping(){return this.sendCommand("PING")}async reboot(){return this.sendCommand("REBOOT")}async bootsel(){return this.sendCommand("BOOTSEL")}async getMode(){return this.sendCommand("MODE.GET")}async setMode(e){return this.sendCommand("MODE.SET",{mode:e})}async listModes(){return this.sendCommand("MODE.LIST")}async listProfiles(){return this.sendCommand("PROFILE.LIST")}async getProfile(e){return this.sendCommand("PROFILE.GET",{index:e})}async setProfile(e){return this.sendCommand("PROFILE.SET",{index:e})}async saveProfile(e,t){return this.sendCommand("PROFILE.SAVE",{index:e,...t})}async deleteProfile(e){return this.sendCommand("PROFILE.DELETE",{index:e})}async cloneProfile(e,t){return this.sendCommand("PROFILE.CLONE",{index:e,name:t})}async getSettings(){return this.sendCommand("SETTINGS.GET")}async resetSettings(){return this.sendCommand("SETTINGS.RESET")}async enableInputStream(e=!0){return this.sendCommand("INPUT.STREAM",{enable:e})}async getBtStatus(){return this.sendCommand("BT.STATUS")}async clearBtBonds(){return this.sendCommand("BT.BONDS.CLEAR")}async getWiimoteOrient(){return this.sendCommand("WIIMOTE.ORIENT.GET")}async setWiimoteOrient(e){return this.sendCommand("WIIMOTE.ORIENT.SET",{mode:e})}async getPlayers(){return this.sendCommand("PLAYERS.LIST")}async testRumble(e,t,n,o=500){return this.sendCommand("RUMBLE.TEST",{player:e,left:t,right:n,duration:o})}async stopRumble(e=-1){return this.sendCommand("RUMBLE.STOP",{player:e})}async enableDebugStream(e){return this.sendCommand("DEBUG.STREAM",{enable:e})}}const u=["B1","B2","B3","B4","L1","R1","L2","R2","S1","S2","L3","R3","DU","DD","DL","DR","A1","A2","A3","A4","L4","R4"],a=18,v={B1:"A / Cross",B2:"B / Circle",B3:"X / Square",B4:"Y / Triangle",L1:"L1 / LB",R1:"R1 / RB",L2:"L2 / LT",R2:"R2 / RT",S1:"Select / Back",S2:"Start / Menu",L3:"L3 / LS",R3:"R3 / RS",DU:"D-Pad Up",DD:"D-Pad Down",DL:"D-Pad Left",DR:"D-Pad Right",A1:"Home / Guide",A2:"Capture / Touchpad",A3:"Mute",A4:"Aux 4",L4:"L4 / Paddle 1",R4:"R4 / Paddle 2"},h=1,g=2,f=4;class L{constructor(){this.protocol=new m,this.streaming=!1,this.debugStreaming=!1,this.customProfiles=[],this.activeProfileIndex=0,this.editingProfileIndex=null,this.statusDot=document.getElementById("statusDot"),this.statusText=document.getElementById("statusText"),this.connectBtn=document.getElementById("connectBtn"),this.connectBtn2=document.getElementById("connectBtn2"),this.connectPrompt=document.getElementById("connectPrompt"),this.mainContent=document.getElementById("mainContent"),this.modeSelect=document.getElementById("modeSelect"),this.wiimoteOrientSelect=document.getElementById("wiimoteOrientSelect"),this.streamBtn=document.getElementById("streamBtn"),this.logEl=document.getElementById("log"),this.deviceApp=document.getElementById("deviceApp"),this.deviceVersion=document.getElementById("deviceVersion"),this.deviceBoard=document.getElementById("deviceBoard"),this.deviceSerial=document.getElementById("deviceSerial"),this.deviceCommit=document.getElementById("deviceCommit"),this.deviceBuild=document.getElementById("deviceBuild"),this.inputButtons=document.querySelectorAll("#inputButtons .btn"),this.outputButtons=document.querySelectorAll("#outputButtons .btn"),this.profileListEl=document.getElementById("profileList"),this.profileEditorModal=document.getElementById("profileEditorModal"),this.profileNameInput=document.getElementById("profileNameInput"),this.buttonMapContainer=document.getElementById("buttonMapContainer"),this.leftStickSens=document.getElementById("leftStickSens"),this.rightStickSens=document.getElementById("rightStickSens"),this.connectBtn.addEventListener("click",()=>this.toggleConnection()),this.connectBtn2.addEventListener("click",()=>this.connect()),this.modeSelect.addEventListener("change",e=>this.setMode(e.target.value)),this.wiimoteOrientSelect.addEventListener("change",e=>this.setWiimoteOrient(e.target.value)),this.streamBtn.addEventListener("click",()=>this.toggleStreaming()),document.getElementById("clearBtBtn").addEventListener("click",()=>this.clearBtBonds()),document.getElementById("resetBtn").addEventListener("click",()=>this.factoryReset()),document.getElementById("rebootBtn").addEventListener("click",()=>this.reboot()),document.getElementById("bootselBtn").addEventListener("click",()=>this.bootsel()),document.getElementById("rumbleBtn").addEventListener("click",()=>this.testRumble()),document.getElementById("debugStreamBtn").addEventListener("click",()=>this.toggleDebugStream()),document.getElementById("newProfileBtn").addEventListener("click",()=>this.openProfileEditor(null)),document.getElementById("closeEditorBtn").addEventListener("click",()=>this.closeProfileEditor()),document.getElementById("cancelEditorBtn").addEventListener("click",()=>this.closeProfileEditor()),document.getElementById("saveProfileBtn").addEventListener("click",()=>this.saveProfile()),document.getElementById("deleteProfileBtn").addEventListener("click",()=>this.deleteProfile()),this.leftStickSens.addEventListener("input",e=>{document.getElementById("leftStickSensValue").textContent=e.target.value+"%"}),this.rightStickSens.addEventListener("input",e=>{document.getElementById("rightStickSensValue").textContent=e.target.value+"%"}),this.protocol.onEvent(e=>this.handleEvent(e)),this.initButtonMapUI(),m.isSupported()||(this.log("Web Serial not supported in this browser","error"),this.connectBtn.disabled=!0,this.connectBtn2.disabled=!0)}initButtonMapUI(){this.buttonMapContainer.innerHTML="";const e=u.slice(0,a);for(let t=0;t<a;t++){const n=document.createElement("div");n.className="button-map-row";const o=document.createElement("span");o.className="input-label",o.textContent=u[t],n.appendChild(o);const i=document.createElement("select");i.id=`buttonMap${t}`,i.innerHTML=`
+                <option value="0">Passthrough</option>
+                ${e.map((s,r)=>`<option value="${r+1}">${s} (${v[s]})</option>`).join("")}
+                <option value="255">Disabled</option>
+            `,n.appendChild(i),this.buttonMapContainer.appendChild(n)}}log(e,t=""){const n=document.createElement("div");n.className="log-entry"+(t?" "+t:""),n.textContent=`[${new Date().toLocaleTimeString()}] ${e}`,this.logEl.appendChild(n),this.logEl.scrollTop=this.logEl.scrollHeight}updateConnectionUI(e){this.statusDot.className="status-dot"+(e?" connected":""),this.statusText.textContent=e?"Connected":"Disconnected",this.connectBtn.textContent=e?"Disconnect":"Connect",this.connectPrompt.classList.toggle("hidden",e),this.mainContent.classList.toggle("hidden",!e)}async toggleConnection(){this.protocol.connected?await this.disconnect():await this.connect()}async connect(){try{this.log("Connecting..."),await this.protocol.connect(),this.log("Connected!","success"),this.updateConnectionUI(!0),await this.loadDeviceInfo(),await this.loadModes(),await this.loadProfiles(),await this.loadWiimoteOrient()}catch(e){this.log(`Connection failed: ${e.message}`,"error"),this.updateConnectionUI(!1)}}async disconnect(){try{if(this.streaming&&(await this.protocol.enableInputStream(!1),this.streaming=!1,this.streamBtn.textContent="Start Stream",this.streamBtn.style.background=""),this.debugStreaming){this.debugStreaming=!1;const e=document.getElementById("debugStreamBtn");e.textContent="Debug Stream",e.style.background=""}await this.protocol.disconnect(),this.log("Disconnected")}catch(e){this.log(`Disconnect error: ${e.message}`,"error")}this.updateConnectionUI(!1)}async loadDeviceInfo(){try{const e=await this.protocol.getInfo();this.deviceApp.textContent=e.app||"-",this.deviceVersion.textContent=e.version||"-",this.deviceBoard.textContent=e.board||"-",this.deviceSerial.textContent=e.serial||"-",this.deviceCommit.textContent=e.commit||"-",this.deviceBuild.textContent=e.build||"-",this.log(`Device: ${e.app} v${e.version} (${e.commit})`)}catch(e){this.log(`Failed to get device info: ${e.message}`,"error")}}async loadModes(){try{const e=await this.protocol.listModes();this.modeSelect.innerHTML="";for(const t of e.modes){const n=document.createElement("option");n.value=t.id,n.textContent=t.name,n.selected=t.id===e.current,this.modeSelect.appendChild(n)}this.log(`Loaded ${e.modes.length} modes, current: ${e.current}`)}catch(e){this.log(`Failed to load modes: ${e.message}`,"error")}}async loadProfiles(){try{const e=await this.protocol.listProfiles();this.customProfiles=e.profiles||[],this.activeProfileIndex=e.active||0,this.renderProfileList();const t=this.customProfiles.filter(o=>o.builtin).length,n=this.customProfiles.filter(o=>!o.builtin).length;this.log(`Loaded ${t} built-in + ${n} custom profiles, active: ${e.active}`)}catch(e){this.log(`Failed to load profiles: ${e.message}`,"error")}}async setMode(e){try{this.log(`Setting mode to ${e}...`);const t=await this.protocol.setMode(parseInt(e));this.log(`Mode set to ${t.name}`,"success"),t.reboot&&(this.log("Device will reboot...","warning"),this.updateConnectionUI(!1))}catch(t){this.log(`Failed to set mode: ${t.message}`,"error")}}async selectProfile(e){try{this.log(`Selecting profile ${e}...`);const t=await this.protocol.setProfile(parseInt(e));this.activeProfileIndex=e,this.renderProfileList(),this.log(`Profile set to ${t.name}`,"success")}catch(t){this.log(`Failed to select profile: ${t.message}`,"error")}}async loadWiimoteOrient(){try{const e=await this.protocol.getWiimoteOrient();this.wiimoteOrientSelect.value=e.mode,this.log(`Wiimote orientation: ${e.name}`)}catch(e){this.log(`Failed to load Wiimote orientation: ${e.message}`,"error")}}async setWiimoteOrient(e){try{this.log(`Setting Wiimote orientation to ${e}...`);const t=await this.protocol.setWiimoteOrient(parseInt(e));this.log(`Wiimote orientation set to ${t.name}`,"success")}catch(t){this.log(`Failed to set Wiimote orientation: ${t.message}`,"error")}}async toggleDebugStream(){const e=document.getElementById("debugStreamBtn"),t=!this.debugStreaming;e.textContent=t?"Starting...":"Stopping...";try{await this.protocol.enableDebugStream(t),this.debugStreaming=t,e.textContent=t?"Stop Debug":"Debug Stream",e.style.background=t?"var(--success)":"",this.log(t?"Debug log streaming enabled":"Debug log streaming disabled")}catch(n){this.debugStreaming=!1,e.textContent="Debug Stream",e.style.background="",this.log(`Failed to toggle debug stream: ${n.message}`,"error")}}async toggleStreaming(){try{this.streaming=!this.streaming,await this.protocol.enableInputStream(this.streaming),this.streamBtn.textContent=this.streaming?"Stop Stream":"Start Stream",this.streamBtn.style.background=this.streaming?"var(--success)":"",this.log(this.streaming?"Input streaming enabled":"Input streaming disabled"),this.streaming?await this.refreshPlayers():document.getElementById("inputDeviceName").textContent=""}catch(e){this.log(`Failed to toggle streaming: ${e.message}`,"error"),this.streaming=!1}}async refreshPlayers(){try{const e=await this.protocol.getPlayers();if(e.count>0&&e.players&&e.players.length>0){const t=e.players[0];document.getElementById("inputDeviceName").textContent=`- ${t.name}`,this.log(`Connected: ${t.name} (${t.transport})`)}else document.getElementById("inputDeviceName").textContent="- No controller"}catch(e){console.log("Failed to get players:",e.message)}}async clearBtBonds(){if(confirm("Clear all Bluetooth bonds? Devices will need to re-pair."))try{await this.protocol.clearBtBonds(),this.log("Bluetooth bonds cleared","success")}catch(e){this.log(`Failed to clear bonds: ${e.message}`,"error")}}async factoryReset(){if(confirm("Factory reset? This will clear all settings."))try{await this.protocol.resetSettings(),this.log("Factory reset complete, device will reboot...","success"),this.updateConnectionUI(!1)}catch(e){this.log(`Failed to reset: ${e.message}`,"error")}}async reboot(){try{await this.protocol.reboot(),this.log("Rebooting device...","success"),this.updateConnectionUI(!1)}catch(e){this.log(`Failed to reboot: ${e.message}`,"error")}}async bootsel(){try{await this.protocol.bootsel(),this.log("Entering bootloader mode...","success"),this.updateConnectionUI(!1)}catch(e){this.log(`Failed to enter bootloader: ${e.message}`,"error")}}async testRumble(){try{this.log("Testing rumble..."),await this.protocol.testRumble(0,200,200,500),this.log("Rumble test sent","success")}catch(e){this.log(`Rumble test failed: ${e.message}`,"error")}}handleEvent(e){if(e.type==="input")this.updateInputDisplay(e.buttons,e.axes);else if(e.type==="output")this.updateOutputDisplay(e.buttons,e.axes);else if(e.type==="connect")this.log(`Controller connected: ${e.name} (${e.vid}:${e.pid})`),document.getElementById("inputDeviceName").textContent=`- ${e.name}`;else if(e.type==="disconnect")this.log(`Controller disconnected: port ${e.port}`),document.getElementById("inputDeviceName").textContent="";else if(e.type==="log"&&e.msg){const t=e.msg.split(`
+`).filter(n=>n.length>0);for(const n of t)this.log(n,"debug")}}updateInputDisplay(e,t){this.inputButtons.forEach(n=>{const o=parseInt(n.dataset.bit),i=(e&1<<o)!==0;n.classList.toggle("pressed",i)}),t&&t.length>=6&&(document.getElementById("axisLX").textContent=t[0],document.getElementById("axisLY").textContent=t[1],document.getElementById("axisRX").textContent=t[2],document.getElementById("axisRY").textContent=t[3],document.getElementById("axisL2").textContent=t[4],document.getElementById("axisR2").textContent=t[5],document.getElementById("axisLXBar").style.width=t[0]/255*100+"%",document.getElementById("axisLYBar").style.width=t[1]/255*100+"%",document.getElementById("axisRXBar").style.width=t[2]/255*100+"%",document.getElementById("axisRYBar").style.width=t[3]/255*100+"%",document.getElementById("axisL2Bar").style.width=t[4]/255*100+"%",document.getElementById("axisR2Bar").style.width=t[5]/255*100+"%")}updateOutputDisplay(e,t){this.outputButtons.forEach(n=>{const o=parseInt(n.dataset.bit),i=(e&1<<o)!==0;n.classList.toggle("pressed",i)}),t&&t.length>=6&&(document.getElementById("outAxisLX").textContent=t[0],document.getElementById("outAxisLY").textContent=t[1],document.getElementById("outAxisRX").textContent=t[2],document.getElementById("outAxisRY").textContent=t[3],document.getElementById("outAxisL2").textContent=t[4],document.getElementById("outAxisR2").textContent=t[5],document.getElementById("outAxisLXBar").style.width=t[0]/255*100+"%",document.getElementById("outAxisLYBar").style.width=t[1]/255*100+"%",document.getElementById("outAxisRXBar").style.width=t[2]/255*100+"%",document.getElementById("outAxisRYBar").style.width=t[3]/255*100+"%",document.getElementById("outAxisL2Bar").style.width=t[4]/255*100+"%",document.getElementById("outAxisR2Bar").style.width=t[5]/255*100+"%")}renderProfileList(){this.profileListEl.innerHTML="";for(const n of this.customProfiles){const o=this.createProfileItem(n,n.index===this.activeProfileIndex);this.profileListEl.appendChild(o)}const e=document.getElementById("newProfileBtn");this.customProfiles.filter(n=>!n.builtin).length>=4?(e.disabled=!0,e.textContent="Max Profiles (4)"):(e.disabled=!1,e.textContent="+ New Profile")}createProfileItem(e,t){const n=document.createElement("div");n.className="profile-item"+(t?" active":"");const o=document.createElement("div");o.className="profile-item-info";const i=document.createElement("div");i.className="profile-item-name",i.textContent=e.name,o.appendChild(i);const s=document.createElement("div");s.className="profile-item-details",s.textContent=e.builtin?"Built-in":"Custom",o.appendChild(s),n.appendChild(o);const r=document.createElement("div");if(r.className="profile-item-actions",!t){const l=document.createElement("button");l.className="secondary",l.textContent="Select",l.addEventListener("click",()=>this.selectProfile(e.index)),r.appendChild(l)}if(e.builtin){const l=document.createElement("button");l.className="secondary",l.textContent="Clone",l.addEventListener("click",()=>this.cloneProfile(e.index,e.name)),r.appendChild(l)}if(e.editable){const l=document.createElement("button");l.className="secondary",l.textContent="Edit",l.addEventListener("click",()=>this.openProfileEditor(e.index)),r.appendChild(l)}return n.appendChild(r),n}async cloneProfile(e,t){const n=(t+" Copy").substring(0,11);try{this.log(`Cloning profile "${t}"...`);const o=await this.protocol.cloneProfile(e,n);this.log(`Profile cloned as "${o.name}"`,"success"),await this.loadProfiles()}catch(o){this.log(`Failed to clone profile: ${o.message}`,"error")}}async openProfileEditor(e){this.editingProfileIndex=e;const t=e===null;if(document.getElementById("profileEditorTitle").textContent=t?"New Profile":"Edit Profile",document.getElementById("deleteProfileBtn").classList.toggle("hidden",t),t){this.profileNameInput.value="";for(let n=0;n<a;n++)document.getElementById(`buttonMap${n}`).value="0";this.leftStickSens.value=100,this.rightStickSens.value=100,document.getElementById("leftStickSensValue").textContent="100%",document.getElementById("rightStickSensValue").textContent="100%",document.getElementById("socdModeSelect").value="0",document.getElementById("flagSwapSticks").checked=!1,document.getElementById("flagInvertLY").checked=!1,document.getElementById("flagInvertRY").checked=!1}else try{const n=await this.protocol.getProfile(e);this.profileNameInput.value=n.name||"";const o=n.button_map||[];for(let s=0;s<a;s++){const r=o[s]!==void 0?o[s]:0;document.getElementById(`buttonMap${s}`).value=r}this.leftStickSens.value=n.left_stick_sens||100,this.rightStickSens.value=n.right_stick_sens||100,document.getElementById("leftStickSensValue").textContent=this.leftStickSens.value+"%",document.getElementById("rightStickSensValue").textContent=this.rightStickSens.value+"%",document.getElementById("socdModeSelect").value=(n.socd_mode||0).toString();const i=n.flags||0;document.getElementById("flagSwapSticks").checked=(i&h)!==0,document.getElementById("flagInvertLY").checked=(i&g)!==0,document.getElementById("flagInvertRY").checked=(i&f)!==0}catch(n){this.log(`Failed to load profile: ${n.message}`,"error");return}this.profileEditorModal.classList.remove("hidden")}closeProfileEditor(){this.profileEditorModal.classList.add("hidden"),this.editingProfileIndex=null}async saveProfile(){const e=this.profileNameInput.value.trim();if(!e){alert("Please enter a profile name");return}const t=[];for(let r=0;r<a;r++)t.push(parseInt(document.getElementById(`buttonMap${r}`).value));let n=0;document.getElementById("flagSwapSticks").checked&&(n|=h),document.getElementById("flagInvertLY").checked&&(n|=g),document.getElementById("flagInvertRY").checked&&(n|=f);const o=parseInt(document.getElementById("socdModeSelect").value),i={name:e,button_map:t,left_stick_sens:parseInt(this.leftStickSens.value),right_stick_sens:parseInt(this.rightStickSens.value),flags:n,socd_mode:o},s=this.editingProfileIndex===null?255:this.editingProfileIndex;try{this.log("Saving profile...");const r=await this.protocol.saveProfile(s,i);this.log(`Profile "${r.name}" saved`,"success"),this.closeProfileEditor(),await this.loadProfiles()}catch(r){this.log(`Failed to save profile: ${r.message}`,"error")}}async deleteProfile(){if(this.editingProfileIndex===null)return;const e=this.customProfiles.find(t=>t.index===this.editingProfileIndex);if(e&&e.builtin){alert("Cannot delete built-in profiles");return}if(confirm("Delete this profile?"))try{this.log(`Deleting profile ${this.editingProfileIndex}...`),await this.protocol.deleteProfile(this.editingProfileIndex),this.log("Profile deleted","success"),this.closeProfileEditor(),await this.loadProfiles()}catch(t){this.log(`Failed to delete profile: ${t.message}`,"error")}}}document.addEventListener("DOMContentLoaded",()=>{window.app=new L});</script>
+  <style rel="stylesheet" crossorigin>:root{--bg: #1a1a2e;--bg-card: #16213e;--bg-input: #0f0f1a;--accent: #e94560;--accent-hover: #ff6b6b;--text: #eee;--text-muted: #888;--border: #333;--success: #4ecca3;--warning: #ffc107}*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding:20px}.container{max-width:800px;margin:0 auto}header{display:flex;justify-content:space-between;align-items:center;margin-bottom:30px;padding-bottom:20px;border-bottom:1px solid var(--border)}h1{font-size:24px;font-weight:600}.status{display:flex;align-items:center;gap:10px}.status-dot{width:10px;height:10px;border-radius:50%;background:var(--text-muted)}.status-dot.connected{background:var(--success)}button{background:var(--accent);color:#fff;border:none;padding:10px 20px;border-radius:6px;cursor:pointer;font-size:14px;font-weight:500;transition:background .2s}button:hover{background:var(--accent-hover)}button:disabled{background:var(--text-muted);cursor:not-allowed}button.secondary{background:var(--bg-input);border:1px solid var(--border)}button.secondary:hover{background:var(--border)}.card{background:var(--bg-card);border-radius:12px;padding:20px;margin-bottom:20px}.card h2{font-size:16px;font-weight:600;margin-bottom:15px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px}.card-content{display:flex;flex-direction:column;gap:15px}.row{display:flex;justify-content:space-between;align-items:center}.label{color:var(--text-muted);font-size:14px}.value{font-weight:500}select{background:var(--bg-input);color:var(--text);border:1px solid var(--border);padding:8px 12px;border-radius:6px;font-size:14px;min-width:200px}select:focus{outline:none;border-color:var(--accent)}.input-display{background:var(--bg-input);border-radius:8px;padding:15px;font-family:monospace;font-size:13px}.input-display .buttons{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}.input-display .btn{background:var(--border);padding:4px 10px;border-radius:4px;font-size:12px}.input-display .btn.pressed{background:var(--accent)}.input-display .axes{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.axis{text-align:center}.axis-bar{height:6px;background:var(--border);border-radius:3px;margin-top:4px;overflow:hidden}.axis-bar-fill{height:100%;background:var(--accent);transition:width .05s}.stream-container{display:grid;grid-template-columns:1fr 1fr;gap:15px}@media(max-width:900px){.stream-container{grid-template-columns:1fr}}.stream-section h4{margin:0 0 10px;font-size:13px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;display:flex;align-items:center;min-height:28px}.hidden{display:none!important}.connect-prompt{text-align:center;padding:60px 20px}.connect-prompt p{color:var(--text-muted);margin-bottom:20px}.log{background:var(--bg-input);border-radius:8px;padding:15px;font-family:monospace;font-size:12px;max-height:200px;overflow-y:auto}.log-entry{margin-bottom:4px;color:var(--text-muted)}.log-entry.error{color:var(--accent)}.log-entry.success{color:var(--success)}.log-entry.debug{color:#7c8cbf}.device-info{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.danger-zone{border:1px solid var(--accent);border-radius:8px;padding:15px}.danger-zone h3{color:var(--accent);font-size:14px;margin-bottom:10px}.danger-zone .buttons{display:flex;gap:10px}.profile-list{margin-top:15px}.profile-item{display:flex;align-items:center;justify-content:space-between;padding:12px;background:var(--bg-input);border-radius:6px;margin-bottom:8px}.profile-item.active{border-left:3px solid var(--accent)}.profile-item-info{flex:1}.profile-item-name{font-weight:500}.profile-item-details{font-size:12px;color:var(--text-muted);margin-top:4px}.profile-item-actions{display:flex;gap:8px}.profile-item-actions button{padding:6px 12px;font-size:12px}.modal{position:fixed;top:0;left:0;width:100%;height:100%;background:#000000b3;display:flex;align-items:center;justify-content:center;z-index:1000}.modal-content{background:var(--bg-card);border-radius:12px;width:90%;max-width:600px;max-height:90vh;overflow-y:auto}.modal-header{display:flex;align-items:center;justify-content:space-between;padding:20px;border-bottom:1px solid var(--border)}.modal-header h3{margin:0}.modal-close{background:none;border:none;color:var(--text-muted);font-size:24px;cursor:pointer;padding:0;width:30px;height:30px}.modal-close:hover{color:var(--text)}.modal-body{padding:20px}.modal-footer{display:flex;gap:10px;padding:20px;border-top:1px solid var(--border)}.form-group{margin-bottom:20px}.form-group label{display:block;font-weight:500;margin-bottom:8px}.form-group input[type=text]{width:100%;padding:10px;background:var(--bg-input);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:14px}.form-group input[type=text]:focus{outline:none;border-color:var(--accent)}.button-map-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.button-map-row{display:flex;align-items:center;gap:10px;padding:8px;background:var(--bg-input);border-radius:6px}.button-map-row .input-label{width:40px;font-weight:500;font-size:13px}.button-map-row select{flex:1;min-width:100px;padding:6px;font-size:13px}.sensitivity-row{display:flex;align-items:center;gap:15px;margin-bottom:10px}.sensitivity-row span:first-child{width:80px;font-size:14px}.sensitivity-row input[type=range]{flex:1;height:6px;-webkit-appearance:none;background:var(--border);border-radius:3px}.sensitivity-row input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;background:var(--accent);border-radius:50%;cursor:pointer}.sensitivity-row span:last-child{width:50px;text-align:right;font-size:14px}.checkbox-row{display:flex;align-items:center;gap:10px;margin-bottom:8px}.checkbox-row input[type=checkbox]{width:18px;height:18px;accent-color:var(--accent)}.checkbox-row label{font-size:14px;margin:0}button.danger{border-color:var(--accent);color:var(--accent)}button.danger:hover{background:var(--accent);color:#fff}@media(max-width:600px){.device-info{grid-template-columns:1fr}.row{flex-direction:column;align-items:flex-start;gap:8px}select{width:100%}.button-map-grid{grid-template-columns:1fr}.profile-item{flex-direction:column;align-items:flex-start;gap:10px}.profile-item-actions{width:100%}.profile-item-actions button{flex:1}}</style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Joypad Config</h1>
+            <div class="status">
+                <div class="status-dot" id="statusDot"></div>
+                <span id="statusText">Disconnected</span>
+                <button id="connectBtn">Connect</button>
+            </div>
+        </header>
+
+        <!-- Connect Prompt -->
+        <div id="connectPrompt" class="connect-prompt">
+            <p>Connect your Joypad device to configure it.</p>
+            <button id="connectBtn2">Connect Device</button>
+            <p style="margin-top: 20px; font-size: 12px;">
+                Requires Chrome, Edge, or Opera with Web Serial API support.
+            </p>
+        </div>
+
+        <!-- Main Content (hidden until connected) -->
+        <div id="mainContent" class="hidden">
+            <!-- Device Info -->
+            <div class="card">
+                <h2>Device</h2>
+                <div class="card-content">
+                    <div class="device-info">
+                        <div class="row">
+                            <span class="label">App</span>
+                            <span class="value" id="deviceApp">-</span>
+                        </div>
+                        <div class="row">
+                            <span class="label">Version</span>
+                            <span class="value" id="deviceVersion">-</span>
+                        </div>
+                        <div class="row">
+                            <span class="label">Board</span>
+                            <span class="value" id="deviceBoard">-</span>
+                        </div>
+                        <div class="row">
+                            <span class="label">Serial</span>
+                            <span class="value" id="deviceSerial">-</span>
+                        </div>
+                        <div class="row">
+                            <span class="label">Commit</span>
+                            <span class="value" id="deviceCommit">-</span>
+                        </div>
+                        <div class="row">
+                            <span class="label">Build</span>
+                            <span class="value" id="deviceBuild">-</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- USB Output Mode -->
+            <div class="card">
+                <h2>USB Output Mode</h2>
+                <div class="card-content">
+                    <div class="row">
+                        <span class="label">Current Mode</span>
+                        <select id="modeSelect">
+                            <option value="">Loading...</option>
+                        </select>
+                    </div>
+                    <p style="font-size: 12px; color: var(--text-muted);">
+                        Changing mode will reboot the device.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Profiles (unified built-in + custom) -->
+            <div class="card" id="customProfilesCard">
+                <h2>Profiles</h2>
+                <div class="card-content">
+                    <div class="row">
+                        <span class="label">Manage Profiles</span>
+                        <button id="newProfileBtn" class="secondary">+ New Profile</button>
+                    </div>
+                    <div id="profileList" class="profile-list">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Profile Editor Modal -->
+            <div id="profileEditorModal" class="modal hidden">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3 id="profileEditorTitle">Edit Profile</h3>
+                        <button class="modal-close" id="closeEditorBtn">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-group">
+                            <label>Profile Name</label>
+                            <input type="text" id="profileNameInput" maxlength="11" placeholder="Profile name">
+                        </div>
+                        <div class="form-group">
+                            <label>Button Mapping</label>
+                            <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 10px;">
+                                For each input button, select what output button it should produce.
+                            </p>
+                            <div id="buttonMapContainer" class="button-map-grid">
+                                <!-- Populated by JS -->
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Stick Sensitivity</label>
+                            <div class="sensitivity-row">
+                                <span>Left Stick</span>
+                                <input type="range" id="leftStickSens" min="0" max="200" value="100">
+                                <span id="leftStickSensValue">100%</span>
+                            </div>
+                            <div class="sensitivity-row">
+                                <span>Right Stick</span>
+                                <input type="range" id="rightStickSens" min="0" max="200" value="100">
+                                <span id="rightStickSensValue">100%</span>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>SOCD Cleaning</label>
+                            <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 10px;">
+                                How to handle simultaneous opposite cardinal directions (e.g. Left+Right).
+                            </p>
+                            <select id="socdModeSelect" style="width: 100%;">
+                                <option value="0">Passthrough (no cleaning)</option>
+                                <option value="1">Neutral (cancel both directions)</option>
+                                <option value="2">Up Priority (U+D=U, L+R=neutral) — Hitbox style</option>
+                                <option value="3">Last Win (last input takes priority)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Options</label>
+                            <div class="checkbox-row">
+                                <input type="checkbox" id="flagSwapSticks">
+                                <label for="flagSwapSticks">Swap Left/Right Sticks</label>
+                            </div>
+                            <div class="checkbox-row">
+                                <input type="checkbox" id="flagInvertLY">
+                                <label for="flagInvertLY">Invert Left Y Axis</label>
+                            </div>
+                            <div class="checkbox-row">
+                                <input type="checkbox" id="flagInvertRY">
+                                <label for="flagInvertRY">Invert Right Y Axis</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button id="deleteProfileBtn" class="secondary danger">Delete</button>
+                        <div style="flex: 1;"></div>
+                        <button id="cancelEditorBtn" class="secondary">Cancel</button>
+                        <button id="saveProfileBtn">Save Profile</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Wiimote Settings -->
+            <div class="card">
+                <h2>Wiimote</h2>
+                <div class="card-content">
+                    <div class="row">
+                        <span class="label">Orientation</span>
+                        <select id="wiimoteOrientSelect">
+                            <option value="0">Auto</option>
+                            <option value="1">Horizontal</option>
+                            <option value="2">Vertical</option>
+                        </select>
+                    </div>
+                    <p style="font-size: 12px; color: var(--text-muted);">
+                        Controls D-pad mapping when using Wiimote alone (no extension).
+                    </p>
+                </div>
+            </div>
+
+            <!-- Input Test -->
+            <div class="card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <h2 style="margin-bottom: 0;">Input Test</h2>
+                    <button id="streamBtn" class="secondary" style="padding: 6px 12px; font-size: 12px;">Start Stream</button>
+                </div>
+                <div class="card-content">
+                    <div class="stream-container">
+                        <!-- Input (raw controller data) -->
+                        <div class="stream-section">
+                            <h4>Input (Raw) <span id="inputDeviceName" style="font-weight: normal; color: var(--text-muted);"></span>
+                                <button id="rumbleBtn" class="secondary" style="padding: 4px 8px; font-size: 11px; margin-left: 10px;" title="Test rumble on connected controller">🎮 Rumble</button>
+                            </h4>
+                            <div class="input-display" id="inputDisplay">
+                                <div class="buttons" id="inputButtons">
+                                    <span class="btn" data-bit="0">B1</span>
+                                    <span class="btn" data-bit="1">B2</span>
+                                    <span class="btn" data-bit="2">B3</span>
+                                    <span class="btn" data-bit="3">B4</span>
+                                    <span class="btn" data-bit="4">L1</span>
+                                    <span class="btn" data-bit="5">R1</span>
+                                    <span class="btn" data-bit="6">L2</span>
+                                    <span class="btn" data-bit="7">R2</span>
+                                    <span class="btn" data-bit="8">S1</span>
+                                    <span class="btn" data-bit="9">S2</span>
+                                    <span class="btn" data-bit="10">L3</span>
+                                    <span class="btn" data-bit="11">R3</span>
+                                    <span class="btn" data-bit="20">L4</span>
+                                    <span class="btn" data-bit="21">R4</span>
+                                    <span class="btn" data-bit="12">DU</span>
+                                    <span class="btn" data-bit="13">DD</span>
+                                    <span class="btn" data-bit="14">DL</span>
+                                    <span class="btn" data-bit="15">DR</span>
+                                    <span class="btn" data-bit="16">A1</span>
+                                    <span class="btn" data-bit="17">A2</span>
+                                    <span class="btn" data-bit="18">A3</span>
+                                    <!-- <span class="btn" data-bit="19">A4</span> --><!-- Reserved, not used by any controller -->
+                                </div>
+                                <div class="axes">
+                                    <div class="axis">
+                                        <div>LX: <span id="axisLX">128</span></div>
+                                        <div class="axis-bar"><div class="axis-bar-fill" id="axisLXBar" style="width: 50%"></div></div>
+                                    </div>
+                                    <div class="axis">
+                                        <div>LY: <span id="axisLY">128</span></div>
+                                        <div class="axis-bar"><div class="axis-bar-fill" id="axisLYBar" style="width: 50%"></div></div>
+                                    </div>
+                                    <div class="axis">
+                                        <div>RX: <span id="axisRX">128</span></div>
+                                        <div class="axis-bar"><div class="axis-bar-fill" id="axisRXBar" style="width: 50%"></div></div>
+                                    </div>
+                                    <div class="axis">
+                                        <div>RY: <span id="axisRY">128</span></div>
+                                        <div class="axis-bar"><div class="axis-bar-fill" id="axisRYBar" style="width: 50%"></div></div>
+                                    </div>
+                                    <div class="axis">
+                                        <div>L2: <span id="axisL2">0</span></div>
+                                        <div class="axis-bar"><div class="axis-bar-fill" id="axisL2Bar" style="width: 0%"></div></div>
+                                    </div>
+                                    <div class="axis">
+                                        <div>R2: <span id="axisR2">0</span></div>
+                                        <div class="axis-bar"><div class="axis-bar-fill" id="axisR2Bar" style="width: 0%"></div></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Output (after profile mapping) -->
+                        <div class="stream-section">
+                            <h4>Output (Mapped)</h4>
+                            <div class="input-display" id="outputDisplay">
+                                <div class="buttons" id="outputButtons">
+                                    <span class="btn" data-bit="0">B1</span>
+                                    <span class="btn" data-bit="1">B2</span>
+                                    <span class="btn" data-bit="2">B3</span>
+                                    <span class="btn" data-bit="3">B4</span>
+                                    <span class="btn" data-bit="4">L1</span>
+                                    <span class="btn" data-bit="5">R1</span>
+                                    <span class="btn" data-bit="6">L2</span>
+                                    <span class="btn" data-bit="7">R2</span>
+                                    <span class="btn" data-bit="8">S1</span>
+                                    <span class="btn" data-bit="9">S2</span>
+                                    <span class="btn" data-bit="10">L3</span>
+                                    <span class="btn" data-bit="11">R3</span>
+                                    <span class="btn" data-bit="20">L4</span>
+                                    <span class="btn" data-bit="21">R4</span>
+                                    <span class="btn" data-bit="12">DU</span>
+                                    <span class="btn" data-bit="13">DD</span>
+                                    <span class="btn" data-bit="14">DL</span>
+                                    <span class="btn" data-bit="15">DR</span>
+                                    <span class="btn" data-bit="16">A1</span>
+                                    <span class="btn" data-bit="17">A2</span>
+                                    <span class="btn" data-bit="18">A3</span>
+                                    <!-- <span class="btn" data-bit="19">A4</span> --><!-- Reserved, not used by any controller -->
+                                </div>
+                                <div class="axes">
+                                    <div class="axis">
+                                        <div>LX: <span id="outAxisLX">128</span></div>
+                                        <div class="axis-bar"><div class="axis-bar-fill" id="outAxisLXBar" style="width: 50%"></div></div>
+                                    </div>
+                                    <div class="axis">
+                                        <div>LY: <span id="outAxisLY">128</span></div>
+                                        <div class="axis-bar"><div class="axis-bar-fill" id="outAxisLYBar" style="width: 50%"></div></div>
+                                    </div>
+                                    <div class="axis">
+                                        <div>RX: <span id="outAxisRX">128</span></div>
+                                        <div class="axis-bar"><div class="axis-bar-fill" id="outAxisRXBar" style="width: 50%"></div></div>
+                                    </div>
+                                    <div class="axis">
+                                        <div>RY: <span id="outAxisRY">128</span></div>
+                                        <div class="axis-bar"><div class="axis-bar-fill" id="outAxisRYBar" style="width: 50%"></div></div>
+                                    </div>
+                                    <div class="axis">
+                                        <div>L2: <span id="outAxisL2">0</span></div>
+                                        <div class="axis-bar"><div class="axis-bar-fill" id="outAxisL2Bar" style="width: 0%"></div></div>
+                                    </div>
+                                    <div class="axis">
+                                        <div>R2: <span id="outAxisR2">0</span></div>
+                                        <div class="axis-bar"><div class="axis-bar-fill" id="outAxisR2Bar" style="width: 0%"></div></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Advanced Settings -->
+            <div class="card">
+                <h2>Advanced</h2>
+                <div class="card-content">
+                    <div class="danger-zone">
+                        <h3>Danger Zone</h3>
+                        <div class="buttons">
+                            <button id="clearBtBtn" class="secondary">Clear BT Bonds</button>
+                            <button id="resetBtn" class="secondary">Factory Reset</button>
+                            <button id="rebootBtn" class="secondary">Reboot</button>
+                            <button id="bootselBtn" class="secondary">Bootloader</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Log -->
+            <div class="card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <h2 style="margin-bottom: 0;">Log</h2>
+                    <button id="debugStreamBtn" class="secondary" style="padding: 6px 12px; font-size: 12px;">Debug Stream</button>
+                </div>
+                <div class="log" id="log"></div>
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>
