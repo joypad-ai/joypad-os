@@ -503,16 +503,13 @@ pico_generate_pio_header(joypad_dc_rp2040zero ${CMAKE_CURRENT_LIST_DIR}/native/d
 # --- NEOGEO ---
 add_executable(joypad_neogeo)
 target_compile_definitions(joypad_neogeo PRIVATE CONFIG_NEOGEO=1)
-if (PICO_BOARD STREQUAL "pico")
-    target_compile_definitions(joypad_neogeo PRIVATE RPI_PICO_BUILD=1)
-endif()
 target_sources(joypad_neogeo PUBLIC ${COMMON_SOURCES}
-    ${CMAKE_CURRENT_SOURCE_DIR}/native/device/neogeo/neogeo_device.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/device/gpio/gpio_device.c
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2neogeo/app.c
 )
 target_include_directories(joypad_neogeo PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2neogeo
-    ${CMAKE_CURRENT_SOURCE_DIR}/native/device/neogeo
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/device/gpio
 )
 target_link_libraries(joypad_neogeo PRIVATE ${COMMON_LIBRARIES})
 joypad_target_common(joypad_neogeo)
@@ -524,9 +521,10 @@ target_compile_definitions(joypad_neogeo_pico PRIVATE
     CONFIG_NEOGEO=1
     WS2812_PIN=25
     USE_BOOTSEL_BUTTON=1
+    RPI_PICO_BUILD=1
 )
 target_sources(joypad_neogeo_pico PUBLIC ${COMMON_SOURCES}
-    ${CMAKE_CURRENT_SOURCE_DIR}/native/device/neogeo/neogeo_device.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/device/gpio/gpio_device.c
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2neogeo/app.c
 )
 target_include_directories(joypad_neogeo_pico PUBLIC
@@ -541,9 +539,10 @@ joypad_add_btstack(joypad_neogeo_pico)
 add_executable(joypad_neogeo_rp2040zero)
 target_compile_definitions(joypad_neogeo_rp2040zero PRIVATE
     CONFIG_NEOGEO=1
+    PICO_RP2040_ZERO_BUILD=1
 )
 target_sources(joypad_neogeo_rp2040zero PUBLIC ${COMMON_SOURCES}
-    ${CMAKE_CURRENT_SOURCE_DIR}/native/device/neogeo/neogeo_device.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/device/gpio/gpio_device.c
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2neogeo/app.c
 )
 target_include_directories(joypad_neogeo_rp2040zero PUBLIC
