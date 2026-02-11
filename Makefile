@@ -566,6 +566,10 @@ flash-usb2usb_rp2350usba:
 flash-bt2usb_pico_w:
 	@$(MAKE) --no-print-directory _flash_app APP_NAME=bt2usb_pico_w
 
+.PHONY: flash-bt2usb_pico2_w
+flash-bt2usb_pico2_w:
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=bt2usb_pico2_w
+
 .PHONY: flash-wifi2usb_pico_w
 flash-wifi2usb_pico_w:
 	@$(MAKE) --no-print-directory _flash_app APP_NAME=wifi2usb_pico_w
@@ -605,8 +609,8 @@ flash-controller_macropad:
 # Internal flash helper for specific app (finds most recent matching file)
 .PHONY: _flash_app
 _flash_app:
-	@# Determine correct volume based on app name (RP2350 boards use different volume)
-	@if echo "$(APP_NAME)" | grep -q "rp2350"; then \
+	@# Determine correct volume based on app name (RP2350/Pico2 boards use different volume)
+	@if echo "$(APP_NAME)" | grep -qE "rp2350|pico2"; then \
 		VOLUME="/Volumes/RP2350"; \
 	else \
 		VOLUME="/Volumes/RPI-RP2"; \

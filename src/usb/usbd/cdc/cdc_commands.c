@@ -5,6 +5,7 @@
 #include "cdc_commands.h"
 #include "cdc_protocol.h"
 #include "../usbd.h"
+#include "app.h"
 #include "core/services/storage/flash.h"
 #include "core/services/profiles/profile.h"
 #include "core/services/players/manager.h"
