@@ -45,7 +45,7 @@ Joypad uses PIO-based USB host (bit-banged via the RP2040's PIO1 peripheral). Th
 
 ### Raspberry Pi Pico / Pico W / Pico 2 W
 
-![Pico USB Host Wiring](images/usb2usb_pico_host.png)
+<img src="images/usb2usb_pico_host.png" alt="Pico USB Host Wiring" width="300">
 
 | Pico Pin | USB-A Pin | Signal |
 |----------|-----------|--------|
