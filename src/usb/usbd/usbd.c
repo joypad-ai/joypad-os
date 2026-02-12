@@ -89,7 +89,6 @@ static char usb_serial_str[USB_SERIAL_LEN + 1];
 
 // Current output mode (persisted to flash)
 static usb_output_mode_t output_mode = USB_OUTPUT_MODE_SINPUT;
-static flash_t flash_settings;
 
 // Forward declaration (defined in CONFIGURATION DESCRIPTOR section)
 static void build_config_descriptors(void);
@@ -411,8 +410,11 @@ bool usbd_set_mode(usb_output_mode_t mode)
         flush_debug_output();
 
         output_mode = mode;
-        flash_settings.usb_output_mode = (uint8_t)mode;
-        flash_save_force(&flash_settings);
+        flash_t* settings = flash_get_settings();
+        if (settings) {
+            settings->usb_output_mode = (uint8_t)mode;
+            flash_save_force(settings);
+        }
 
         // Re-init the new mode
         const usbd_mode_t* new_mode = usbd_modes[mode];
@@ -426,24 +428,12 @@ bool usbd_set_mode(usb_output_mode_t mode)
     }
 
     // Save mode to flash immediately (we're about to reset)
-    printf("[usbd] Setting flash_settings.usb_output_mode = %d\n", mode);
-    flush_debug_output();
-    flash_settings.usb_output_mode = (uint8_t)mode;
-    printf("[usbd] Calling flash_save_force (reset imminent)...\n");
-    flush_debug_output();
-    flash_save_force(&flash_settings);
-    printf("[usbd] Mode saved to flash (mode=%d)\n", flash_settings.usb_output_mode);
-    flush_debug_output();
-
-    // Verify the write by reading it back
-    flash_t verify_settings;
-    if (flash_load(&verify_settings)) {
-        printf("[usbd] Verify: mode=%d (expected %d)\n",
-               verify_settings.usb_output_mode, mode);
-    } else {
-        printf("[usbd] Verify FAILED: flash_load returned false!\n");
+    // Use runtime settings (not local copy) to preserve custom profiles
+    flash_t* settings = flash_get_settings();
+    if (settings) {
+        settings->usb_output_mode = (uint8_t)mode;
+        flash_save_force(settings);
     }
-    flush_debug_output();
 
     output_mode = mode;
 
@@ -561,39 +551,39 @@ void usbd_init(void)
 
     // Initialize and load settings from flash
     flash_init();
-    printf("[usbd] Loading settings from flash...\n");
-    if (flash_load(&flash_settings)) {
+    // Load saved mode from flash (runtime_settings holds the canonical state)
+    flash_t* settings = flash_get_settings();
+    if (settings) {
         printf("[usbd] Flash load success! usb_output_mode=%d, active_profile=%d\n",
-               flash_settings.usb_output_mode, flash_settings.active_profile_index);
+               settings->usb_output_mode, settings->active_profile_index);
         // Validate loaded mode
-        if (flash_settings.usb_output_mode < USB_OUTPUT_MODE_COUNT) {
+        if (settings->usb_output_mode < USB_OUTPUT_MODE_COUNT) {
             // Only accept supported modes
-            if (flash_settings.usb_output_mode == USB_OUTPUT_MODE_SINPUT ||
-                flash_settings.usb_output_mode == USB_OUTPUT_MODE_XBOX_ORIGINAL ||
-                flash_settings.usb_output_mode == USB_OUTPUT_MODE_XINPUT ||
-                flash_settings.usb_output_mode == USB_OUTPUT_MODE_PS3 ||
-                flash_settings.usb_output_mode == USB_OUTPUT_MODE_PS4 ||
-                flash_settings.usb_output_mode == USB_OUTPUT_MODE_SWITCH ||
-                flash_settings.usb_output_mode == USB_OUTPUT_MODE_PSCLASSIC ||
-                flash_settings.usb_output_mode == USB_OUTPUT_MODE_XBONE ||
-                flash_settings.usb_output_mode == USB_OUTPUT_MODE_XAC ||
-                flash_settings.usb_output_mode == USB_OUTPUT_MODE_KEYBOARD_MOUSE ||
-                flash_settings.usb_output_mode == USB_OUTPUT_MODE_GC_ADAPTER ||
-                flash_settings.usb_output_mode == USB_OUTPUT_MODE_PCEMINI) {
-                output_mode = (usb_output_mode_t)flash_settings.usb_output_mode;
+            if (settings->usb_output_mode == USB_OUTPUT_MODE_SINPUT ||
+                settings->usb_output_mode == USB_OUTPUT_MODE_XBOX_ORIGINAL ||
+                settings->usb_output_mode == USB_OUTPUT_MODE_XINPUT ||
+                settings->usb_output_mode == USB_OUTPUT_MODE_PS3 ||
+                settings->usb_output_mode == USB_OUTPUT_MODE_PS4 ||
+                settings->usb_output_mode == USB_OUTPUT_MODE_SWITCH ||
+                settings->usb_output_mode == USB_OUTPUT_MODE_PSCLASSIC ||
+                settings->usb_output_mode == USB_OUTPUT_MODE_XBONE ||
+                settings->usb_output_mode == USB_OUTPUT_MODE_XAC ||
+                settings->usb_output_mode == USB_OUTPUT_MODE_KEYBOARD_MOUSE ||
+                settings->usb_output_mode == USB_OUTPUT_MODE_GC_ADAPTER ||
+                settings->usb_output_mode == USB_OUTPUT_MODE_PCEMINI) {
+                output_mode = (usb_output_mode_t)settings->usb_output_mode;
                 printf("[usbd] Loaded mode from flash: %s\n", mode_names[output_mode]);
-            } else if (flash_settings.usb_output_mode == USB_OUTPUT_MODE_HID) {
+            } else if (settings->usb_output_mode == USB_OUTPUT_MODE_HID) {
                 // Migrate DInput to SInput (DInput is deprecated)
                 output_mode = USB_OUTPUT_MODE_SINPUT;
                 printf("[usbd] Migrating DInput to SInput\n");
             } else {
                 printf("[usbd] Unsupported mode %d in flash, using default\n",
-                       flash_settings.usb_output_mode);
+                       settings->usb_output_mode);
             }
         }
     } else {
-        printf("[usbd] No valid flash settings (magic mismatch), using defaults\n");
-        memset(&flash_settings, 0, sizeof(flash_settings));
+        printf("[usbd] No valid flash settings, using defaults\n");
     }
 
     printf("[usbd] Mode: %s\n", mode_names[output_mode]);
