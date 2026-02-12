@@ -317,6 +317,10 @@ Joypad Core can also output as a USB HID gamepad, allowing you to:
 5. **Soldering Iron** and solder
 6. **Optional**: Level shifters, resistors, capacitors
 
+### USB Host Port Wiring
+
+Most boards need a USB-A connector wired to specific GPIO pins for controller input. See the **[USB Host Wiring Guide](USB_HOST_WIRING.md)** for pin assignments and diagrams for every supported board.
+
 ### Console-Specific Pinouts
 
 See individual console documentation for pinouts:
