@@ -4,7 +4,6 @@
 // input events to the router.
 
 #include "gc_host.h"
-#include "native/host/host_interface.h"
 #include "GamecubeController.h"
 #include "gamecube_definitions.h"
 #include "joybus.h"
@@ -269,42 +268,6 @@ void gc_host_set_rumble(uint8_t port, bool enabled)
     // GC rumble is controlled via the poll command, just update state
     rumble_state[port] = enabled;
 }
-
-// ============================================================================
-// HOST INTERFACE
-// ============================================================================
-
-static uint8_t gc_host_get_port_count(void)
-{
-    return GC_MAX_PORTS;
-}
-
-static void gc_host_init_pins_generic(const uint8_t* pins, uint8_t pin_count)
-{
-    if (pin_count >= 1) {
-        gc_host_init_pin(pins[0]);
-    } else {
-        gc_host_init();
-    }
-}
-
-static int8_t gc_host_get_device_type_int8(uint8_t port)
-{
-    int16_t type = gc_host_get_device_type(port);
-    if (type < 0) return -1;
-    // Return simplified type: 0 = controller, 1 = keyboard
-    return (type == GamecubeDevice_KEYBOARD) ? 1 : 0;
-}
-
-const HostInterface gc_host_interface = {
-    .name = "GC",
-    .init = gc_host_init,
-    .init_pins = gc_host_init_pins_generic,
-    .task = gc_host_task,
-    .is_connected = gc_host_is_connected,
-    .get_device_type = gc_host_get_device_type_int8,
-    .get_port_count = gc_host_get_port_count,
-};
 
 // ============================================================================
 // INPUT INTERFACE
