@@ -30,7 +30,7 @@ make init
 make usb2pce       # or: usb2gc, usb2nuon, usb23do, usb2usb, etc.
 ```
 
-Output: `releases/usbr_<commit>_<board>_<app>.uf2`
+Output: `releases/joypad_<commit>_<app>_<board>.uf2`
 
 ---
 

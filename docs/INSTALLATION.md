@@ -4,21 +4,33 @@ How to update firmware on your Joypad adapter.
 
 ## Pre-Built Hardware
 
-Purchase ready-to-use adapters at [controlleradapter.com](https://controlleradapter.com):
-- [USB-2-PCE](https://controlleradapter.com/products/usb-2-pce) - PCEngine/TurboGrafx-16
-- [GC USB](https://controlleradapter.com/products/gc-usb) - GameCube/Wii
-- [NUON USB](https://controlleradapter.com/products/nuon-usb) - Nuon DVD Players
-- [USB-2-3DO](https://controlleradapter.com/products/usb-2-3do) - 3DO Interactive Multiplayer
+### Joypad Dev Kits (Recommended)
+
+The easiest way to get started without DIY. Upcoming dev kits:
+- **USB2USB** — USB controller passthrough adapter
+- **BT2USB** — Bluetooth-to-USB controller adapter
+
+Visit [joypad.ai/products](https://joypad.ai/products) for current availability.
+
+### Legacy Controller Adapter Hardware
+
+The following Controller Adapter products are fully compatible with joypad-os firmware:
+- USB-2-PCE — PCEngine/TurboGrafx-16
+- GC USB — GameCube/Wii
+- NUON USB — Nuon DVD Players
+- USB-2-3DO — 3DO Interactive Multiplayer
+
+These legacy devices can be flashed with the latest joypad-os firmware using the instructions below.
 
 ## Downloading Firmware
 
 1. Go to [GitHub Releases](https://github.com/joypad-ai/joypad-os/releases)
 2. Download the latest `.uf2` file for your product:
-   - `usbr_<version>_kb2040_usb2pce.uf2` - PCEngine adapter
-   - `usbr_<version>_kb2040_usb2gc.uf2` - GameCube adapter
-   - `usbr_<version>_kb2040_usb2nuon.uf2` - Nuon adapter
-   - `usbr_<version>_rp2040zero_usb23do.uf2` - 3DO adapter
-   - `usbr_<version>_kb2040_usb2loopy.uf2` - Casio Loopy adapter (experimental)
+   - `joypad_<commit>_usb2pce_kb2040.uf2` - PCEngine adapter
+   - `joypad_<commit>_usb2gc_kb2040.uf2` - GameCube adapter
+   - `joypad_<commit>_usb2nuon_kb2040.uf2` - Nuon adapter
+   - `joypad_<commit>_usb23do_rp2040zero.uf2` - 3DO adapter
+   - `joypad_<commit>_usb2loopy_kb2040.uf2` - Casio Loopy adapter (experimental)
 
 ## Flashing Instructions
 
@@ -178,4 +190,4 @@ To reset adapter to default settings:
 
 - **Discord**: [community.joypad.ai](http://community.joypad.ai/) - Community support
 - **Issues**: [GitHub Issues](https://github.com/joypad-ai/joypad-os/issues) - Bug reports
-- **Email**: support@controlleradapter.com - Product support
+- **Email**: support@joypad.ai - Product support
