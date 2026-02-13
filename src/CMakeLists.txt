@@ -285,6 +285,7 @@ set(BTSTACK_INCLUDES
 # Additional BTstack sources (beyond BT_HOST_SOURCES and BTSTACK_SOURCES)
 set(BTSTACK_EXTRA_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/bt/btstack/btstack_host.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/bt/btstack/bt_device_db.c
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/btd/btstack_hal.c
 )
 
@@ -783,6 +784,7 @@ if (PICO_BOARD STREQUAL "pico_w" OR PICO_BOARD STREQUAL "pico2_w")
         ${USB_DEVICE_SOURCES}
         ${BTHID_DEVICE_SOURCES}
         ${CMAKE_CURRENT_SOURCE_DIR}/bt/btstack/btstack_host.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/bt/btstack/bt_device_db.c
         ${CMAKE_CURRENT_SOURCE_DIR}/bt/transport/bt_transport.c
         ${CMAKE_CURRENT_SOURCE_DIR}/bt/transport/bt_transport_cyw43.c
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/bt2usb/app.c

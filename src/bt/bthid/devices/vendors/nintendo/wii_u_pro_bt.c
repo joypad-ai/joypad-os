@@ -236,9 +236,10 @@ static void wii_u_set_report_mode(bthid_device_t* device)
 // ============================================================================
 
 static bool wii_u_match(const char* device_name, const uint8_t* class_of_device,
-                        uint16_t vendor_id, uint16_t product_id)
+                        uint16_t vendor_id, uint16_t product_id, bool is_ble)
 {
     (void)class_of_device;
+    (void)is_ble;
 
     // Match by VID/PID
     // Nintendo VID = 0x057E, Wii U Pro PID = 0x0330

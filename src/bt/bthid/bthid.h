@@ -70,6 +70,8 @@ typedef struct {
     uint16_t vendor_id;                 // USB VID (from SDP/manufacturer data)
     uint16_t product_id;                // USB PID (from SDP/manufacturer data)
 
+    bool is_ble;                        // True if BLE (not Classic BT)
+
     // Device driver info
     const void* driver;                 // Pointer to device driver interface
     void* driver_data;                  // Driver-specific data
@@ -82,10 +84,10 @@ typedef struct {
 typedef struct {
     const char* name;
 
-    // Check if this driver handles a device (by VID/PID, name, or COD)
+    // Check if this driver handles a device (by VID/PID, name, COD, or transport)
     // Priority: VID/PID match > name match > COD match
     bool (*match)(const char* device_name, const uint8_t* class_of_device,
-                  uint16_t vendor_id, uint16_t product_id);
+                  uint16_t vendor_id, uint16_t product_id, bool is_ble);
 
     // Initialize driver for a device
     bool (*init)(bthid_device_t* device);

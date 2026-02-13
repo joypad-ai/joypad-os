@@ -107,8 +107,9 @@ static ds3_bt_data_t ds3_data[BTHID_MAX_DEVICES] = {0};
 // ============================================================================
 
 static bool ds3_match(const char* device_name, const uint8_t* class_of_device,
-                      uint16_t vendor_id, uint16_t product_id)
+                      uint16_t vendor_id, uint16_t product_id, bool is_ble)
 {
+    (void)is_ble;
     // VID/PID match (highest priority) - Sony vendor ID = 0x054C
     // DS3/Sixaxis = 0x0268
     if (vendor_id == 0x054C && product_id == 0x0268) {

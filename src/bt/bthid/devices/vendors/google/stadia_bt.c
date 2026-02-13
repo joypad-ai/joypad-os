@@ -63,9 +63,10 @@ static stadia_bt_data_t stadia_data[BTHID_MAX_DEVICES];
 // ============================================================================
 
 static bool stadia_match(const char* device_name, const uint8_t* class_of_device,
-                         uint16_t vendor_id, uint16_t product_id)
+                         uint16_t vendor_id, uint16_t product_id, bool is_ble)
 {
     (void)class_of_device;
+    (void)is_ble;
 
     // Match by VID/PID
     if (vendor_id == GOOGLE_VID && product_id == STADIA_PID) {

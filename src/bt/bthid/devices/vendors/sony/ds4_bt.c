@@ -160,9 +160,10 @@ static void ds4_enable_sixaxis(bthid_device_t* device)
 // ============================================================================
 
 static bool ds4_match(const char* device_name, const uint8_t* class_of_device,
-                      uint16_t vendor_id, uint16_t product_id)
+                      uint16_t vendor_id, uint16_t product_id, bool is_ble)
 {
     (void)class_of_device;
+    (void)is_ble;
 
     // VID/PID match (highest priority) - Sony vendor ID = 0x054C
     // DS4 v1 = 0x05C4, DS4 v2 (Slim) = 0x09CC

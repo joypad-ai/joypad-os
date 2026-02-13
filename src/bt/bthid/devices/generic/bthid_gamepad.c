@@ -28,11 +28,12 @@ static bthid_gamepad_data_t gamepad_data[BTHID_MAX_DEVICES];
 // ============================================================================
 
 static bool gamepad_match(const char* device_name, const uint8_t* class_of_device,
-                          uint16_t vendor_id, uint16_t product_id)
+                          uint16_t vendor_id, uint16_t product_id, bool is_ble)
 {
     (void)device_name;
     (void)vendor_id;   // Generic driver doesn't use VID/PID
     (void)product_id;
+    (void)is_ble;
 
     if (!class_of_device) {
         return false;

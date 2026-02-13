@@ -300,9 +300,10 @@ static uint32_t wiimote_rotate_controls(uint32_t buttons, wiimote_orient_t orien
 // ============================================================================
 
 static bool wiimote_match(const char* device_name, const uint8_t* class_of_device,
-                          uint16_t vendor_id, uint16_t product_id)
+                          uint16_t vendor_id, uint16_t product_id, bool is_ble)
 {
     (void)class_of_device;
+    (void)is_ble;
 
     // Match by VID/PID (Nintendo VID = 0x057E, Wiimote PID = 0x0306)
     if (vendor_id == 0x057E && product_id == 0x0306) {

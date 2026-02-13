@@ -7,6 +7,7 @@
 
 #include "btstack_host.h"
 #include "btstack_config.h"
+#include "bt_device_db.h"
 // Include specific BTstack headers instead of umbrella btstack.h
 // (btstack.h pulls in audio codecs which need sbc_encoder.h)
 #include "btstack_defines.h"
@@ -144,8 +145,7 @@ typedef struct {
 
     // Device info
     char name[32];
-    bool is_xbox;
-    bool is_switch2;
+    const bt_device_profile_t* profile;
     uint16_t vid;
     uint16_t pid;
 
@@ -180,7 +180,7 @@ static struct {
     bd_addr_t pending_addr;
     bd_addr_type_t pending_addr_type;
     char pending_name[32];
-    bool pending_is_switch2;
+    const bt_device_profile_t* pending_profile;
     uint16_t pending_vid;
     uint16_t pending_pid;
 
@@ -243,6 +243,7 @@ typedef struct {
     uint16_t vendor_id;
     uint16_t product_id;
     bool hid_ready;
+    const bt_device_profile_t* profile;
 } classic_connection_t;
 
 static struct {
@@ -257,10 +258,13 @@ static struct {
     uint16_t pending_pid;
     bool pending_valid;
     bool pending_outgoing;  // True if we initiated the connection (hid_host_connect)
+    const bt_device_profile_t* pending_profile;
     // Pending HID connect (deferred until encryption completes)
     bd_addr_t pending_hid_addr;
     hci_con_handle_t pending_hid_handle;
     bool pending_hid_connect;
+    // Set after outgoing HID fails — wait for device to reconnect incoming
+    uint32_t waiting_for_incoming_time;  // 0 = not waiting
 } classic_state;
 
 // ============================================================================
@@ -602,6 +606,17 @@ void btstack_host_power_on(void)
 
 static uint32_t scan_timeout_end = 0;  // 0 = no timeout (indefinite scan)
 
+// Pending BLE gamepad: when we see a gamepad appearance but no name in the ADV packet,
+// stash the address and wait for the scan response (which typically contains the name).
+// This prevents connecting to Xbox controllers as "Generic BLE Gamepad".
+static struct {
+    bool valid;
+    bd_addr_t addr;
+    bd_addr_type_t addr_type;
+    uint16_t appearance;
+    uint32_t timestamp;  // For expiry
+} pending_ble_gamepad;
+
 void btstack_host_start_scan(void)
 {
     if (!hid_state.powered_on) {
@@ -659,6 +674,8 @@ void btstack_host_start_timed_scan(uint32_t timeout_ms)
 // CONNECTION
 // ============================================================================
 
+#define BLE_CONNECT_TIMEOUT_MS 10000  // 10s timeout for BLE connection attempts
+
 void btstack_host_connect_ble(bd_addr_t addr, bd_addr_type_t addr_type)
 {
     printf("[BTSTACK_HOST] Connecting to %02X:%02X:%02X:%02X:%02X:%02X\n",
@@ -671,6 +688,7 @@ void btstack_host_connect_ble(bd_addr_t addr, bd_addr_type_t addr_type)
     memcpy(hid_state.pending_addr, addr, 6);
     hid_state.pending_addr_type = addr_type;
     hid_state.state = BLE_STATE_CONNECTING;
+    hid_state.reconnect_attempt_time = btstack_run_loop_get_time_ms();
 
     // Create connection
     uint8_t status = gap_connect(addr, addr_type);
@@ -735,6 +753,45 @@ void btstack_host_process(void)
             scan_timeout_end = 0;
             btstack_host_stop_scan();
         }
+    }
+
+    // BLE connection attempt timeout — gap_connect() has no built-in timeout,
+    // so if the target device is powered off, we'd be stuck in CONNECTING forever.
+    // Cancel after BLE_CONNECT_TIMEOUT_MS. Set state to IDLE immediately to prevent
+    // this check from re-triggering on the next tick. The LE_CONNECTION_COMPLETE
+    // error event from the cancel will handle retry/resume logic.
+    if (hid_state.state == BLE_STATE_CONNECTING &&
+        hid_state.reconnect_attempt_time != 0 &&
+        (btstack_run_loop_get_time_ms() - hid_state.reconnect_attempt_time) >= BLE_CONNECT_TIMEOUT_MS) {
+        printf("[BTSTACK_HOST] BLE connection attempt timed out after %dms\n", BLE_CONNECT_TIMEOUT_MS);
+        gap_connect_cancel();
+        hid_state.state = BLE_STATE_IDLE;
+        hid_state.reconnect_attempt_time = 0;
+    }
+
+    // Timeout for "waiting for incoming reconnection" after outgoing Classic HID failure.
+    // If the device doesn't reconnect within 30s, give up and resume scanning.
+    if (classic_state.waiting_for_incoming_time != 0 &&
+        (btstack_run_loop_get_time_ms() - classic_state.waiting_for_incoming_time) >= 30000) {
+        printf("[BTSTACK_HOST] Incoming reconnection timeout, resuming scan\n");
+        classic_state.waiting_for_incoming_time = 0;
+    }
+
+    // Safety net: if idle with no active connections and not scanning, resume scan.
+    // This catches edge cases where the state machine gets stuck (e.g., gap_connect_cancel
+    // doesn't generate an error event, or a disconnect handler didn't restart scanning).
+    // Skip if:
+    //   - waiting for incoming Classic reconnection (outgoing HID failed)
+    //   - Classic connection setup in progress (name request, HID connect pending)
+    if (hid_state.state == BLE_STATE_IDLE &&
+        hid_state.reconnect_attempt_time == 0 &&
+        !hid_state.scan_active &&
+        classic_state.waiting_for_incoming_time == 0 &&
+        !classic_state.pending_valid &&
+        btstack_classic_get_connection_count() == 0) {
+        printf("[BTSTACK_HOST] Safety: idle with no connections, resuming scan\n");
+        hid_state.reconnect_attempts = 0;
+        btstack_host_start_scan();
     }
 }
 
@@ -914,10 +971,11 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
             int8_t rssi = gap_event_advertising_report_get_rssi(packet);
             uint8_t adv_len = gap_event_advertising_report_get_data_length(packet);
             const uint8_t *adv_data = gap_event_advertising_report_get_data(packet);
+            uint8_t adv_event_type = gap_event_advertising_report_get_advertising_event_type(packet);
 
             // Parse name, appearance, and manufacturer data from advertising data
             char name[32] = {0};
-            bool is_switch2 = false;
+            uint16_t mfr_company_id = 0;
             uint16_t sw2_vid = 0;
             uint16_t sw2_pid = 0;
             uint16_t appearance = 0;
@@ -957,9 +1015,8 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                 // BlueRetro uses data[1] for company ID, data[6] for VID - their data includes length byte
                 // BTstack iterator strips length+type, so we use data[0] for company ID, data[5] for VID
                 if (type == BLUETOOTH_DATA_TYPE_MANUFACTURER_SPECIFIC_DATA && len >= 2) {
-                    uint16_t company_id = data[0] | (data[1] << 8);
-                    if (company_id == 0x0553) {
-                        is_switch2 = true;
+                    mfr_company_id = data[0] | (data[1] << 8);
+                    if (mfr_company_id == 0x0553) {
                         // Debug: print raw manufacturer data
                         printf("[SW2_BLE] Mfr data (%d bytes):", len);
                         for (int i = 0; i < len && i < 12; i++) {
@@ -984,30 +1041,54 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                        addr[5], addr[4], addr[3], addr[2], addr[1], addr[0], name);
             }
 
-            // Check for controllers by name or manufacturer data
-            bool is_xbox = (strstr(name, "Xbox") != NULL);
-            bool is_nintendo = (strstr(name, "Pro Controller") != NULL ||
-                               strstr(name, "Joy-Con") != NULL);
-            bool is_stadia = (strstr(name, "Stadia") != NULL);
-            bool is_known_controller = is_xbox || is_nintendo || is_stadia || is_switch2;
+            // Merge with pending gamepad data: if we previously saw a gamepad appearance
+            // for this address but no name (ADV packet), and now we have the name
+            // (SCAN_RSP), use the merged data to identify the device properly.
+            if (pending_ble_gamepad.valid &&
+                memcmp(addr, pending_ble_gamepad.addr, 6) == 0) {
+                // Carry appearance from the ADV packet if not in this packet
+                if (appearance == 0) {
+                    appearance = pending_ble_gamepad.appearance;
+                }
+                if (name[0]) {
+                    // Got a name for the pending gamepad — clear pending and proceed
+                    pending_ble_gamepad.valid = false;
+                }
+            }
+
+            // Identify device by name and/or manufacturer company ID
+            const bt_device_profile_t* profile = bt_device_lookup(name, mfr_company_id);
+            bool is_known_controller = (profile != &BT_PROFILE_DEFAULT);
 
             // Generic BLE gamepad detection (fallback for unknown controllers)
             // Only triggers when no specific driver matched by name/manufacturer.
             // Uses GAP Appearance: 0x03C3 = Joystick, 0x03C4 = Gamepad
-            // Also accepts HID service UUID (0x1812) with gamepad/joystick appearance.
             // Does NOT match on HID UUID alone to avoid connecting to keyboards/mice.
             // Excludes controllers that use classic BT (DS4, DS3, DS5) — they advertise
             // BLE but must connect via classic for proper driver support.
-            bool is_classic_bt_controller = false;
-            if (name[0]) {
-                is_classic_bt_controller = (strstr(name, "Wireless Controller") != NULL ||  // DS4
-                                            strstr(name, "DualSense") != NULL ||            // DS5
-                                            strstr(name, "DUALSHOCK") != NULL ||            // DS3/DS4
-                                            strstr(name, "PLAYSTATION") != NULL);           // DS3
-            }
             bool is_generic_ble_gamepad = false;
-            if (!is_known_controller && !is_classic_bt_controller &&
+            if (!is_known_controller && !profile->classic_only &&
                 (appearance == 0x03C3 || appearance == 0x03C4)) {
+                // If no name yet and this isn't already a scan response, defer connection
+                // to wait for the scan response which typically contains the device name.
+                // This prevents connecting to Xbox controllers as "Generic BLE Gamepad".
+                // Only defer once per address — if we already deferred and the scan response
+                // didn't bring a name (or never arrived), connect as generic on the next ADV.
+                if (!name[0] && adv_event_type != 0x04) {
+                    if (!pending_ble_gamepad.valid ||
+                        memcmp(addr, pending_ble_gamepad.addr, 6) != 0) {
+                        pending_ble_gamepad.valid = true;
+                        memcpy(pending_ble_gamepad.addr, addr, 6);
+                        pending_ble_gamepad.addr_type = addr_type;
+                        pending_ble_gamepad.appearance = appearance;
+                        pending_ble_gamepad.timestamp = btstack_run_loop_get_time_ms();
+                        printf("[BTSTACK_HOST] Gamepad appearance 0x%04X with no name, waiting for scan response...\n",
+                               appearance);
+                        break;
+                    }
+                    // Second ADV with no name for same address — proceed as generic
+                    pending_ble_gamepad.valid = false;
+                }
                 is_generic_ble_gamepad = true;
                 printf("[BTSTACK_HOST] Generic BLE gamepad detected: \"%s\" appearance=0x%04X hid_uuid=%d\n",
                        name, appearance, has_hid_uuid);
@@ -1015,41 +1096,38 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
 
             bool is_controller = is_known_controller || is_generic_ble_gamepad;
 
-            // Auto-connect to supported BLE controllers
-            if (hid_state.state == BLE_STATE_SCANNING && is_controller) {
-                if (is_xbox || is_stadia || is_switch2 || is_generic_ble_gamepad) {
-                    printf("[BTSTACK_HOST] BLE controller: %02X:%02X:%02X:%02X:%02X:%02X name=\"%s\"\n",
-                           addr[5], addr[4], addr[3], addr[2], addr[1], addr[0], name);
-                    // Determine device name from type and PID
-                    const char* type_str;
-                    if (is_switch2) {
-                        switch (sw2_pid) {
-                            case 0x2066: type_str = "Switch 2 Joy-Con L"; break;
-                            case 0x2067: type_str = "Switch 2 Joy-Con R"; break;
-                            case 0x2069: type_str = "Switch 2 Pro"; break;
-                            case 0x2073: type_str = "Switch 2 GameCube"; break;
-                            default:     type_str = "Switch 2 Controller"; break;
-                        }
-                    } else if (is_xbox) {
-                        type_str = "Xbox BLE";
-                    } else if (is_stadia) {
-                        type_str = "Stadia";
-                    } else {
-                        type_str = "Generic BLE Gamepad";
+            // Auto-connect to supported BLE controllers (skip classic-only devices)
+            if (hid_state.state == BLE_STATE_SCANNING && is_controller &&
+                (profile->ble != BT_BLE_NONE || is_generic_ble_gamepad)) {
+                printf("[BTSTACK_HOST] BLE controller: %02X:%02X:%02X:%02X:%02X:%02X name=\"%s\"\n",
+                       addr[5], addr[4], addr[3], addr[2], addr[1], addr[0], name);
+                // Determine display name from profile and PID
+                const char* type_str;
+                if (profile == &BT_PROFILE_SWITCH2) {
+                    switch (sw2_pid) {
+                        case 0x2066: type_str = "Switch 2 Joy-Con L"; break;
+                        case 0x2067: type_str = "Switch 2 Joy-Con R"; break;
+                        case 0x2069: type_str = "Switch 2 Pro"; break;
+                        case 0x2073: type_str = "Switch 2 GameCube"; break;
+                        default:     type_str = "Switch 2 Controller"; break;
                     }
-                    printf("[BTSTACK_HOST] Connecting to %s...\n", type_str);
-                    // Use advertised name if available, otherwise use device type as fallback
-                    if (name[0]) {
-                        strncpy(hid_state.pending_name, name, sizeof(hid_state.pending_name) - 1);
-                    } else {
-                        strncpy(hid_state.pending_name, type_str, sizeof(hid_state.pending_name) - 1);
-                    }
-                    hid_state.pending_name[sizeof(hid_state.pending_name) - 1] = '\0';
-                    hid_state.pending_is_switch2 = is_switch2;
-                    hid_state.pending_vid = sw2_vid;
-                    hid_state.pending_pid = sw2_pid;
-                    btstack_host_connect_ble(addr, addr_type);
+                } else if (!is_generic_ble_gamepad) {
+                    type_str = profile->name;
+                } else {
+                    type_str = "Generic BLE Gamepad";
                 }
+                printf("[BTSTACK_HOST] Connecting to %s...\n", type_str);
+                // Use advertised name if available, otherwise use device type as fallback
+                if (name[0]) {
+                    strncpy(hid_state.pending_name, name, sizeof(hid_state.pending_name) - 1);
+                } else {
+                    strncpy(hid_state.pending_name, type_str, sizeof(hid_state.pending_name) - 1);
+                }
+                hid_state.pending_name[sizeof(hid_state.pending_name) - 1] = '\0';
+                hid_state.pending_profile = profile;
+                hid_state.pending_vid = sw2_vid;
+                hid_state.pending_pid = sw2_pid;
+                btstack_host_connect_ble(addr, addr_type);
             }
             break;
         }
@@ -1075,28 +1153,30 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
             uint8_t minor_class = (cod >> 2) & 0x3F;
             bool is_gamepad = (major_class == 0x05) && ((minor_class & 0x0F) == 0x02);  // Gamepad
             bool is_joystick = (major_class == 0x05) && ((minor_class & 0x0F) == 0x01); // Joystick
-            // Wiimote/Wii U Pro: detect by name only to avoid false-matching
-            // DualSense, DS4, DS3 and other gamepads that share Peripheral COD bits
-            bool is_wiimote = (name[0] && strstr(name, "Nintendo RVL") != NULL);
+
+            // Identify device by name
+            const bt_device_profile_t* profile = bt_device_lookup_by_name(name);
+            bool is_wiimote_family = (profile->classic == BT_CLASSIC_DIRECT_L2CAP);
 
             // Log all inquiry results for debugging (gamepads highlighted)
             const char* type_str = "";
-            if (is_wiimote) type_str = " [WIIMOTE]";
+            if (is_wiimote_family) type_str = " [WIIMOTE]";
             else if (is_gamepad || is_joystick) type_str = " [GAMEPAD]";
             printf("[BTSTACK_HOST] Inquiry: %02X:%02X:%02X:%02X:%02X:%02X COD=0x%06X%s %s\n",
                    addr[5], addr[4], addr[3], addr[2], addr[1], addr[0],
                    (unsigned)cod, type_str, name);
 
             // Auto-connect to gamepads and Wiimotes
-            if ((is_gamepad || is_joystick || is_wiimote) && classic_state.inquiry_active) {
+            if ((is_gamepad || is_joystick || is_wiimote_family) && classic_state.inquiry_active) {
                 printf("[BTSTACK_HOST] Classic gamepad found, connecting...\n");
                 btstack_host_stop_scan();  // Stop inquiry
 
-                // Save pending info for PIN code handler (Wiimotes need this)
+                // Save pending info for PIN code handler and deferred connection
                 memcpy(classic_state.pending_addr, addr, 6);
                 classic_state.pending_cod = cod;
                 strncpy(classic_state.pending_name, name, sizeof(classic_state.pending_name) - 1);
                 classic_state.pending_name[sizeof(classic_state.pending_name) - 1] = '\0';
+                classic_state.pending_profile = profile;
                 classic_state.pending_valid = true;
                 classic_state.pending_outgoing = true;  // We initiated this connection
 
@@ -1112,10 +1192,10 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                     break;
                 }
 
-                if (is_wiimote) {
-                    // Wiimotes don't work well with BTstack's hid_host layer
+                if (profile->classic == BT_CLASSIC_DIRECT_L2CAP) {
+                    // Wiimotes/Wii U Pro don't work well with BTstack's hid_host layer
                     // Use direct L2CAP channel creation instead (like USB Host Shield)
-                    printf("[BTSTACK_HOST] Wiimote detected, using direct L2CAP approach\n");
+                    printf("[BTSTACK_HOST] %s detected, using direct L2CAP approach\n", profile->name);
                     classic_state.pending_hid_connect = true;
 
                     // Initialize wiimote connection state
@@ -1140,13 +1220,14 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                         conn->class_of_device[0] = cod & 0xFF;
                         conn->class_of_device[1] = (cod >> 8) & 0xFF;
                         conn->class_of_device[2] = (cod >> 16) & 0xFF;
+                        conn->profile = profile;
                         wiimote_conn.conn_index = conn_index;
-                        printf("[BTSTACK_HOST] Wiimote conn_index=%d\n", conn_index);
+                        printf("[BTSTACK_HOST] %s conn_index=%d\n", profile->name, conn_index);
                     }
 
                     // Create ACL connection directly (gap_connect will trigger HCI connection)
                     // We'll create L2CAP channels after encryption completes
-                    printf("[BTSTACK_HOST] Creating ACL connection to Wiimote...\n");
+                    printf("[BTSTACK_HOST] Creating ACL connection to %s...\n", profile->name);
                     uint8_t status = gap_connect(addr, BD_ADDR_TYPE_ACL);
                     if (status != ERROR_CODE_SUCCESS && status != ERROR_CODE_COMMAND_DISALLOWED) {
                         printf("[BTSTACK_HOST] gap_connect failed: 0x%02X\n", status);
@@ -1155,12 +1236,10 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                     }
                 } else {
                     // Non-Wiimote: use normal hid_host_connect
-                    // Xbox controllers have broken SDP records — use FALLBACK to bypass
-                    // SDP and connect via standard HID L2CAP PSMs directly
-                    hid_protocol_mode_t mode = HID_PROTOCOL_MODE_REPORT;
-                    if (strstr(name, "Xbox") != NULL) {
-                        mode = HID_PROTOCOL_MODE_REPORT_WITH_FALLBACK_TO_BOOT;
-                    }
+                    // Use profile's hid_mode to determine SDP bypass
+                    hid_protocol_mode_t mode = (profile->hid_mode == BT_HID_MODE_FALLBACK)
+                        ? HID_PROTOCOL_MODE_REPORT_WITH_FALLBACK_TO_BOOT
+                        : HID_PROTOCOL_MODE_REPORT;
                     uint16_t hid_cid;
                     uint8_t status = hid_host_connect(addr, mode, &hid_cid);
                     if (status == ERROR_CODE_SUCCESS) {
@@ -1177,6 +1256,7 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                             conn->class_of_device[0] = cod & 0xFF;
                             conn->class_of_device[1] = (cod >> 8) & 0xFF;
                             conn->class_of_device[2] = (cod >> 16) & 0xFF;
+                            conn->profile = profile;
                         }
                     } else {
                         printf("[BTSTACK_HOST] hid_host_connect failed: %d\n", status);
@@ -1222,6 +1302,7 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
             classic_state.pending_pid = 0;
             classic_state.pending_valid = true;
             classic_state.pending_outgoing = false;  // Device initiated this connection
+            classic_state.waiting_for_incoming_time = 0;  // Device reconnected
             // BTstack will auto-accept with the current master_slave_policy
             break;
         }
@@ -1244,10 +1325,10 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                         // Outgoing connection (we initiated)
                         printf("[BTSTACK_HOST] Outgoing ACL complete, COD=0x%06X\n", cod);
 
-                        // For Wiimotes, store ACL handle and request authentication
+                        // For Wiimotes, store ACL handle and do L2CAP-specific setup
                         if (classic_state.pending_hid_connect && wiimote_conn.active) {
                             wiimote_conn.acl_handle = handle;
-                            printf("[BTSTACK_HOST] Wiimote: stored ACL handle=0x%04X, requesting authentication...\n", handle);
+                            printf("[BTSTACK_HOST] Wiimote: stored ACL handle=0x%04X\n", handle);
 
                             // Request remote name if we don't have it from inquiry
                             if (wiimote_conn.name[0] == '\0') {
@@ -1257,23 +1338,32 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                             // Query VID/PID via SDP
                             sdp_client_query_uuid16(&sdp_query_vid_pid_callback, addr,
                                                     BLUETOOTH_SERVICE_CLASS_PNP_INFORMATION);
-
-                            gap_request_security_level(handle, LEVEL_2);
                         }
+
+                        // Request authentication for all outgoing connections.
+                        // Switch Pro and other SSP devices need this before HID L2CAP
+                        // channels can be established. Also triggers PIN exchange for
+                        // legacy devices (Wiimote/Wii U Pro).
+                        gap_request_security_level(handle, LEVEL_2);
                     } else {
                         // Incoming connection (device connected to us)
                         printf("[BTSTACK_HOST] Incoming ACL complete, COD=0x%06X\n", cod);
 
-                        // Detect Wiimote by name (if available from prior inquiry).
+                        // Detect direct L2CAP device by pending profile (if available from prior inquiry).
                         // For incoming reconnections, pending_name is typically empty at
-                        // this point — Wiimote detection is deferred to HID_SUBEVENT_CONNECTION_OPENED
+                        // this point — detection is deferred to HID_SUBEVENT_CONNECTION_OPENED
                         // or REMOTE_NAME_REQUEST_COMPLETE when the name becomes available.
-                        bool is_wiimote = (classic_state.pending_name[0] &&
-                                           strstr(classic_state.pending_name, "Nintendo RVL") != NULL);
+                        const bt_device_profile_t* incoming_profile = classic_state.pending_profile;
+                        if (!incoming_profile && classic_state.pending_name[0]) {
+                            incoming_profile = bt_device_lookup_by_name(classic_state.pending_name);
+                        }
+                        bool is_direct_l2cap = (incoming_profile &&
+                                                incoming_profile->classic == BT_CLASSIC_DIRECT_L2CAP);
 
-                        if (is_wiimote) {
-                            // Wiimote reconnection - check role and link key
-                            printf("[BTSTACK_HOST] Wiimote detected (incoming reconnection)\n");
+                        if (is_direct_l2cap) {
+                            // Wiimote/Wii U Pro reconnection - check role and link key
+                            printf("[BTSTACK_HOST] %s detected (incoming reconnection)\n",
+                                   incoming_profile->name);
 
                             // Wiimotes require master role - check and request if needed
                             hci_role_t current_role = gap_get_role(handle);
@@ -1320,7 +1410,7 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                             }
                         }
 
-                        if (!is_wiimote) {
+                        if (!is_direct_l2cap) {
                             // Standard incoming connection flow (DS3, DS4, DS5, or unknown device).
                             // If this is actually a Wiimote reconnection where the name wasn't
                             // available yet, it will be detected later when the name resolves
@@ -1440,17 +1530,18 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                         // Copy the name from pending connection
                         strncpy(conn->name, hid_state.pending_name, sizeof(conn->name) - 1);
                         conn->name[sizeof(conn->name) - 1] = '\0';
-                        conn->is_xbox = (strstr(conn->name, "Xbox") != NULL);
-                        conn->is_switch2 = hid_state.pending_is_switch2;
+                        conn->profile = hid_state.pending_profile;
                         conn->vid = hid_state.pending_vid;
                         conn->pid = hid_state.pending_pid;
 
-                        printf("[BTSTACK_HOST] Connection stored: name='%s' switch2=%d vid=0x%04X pid=0x%04X\n",
-                               conn->name, conn->is_switch2, conn->vid, conn->pid);
+                        printf("[BTSTACK_HOST] Connection stored: name='%s' profile=%s vid=0x%04X pid=0x%04X\n",
+                               conn->name, conn->profile ? conn->profile->name : "default",
+                               conn->vid, conn->pid);
 
-                        // Switch 2 uses custom pairing via ATT commands, not standard SM
-                        if (conn->is_switch2) {
-                            printf("[BTSTACK_HOST] Switch 2: Skipping SM pairing, using direct ATT setup\n");
+                        // Route based on BLE strategy
+                        if (conn->profile && conn->profile->ble == BT_BLE_CUSTOM) {
+                            printf("[BTSTACK_HOST] %s: Skipping SM pairing, using direct ATT setup\n",
+                                   conn->profile->name);
                             register_switch2_hid_listener(handle);
                         } else {
                             // Request pairing (SM will handle Secure Connections)
@@ -1529,16 +1620,21 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                             conn->name[sizeof(conn->name) - 1] = '\0';
                             printf("[BTSTACK_HOST] Updated conn[%d] name: %s\n", i, conn->name);
 
+                            // Update profile from name if not already set
+                            if (!conn->profile || conn->profile == &BT_PROFILE_DEFAULT) {
+                                conn->profile = bt_device_lookup_by_name(name);
+                            }
+
                             if (conn->hid_ready) {
-                                // Wiimote-family: set VID/PID from name (they lack PnP SDP)
-                                if (strstr(name, "Nintendo RVL") != NULL) {
-                                    conn->vendor_id = 0x057E;  // Nintendo
-                                    if (strstr(name, "-UC") != NULL) {
-                                        conn->product_id = 0x0330;
-                                        printf("[BTSTACK_HOST] Late Wii U Pro detection, PID=0x0330\n");
-                                    } else {
-                                        conn->product_id = 0x0306;
-                                        printf("[BTSTACK_HOST] Late Wiimote detection, PID=0x0306\n");
+                                // Set VID/PID from profile defaults (Wiimote-family lacks PnP SDP)
+                                const bt_device_profile_t* name_profile = bt_device_lookup_by_name(name);
+                                if (name_profile->default_vid) {
+                                    conn->vendor_id = name_profile->default_vid;
+                                    uint16_t pid = bt_device_wiimote_pid_from_name(name);
+                                    if (pid) {
+                                        conn->product_id = pid;
+                                        printf("[BTSTACK_HOST] Late %s detection, PID=0x%04X\n",
+                                               name_profile->name, pid);
                                     }
                                 }
                                 // Notify BTHID of late name arrival — allows driver
@@ -1561,16 +1657,18 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                     }
                 }
 
-                // Late Wiimote detection for incoming reconnections: if the name
-                // resolves to a Nintendo device and wiimote_conn wasn't set up at
+                // Late direct-L2CAP device detection for incoming reconnections: if the name
+                // resolves to a direct-L2CAP device and wiimote_conn wasn't set up at
                 // CONNECTION_COMPLETE (because name was unknown), set it up now so
                 // HID_SUBEVENT_INCOMING_CONNECTION can route it correctly.
+                const bt_device_profile_t* late_profile = bt_device_lookup_by_name(name);
                 if (!wiimote_conn.active &&
-                    strstr(name, "Nintendo RVL") != NULL &&
+                    late_profile->classic == BT_CLASSIC_DIRECT_L2CAP &&
                     classic_state.pending_valid &&
                     !classic_state.pending_outgoing &&
                     memcmp(name_addr, classic_state.pending_addr, 6) == 0) {
-                    printf("[BTSTACK_HOST] Late Wiimote detection from name resolution (incoming reconnection)\n");
+                    printf("[BTSTACK_HOST] Late %s detection from name resolution (incoming reconnection)\n",
+                           late_profile->name);
                     memset(&wiimote_conn, 0, sizeof(wiimote_conn));
                     wiimote_conn.active = true;
                     wiimote_conn.state = WIIMOTE_STATE_IDLE;
@@ -1583,20 +1681,22 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
 
                 // Deferred outgoing connection: name was unavailable at inquiry time,
                 // so we requested it before connecting. Now that the name has resolved,
-                // connect using the appropriate path (direct L2CAP for Wiimotes, HID Host otherwise).
+                // connect using the appropriate path (direct L2CAP vs HID Host).
                 if (classic_state.pending_valid &&
                     classic_state.pending_outgoing &&
                     classic_state.pending_hid_connect &&
                     memcmp(name_addr, classic_state.pending_addr, 6) == 0) {
-                    // Update pending name
+                    // Update pending name and re-lookup profile
                     strncpy(classic_state.pending_name, name, sizeof(classic_state.pending_name) - 1);
                     classic_state.pending_name[sizeof(classic_state.pending_name) - 1] = '\0';
                     classic_state.pending_hid_connect = false;
 
-                    bool deferred_is_wiimote = (strstr(name, "Nintendo RVL") != NULL);
+                    const bt_device_profile_t* deferred_profile = bt_device_lookup_by_name(name);
+                    classic_state.pending_profile = deferred_profile;
 
-                    if (deferred_is_wiimote) {
-                        printf("[BTSTACK_HOST] Deferred connect: Wiimote detected, using direct L2CAP\n");
+                    if (deferred_profile->classic == BT_CLASSIC_DIRECT_L2CAP) {
+                        printf("[BTSTACK_HOST] Deferred connect: %s detected, using direct L2CAP\n",
+                               deferred_profile->name);
                         classic_state.pending_hid_connect = true;
 
                         memset(&wiimote_conn, 0, sizeof(wiimote_conn));
@@ -1619,6 +1719,7 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                             conn->class_of_device[0] = classic_state.pending_cod & 0xFF;
                             conn->class_of_device[1] = (classic_state.pending_cod >> 8) & 0xFF;
                             conn->class_of_device[2] = (classic_state.pending_cod >> 16) & 0xFF;
+                            conn->profile = deferred_profile;
                             wiimote_conn.conn_index = conn_index;
                         }
 
@@ -1629,12 +1730,12 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                             classic_state.pending_hid_connect = false;
                         }
                     } else {
-                        printf("[BTSTACK_HOST] Deferred connect: standard gamepad, using HID Host\n");
-                        // Xbox controllers have broken SDP records — use FALLBACK
-                        hid_protocol_mode_t mode = HID_PROTOCOL_MODE_REPORT;
-                        if (strstr(name, "Xbox") != NULL) {
-                            mode = HID_PROTOCOL_MODE_REPORT_WITH_FALLBACK_TO_BOOT;
-                        }
+                        printf("[BTSTACK_HOST] Deferred connect: %s, using HID Host\n",
+                               deferred_profile->name);
+                        // Use profile's hid_mode for SDP bypass
+                        hid_protocol_mode_t mode = (deferred_profile->hid_mode == BT_HID_MODE_FALLBACK)
+                            ? HID_PROTOCOL_MODE_REPORT_WITH_FALLBACK_TO_BOOT
+                            : HID_PROTOCOL_MODE_REPORT;
                         uint16_t hid_cid;
                         uint8_t status = hid_host_connect(name_addr, mode, &hid_cid);
                         if (status == ERROR_CODE_SUCCESS) {
@@ -1649,6 +1750,7 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                                 conn->class_of_device[0] = classic_state.pending_cod & 0xFF;
                                 conn->class_of_device[1] = (classic_state.pending_cod >> 8) & 0xFF;
                                 conn->class_of_device[2] = (classic_state.pending_cod >> 16) & 0xFF;
+                                conn->profile = deferred_profile;
                             }
                         } else {
                             printf("[BTSTACK_HOST] hid_host_connect failed: %d\n", status);
@@ -1672,27 +1774,34 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                 printf("[BTSTACK_HOST] BLE disconnect: notifying bthid (conn_index=%d)\n", conn->conn_index);
                 bt_on_disconnect(conn->conn_index);
                 memset(conn, 0, sizeof(*conn));
-            }
 
-            hid_state.state = BLE_STATE_IDLE;
+                // BLE disconnect — manage BLE state and reconnection
+                hid_state.state = BLE_STATE_IDLE;
 
-            // Try to reconnect to last connected device if we have one stored
-            if (hid_state.has_last_connected && hid_state.reconnect_attempts < 5) {
-                hid_state.reconnect_attempts++;
-                printf("[BTSTACK_HOST] Attempting reconnection to stored device (attempt %d)...\n",
-                       hid_state.reconnect_attempts);
-                printf("[BTSTACK_HOST] Connecting to %02X:%02X:%02X:%02X:%02X:%02X name='%s'\n",
-                       hid_state.last_connected_addr[5], hid_state.last_connected_addr[4],
-                       hid_state.last_connected_addr[3], hid_state.last_connected_addr[2],
-                       hid_state.last_connected_addr[1], hid_state.last_connected_addr[0],
-                       hid_state.last_connected_name);
-                // Copy stored name to pending so it's available when connection completes
-                strncpy(hid_state.pending_name, hid_state.last_connected_name, sizeof(hid_state.pending_name) - 1);
-                hid_state.pending_name[sizeof(hid_state.pending_name) - 1] = '\0';
-                btstack_host_connect_ble(hid_state.last_connected_addr, hid_state.last_connected_addr_type);
-            } else if (btstack_classic_get_connection_count() == 0) {
-                // Resume scanning only if no devices remain
-                btstack_host_start_scan();
+                // Try to reconnect to last connected device if we have one stored
+                if (hid_state.has_last_connected && hid_state.reconnect_attempts < 5) {
+                    hid_state.reconnect_attempts++;
+                    printf("[BTSTACK_HOST] Attempting BLE reconnection to stored device (attempt %d)...\n",
+                           hid_state.reconnect_attempts);
+                    printf("[BTSTACK_HOST] Connecting to %02X:%02X:%02X:%02X:%02X:%02X name='%s'\n",
+                           hid_state.last_connected_addr[5], hid_state.last_connected_addr[4],
+                           hid_state.last_connected_addr[3], hid_state.last_connected_addr[2],
+                           hid_state.last_connected_addr[1], hid_state.last_connected_addr[0],
+                           hid_state.last_connected_name);
+                    // Copy stored name to pending so it's available when connection completes
+                    strncpy(hid_state.pending_name, hid_state.last_connected_name, sizeof(hid_state.pending_name) - 1);
+                    hid_state.pending_name[sizeof(hid_state.pending_name) - 1] = '\0';
+                    btstack_host_connect_ble(hid_state.last_connected_addr, hid_state.last_connected_addr_type);
+                } else if (btstack_classic_get_connection_count() == 0) {
+                    // Resume scanning only if no devices remain
+                    btstack_host_start_scan();
+                }
+            } else {
+                // Classic BT disconnect — don't touch BLE state.
+                // Classic reconnection/scanning is handled by HID_SUBEVENT_CONNECTION_CLOSED
+                // or the outgoing HID failure handler. If we're waiting for an incoming
+                // reconnection, don't restart scanning here.
+                printf("[BTSTACK_HOST] Classic disconnect: handle=0x%04X (BLE state unchanged)\n", handle);
             }
             break;
         }
@@ -1724,22 +1833,25 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
             printf("[BTSTACK_HOST] PIN code request: %02X:%02X:%02X:%02X:%02X:%02X\n",
                    pin_addr[0], pin_addr[1], pin_addr[2], pin_addr[3], pin_addr[4], pin_addr[5]);
 
-            // Check if this is a Wiimote/Wii U Pro by name
-            bool is_wiimote = false;
+            // Check if device needs BD_ADDR-based PIN (Wiimote/Wii U Pro)
+            bool needs_bdaddr_pin = false;
             if (classic_state.pending_valid &&
                 bd_addr_cmp(pin_addr, classic_state.pending_addr) == 0) {
-                if (classic_state.pending_name[0] &&
-                    strstr(classic_state.pending_name, "Nintendo RVL") != NULL) {
-                    is_wiimote = true;
+                const bt_device_profile_t* pin_profile = classic_state.pending_profile;
+                if (!pin_profile && classic_state.pending_name[0]) {
+                    pin_profile = bt_device_lookup_by_name(classic_state.pending_name);
+                }
+                if (pin_profile && pin_profile->pin_type == BT_PIN_BDADDR) {
+                    needs_bdaddr_pin = true;
                 }
             }
             // Also check wiimote_conn state (may have been set up during inquiry)
-            if (!is_wiimote && wiimote_conn.active &&
+            if (!needs_bdaddr_pin && wiimote_conn.active &&
                 memcmp(pin_addr, wiimote_conn.addr, 6) == 0) {
-                is_wiimote = true;
+                needs_bdaddr_pin = true;
             }
 
-            if (is_wiimote) {
+            if (needs_bdaddr_pin) {
                 // Wiimote PIN: host's BD_ADDR reversed (when using SYNC button)
                 // The PIN is 6 bytes, which is the BD_ADDR in reverse byte order
                 bd_addr_t local_addr;
@@ -1751,11 +1863,11 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                 pin[3] = local_addr[2];
                 pin[4] = local_addr[1];
                 pin[5] = local_addr[0];
-                printf("[BTSTACK_HOST] Wiimote detected, sending PIN (host BD_ADDR reversed)\n");
+                printf("[BTSTACK_HOST] BD_ADDR PIN device detected, sending PIN (host BD_ADDR reversed)\n");
                 gap_pin_code_response_binary(pin_addr, pin, 6);
             } else {
-                // Not a Wiimote - reject PIN request (SSP devices shouldn't ask for PIN)
-                printf("[BTSTACK_HOST] Non-Wiimote PIN request, rejecting\n");
+                // No BD_ADDR PIN needed - reject (SSP devices shouldn't ask for PIN)
+                printf("[BTSTACK_HOST] PIN request rejected (no BD_ADDR PIN profile)\n");
                 gap_pin_code_negative(pin_addr);
             }
             break;
@@ -1883,17 +1995,17 @@ static void sm_packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *pa
                            conn->addr[5], conn->addr[4], conn->addr[3], conn->addr[2], conn->addr[1], conn->addr[0],
                            hid_state.last_connected_name);
 
-                    // Xbox/Switch2 controllers: use fast-path with known handles
-                    // Other controllers: do proper GATT discovery
-                    bool is_xbox = (strstr(conn->name, "Xbox") != NULL);
-                    if (is_xbox) {
-                        printf("[BTSTACK_HOST] Xbox detected - using fast-path HID listener\n");
+                    // Route based on BLE strategy
+                    if (conn->profile && conn->profile->ble == BT_BLE_DIRECT_ATT) {
+                        printf("[BTSTACK_HOST] %s detected - using fast-path HID listener\n",
+                               conn->profile->name);
                         register_ble_hid_listener(handle);
-                    } else if (conn->is_switch2) {
-                        printf("[BTSTACK_HOST] Switch 2 detected - using fast-path notification enable\n");
+                    } else if (conn->profile && conn->profile->ble == BT_BLE_CUSTOM) {
+                        printf("[BTSTACK_HOST] %s detected - using fast-path notification enable\n",
+                               conn->profile->name);
                         register_switch2_hid_listener(handle);
                     } else {
-                        printf("[BTSTACK_HOST] Non-Xbox BLE controller - starting GATT discovery\n");
+                        printf("[BTSTACK_HOST] BLE controller - starting GATT discovery\n");
                         start_hids_client(conn);
                     }
                 }
@@ -1927,15 +2039,17 @@ static void sm_packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *pa
                     }
                     hid_state.has_last_connected = true;
 
-                    bool is_xbox = (strstr(conn->name, "Xbox") != NULL);
-                    if (is_xbox) {
-                        printf("[BTSTACK_HOST] Xbox detected - using fast-path HID listener\n");
+                    // Route based on BLE strategy
+                    if (conn->profile && conn->profile->ble == BT_BLE_DIRECT_ATT) {
+                        printf("[BTSTACK_HOST] %s detected - using fast-path HID listener\n",
+                               conn->profile->name);
                         register_ble_hid_listener(handle);
-                    } else if (conn->is_switch2) {
-                        printf("[BTSTACK_HOST] Switch 2 detected - using fast-path notification enable\n");
+                    } else if (conn->profile && conn->profile->ble == BT_BLE_CUSTOM) {
+                        printf("[BTSTACK_HOST] %s detected - using fast-path notification enable\n",
+                               conn->profile->name);
                         register_switch2_hid_listener(handle);
                     } else {
-                        printf("[BTSTACK_HOST] Non-Xbox BLE controller - starting GATT discovery\n");
+                        printf("[BTSTACK_HOST] BLE controller - starting GATT discovery\n");
                         start_hids_client(conn);
                     }
                 }
@@ -3052,6 +3166,7 @@ static void hid_host_packet_handler(uint8_t packet_type, uint16_t channel, uint8
                     classic_state.pending_outgoing = false;
                     classic_state.pending_valid = false;
                     // Don't scan — stay connectable, wait for incoming reconnection
+                    classic_state.waiting_for_incoming_time = btstack_run_loop_get_time_ms();
                 }
                 return;
             }
@@ -3063,37 +3178,38 @@ static void hid_host_packet_handler(uint8_t packet_type, uint16_t channel, uint8
             if (conn) {
                 conn->hid_ready = true;
 
-                // Check if this is a Wiimote by COD or name
-                // Wiimotes don't send standard HID descriptors, so we need to
-                // call bt_on_hid_ready() now instead of waiting for descriptor
-                // COD is stored little-endian: [0]=LSB, [2]=MSB
-                // Detect Wiimote/Wii U Pro by name (not COD, which false-matches DS4/DS5/DS3)
-                bool is_wiimote = (conn->name[0] && strstr(conn->name, "Nintendo RVL") != NULL);
-
+                // Check if this is a direct-L2CAP device by profile or name
+                bool is_direct_l2cap = (conn->profile &&
+                                        conn->profile->classic == BT_CLASSIC_DIRECT_L2CAP);
+                // Also check by name if profile wasn't set (late name resolution)
+                if (!is_direct_l2cap && conn->name[0]) {
+                    const bt_device_profile_t* conn_profile = bt_device_lookup_by_name(conn->name);
+                    if (conn_profile->classic == BT_CLASSIC_DIRECT_L2CAP) {
+                        is_direct_l2cap = true;
+                        conn->profile = conn_profile;
+                    }
+                }
                 // Also check wiimote_conn state (may have been set up during inquiry)
-                if (!is_wiimote && wiimote_conn.active &&
+                if (!is_direct_l2cap && wiimote_conn.active &&
                     memcmp(conn->addr, wiimote_conn.addr, 6) == 0) {
-                    is_wiimote = true;
+                    is_direct_l2cap = true;
                 }
 
-                if (is_wiimote) {
-                    // Wiimotes: HID Host handles receiving, we send via direct L2CAP
-                    printf("[BTSTACK_HOST] Wiimote HID connected via HID Host (receive via HID Host, send via L2CAP)\n");
+                if (is_direct_l2cap) {
+                    // Direct L2CAP devices: HID Host handles receiving, we send via direct L2CAP
+                    printf("[BTSTACK_HOST] %s HID connected via HID Host (receive via HID Host, send via L2CAP)\n",
+                           conn->profile ? conn->profile->name : "Wiimote");
 
-                    // Set default Nintendo VID if not already set
-                    if (conn->vendor_id == 0) {
-                        conn->vendor_id = 0x057E;  // Nintendo
+                    // Set default VID/PID from profile if not already set
+                    if (conn->vendor_id == 0 && conn->profile && conn->profile->default_vid) {
+                        conn->vendor_id = conn->profile->default_vid;
                     }
-
-                    // Detect Wii U Pro Controller by name suffix (-UC = Wii U Controller)
-                    // "Nintendo RVL-CNT-01-UC" = Wii U Pro Controller (PID 0x0330)
-                    // "Nintendo RVL-CNT-01" = Wiimote (PID 0x0306)
                     if (conn->product_id == 0) {
-                        if (strstr(conn->name, "-UC") != NULL) {
-                            conn->product_id = 0x0330;  // Wii U Pro Controller
-                            printf("[BTSTACK_HOST] Detected Wii U Pro Controller by name\n");
-                        } else if (strstr(conn->name, "RVL-CNT-01") != NULL) {
-                            conn->product_id = 0x0306;  // Wiimote
+                        uint16_t pid = bt_device_wiimote_pid_from_name(conn->name);
+                        if (pid) {
+                            conn->product_id = pid;
+                            printf("[BTSTACK_HOST] Detected %s by name, PID=0x%04X\n",
+                                   conn->profile ? conn->profile->name : "device", pid);
                         }
                     }
 
@@ -3319,12 +3435,7 @@ static void wiimote_l2cap_packet_handler(uint8_t packet_type, uint16_t channel, 
                             memcpy(conn->addr, wiimote_conn.addr, 6);
                             strncpy(conn->name, wiimote_conn.name, sizeof(conn->name) - 1);
                             conn->vendor_id = 0x057E;  // Nintendo
-                            // Detect Wii U Pro Controller by name
-                            if (strstr(wiimote_conn.name, "-UC") != NULL) {
-                                conn->product_id = 0x0330;
-                            } else if (strstr(wiimote_conn.name, "RVL-CNT-01") != NULL) {
-                                conn->product_id = 0x0306;
-                            }
+                            conn->product_id = bt_device_wiimote_pid_from_name(wiimote_conn.name);
                             conn->hid_ready = true;
 
                             // Get index
@@ -3624,6 +3735,7 @@ bool btstack_classic_get_connection(uint8_t conn_index, btstack_classic_conn_inf
         info->vendor_id = conn->vid;
         info->product_id = conn->pid;
         info->hid_ready = conn->hid_ready;
+        info->is_ble = true;
 
         return true;
     }
@@ -3642,6 +3754,7 @@ bool btstack_classic_get_connection(uint8_t conn_index, btstack_classic_conn_inf
     info->vendor_id = conn->vendor_id;
     info->product_id = conn->product_id;
     info->hid_ready = conn->hid_ready;
+    info->is_ble = false;
 
     return true;
 }

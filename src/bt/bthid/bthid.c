@@ -39,7 +39,8 @@ static uint8_t driver_count = 0;
 
 static bthid_device_t* find_or_create_device(uint8_t conn_index);
 static const bthid_driver_t* find_driver(const char* name, const uint8_t* cod,
-                                          uint16_t vendor_id, uint16_t product_id);
+                                          uint16_t vendor_id, uint16_t product_id,
+                                          bool is_ble);
 static bthid_device_type_t classify_device(const uint8_t* class_of_device);
 static bool try_reclassify_sony_device(bthid_device_t* device, uint8_t report_id);
 
@@ -192,7 +193,8 @@ void bthid_update_device_info(uint8_t conn_index, const char* name,
         for (int i = 0; i < driver_count; i++) {
             if (drivers[i] != &bthid_gamepad_driver &&
                 drivers[i]->match && drivers[i]->match(device->name, cod,
-                                                        device->vendor_id, device->product_id)) {
+                                                        device->vendor_id, device->product_id,
+                                                        device->is_ble)) {
                 new_driver = drivers[i];
                 break;
             }
@@ -220,11 +222,12 @@ void bthid_update_device_info(uint8_t conn_index, const char* name,
 // ============================================================================
 
 static const bthid_driver_t* find_driver(const char* name, const uint8_t* cod,
-                                          uint16_t vendor_id, uint16_t product_id)
+                                          uint16_t vendor_id, uint16_t product_id,
+                                          bool is_ble)
 {
     // First try registered drivers
     for (int i = 0; i < driver_count; i++) {
-        if (drivers[i]->match && drivers[i]->match(name, cod, vendor_id, product_id)) {
+        if (drivers[i]->match && drivers[i]->match(name, cod, vendor_id, product_id, is_ble)) {
             return drivers[i];
         }
     }
@@ -343,6 +346,7 @@ void bt_on_hid_ready(uint8_t conn_index)
     device->type = classify_device(conn->class_of_device);
     device->vendor_id = conn->vendor_id;
     device->product_id = conn->product_id;
+    device->is_ble = conn->is_ble;
 
     char addr_str[18];
     sprintf(addr_str, "%02X:%02X:%02X:%02X:%02X:%02X",
@@ -355,7 +359,8 @@ void bt_on_hid_ready(uint8_t conn_index)
 
     // Find matching driver (VID/PID takes priority over name/COD)
     const bthid_driver_t* driver = find_driver(device->name, conn->class_of_device,
-                                               conn->vendor_id, conn->product_id);
+                                               conn->vendor_id, conn->product_id,
+                                               device->is_ble);
     if (driver) {
         printf("[BTHID] Using driver: %s\n", driver->name);
         device->driver = driver;

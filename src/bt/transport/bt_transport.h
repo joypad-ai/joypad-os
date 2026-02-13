@@ -33,6 +33,7 @@ typedef struct {
     uint16_t interrupt_cid;         // HID Interrupt channel (local CID)
     bool     connected;             // Connection active
     bool     hid_ready;             // HID channels established
+    bool     is_ble;                // True if BLE (not Classic BT)
 } bt_connection_t;
 
 // ============================================================================

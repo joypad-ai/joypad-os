@@ -46,11 +46,16 @@ static xbox_ble_data_t xbox_data[BTHID_MAX_DEVICES];
 // ============================================================================
 
 static bool xbox_ble_match(const char* device_name, const uint8_t* class_of_device,
-                           uint16_t vendor_id, uint16_t product_id)
+                           uint16_t vendor_id, uint16_t product_id, bool is_ble)
 {
-    (void)class_of_device;  // BLE doesn't use COD
-    (void)vendor_id;        // BLE doesn't have SDP Device ID
+    (void)class_of_device;
+    (void)vendor_id;
     (void)product_id;
+
+    // Only match BLE connections — Classic BT Xbox controllers use xbox_bt driver
+    if (!is_ble) {
+        return false;
+    }
 
     if (!device_name) {
         return false;

@@ -278,9 +278,10 @@ static void ds5_send_output(bthid_device_t* device, uint8_t rumble_left, uint8_t
 // ============================================================================
 
 static bool ds5_match(const char* device_name, const uint8_t* class_of_device,
-                      uint16_t vendor_id, uint16_t product_id)
+                      uint16_t vendor_id, uint16_t product_id, bool is_ble)
 {
     (void)class_of_device;
+    (void)is_ble;
 
     // VID/PID match (highest priority) - Sony vendor ID = 0x054C
     // DualSense = 0x0CE6, DualSense Edge = 0x0DF2

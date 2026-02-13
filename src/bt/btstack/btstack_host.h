@@ -88,6 +88,7 @@ typedef struct {
     uint16_t vendor_id;
     uint16_t product_id;
     bool hid_ready;
+    bool is_ble;
 } btstack_classic_conn_info_t;
 
 bool btstack_classic_get_connection(uint8_t conn_index, btstack_classic_conn_info_t* info);
