@@ -219,6 +219,7 @@ static bool ds4_init(bthid_device_t* device)
             ds4_data[i].led_b = 64;  // Default blue
 
             ds4_data[i].event.type = INPUT_TYPE_GAMEPAD;
+            ds4_data[i].event.transport = INPUT_TRANSPORT_BT_CLASSIC;
             ds4_data[i].event.dev_addr = device->conn_index;
             ds4_data[i].event.instance = 0;
             ds4_data[i].event.button_count = 14;

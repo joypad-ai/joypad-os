@@ -176,44 +176,40 @@ void bthid_update_device_info(uint8_t conn_index, const char* name,
         device->name[BTHID_MAX_NAME_LEN - 1] = '\0';
     }
 
-    // Check if we should re-evaluate the driver now that VID/PID is known
-    if (vendor_id || product_id) {
-        const bthid_driver_t* current = (const bthid_driver_t*)device->driver;
+    // Update VID/PID if provided
+    if (vendor_id) device->vendor_id = vendor_id;
+    if (product_id) device->product_id = product_id;
+
+    // Re-evaluate the driver if currently using generic gamepad.
+    // This handles late-arriving info: name from remote name request,
+    // VID/PID from SDP query, or both.
+    const bthid_driver_t* current = (const bthid_driver_t*)device->driver;
+    if (current == &bthid_gamepad_driver) {
+        const bt_connection_t* conn = bt_get_connection(conn_index);
+        const uint8_t* cod = conn ? conn->class_of_device : NULL;
+
         const bthid_driver_t* new_driver = NULL;
-
-        // Look for a better driver match with the new VID/PID
-        // Skip if we already have a specific driver (not generic gamepad)
-        if (current == &bthid_gamepad_driver) {
-            // Get COD from transport if available
-            const bt_connection_t* conn = bt_get_connection(conn_index);
-            const uint8_t* cod = conn ? conn->class_of_device : NULL;
-
-            // Try to find a specific driver
-            for (int i = 0; i < driver_count; i++) {
-                if (drivers[i] != &bthid_gamepad_driver &&
-                    drivers[i]->match && drivers[i]->match(device->name, cod, vendor_id, product_id)) {
-                    new_driver = drivers[i];
-                    break;
-                }
+        for (int i = 0; i < driver_count; i++) {
+            if (drivers[i] != &bthid_gamepad_driver &&
+                drivers[i]->match && drivers[i]->match(device->name, cod,
+                                                        device->vendor_id, device->product_id)) {
+                new_driver = drivers[i];
+                break;
             }
+        }
 
-            if (new_driver) {
-                printf("[BTHID] Re-selecting driver: %s -> %s (VID=0x%04X PID=0x%04X)\n",
-                       current->name, new_driver->name, vendor_id, product_id);
+        if (new_driver) {
+            printf("[BTHID] Re-selecting driver: %s -> %s (name=%s VID=0x%04X PID=0x%04X)\n",
+                   current->name, new_driver->name, device->name,
+                   device->vendor_id, device->product_id);
 
-                // Disconnect old driver
-                if (current && current->disconnect) {
-                    current->disconnect(device);
-                }
-
-                // Clear driver data
-                device->driver_data = NULL;
-
-                // Initialize new driver
-                device->driver = new_driver;
-                if (new_driver->init) {
-                    new_driver->init(device);
-                }
+            if (current->disconnect) {
+                current->disconnect(device);
+            }
+            device->driver_data = NULL;
+            device->driver = new_driver;
+            if (new_driver->init) {
+                new_driver->init(device);
             }
         }
     }

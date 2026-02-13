@@ -150,6 +150,7 @@ static bool xbox_init(bthid_device_t* device)
             xbox_data[i].initialized = true;
 
             xbox_data[i].event.type = INPUT_TYPE_GAMEPAD;
+            xbox_data[i].event.transport = INPUT_TRANSPORT_BT_CLASSIC;
             xbox_data[i].event.dev_addr = device->conn_index;
             xbox_data[i].event.instance = 0;
             xbox_data[i].event.button_count = 10;

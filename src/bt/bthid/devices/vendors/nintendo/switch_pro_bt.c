@@ -242,6 +242,7 @@ static bool switch_init(bthid_device_t* device)
             switch_data[i].player_led = 0;
 
             switch_data[i].event.type = INPUT_TYPE_GAMEPAD;
+            switch_data[i].event.transport = INPUT_TRANSPORT_BT_CLASSIC;
             switch_data[i].event.dev_addr = device->conn_index;
             switch_data[i].event.instance = 0;
             switch_data[i].event.button_count = 10;

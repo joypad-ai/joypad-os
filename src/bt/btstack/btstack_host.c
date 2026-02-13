@@ -1155,8 +1155,14 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                     }
                 } else {
                     // Non-Wiimote: use normal hid_host_connect
+                    // Xbox controllers have broken SDP records — use FALLBACK to bypass
+                    // SDP and connect via standard HID L2CAP PSMs directly
+                    hid_protocol_mode_t mode = HID_PROTOCOL_MODE_REPORT;
+                    if (strstr(name, "Xbox") != NULL) {
+                        mode = HID_PROTOCOL_MODE_REPORT_WITH_FALLBACK_TO_BOOT;
+                    }
                     uint16_t hid_cid;
-                    uint8_t status = hid_host_connect(addr, HID_PROTOCOL_MODE_REPORT, &hid_cid);
+                    uint8_t status = hid_host_connect(addr, mode, &hid_cid);
                     if (status == ERROR_CODE_SUCCESS) {
                         printf("[BTSTACK_HOST] hid_host_connect started, cid=0x%04X\n", hid_cid);
 
@@ -1523,18 +1529,23 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                             conn->name[sizeof(conn->name) - 1] = '\0';
                             printf("[BTSTACK_HOST] Updated conn[%d] name: %s\n", i, conn->name);
 
-                            // If this is a Wiimote/Wii U Pro detected by name, set VID/PID and update BTHID
-                            // VID may be 0 if SDP didn't return PnP info (Wiimote-family devices lack PnP SDP)
-                            if (conn->hid_ready && strstr(name, "Nintendo RVL") != NULL) {
-                                conn->vendor_id = 0x057E;  // Nintendo
-                                if (strstr(name, "-UC") != NULL) {
-                                    conn->product_id = 0x0330;
-                                    printf("[BTSTACK_HOST] Late Wii U Pro detection, updating BTHID with PID=0x0330\n");
-                                } else {
-                                    conn->product_id = 0x0306;
-                                    printf("[BTSTACK_HOST] Late Wiimote detection, updating BTHID with PID=0x0306\n");
+                            if (conn->hid_ready) {
+                                // Wiimote-family: set VID/PID from name (they lack PnP SDP)
+                                if (strstr(name, "Nintendo RVL") != NULL) {
+                                    conn->vendor_id = 0x057E;  // Nintendo
+                                    if (strstr(name, "-UC") != NULL) {
+                                        conn->product_id = 0x0330;
+                                        printf("[BTSTACK_HOST] Late Wii U Pro detection, PID=0x0330\n");
+                                    } else {
+                                        conn->product_id = 0x0306;
+                                        printf("[BTSTACK_HOST] Late Wiimote detection, PID=0x0306\n");
+                                    }
                                 }
-                                bthid_update_device_info(i, conn->name, conn->vendor_id, conn->product_id);
+                                // Notify BTHID of late name arrival — allows driver
+                                // re-evaluation for devices matched as generic because
+                                // name wasn't available at connection time
+                                bthid_update_device_info(i, conn->name,
+                                                         conn->vendor_id, conn->product_id);
                             }
                         }
                         break;
@@ -1619,8 +1630,13 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                         }
                     } else {
                         printf("[BTSTACK_HOST] Deferred connect: standard gamepad, using HID Host\n");
+                        // Xbox controllers have broken SDP records — use FALLBACK
+                        hid_protocol_mode_t mode = HID_PROTOCOL_MODE_REPORT;
+                        if (strstr(name, "Xbox") != NULL) {
+                            mode = HID_PROTOCOL_MODE_REPORT_WITH_FALLBACK_TO_BOOT;
+                        }
                         uint16_t hid_cid;
-                        uint8_t status = hid_host_connect(name_addr, HID_PROTOCOL_MODE_REPORT, &hid_cid);
+                        uint8_t status = hid_host_connect(name_addr, mode, &hid_cid);
                         if (status == ERROR_CODE_SUCCESS) {
                             printf("[BTSTACK_HOST] hid_host_connect started, cid=0x%04X\n", hid_cid);
                             classic_connection_t* conn = find_free_classic_connection();

@@ -69,6 +69,7 @@ static bool gamepad_init(bthid_device_t* device)
 
             // Set device info
             gamepad_data[i].event.type = INPUT_TYPE_GAMEPAD;
+            gamepad_data[i].event.transport = INPUT_TRANSPORT_BT_CLASSIC;
             gamepad_data[i].event.dev_addr = device->conn_index;  // Use conn_index as address
             gamepad_data[i].event.instance = 0;
 

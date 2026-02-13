@@ -321,6 +321,7 @@ static bool ds5_init(bthid_device_t* device)
             ds5_data[i].player_led = PLAYER_LED_PATTERNS[0];
 
             ds5_data[i].event.type = INPUT_TYPE_GAMEPAD;
+            ds5_data[i].event.transport = INPUT_TRANSPORT_BT_CLASSIC;
             ds5_data[i].event.dev_addr = device->conn_index;
             ds5_data[i].event.instance = 0;
             ds5_data[i].event.button_count = 14;

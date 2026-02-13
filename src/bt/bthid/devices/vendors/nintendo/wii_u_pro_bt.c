@@ -265,6 +265,7 @@ static bool wii_u_init(bthid_device_t* device)
             wii_u_data[i].player_led = 0;
 
             wii_u_data[i].event.type = INPUT_TYPE_GAMEPAD;
+            wii_u_data[i].event.transport = INPUT_TRANSPORT_BT_CLASSIC;
             wii_u_data[i].event.dev_addr = device->conn_index;
             wii_u_data[i].event.instance = 0;
             wii_u_data[i].event.button_count = 14;
