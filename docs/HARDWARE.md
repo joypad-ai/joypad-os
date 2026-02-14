@@ -133,10 +133,35 @@ Joypad Core supports Bluetooth controllers via USB Bluetooth dongles.
 
 ### Bluetooth Dongles
 
-Any USB Bluetooth adapter should work. Tested:
-- Generic CSR 4.0 dongles
-- TP-Link UB400/UB500
-- ASUS USB-BT400
+**Important**: Only dongles with firmware in ROM work on embedded. Most BT 5.0+ dongles use Realtek chips that require host-side firmware loading and **will not work**.
+
+**Supported Chipsets:**
+- **Broadcom** (e.g. BCM20702A0) — firmware in ROM, recommended
+- **CSR/Cambridge Silicon Radio** (e.g. CSR8510 A10) — firmware in ROM, works but beware counterfeits
+
+**Not Supported:**
+- **Realtek** (RTL8761B, RTL8761BU, etc.) — requires firmware loading at every boot, not implemented
+- This includes almost all BT 5.0+ dongles on the market
+
+**Tested and Working:**
+- Kinivo BTD-400 (Broadcom BCM20702A0, BT 4.0) — recommended
+- Panda PBU40 (Broadcom BCM20702A0, BT 4.0) — recommended
+- Amazon Basics BT 4.0 (unknown Chinese chip, BT 4.0)
+- ASUS USB-BT400 (Broadcom BCM20702, BT 4.0)
+- Adafruit Bluetooth 4.0 USB Module #1327 (CSR8510 A10)
+
+**Known Not Working:**
+- TP-Link UB400/UB500 (Realtek RTL8761B)
+- ASUS USB-BT500 (Realtek RTL8761B)
+- UGREEN BT 5.0 adapters (Realtek)
+- Avantree DG45 (Realtek)
+- Zexmte BT 5.0 (Realtek)
+
+**Buying Tips:**
+- Look for BT 4.0 dongles with Broadcom chips
+- Kinivo BTD-400 and Panda PBU40 are safe choices (~$12)
+- Avoid random "CSR8510" listings on Amazon — many are counterfeit clones with pairing issues
+- BT 5.0+ dongles are almost all Realtek — avoid for embedded use
 
 **Note**: Bluetooth adds slight latency compared to wired USB. For competitive play, wired is recommended.
 
