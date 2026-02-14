@@ -2,7 +2,7 @@
 
 **Serial shift register daisy-chain system supporting hot-swappable multi-device input**
 
-Implemented by Robert Dale Smith (2025)
+Documented by Robert Dale Smith (2025)
 Based on 3DO Opera hardware documentation and PBUS protocol specification
 
 ---
@@ -21,8 +21,7 @@ Based on 3DO Opera hardware documentation and PBUS protocol specification
 - [Daisy Chain Mechanism](#daisy-chain-mechanism)
 - [Device Identification](#device-identification)
 - [Initialization & Hot-Swapping](#initialization--hot-swapping)
-- [PIO Implementation](#pio-implementation)
-- [Implementation Notes](#implementation-notes)
+- [Common Pitfalls](#common-pitfalls)
 
 ---
 
@@ -50,17 +49,6 @@ The PBUS protocol is described in patent [WO1994010636A1](https://patents.google
 ### Connector
 
 The 3DO uses a 9-pin (DE-9) controller connector. See the [FZ-1 Technical Guide](https://3dodev.com) for model-specific pinout details.
-
-### RP2040 GPIO Mapping
-
-For the Waveshare RP2040 Zero adaptation (matching [USBTo3DO](https://github.com/FCare/USBTo3DO)):
-
-| GPIO | Signal | Direction | Description |
-|------|--------|-----------|-------------|
-| 2 | CLK | Input | Clock from 3DO console |
-| 3 | DATA_OUT | Output | Serial data to 3DO console |
-| 4 | DATA_IN | Input | Serial data from daisy chain |
-| 5 | CS_CTRL | Control | Chip select / control signal |
 
 ### Electrical Characteristics
 
@@ -197,16 +185,9 @@ Byte 3: DX_lower (8 bits)
 - Negative values use two's complement
 - Deltas are relative motion since last frame
 
-**Conversion** (from `3do_device.c`):
-```c
-// Delta Y (10-bit signed)
-int16_t dy = ((byte1 >> 4) & 0x0F) << 6 | (byte2 & 0x3F);
-if (dy & 0x200) dy |= 0xFC00;
-
-// Delta X (10-bit signed)
-int16_t dx = ((byte2 >> 6) & 0x03) << 8 | byte3;
-if (dx & 0x200) dx |= 0xFC00;
-```
+**Conversion**:
+- **Delta Y**: Assembled as a 10-bit value by taking the lower 4 bits of byte 1 as the upper nibble (bits 9-6) and the lower 6 bits of byte 2 as the lower portion (bits 5-0). If bit 9 is set, the value is sign-extended to 16 bits by filling the upper 6 bits with ones (two's complement).
+- **Delta X**: Assembled as a 10-bit value by taking the upper 2 bits of byte 2 as the upper portion (bits 9-8) and all 8 bits of byte 3 as the lower portion (bits 7-0). Sign extension follows the same rule: if bit 9 is set, fill the upper 6 bits with ones.
 
 ### Lightgun
 
@@ -227,11 +208,7 @@ Byte 3: [Counter[3:0]][Line[4:0]][Buttons]
 - Number of scanlines where beam was detected
 - NTSC default: YSCANTIME=12707
 
-**Position Calculation**:
-```c
-x_position = (counter * XSCANTIME) + TIMEOFFSET;
-y_position = line_count * YSCANTIME;
-```
+**Position Calculation**: The X position is derived by multiplying the 20-bit timing counter by the XSCANTIME constant and adding the TIMEOFFSET correction. The Y position is derived by multiplying the 5-bit line pulse count by the YSCANTIME constant. For NTSC systems, the defaults are XSCANTIME=1030, TIMEOFFSET=-12835, and YSCANTIME=12707.
 
 ### Arcade Controls (Silly Control Pad)
 
@@ -262,8 +239,8 @@ Used for Orbatak arcade cabinet integration.
 
 ```
 ┌─────────┐         ┌────────┐         ┌────────┐         ┌────────┐
-│ Console │────────▶│ USB    │────────▶│ 3DO    │────────▶│ 3DO    │
-│         │◀────────│ Adapter│◀────────│ Pad #1 │◀────────│ Pad #2 │
+│ Console │────────▶│ Device │────────▶│ 3DO    │────────▶│ 3DO    │
+│         │◀────────│   #0   │◀────────│ Pad #1 │◀────────│ Pad #2 │
 └─────────┘         └────────┘         └────────┘         └────────┘
      │                   │                   │                   │
    CLK ────────────────────────────────────────────────────────▶
@@ -274,14 +251,14 @@ Used for Orbatak arcade cabinet integration.
 ### Data Flow
 
 **Console Perspective**:
-1. Console shifts out controller data on DATA_OUT (USB adapter data)
+1. Console shifts out controller data on DATA_OUT (first device's data)
 2. Simultaneously samples DATA_IN for extension device data
 3. Each clock cycle: send 1 bit, receive 1 bit
 4. After 8-448 bits, complete device data captured
 
 **Passthrough Buffering**:
-- USB adapter must buffer extension data from one field
-- Next field: send USB data + buffered extension data
+- First device in chain must buffer extension data from one field
+- Next field: send own data + buffered extension data
 - This creates 1-frame latency for extension controllers
 
 ---
@@ -304,31 +281,17 @@ Used for Orbatak arcade cabinet integration.
 
 ### ID Detection Algorithm
 
-From `parse_extension_controllers()` in `3do_device.c`:
+To parse device types from a PBUS data stream, read the first byte at the current offset and apply the following rules in order:
 
-```c
-uint8_t byte0 = buffer[offset];
-uint8_t id_nibble = (byte0 >> 4) & 0x0F;
+| Priority | Condition | Device Type | Packet Size |
+|----------|-----------|-------------|-------------|
+| 1 | Upper 2 bits of byte 0's high nibble are non-zero (i.e., bits 7-6 of byte 0 are not both 0) | Joypad | 2 bytes |
+| 2 | Byte 0 is 0x01, followed by 0x7B and 0x08 (3-byte signature) | Flightstick | 9 bytes |
+| 3 | Byte 0 is 0x49 | Mouse | 4 bytes |
+| 4 | Byte 0 is 0x4D | Lightgun | 4 bytes |
+| 5 | Byte 0 is 0xC0 | Arcade | 2 bytes |
 
-if ((id_nibble & 0b1100) != 0) {
-    // Joypad: upper 2 bits of nibble are non-zero
-    device_type = DEVICE_JOYPAD;
-    bytes_to_read = 2;
-} else if (byte0 == 0x01 &&
-           buffer[offset+1] == 0x7B && buffer[offset+2] == 0x08) {
-    device_type = DEVICE_FLIGHTSTICK;
-    bytes_to_read = 9;
-} else if (byte0 == 0x49) {
-    device_type = DEVICE_MOUSE;
-    bytes_to_read = 4;
-} else if (byte0 == 0x4D) {
-    device_type = DEVICE_LIGHTGUN;
-    bytes_to_read = 4;
-} else if (byte0 == 0xC0) {
-    device_type = DEVICE_ARCADE;
-    bytes_to_read = 2;
-}
-```
+Check for joypads first since they are the most common device. The joypad check exploits the physical impossibility of pressing up+down simultaneously on a d-pad: any byte where the upper two bits of the high nibble are non-zero must be a joypad. If the byte does not match a joypad, check for the flightstick's 3-byte signature before falling through to the single-byte ID matches.
 
 ### End-of-Chain Detection
 
@@ -361,50 +324,7 @@ Portfolio OS loads drivers by device ID:
 
 ---
 
-## PIO Implementation
-
-### RP2040 PIO State Machine
-
-From `output.pio`:
-```asm
-.program output
-
-.define CLK_PIN 2
-
-public entry_point:
-  wait 0 gpio CLK_PIN           ; Wait for clock low
-.wrap_target
-start:
-  out pins, 1                   ; Shift out 1 bit to DATA_OUT
-  wait 1 gpio CLK_PIN           ; Wait for clock high
-  wait 0 gpio CLK_PIN           ; Wait for clock low
-  in pins, 1                    ; Shift in 1 bit from DATA_IN
-.wrap
-```
-
-### DMA Architecture
-
-Dual-channel DMA for simultaneous TX/RX:
-
-```c
-// Channel 0: OUTPUT - Send data to console
-channel_config_set_transfer_data_size(&cfg_out, DMA_SIZE_8);
-channel_config_set_read_increment(&cfg_out, true);
-channel_config_set_dreq(&cfg_out, pio_get_dreq(pio, sm, true));
-
-// Channel 1: INPUT - Receive extension data
-channel_config_set_transfer_data_size(&cfg_in, DMA_SIZE_8);
-channel_config_set_write_increment(&cfg_in, true);
-channel_config_set_dreq(&cfg_in, pio_get_dreq(pio, sm, false));
-```
-
-**Buffer**: `controller_buffer[201]` — padded beyond the 56-byte max (448 bits) for DMA alignment.
-
----
-
-## Implementation Notes
-
-### Common Pitfalls
+## Common Pitfalls
 
 1. **Active-HIGH encoding**: PBUS uses 1=pressed (opposite of PCEngine). Invert when porting from other protocols.
 
@@ -416,24 +336,13 @@ channel_config_set_dreq(&cfg_in, pio_get_dreq(pio, sm, false));
 
 5. **Extension latency**: Extension controllers have 1-frame delay due to passthrough buffering.
 
-6. **Buffer size**: Allocate full 201-byte buffer even if unused. Prevents overflow with many devices connected.
+6. **Buffer sizing**: The maximum PBUS field is 448 bits (56 bytes). Allocate buffers with padding beyond this maximum to prevent overflow when many devices are connected.
 
 ---
-
-## Acknowledgments
-
-- **[3dodev.com](https://3dodev.com)**: PBUS protocol specification and Opera hardware documentation
-- **[FCare's USBTo3DO](https://github.com/FCare/USBTo3DO)**: Original USB-to-3DO adapter that pioneered USB controller conversion for the 3DO
-- **[SNES23DO](https://github.com/RobertDaleSmith/snes23do)**: SNES-to-3DO adapter with extension controller parsing
 
 ## References
 
 - **3DO PBUS Specification**: [3dodev.com/documentation/hardware/opera/pbus](https://3dodev.com/documentation/hardware/opera/pbus)
-- **Patent WO1994010636A1**: Player Bus Apparatus and Method (1994)
-- **USBTo3DO**: [github.com/FCare/USBTo3DO](https://github.com/FCare/USBTo3DO)
-
-### Implementation
-
-- **Joypad 3DO Module**: `src/native/device/3do/` — Full PBUS implementation with extension detection
-- **PIO State Machines**: `src/native/device/3do/output.pio` — Clock-synchronized bidirectional I/O
-- **Extension Parsing**: `src/native/device/3do/3do_device.c` — `parse_extension_controllers()`
+- **Patent WO1994010636A1**: [Player Bus Apparatus and Method (1994)](https://patents.google.com/patent/WO1994010636A1)
+- **FCare's USBTo3DO**: [github.com/FCare/USBTo3DO](https://github.com/FCare/USBTo3DO) — Open-source USB-to-3DO adapter with PBUS implementation
+- **3dodev.com**: [3dodev.com](https://3dodev.com) — Opera hardware documentation and protocol specifications

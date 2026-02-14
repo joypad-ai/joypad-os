@@ -1,11 +1,6 @@
 # PCEngine / TurboGrafx-16 Controller Protocol
 
-**Well-documented protocol with novel multitap and mouse implementation**
-
-Implemented by Robert Dale Smith (2022-2023)
-Based on foundational work by David Shadoff ([PCEMouse](https://github.com/dshadoff/PC_Engine_RP2040_Projects/tree/main/PCEMouse))
-
-This document provides a comprehensive technical reference for the PCEngine/TurboGrafx-16 controller protocol, with emphasis on the multitap scanning mechanism, mouse support, and RP2040 PIO implementation strategies.
+A technical reference for the PCEngine/TurboGrafx-16 controller protocol, covering the controller interface, multitap scanning mechanism, 6-button extension, and mouse support.
 
 ---
 
@@ -16,18 +11,18 @@ This document provides a comprehensive technical reference for the PCEngine/Turb
 - [Protocol Basics](#protocol-basics)
 - [2-Button Mode](#2-button-mode)
 - [6-Button Mode](#6-button-mode)
-- [3-Button Modes](#3-button-modes)
+- [3-Button Mode](#3-button-mode)
 - [Mouse Protocol](#mouse-protocol)
 - [Multitap Scanning](#multitap-scanning)
-- [PIO State Machine Architecture](#pio-state-machine-architecture)
 - [Timing Requirements](#timing-requirements)
-- [Implementation Notes](#implementation-notes)
+- [Quick Reference](#quick-reference)
+- [References](#references)
 
 ---
 
 ## Overview
 
-The **PCEngine controller protocol** (also known as TurboGrafx-16 in North America) is a parallel 4-bit interface developed by NEC and Hudson Soft. The protocol is elegant in its simplicity yet flexible enough to support:
+The **PCEngine controller protocol** (also known as TurboGrafx-16 in North America) is a parallel 4-bit interface developed by NEC and Hudson Soft. The protocol supports:
 
 - Standard 2-button controllers
 - 6-button fighting game pads
@@ -66,16 +61,14 @@ The PCEngine controller port uses an **8-pin DIN connector**:
 | 7 | CLR | Input (to controller) | Clear/Enable signal (scan reset) |
 | 8 | GND | - | Ground |
 
-> **Naming note:** Pin 7 is called **CLR** (Clear) in this codebase because it resets the multitap scan to Player 1. Some references label it **OE** (Output Enable, active LOW) since it enables controller data output. They refer to the same signal — CLR/OE are interchangeable names for pin 7.
->
-> In the source code, `DATAIN_PIN` (GP18) corresponds to **SEL** and `CLKIN_PIN` (GP19) corresponds to **CLR/OE**. The `CLKIN_PIN` name is historical — `clock.pio` monitors CLR edges to derive scan timing, so it functions as a clock source even though the signal is technically CLR/OE.
+> **Naming note:** Pin 7 is called **CLR** (Clear) because it resets the multitap scan to Player 1. Some references label it **OE** (Output Enable, active LOW) since it enables controller data output. They refer to the same signal -- CLR/OE are interchangeable names for pin 7.
 
 ### Electrical Characteristics
 
 - **Logic levels**: TTL compatible (0V = LOW, 5V = HIGH)
-- **Data lines**: Open-collector with 1kΩ pull-up resistors on console side
+- **Data lines**: Open-collector with pull-up resistors on console side
 - **Control signals**: Driven by console, interpreted by controller
-- **Power**: 5V @ ~50mA per controller (no rumble in original hardware)
+- **Power**: 5V @ ~50mA per controller
 
 ### Signal Behavior
 
@@ -90,9 +83,9 @@ D0-3: ──[D-PAD]─[BTNS]─[D-PAD]─[BTNS]────  (responds to SEL tr
 ```
 
 **Scan Sequence**:
-1. CLR goes LOW → Start of scan cycle
-2. SEL alternates HIGH/LOW → Controller outputs different nibbles
-3. CLR goes HIGH → End of scan, controller resets
+1. CLR goes LOW -- Start of scan cycle
+2. SEL alternates HIGH/LOW -- Controller outputs different nibbles
+3. CLR goes HIGH -- End of scan, controller resets
 
 ---
 
@@ -111,43 +104,30 @@ All data is transmitted as 4-bit nibbles with **active LOW** encoding:
 Each scan reads **2 nibbles** (8 bits total):
 
 **Nibble 1 (SEL=HIGH)**: D-Pad
-```
-Bit 3: Left  (0=pressed)
-Bit 2: Down  (0=pressed)
-Bit 1: Right (0=pressed)
-Bit 0: Up    (0=pressed)
-```
+
+| Bit | Direction | Encoding |
+|-----|-----------|----------|
+| 3 | Left | 0 = pressed |
+| 2 | Down | 0 = pressed |
+| 1 | Right | 0 = pressed |
+| 0 | Up | 0 = pressed |
 
 **Nibble 2 (SEL=LOW)**: Buttons
-```
-Bit 3: Run    (0=pressed)
-Bit 2: Select (0=pressed)
-Bit 1: II     (0=pressed)
-Bit 0: I      (0=pressed)
-```
+
+| Bit | Button | Encoding |
+|-----|--------|----------|
+| 3 | Run | 0 = pressed |
+| 2 | Select | 0 = pressed |
+| 1 | II | 0 = pressed |
+| 0 | I | 0 = pressed |
 
 ### Example Encoding
 
-**No buttons pressed**:
-```
-Nibble 1: 0xF (1111) - No directions
-Nibble 2: 0xF (1111) - No buttons
-Full byte: 0xFF
-```
-
-**Up + I button pressed**:
-```
-Nibble 1: 0xE (1110) - Up pressed (bit 0 = 0)
-Nibble 2: 0xE (1110) - I pressed (bit 0 = 0)
-Full byte: 0xEE
-```
-
-**Left + Down + II + Run pressed**:
-```
-Nibble 1: 0x3 (0011) - Left (bit 3=0) + Down (bit 2=0)
-Nibble 2: 0x5 (0101) - Run (bit 3=0) + II (bit 1=0)
-Full byte: 0x35
-```
+| Scenario | Nibble 1 (D-pad) | Nibble 2 (Buttons) | Full Byte |
+|----------|-------------------|---------------------|-----------|
+| No buttons pressed | 0xF (1111) -- no directions | 0xF (1111) -- no buttons | 0xFF |
+| Up + I pressed | 0xE (1110) -- Up bit 0 = 0 | 0xE (1110) -- I bit 0 = 0 | 0xEE |
+| Left + Down + II + Run | 0x3 (0011) -- Left bit 3 = 0, Down bit 2 = 0 | 0x5 (0101) -- Run bit 3 = 0, II bit 1 = 0 | 0x35 |
 
 ---
 
@@ -162,23 +142,17 @@ Bit Position:  7     6      5      4    |  3    2       1   0
               Left  Down  Right   Up   | Run  Select   II  I
 ```
 
-### State Machine
+### Scan Sequence
 
 1. **CLR LOW**: Start scan
 2. **SEL HIGH**: Read D-pad nibble (bits 7-4)
 3. **SEL LOW**: Read button nibble (bits 3-0)
 4. **CLR HIGH**: End scan, latch data
 
-### Implementation
-
-In the Joypad implementation, 2-button mode is the default. The full byte is constructed as:
-
-```c
-int8_t byte = (players[i].output_buttons & 0xff);
-// Byte format: [Left, Down, Right, Up, Run, Select, II, I]
+The full byte is constructed by combining the D-pad nibble (high) with the button nibble (low):
 ```
-
-This byte is sent to the PIO state machine, which splits it into nibbles based on the SEL signal.
+Byte: [Left, Down, Right, Up, Run, Select, II, I]
+```
 
 ---
 
@@ -188,102 +162,38 @@ Extended mode for fighting games (Street Fighter II Championship Edition, Art of
 
 ### Protocol Extension
 
-6-button mode uses **two scan cycles** with different data on the second cycle:
+6-button mode uses a **4-scan cycle** with a rotating state counter (3, 2, 1, 0). On most states the controller sends standard 2-button data, but on one specific state it sends the extended buttons instead:
 
-**Cycle 1 (State 3, 1, 0)**: Standard 2-button data
-```
-Nibble 1: D-pad  [Left, Down, Right, Up]
-Nibble 2: Buttons [Run, Select, II, I]
-```
+| State | Nibble 1 (SEL=HIGH) | Nibble 2 (SEL=LOW) |
+|-------|----------------------|---------------------|
+| 3, 1, 0 (Standard) | D-pad: Left, Down, Right, Up | Buttons: Run, Select, II, I |
+| 2 (Extended) | Extended: III, IV, V, VI (bits 7-4) | Reserved: all 0 (bits 3-0) |
 
-**Cycle 2 (State 2)**: Extended buttons
-```
-Nibble 1: Extended [III, IV, V, VI]  (bits 7-4)
-Nibble 2: Reserved [0, 0, 0, 0]      (bits 3-0)
-```
+The state counter decrements on each scan (3 -> 2 -> 1 -> 0) and wraps back to 3 after state 0.
 
-### State-Based Implementation
+### Extended Button Layout
 
-The Joypad implementation tracks a `state` variable (3 → 2 → 1 → 0) that cycles on each scan:
+| Bit | Button |
+|-----|--------|
+| 7 | III |
+| 6 | IV |
+| 5 | V |
+| 4 | VI |
+| 3-0 | Reserved (all 0) |
 
-```c
-if (is6btn && state == 2)
-{
-    byte = ((players[i].output_buttons>>8) & 0xf0);
-}
-```
-
-- **State 3, 1, 0**: Send standard byte (D-pad + buttons I/II)
-- **State 2**: Send extended byte (buttons III/IV/V/VI in high nibble)
-
-### Button Mapping
-
-| USB Input | PCEngine 6-Button |
-|-----------|-------------------|
-| B1 (A) | II |
-| B2 (B) | I |
-| B3 (X) | IV |
-| B4 (Y) | III |
-| L1 (LB) | VI |
-| R1 (RB) | V |
-| S1 (Select) | Select |
-| S2 (Start) | Run |
-
-### Mode Switching Hotkeys
-
-Users can switch modes via hotkey combinations:
-
-- **START + D-Up** → Enable 6-button mode
-- **START + D-Down** → Enable 2-button mode
-- **START + D-Right** → Enable 3-button mode (Select as III)
-- **START + D-Left** → Enable 3-button mode (Run as III)
-
-```c
-if (!(players[i].output_buttons & (JP_BUTTON_S2 | JP_BUTTON_DU)))
-    players[i].button_mode = BUTTON_MODE_6;
-else if (!(players[i].output_buttons & (JP_BUTTON_S2 | JP_BUTTON_DD)))
-    players[i].button_mode = BUTTON_MODE_2;
-```
+Games detect 6-button controllers by reading the reserved low nibble: if bits 3-0 are all 0 during a scan, the controller is in 6-button mode.
 
 ---
 
-## 3-Button Modes
+## 3-Button Mode
 
-Special modes for games that only recognize 3 buttons (e.g., Street Fighter II on PCEngine CD).
+Some PCEngine games (e.g., earlier Street Fighter II ports) recognize only 3 buttons. In 3-button mode, a third action is mapped onto one of the existing standard buttons:
 
-### Mode Variants
+**Select as III**: The third button press is reported as a Select press.
 
-**3-Button (Select as III)**:
-- Buttons I, II work normally
-- L1/R1 (or B3/B4) press → Triggers Select button
-- Used when game reads "Select" as third attack button
+**Run as III**: The third button press is reported as a Run press.
 
-**3-Button (Run as III)**:
-- Buttons I, II work normally
-- L1/R1 (or B3/B4) press → Triggers Run button
-- Used when game reads "Run" as third attack button
-
-### Implementation Logic
-
-```c
-// 3-button mode (Select as III)
-if (is3btnSel)
-{
-    if ((~(players[i].output_buttons>>8)) & 0x30) // L1 or R1 pressed
-    {
-        byte &= 0b01111111;  // Clear Select bit (active LOW)
-    }
-}
-
-// 3-button mode (Run as III)
-if (is3btnRun)
-{
-    if ((~(players[i].output_buttons>>8)) & 0x30)
-    {
-        byte &= 0b10111111;  // Clear Run bit (active LOW)
-    }
-}
-```
+This allows a 6-button controller to be used with games that read Select or Run as a third attack button, without requiring the 6-button protocol extension.
 
 ---
 
@@ -293,17 +203,17 @@ The PCEngine Mouse protocol sends 8-bit signed X/Y deltas broken into nibbles ac
 
 ### Protocol Structure
 
-Each mouse update requires **4 scans** (states 3 → 2 → 1 → 0):
+Each mouse update requires **4 scans** (states 3 -> 2 -> 1 -> 0):
 
-**High nibble**: Always contains buttons (Run, Select, II, I)
-**Low nibble**: Contains movement data
+**High nibble (SEL=LOW)**: Always contains buttons (Run, Select, II, I)
+**Low nibble (SEL=HIGH)**: Contains movement data
 
-```
-State 3: [Buttons | X_high]  (X delta bits 7-4)
-State 2: [Buttons | X_low]   (X delta bits 3-0)
-State 1: [Buttons | Y_high]  (Y delta bits 7-4)
-State 0: [Buttons | Y_low]   (Y delta bits 3-0)
-```
+| State | High Nibble (SEL=LOW) | Low Nibble (SEL=HIGH) |
+|-------|------------------------|------------------------|
+| 3 | Buttons | X delta bits 7-4 (high) |
+| 2 | Buttons | X delta bits 3-0 (low) |
+| 1 | Buttons | Y delta bits 7-4 (high) |
+| 0 | Buttons | Y delta bits 3-0 (low) |
 
 ### Delta Encoding
 
@@ -314,50 +224,21 @@ State 0: [Buttons | Y_low]   (Y delta bits 3-0)
 ### Movement Example
 
 **Mouse moved right by 45 pixels, up by 23 pixels**:
-```
-X_delta = 45 (0x2D) = 0010 1101 binary
-Y_delta = 23 (0x17) = 0001 0111 binary
 
-State 3: [bbbb0010]  X high nibble
-State 2: [bbbb1101]  X low nibble
-State 1: [bbbb0001]  Y high nibble
-State 0: [bbbb0111]  Y low nibble
+The X delta is 45 (0x2D, binary 0010 1101) and the Y delta is 23 (0x17, binary 0001 0111). These are split into nibbles and sent across four scan states, with the button state occupying the upper four bits (shown as "b") of each byte:
 
-(where bbbb = button state, e.g., 1111 if no buttons pressed)
-```
+| State | Byte Layout | Content |
+|-------|-------------|---------|
+| 3 | bbbb 0010 | X high nibble |
+| 2 | bbbb 1101 | X low nibble |
+| 1 | bbbb 0001 | Y high nibble |
+| 0 | bbbb 0111 | Y low nibble |
 
-### Delta Accumulation Strategy
+The "b" bits represent the button state (e.g., 1111 if no buttons are pressed).
 
-USB mice report at ~125Hz to ~1000Hz, but PCEngine scans at ~60Hz. The implementation **accumulates deltas**:
+### Delta Accumulation
 
-```c
-// Accumulate USB mouse reports
-if (delta_x >= 128)
-    players[player_index].global_x -= (256-delta_x);
-else
-    players[player_index].global_x += delta_x;
-
-if (delta_y >= 128)
-    players[player_index].global_y -= (256-delta_y);
-else
-    players[player_index].global_y += delta_y;
-
-// Send accumulated deltas to console on next scan
-players[player_index].output_analog_1x = players[player_index].global_x;
-players[player_index].output_analog_1y = players[player_index].global_y;
-```
-
-After transmission (state 0 complete), deltas are **cleared**:
-
-```c
-players[i].global_x -= players[i].output_analog_1x;
-players[i].global_y -= players[i].output_analog_1y;
-
-players[i].output_analog_1x = 0;
-players[i].output_analog_1y = 0;
-```
-
-This prevents drift while smoothing jitter from high-frequency USB reports.
+The console scans the mouse at approximately 60Hz. If a host device reports movement at a higher rate (e.g., USB mice at 125-1000Hz), deltas must be accumulated between scans. After a complete 4-scan mouse read (state 0), the accumulated deltas should be cleared so the next read reports only new movement.
 
 ### Compatible Games
 
@@ -379,137 +260,22 @@ The multitap is a **passive device** containing:
 - Single output to console
 
 When the console scans, the multitap:
-1. Reads Player 1 on first SEL toggle
-2. Reads Player 2 on second SEL toggle
+1. Outputs Player 1 data on the first SEL toggle pair
+2. Outputs Player 2 data on the second SEL toggle pair
 3. Continues through Player 5
-4. Resets on CLR transition
+4. Resets to Player 1 on the next CLR transition
 
-### Data Packing
+### Data Ordering
 
-In the Joypad implementation, all 5 players are packed into two 32-bit words:
+Each player occupies 8 bits (two nibbles) in the scan sequence. For a full 5-player scan:
 
 ```
-output_word_0 (32 bits):
-┌─────────┬─────────┬─────────┬─────────┐
-│ Player4 │ Player3 │ Player2 │ Player1 │
-│  8 bits │  8 bits │  8 bits │  8 bits │
-└─────────┴─────────┴─────────┴─────────┘
-
-output_word_1 (32 bits):
-┌─────────┬───────────────────────────┐
-│ Player5 │         (unused)          │
-│  8 bits │         24 bits           │
-└─────────┴───────────────────────────┘
+SEL toggles:  P1_dpad  P1_btns  P2_dpad  P2_btns  ...  P5_dpad  P5_btns
+              ─────────────────────────────────────────────────────────────
+Nibble #:        1        2        3        4      ...     9       10
 ```
 
-### PIO Sequencing
-
-The `plex.pio` state machine handles player sequencing:
-
-```asm
-clr:
-    set   y, 3        ; count 4-player output (Players 1-4)
-    pull  block       ; pull output_word_1
-    mov   x, osr      ; hold Player 5 in X register
-    pull  block       ; pull output_word_0
-    wait  0 pin 1     ; wait for CLR go low
-
-sel:
-    wait  1 pin 0     ; wait for SEL high
-    out   PINS, 4     ; output D-pad nibble
-
-    wait  irq 7       ; wait for SEL low or CLR high
-    jmp   PIN, clr    ; restart if CLR high
-
-    out   PINS, 4     ; output button nibble
-    jmp   y--, sel    ; next player (decrement Y, loop)
-
-    mov   osr, x      ; swap Player 5 into OSR
-    set   x, 0        ; clear X register
-    set   y, 1        ; continue for Player 5
-    jmp   sel
-```
-
-**Key insight**: The PIO state machine automatically shifts through player bytes by consuming 8 bits (two 4-bit nibbles) per player per scan cycle.
-
-### Timing Coordination
-
-Three PIO state machines work together:
-
-- **SM1 (plex.pio)**: Outputs data, sequences through players
-- **SM2 (clock.pio)**: Monitors CLR signal, triggers Core 1
-- **SM3 (select.pio)**: Monitors SEL signal, sets IRQ 7
-
-IRQ 7 is used for **synchronization** between state machines.
-
----
-
-## PIO State Machine Architecture
-
-### State Machine Allocation
-
-The implementation uses **3 PIO state machines** on PIO0:
-
-| SM | Program | Purpose | Pins |
-|----|---------|---------|------|
-| SM1 | plex.pio | Data multiplexer & player sequencing | OUTD0-OUTD3 (output) |
-| SM2 | clock.pio | CLR signal monitor | CLKIN_PIN (input) |
-| SM3 | select.pio | SEL signal monitor | DATAIN_PIN (input) |
-
-### plex.pio - Data Multiplexer
-
-**Purpose**: Output player data nibbles based on SEL and CLR signals.
-
-**Key features**:
-- Pulls two 32-bit words from TX FIFO (double-buffered for Player 1-5 data)
-- Outputs 4 bits at a time to D0-D3 pins
-- Right-shifts through data (LSB first)
-- Uses JMP PIN to detect CLR transitions
-- Uses IRQ 7 for SEL synchronization
-
-**Configuration**:
-```c
-sm_config_set_out_shift(&c,
-    true,   // Shift-to-right = true (LSB first)
-    false,  // Autopull disabled (manual PULL)
-    31      // Autopull threshold (not used)
-);
-
-sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_TX); // Double TX FIFO size
-```
-
-### clock.pio - CLR Monitor
-
-**Purpose**: Detect CLR signal transitions to trigger Core 1.
-
-**Operation**:
-```asm
-clklp:
-    wait 0 pin 0      ; wait for CLR LOW
-    wait 1 pin 0      ; wait for CLR HIGH (negedge → posedge)
-    irq 7 side 0      ; set IRQ 7, clear side-set pins
-    in pins, 1        ; read CLR state into ISR
-    jmp clklp         ; loop
-```
-
-**Purpose of IRQ 7 here**: Signals to plex.pio that SEL may have transitioned.
-
-**Side-set**: Can optionally drive output pins to 0 (used for debugging or reset).
-
-### select.pio - SEL Monitor
-
-**Purpose**: Detect SEL signal transitions for synchronization.
-
-**Operation**:
-```asm
-sellp:
-    wait 1 pin 0      ; wait for SEL HIGH
-    wait 0 pin 0      ; wait for SEL LOW (posedge → negedge)
-    irq 7             ; set IRQ 7 to notify plex
-    jmp sellp         ; loop
-```
-
-**IRQ 7 coordination**: Both clock.pio and select.pio set the same IRQ. The plex.pio waits on this IRQ to know when to output the next nibble or reset.
+The multitap advances to the next player after each pair of nibbles (one SEL HIGH + one SEL LOW). CLR going HIGH resets the player counter back to Player 1.
 
 ---
 
@@ -518,196 +284,25 @@ sellp:
 ### Scan Cycle Timing
 
 **Typical timing** (measured on real hardware):
-- CLR LOW duration: ~400-500µs
-- SEL toggle period: ~50-100µs per toggle
-- Full scan cycle: ~600-800µs
-
-**Joypad timeout values**:
-```c
-#define RESET_PERIOD    600   // µs - timeout for end-of-scan detection
-#define SCAN_TIMEOUT    550   // µs - max CLR LOW + SEL HIGH duration
-```
+- CLR LOW duration: ~400-500us
+- SEL toggle period: ~50-100us per toggle
+- Full scan cycle: ~600-800us
 
 ### State Transition Flow
 
 ```
-Time (µs)     CLR    SEL     State   Action
+Time (us)     CLR    SEL     State   Action
 ────────────────────────────────────────────────
 0             HIGH   HIGH    Idle    Waiting for scan
-50            LOW    HIGH    3       CLR negedge → Core 1 wakes
+50            LOW    HIGH    3       CLR falling edge, scan begins
 100           LOW    LOW     3       Output Player 1 D-pad
 150           LOW    HIGH    3       Output Player 1 buttons
 200           LOW    LOW     2       Output Player 2 D-pad
 ...           ...    ...     ...     ...
-600           HIGH   HIGH    Reset   Timeout → state = 3
+600           HIGH   HIGH    Reset   CLR rising edge, scan ends
 ```
 
-### Core 1 Blocking Loop
-
-Core 1 runs an infinite loop synchronized to CLR transitions:
-
-```c
-void core1_entry(void)
-{
-    while (1)
-    {
-        // Block until CLR negedge (scan start)
-        rx_bit = pio_sm_get_blocking(pio, sm2);
-
-        // Lock output to prevent tearing
-        output_exclude = true;
-
-        // Push player data to PIO FIFO
-        pio_sm_put(pio, sm1, output_word_1);  // Player 5
-        pio_sm_put(pio, sm1, output_word_0);  // Players 1-4
-
-        // Wait for scan to complete (CLR low, SEL high)
-        loop_time = get_absolute_time();
-        while ((gpio_get(CLKIN_PIN) == 0) && (gpio_get(DATAIN_PIN) == 1))
-        {
-            if (absolute_time_diff_us(loop_time, get_absolute_time()) > 550)
-            {
-                state = 0;  // Timeout → reset to state 0
-                break;
-            }
-        }
-
-        // Decrement state or handle mouse delta clear
-        if (state != 0)
-            state--;
-        else
-            /* clear mouse deltas */
-
-        update_output();  // Refresh output words for next scan
-        init_time = get_absolute_time();  // Reset timeout timer
-    }
-}
-```
-
-### Atomic Updates
-
-To prevent **data tearing** (console reading partially updated data), the `output_exclude` flag gates updates:
-
-```c
-// Core 0 (USB processing) checks before updating players[]
-if (!output_exclude)
-{
-    players[player_index].output_analog_1x = players[player_index].global_x;
-    players[player_index].output_analog_1y = players[player_index].global_y;
-    update_output();
-}
-```
-
-When `output_exclude == true`, Core 0 skips output updates until the scan completes.
-
----
-
-## Implementation Notes
-
-### Turbo Button Feature
-
-The implementation includes **auto-fire turbo** for buttons III and IV:
-
-**Turbo timing**:
-```c
-cpu_frequency = clock_get_hz(clk_sys);       // e.g., 125 MHz
-turbo_frequency = 1000000;                    // 1 MHz base
-timer_threshold_a = cpu_frequency / (turbo_frequency * 2);   // ~15 Hz
-timer_threshold_b = cpu_frequency / (turbo_frequency * 20);  // ~6 Hz
-```
-
-**Turbo logic**:
-```c
-turbo_timer++;
-if (turbo_timer >= timer_threshold)
-{
-    turbo_timer = 0;
-    turbo_state = !turbo_state;  // Toggle turbo
-}
-
-if (turbo_state)
-{
-    if ((~(players[i].output_buttons>>8)) & 0x20)  // Button III
-        byte &= 0b11011111;  // Auto-press II (turbo)
-    if ((~(players[i].output_buttons>>8)) & 0x10)  // Button IV
-        byte &= 0b11101111;  // Auto-press I (turbo)
-}
-```
-
-**Turbo speed control**:
-- **L1 pressed**: Use `timer_threshold_a` (~15 Hz)
-- **R1 pressed**: Use `timer_threshold_b` (~6 Hz)
-
-### SOCD Cleaning
-
-**Simultaneous Opposite Cardinal Directions** are resolved:
-
-**Up + Down priority**: Up wins
-```c
-if (((~output_buttons) & 0x01) && ((~output_buttons) & 0x04)) {
-    output_buttons ^= 0x04;  // Cancel Down
-}
-```
-
-**Left + Right neutral**: Both cancelled
-```c
-if (((~output_buttons) & 0x02) && ((~output_buttons) & 0x08)) {
-    output_buttons ^= 0x0a;  // Cancel both (XOR to set bits)
-}
-```
-
-This prevents diagonal input exploits in certain games.
-
-### EverDrive Pro Hotkey Workaround
-
-The TurboEverDrive Pro uses hotkeys that conflict with game input. The implementation detects these hotkeys on Player 1 and suppresses input from other players:
-
-```c
-int16_t hotkey = 0;
-
-if (i == 0)
-{
-    int16_t btns = (~players[i].output_buttons & 0xff);
-    if      (btns == 0x82) hotkey = ~0x82;  // RUN + RIGHT
-    else if (btns == 0x88) hotkey = ~0x88;  // RUN + LEFT
-    else if (btns == 0x84) hotkey = ~0x84;  // RUN + DOWN
-}
-
-if (hotkey)
-{
-    byte &= hotkey;  // Suppress conflicting buttons
-}
-```
-
-### Dual-Core Efficiency
-
-**Core 0** (main):
-- Runs USB polling loop (`tuh_task()`)
-- Updates `players[].global_buttons` and `players[].global_x/y`
-- Calls `post_globals()` on USB input events
-- Checks `output_exclude` before updating output state
-
-**Core 1** (console output):
-- Dedicated to PCEngine protocol timing
-- Blocks on PIO waiting for CLR signal
-- Pushes data to PIO FIFO
-- Manages `state` transitions
-- Calls `update_output()` to refresh data
-
-**No mutexes needed**: The `output_exclude` flag provides lock-free coordination.
-
-### Memory-Mapped I/O
-
-Critical functions are kept in **SRAM** (not XIP flash) for deterministic timing:
-
-```c
-void __not_in_flash_func(core1_entry)(void);
-void __not_in_flash_func(update_output)(void);
-void __not_in_flash_func(post_globals)(...);
-void __not_in_flash_func(post_mouse_globals)(...);
-```
-
-Flash XIP adds ~100ns latency per access, which can disrupt tight timing loops.
+After the CLR rising edge, the controller/multitap resets to Player 1 and the state counter resets.
 
 ---
 
@@ -733,35 +328,24 @@ Bit:  7     6       5   4   |  3    2    1    0
      Run  Select   II  I   | [Movement Nibble]
 ```
 
-### Pin Assignments (Default KB2040)
+### Connector Pinout Summary
 
-| Function | GPIO | PCE Pin | Signal | Description |
-|----------|------|---------|--------|-------------|
-| DATAIN_PIN | 18 | 6 | SEL | Select input (nibble toggle from console) |
-| CLKIN_PIN | 19 | 7 | CLR/OE | Clear/Output Enable input (scan reset from console) |
-| OUTD0_PIN | 26 | 2 | D0 | Data bit 0 output (active LOW) |
-| OUTD1_PIN | 27 | 3 | D1 | Data bit 1 output (active LOW) |
-| OUTD2_PIN | 28 | 4 | D2 | Data bit 2 output (active LOW) |
-| OUTD3_PIN | 29 | 5 | D3 | Data bit 3 output (active LOW) |
-| VBUS | — | 1 | VCC | +5V power |
-| GND | — | 8 | GND | Ground |
-
-> For Pico builds, D0-D3 use GP4-GP7 instead of GP26-GP29.
-
-### PIO Resource Usage
-
-| Resource | Usage |
-|----------|-------|
-| PIO blocks | 1 (PIO0) |
-| State machines | 3 (SM1, SM2, SM3) |
-| Instruction memory | ~30 instructions total |
-| IRQ | IRQ 7 (for synchronization) |
+| Pin | Signal | Direction | Description |
+|-----|--------|-----------|-------------|
+| 1 | VCC | Power | +5V power supply |
+| 2 | D0 | Controller -> Console | Data bit 0 (active LOW) |
+| 3 | D1 | Controller -> Console | Data bit 1 (active LOW) |
+| 4 | D2 | Controller -> Console | Data bit 2 (active LOW) |
+| 5 | D3 | Controller -> Console | Data bit 3 (active LOW) |
+| 6 | SEL | Console -> Controller | Select (nibble toggle) |
+| 7 | CLR/OE | Console -> Controller | Clear/Output Enable (scan reset) |
+| 8 | GND | Power | Ground |
 
 ---
 
 ## Acknowledgments
 
-- **David Shadoff** - [PCEMouse](https://github.com/dshadoff/PC_Engine_RP2040_Projects/tree/main/PCEMouse) foundation
+- **David Shadoff** - PCEngine controller protocol research, including [PCEMouse](https://github.com/dshadoff/PC_Engine_RP2040_Projects/tree/main/PCEMouse) documentation
 - **NEC / Hudson Soft** - Original PCEngine hardware design
 - **Retro community** - Protocol documentation and testing
 
@@ -770,10 +354,6 @@ Bit:  7     6       5   4   |  3    2    1    0
 ## References
 
 - [PCEngine Development Wiki](https://www.nesdev.org/wiki/PC_Engine_hardware)
-- [David Shadoff's RP2040 Projects](https://github.com/dshadoff/PC_Engine_RP2040_Projects)
+- [David Shadoff's PCEngine Projects](https://github.com/dshadoff/PC_Engine_RP2040_Projects)
 - [PC Engine Software Bible](http://www.magicengine.com/mkit/doc_hard_pce.html)
 - [TurboGrafx-16 Technical Specifications](https://en.wikipedia.org/wiki/TurboGrafx-16)
-
----
-
-*This protocol implementation demonstrates efficient use of RP2040's dual-core architecture and PIO capabilities for precise timing-critical retro console protocols.*
