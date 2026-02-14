@@ -313,11 +313,11 @@ static void switch_process_report(bthid_device_t* device, const uint8_t* data, u
         // Build button state
         uint32_t buttons = 0x00000000;
 
-        // Face buttons
-        if (rpt->a)      buttons |= JP_BUTTON_B1;
-        if (rpt->b)      buttons |= JP_BUTTON_B2;
-        if (rpt->x)      buttons |= JP_BUTTON_B3;
-        if (rpt->y)      buttons |= JP_BUTTON_B4;
+        // Face buttons (map by position, not label — Nintendo layout is rotated)
+        if (rpt->b)      buttons |= JP_BUTTON_B1;  // B = bottom
+        if (rpt->a)      buttons |= JP_BUTTON_B2;  // A = right
+        if (rpt->y)      buttons |= JP_BUTTON_B3;  // Y = left
+        if (rpt->x)      buttons |= JP_BUTTON_B4;  // X = top
 
         // Shoulder buttons
         if (rpt->l)      buttons |= JP_BUTTON_L1;
@@ -360,10 +360,10 @@ static void switch_process_report(bthid_device_t* device, const uint8_t* data, u
 
         uint32_t buttons = 0x00000000;
 
-        if (rpt->a)      buttons |= JP_BUTTON_B1;
-        if (rpt->b)      buttons |= JP_BUTTON_B2;
-        if (rpt->x)      buttons |= JP_BUTTON_B3;
-        if (rpt->y)      buttons |= JP_BUTTON_B4;
+        if (rpt->b)      buttons |= JP_BUTTON_B1;  // B = bottom
+        if (rpt->a)      buttons |= JP_BUTTON_B2;  // A = right
+        if (rpt->y)      buttons |= JP_BUTTON_B3;  // Y = left
+        if (rpt->x)      buttons |= JP_BUTTON_B4;  // X = top
         if (rpt->l)      buttons |= JP_BUTTON_L1;
         if (rpt->r)      buttons |= JP_BUTTON_R1;
         if (rpt->zl)     buttons |= JP_BUTTON_L2;
