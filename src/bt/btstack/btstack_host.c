@@ -191,6 +191,7 @@ static struct {
     bool has_last_connected;
     uint32_t reconnect_attempt_time;
     uint8_t reconnect_attempts;
+    uint32_t scan_start_time;          // When current scan started (for periodic reconnect)
 
     // Connections
     ble_connection_t connections[MAX_BLE_CONNECTIONS];
@@ -226,6 +227,9 @@ static void xbox_hid_notification_handler(uint8_t packet_type, uint16_t channel,
 static gatt_client_notification_t switch2_hid_notification_listener;
 static gatt_client_characteristic_t switch2_hid_characteristic;
 static void switch2_hid_notification_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size);
+
+// Forward declaration for BLE disconnect cleanup (defined in Switch 2 section)
+static void switch2_cleanup_on_disconnect(void);
 
 // ============================================================================
 // CLASSIC BT HID HOST STATE
@@ -633,6 +637,7 @@ void btstack_host_start_scan(void)
     gap_start_scan();
     hid_state.scan_active = true;
     hid_state.state = BLE_STATE_SCANNING;
+    hid_state.scan_start_time = btstack_run_loop_get_time_ms();
 
     // Also start classic BT inquiry
     // Alternate between GIAC (general) and LIAC (limited) to discover Wiimotes/Wii U Pro
@@ -649,6 +654,7 @@ void btstack_host_stop_scan(void)
 {
     // Always set state to idle to prevent scanning from restarting
     hid_state.state = BLE_STATE_IDLE;
+    hid_state.scan_start_time = 0;
 
     if (hid_state.scan_active) {
         printf("[BTSTACK_HOST] Stopping BLE scan\n");
@@ -674,7 +680,8 @@ void btstack_host_start_timed_scan(uint32_t timeout_ms)
 // CONNECTION
 // ============================================================================
 
-#define BLE_CONNECT_TIMEOUT_MS 10000  // 10s timeout for BLE connection attempts
+#define BLE_CONNECT_TIMEOUT_MS 10000   // 10s timeout for BLE connection attempts
+#define BLE_RECONNECT_INTERVAL_MS 20000  // While scanning, try reconnecting to bonded device every 20s
 
 void btstack_host_connect_ble(bd_addr_t addr, bd_addr_type_t addr_type)
 {
@@ -790,8 +797,30 @@ void btstack_host_process(void)
         !classic_state.pending_valid &&
         btstack_classic_get_connection_count() == 0) {
         printf("[BTSTACK_HOST] Safety: idle with no connections, resuming scan\n");
-        hid_state.reconnect_attempts = 0;
         btstack_host_start_scan();
+    }
+
+    // State/scan_active sync: if BLE scan is running but state is not SCANNING,
+    // fix the desync so the advertising handler can auto-connect to devices.
+    if (hid_state.scan_active && hid_state.state == BLE_STATE_IDLE) {
+        printf("[BTSTACK_HOST] Safety: scan active but state IDLE, fixing to SCANNING\n");
+        hid_state.state = BLE_STATE_SCANNING;
+    }
+
+    // Periodic reconnection to bonded device while scanning.
+    // Many BLE devices (e.g. Stadia) don't advertise in discoverable mode after
+    // bonding — they expect the central to connect directly via gap_connect().
+    // After the rapid reconnect attempts (right after disconnect) are exhausted,
+    // alternate between scanning and reconnection attempts.
+    if (hid_state.state == BLE_STATE_SCANNING &&
+        hid_state.has_last_connected &&
+        hid_state.scan_start_time != 0 &&
+        (btstack_run_loop_get_time_ms() - hid_state.scan_start_time) >= BLE_RECONNECT_INTERVAL_MS) {
+        printf("[BTSTACK_HOST] Periodic reconnection to bonded device '%s'\n",
+               hid_state.last_connected_name);
+        strncpy(hid_state.pending_name, hid_state.last_connected_name, sizeof(hid_state.pending_name) - 1);
+        hid_state.pending_name[sizeof(hid_state.pending_name) - 1] = '\0';
+        btstack_host_connect_ble(hid_state.last_connected_addr, hid_state.last_connected_addr_type);
     }
 }
 
@@ -1503,6 +1532,17 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
 
                     if (status != 0) {
                         printf("[BTSTACK_HOST] Connection failed: 0x%02X\n", status);
+                        hid_state.reconnect_attempt_time = 0;
+
+                        // If scan is already running (e.g. safety net started it after
+                        // gap_connect_cancel timeout), restore scanning state so the
+                        // advertising handler can auto-connect to devices
+                        if (hid_state.scan_active) {
+                            hid_state.state = BLE_STATE_SCANNING;
+                            printf("[BTSTACK_HOST] Scan already active, resuming scan state\n");
+                            break;
+                        }
+
                         hid_state.state = BLE_STATE_IDLE;
 
                         // If reconnection attempt failed, try again or resume scanning
@@ -1512,7 +1552,8 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                                    hid_state.reconnect_attempts);
                             btstack_host_connect_ble(hid_state.last_connected_addr, hid_state.last_connected_addr_type);
                         } else {
-                            printf("[BTSTACK_HOST] Reconnection failed, resuming scan\n");
+                            printf("[BTSTACK_HOST] Reconnection failed after %d attempts, resuming scan\n",
+                                   hid_state.reconnect_attempts);
                             btstack_host_start_scan();
                         }
                         break;
@@ -1775,6 +1816,21 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                 bt_on_disconnect(conn->conn_index);
                 memset(conn, 0, sizeof(*conn));
 
+                // Clean up GATT/HIDS client state for this connection
+                if (hid_state.hids_cid != 0) {
+                    hids_client_disconnect(hid_state.hids_cid);
+                    hid_state.hids_cid = 0;
+                }
+                hid_state.gatt_state = GATT_IDLE;
+                hid_state.gatt_handle = 0;
+
+                // Unregister GATT notification listeners
+                gatt_client_stop_listening_for_characteristic_value_updates(&xbox_hid_notification_listener);
+                gatt_client_stop_listening_for_characteristic_value_updates(&switch2_hid_notification_listener);
+
+                // Clean up Switch 2 state (ACK listener, init state machine)
+                switch2_cleanup_on_disconnect();
+
                 // BLE disconnect — manage BLE state and reconnection
                 hid_state.state = BLE_STATE_IDLE;
 
@@ -1802,6 +1858,13 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                 // or the outgoing HID failure handler. If we're waiting for an incoming
                 // reconnection, don't restart scanning here.
                 printf("[BTSTACK_HOST] Classic disconnect: handle=0x%04X (BLE state unchanged)\n", handle);
+
+                // Clear pending connection state if this was the pending device.
+                // Handles cases where ACL drops before HID opens (e.g., auth failure).
+                if (classic_state.pending_valid) {
+                    classic_state.pending_valid = false;
+                    classic_state.pending_hid_connect = false;
+                }
             }
             break;
         }
@@ -2418,6 +2481,13 @@ static hci_con_handle_t sw2_init_handle = 0;
 // ACK notification listener for Switch 2 commands
 static gatt_client_notification_t switch2_ack_notification_listener;
 static gatt_client_characteristic_t switch2_ack_characteristic;
+
+// Cleanup Switch 2 state on BLE disconnect (called from disconnect handler)
+static void switch2_cleanup_on_disconnect(void) {
+    gatt_client_stop_listening_for_characteristic_value_updates(&switch2_ack_notification_listener);
+    sw2_init_state = SW2_INIT_IDLE;
+    sw2_init_handle = 0;
+}
 
 // Forward declare
 static void switch2_send_init_cmd(hci_con_handle_t con_handle);
