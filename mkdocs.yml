@@ -35,15 +35,16 @@ nav:
     - Installation: INSTALLATION.md
     - Building: BUILD.md
     - Hardware Compatibility: HARDWARE.md
-  - Console Adapters:
-    - 3DO: consoles/3DO.md
-    - Dreamcast: consoles/DREAMCAST.md
-    - GameCube / Wii: consoles/GAMECUBE.md
-    - Casio Loopy: consoles/LOOPY.md
-    - Neo Geo: consoles/NEOGEO.md
-    - Nuon: consoles/NUON.md
-    - PC Engine: consoles/PCENGINE.md
-  - USB Output: USB_OUTPUT.md
+  - Firmware Apps:
+    - USB2USB: apps/USB2USB.md
+    - BT2USB: apps/BT2USB.md
+    - USB2GC (GameCube / Wii): apps/USB2GC.md
+    - USB23DO (3DO): apps/USB23DO.md
+    - USB2DC (Dreamcast): apps/USB2DC.md
+    - USB2Neo (Neo Geo): apps/USB2NEO.md
+    - USB2Nuon (Nuon): apps/USB2NUON.md
+    - USB2PCE (PC Engine): apps/USB2PCE.md
+    - USB2Loopy (Casio Loopy): apps/USB2LOOPY.md
   - Features:
     - SNES Rumble: features/SNES_RUMBLE.md
   - Protocol Reference:
