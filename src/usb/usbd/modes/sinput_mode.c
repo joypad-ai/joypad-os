@@ -148,10 +148,21 @@ static void update_device_info(uint8_t dev_addr, int8_t instance, input_transpor
                 cached_gamepad_type = SINPUT_TYPE_PS5;
                 return;
             case CONTROLLER_SWITCH:
-            case CONTROLLER_SWITCH2:
                 cached_face_style = SINPUT_FACE_NINTENDO;
                 cached_gamepad_type = SINPUT_TYPE_SWITCH_PRO;
                 return;
+            case CONTROLLER_SWITCH2: {
+                uint16_t vid, pid;
+                tuh_vid_pid_get(dev_addr, &vid, &pid);
+                if (pid == 0x2073) {  // NSO GameCube Controller
+                    cached_face_style = SINPUT_FACE_GAMECUBE;
+                    cached_gamepad_type = SINPUT_TYPE_GAMECUBE;
+                } else {
+                    cached_face_style = SINPUT_FACE_NINTENDO;
+                    cached_gamepad_type = SINPUT_TYPE_SWITCH_PRO;
+                }
+                return;
+            }
             case CONTROLLER_GAMECUBE:
                 cached_face_style = SINPUT_FACE_GAMECUBE;
                 cached_gamepad_type = SINPUT_TYPE_GAMECUBE;
@@ -183,8 +194,13 @@ static void update_device_info(uint8_t dev_addr, int8_t instance, input_transpor
                     }
                     return;
                 case 0x057E:  // Nintendo
-                    cached_face_style = SINPUT_FACE_NINTENDO;
-                    cached_gamepad_type = SINPUT_TYPE_SWITCH_PRO;
+                    if (bt_dev->product_id == 0x2073) {  // NSO GameCube Controller
+                        cached_face_style = SINPUT_FACE_GAMECUBE;
+                        cached_gamepad_type = SINPUT_TYPE_GAMECUBE;
+                    } else {
+                        cached_face_style = SINPUT_FACE_NINTENDO;
+                        cached_gamepad_type = SINPUT_TYPE_SWITCH_PRO;
+                    }
                     return;
                 case 0x045E:  // Microsoft
                     cached_face_style = SINPUT_FACE_XBOX;
