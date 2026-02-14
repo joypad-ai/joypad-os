@@ -724,8 +724,8 @@ joypad_add_btstack(joypad_usb_pico2_w)
 add_executable(joypad_usb_rp2040zero)
 target_compile_definitions(joypad_usb_rp2040zero PRIVATE
     CONFIG_USB=1
-    CONFIG_PIO_USB_DP_PIN=10
-    PICO_DEFAULT_PIO_USB_DP_PIN=10
+    CONFIG_PIO_USB_DP_PIN=6
+    PICO_DEFAULT_PIO_USB_DP_PIN=6
     BOARD_TUH_RHPORT=1
     WS2812_PIN=16
     USE_BOOTSEL_BUTTON=1
@@ -746,8 +746,8 @@ add_executable(joypad_usb_rp2350usba)
 target_compile_definitions(joypad_usb_rp2350usba PRIVATE
     CONFIG_USB=1
     CONFIG_USB_HOST=1
-    CONFIG_PIO_USB_DP_PIN=12
-    PICO_DEFAULT_PIO_USB_DP_PIN=12
+    CONFIG_PIO_USB_DP_PIN=28
+    PICO_DEFAULT_PIO_USB_DP_PIN=28
     BOARD_TUH_RHPORT=1
     WS2812_PIN=16
     USE_BOOTSEL_BUTTON=1
