@@ -344,6 +344,7 @@ static bool ds5_process_debug_done = false;
 static void ds5_process_report(bthid_device_t* device, const uint8_t* data, uint16_t len)
 {
     ds5_bt_data_t* ds5 = (ds5_bt_data_t*)device->driver_data;
+
     if (!ds5 || len < 1) return;
 
     // Debug: print first report received
@@ -431,9 +432,9 @@ static void ds5_process_report(bthid_device_t* device, const uint8_t* data, uint
         ds5->event.has_motion = false;
     }
 
-    // Battery: report_data[53] — bits 0-3 = level (0-10), bits 4-7 = status
-    if (report_len > 53) {
-        uint8_t raw = report_data[53];
+    // Battery: status byte at report_data[52] — bits 0-3 = level (0-10), bits 4-7 = status
+    if (report_len > 52) {
+        uint8_t raw = report_data[52];
         uint8_t level = raw & 0x0F;
         uint8_t status = (raw >> 4) & 0x0F;
         ds5->event.battery_level = (level > 10) ? 100 : level * 10;
