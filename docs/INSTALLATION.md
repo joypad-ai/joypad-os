@@ -145,19 +145,19 @@ Several adapters support switchable button mapping profiles:
 - Hold **Select** for 2 seconds
 - Then press **D-Pad Up/Down** to cycle profiles
 - Profiles: Default, SNES, SSBM, MKWii, Fighting
-- See [GameCube docs](consoles/GAMECUBE.md) for details
+- See [GameCube docs](apps/USB2GC.md) for details
 
 ### 3DO (USB23DO)
 - Hold **Select** for 2 seconds
 - Then press **D-Pad Up/Down** to cycle profiles
 - Profiles: Default, Fighting, Shooter
-- See [3DO docs](consoles/3DO.md) for details
+- See [3DO docs](apps/USB23DO.md) for details
 
 ### Nuon (USB2Nuon)
 - **In-Game Reset (IGR)**: Hold L1+R1+Start+Select
   - Tap: Stop button (return to menu)
   - Hold 2 seconds: Power button (power off player)
-- See [Nuon docs](consoles/NUON.md) for details
+- See [Nuon docs](apps/USB2NUON.md) for details
 
 ## Verifying Firmware Version
 

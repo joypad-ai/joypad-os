@@ -175,7 +175,7 @@ Joypad Core supports Bluetooth controllers via USB Bluetooth dongles.
 - **Input Types**: Controller, Mouse
 - **Features**: 2/3/6-button modes, Turbo buttons
 - **Protocol**: PIO-based scanning
-- **Documentation**: [PCENGINE.md](consoles/PCENGINE.md)
+- **Documentation**: [PCENGINE.md](apps/USB2PCE.md)
 
 ### GameCube / Wii
 
@@ -183,7 +183,7 @@ Joypad Core supports Bluetooth controllers via USB Bluetooth dongles.
 - **Input Types**: Controller, Keyboard
 - **Features**: Profiles, Rumble, Copilot mode
 - **Protocol**: Joybus via PIO (130MHz clock required)
-- **Documentation**: [GAMECUBE.md](consoles/GAMECUBE.md)
+- **Documentation**: [GAMECUBE.md](apps/USB2GC.md)
 
 ### Nuon DVD Players
 
@@ -191,7 +191,7 @@ Joypad Core supports Bluetooth controllers via USB Bluetooth dongles.
 - **Input Types**: Controller, Spinner (mouse)
 - **Features**: Spinner mode, In-Game Reset (IGR)
 - **Protocol**: Polyface serial via PIO
-- **Documentation**: [NUON.md](consoles/NUON.md)
+- **Documentation**: [NUON.md](apps/USB2NUON.md)
 
 ### 3DO Interactive Multiplayer
 
@@ -199,7 +199,7 @@ Joypad Core supports Bluetooth controllers via USB Bluetooth dongles.
 - **Input Types**: Controller, Joystick, Mouse
 - **Features**: Extension passthrough, Profiles
 - **Protocol**: PBUS serial via PIO
-- **Documentation**: [3DO.md](consoles/3DO.md)
+- **Documentation**: [3DO.md](apps/USB23DO.md)
 
 ### Casio Loopy
 
@@ -208,7 +208,7 @@ Joypad Core supports Bluetooth controllers via USB Bluetooth dongles.
 - **Features**: Basic controller support
 - **Protocol**: PIO-based
 - **Status**: Experimental
-- **Documentation**: [LOOPY.md](consoles/LOOPY.md)
+- **Documentation**: [LOOPY.md](apps/USB2LOOPY.md)
 
 ### USB Device Output
 
@@ -349,10 +349,10 @@ Most boards need a USB-A connector wired to specific GPIO pins for controller in
 ### Console-Specific Pinouts
 
 See individual console documentation for pinouts:
-- [PCEngine Pinout](consoles/PCENGINE.md#pin-configuration)
-- [GameCube Pinout](consoles/GAMECUBE.md#hardware-requirements)
-- [Nuon Pinout](consoles/NUON.md#hardware-requirements)
-- [3DO Pinout](consoles/3DO.md#hardware-requirements)
+- [PCEngine Pinout](apps/USB2PCE.md#pin-configuration)
+- [GameCube Pinout](apps/USB2GC.md#hardware-requirements)
+- [Nuon Pinout](apps/USB2NUON.md#hardware-requirements)
+- [3DO Pinout](apps/USB23DO.md#hardware-requirements)
 
 ### Common Mistakes
 
