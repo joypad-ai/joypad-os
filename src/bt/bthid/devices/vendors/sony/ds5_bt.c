@@ -431,6 +431,15 @@ static void ds5_process_report(bthid_device_t* device, const uint8_t* data, uint
         ds5->event.has_motion = false;
     }
 
+    // Battery: report_data[53] — bits 0-3 = level (0-10), bits 4-7 = status
+    if (report_len > 53) {
+        uint8_t raw = report_data[53];
+        uint8_t level = raw & 0x0F;
+        uint8_t status = (raw >> 4) & 0x0F;
+        ds5->event.battery_level = (level > 10) ? 100 : level * 10;
+        ds5->event.battery_charging = (status == 1);
+    }
+
     // Submit to router
     router_submit_input(&ds5->event);
 }

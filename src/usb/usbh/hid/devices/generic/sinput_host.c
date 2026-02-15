@@ -152,6 +152,8 @@ void process_sinput_host(uint8_t dev_addr, uint8_t instance, uint8_t const* repo
     .gyro = {rpt.gyro_x, rpt.gyro_y, rpt.gyro_z},
     .accel_range = 4000,
     .gyro_range = 2000,
+    .battery_level = rpt.charge_level,
+    .battery_charging = (rpt.plug_status & 0x01) != 0,
   };
 
   router_submit_input(&event);

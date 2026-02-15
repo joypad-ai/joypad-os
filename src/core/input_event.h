@@ -151,6 +151,10 @@ typedef struct {
     // Order: up, right, down, left, l2, r2, l1, r1, triangle, circle, cross, square
     uint8_t pressure[12];       // 0x00 = released, 0xFF = fully pressed
     bool has_pressure;          // Pressure data is valid
+
+    // Battery level
+    uint8_t battery_level;      // 0-100 percent (0 = unknown/not reported)
+    bool battery_charging;      // True if charging / cable connected
 } input_event_t;
 
 // ============================================================================

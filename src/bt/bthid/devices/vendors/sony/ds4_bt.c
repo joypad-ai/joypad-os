@@ -331,6 +331,12 @@ static void ds4_process_report(bthid_device_t* device, const uint8_t* data, uint
         ds4->event.has_motion = false;
     }
 
+    // Battery level
+    uint8_t raw_battery = rpt->battery;
+    uint8_t level = (raw_battery & 0x0F);
+    ds4->event.battery_level = (level > 10) ? 100 : level * 10;
+    ds4->event.battery_charging = (raw_battery & 0x10) != 0;
+
     // Submit to router
     router_submit_input(&ds4->event);
 }

@@ -301,6 +301,10 @@ static bool sinput_mode_send_report(uint8_t player_index,
         sinput_report.gyro_z = 0;
     }
 
+    // Battery status
+    sinput_report.charge_level = event->battery_level;
+    sinput_report.plug_status = event->battery_charging ? 1 : 0;
+
     // Send report on gamepad interface (skip report_id byte since TinyUSB handles it)
     return tud_hid_n_report(ITF_NUM_HID_GAMEPAD, SINPUT_REPORT_ID_INPUT,
                             ((uint8_t*)&sinput_report) + 1,
