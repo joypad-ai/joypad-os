@@ -10,6 +10,7 @@
 #include "core/router/router.h"
 #include "core/buttons.h"
 #include "core/services/players/manager.h"
+#include "core/services/players/feedback.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -30,6 +31,11 @@
 #define XBOX_BLE_LEFT_THUMB      0x2000  // L3
 #define XBOX_BLE_RIGHT_THUMB     0x4000  // R3
 
+// Rumble output report (Report ID 0x03, 8 bytes)
+#define XBOX_BLE_REPORT_RUMBLE    0x03
+// Actuator enable bits: 0=weak(right), 1=strong(left), 2=right_trigger, 3=left_trigger
+#define XBOX_BLE_RUMBLE_MOTORS    0x03  // Enable strong (bit 1) + weak (bit 0) main motors
+
 // ============================================================================
 // DRIVER DATA
 // ============================================================================
@@ -37,6 +43,8 @@
 typedef struct {
     input_event_t event;
     bool initialized;
+    uint8_t rumble_left;
+    uint8_t rumble_right;
 } xbox_ble_data_t;
 
 static xbox_ble_data_t xbox_data[BTHID_MAX_DEVICES];
@@ -105,22 +113,27 @@ static void xbox_ble_process_report(bthid_device_t* device, const uint8_t* data,
     xbox_ble_data_t* xbox = (xbox_ble_data_t*)device->driver_data;
     if (!xbox) return;
 
-    // Xbox BLE reports are 16 bytes, NO report_id prefix
-    // But bthid layer adds 0xA1 header, so we get 17 bytes with data starting at [1]
-    // OR we might get raw 16 bytes depending on path
+    // Xbox BLE gamepad report is 16 bytes.
+    // Strip any protocol headers to get to the raw 16-byte payload:
+    //   - 0xA1 DATA|INPUT header (added by bthid layer)
+    //   - Report ID byte (added by HIDS client GATT path)
 
-    const uint8_t* report;
-    uint16_t report_len;
+    const uint8_t* report = data;
+    uint16_t report_len = len;
 
-    if (len >= 17 && data[0] == 0xA1) {
-        // Has DATA|INPUT header from bthid layer
-        report = data + 1;
-        report_len = len - 1;
-    } else if (len >= 16) {
-        // Raw report (direct from BLE notification)
-        report = data;
-        report_len = len;
-    } else {
+    // Strip DATA|INPUT header
+    if (report_len > 16 && report[0] == 0xA1) {
+        report++;
+        report_len--;
+    }
+
+    // Strip report ID (HIDS client prepends it; Xbox input report is always 16 bytes)
+    if (report_len == 17) {
+        report++;
+        report_len--;
+    }
+
+    if (report_len < 16) {
         return;  // Too short
     }
 
@@ -185,9 +198,38 @@ static void xbox_ble_process_report(bthid_device_t* device, const uint8_t* data,
 
 static void xbox_ble_task(bthid_device_t* device)
 {
-    (void)device;
-    // Xbox BLE controllers don't need periodic maintenance
-    // TODO: Implement rumble via GATT write when needed
+    xbox_ble_data_t* xbox = (xbox_ble_data_t*)device->driver_data;
+    if (!xbox) return;
+
+    int player_idx = find_player_index(xbox->event.dev_addr, xbox->event.instance);
+    if (player_idx < 0) return;
+
+    feedback_state_t* fb = feedback_get_state(player_idx);
+    if (!fb) return;
+
+    if (fb->rumble_dirty) {
+        uint8_t left = fb->rumble.left;
+        uint8_t right = fb->rumble.right;
+        if (left != xbox->rumble_left || right != xbox->rumble_right) {
+            // Xbox BLE rumble: Report ID 0x03, 8 bytes
+            // [0]=enable_actuators, [1]=lt_trigger, [2]=rt_trigger,
+            // [3]=strong_motor, [4]=weak_motor, [5]=duration, [6]=delay, [7]=repeat
+            // Xbox HID descriptor defines magnitude range as 0-100
+            uint8_t buf[8];
+            buf[0] = XBOX_BLE_RUMBLE_MOTORS;
+            buf[1] = 0;                                          // Left trigger (unused)
+            buf[2] = 0;                                          // Right trigger (unused)
+            buf[3] = ((uint16_t)left * 100) / 255;               // Strong motor (0-100)
+            buf[4] = ((uint16_t)right * 100) / 255;              // Weak motor (0-100)
+            buf[5] = 0xFF;                                       // Duration: continuous
+            buf[6] = 0x00;                                       // Delay: none
+            buf[7] = 0x00;                                       // Repeat: none
+            bthid_send_output_report(device->conn_index, XBOX_BLE_REPORT_RUMBLE, buf, sizeof(buf));
+            xbox->rumble_left = left;
+            xbox->rumble_right = right;
+        }
+        feedback_clear_dirty(player_idx);
+    }
 }
 
 static void xbox_ble_disconnect(bthid_device_t* device)

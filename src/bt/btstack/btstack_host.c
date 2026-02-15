@@ -3629,9 +3629,14 @@ bool btstack_classic_send_report(uint8_t conn_index, uint8_t report_id,
         ble_connection_t* conn = &hid_state.connections[ble_index];
         if (conn->handle == 0 || !conn->hid_ready) return false;
         if (hid_state.hids_cid == 0) return false;
-        return hids_client_send_write_report(hid_state.hids_cid, report_id,
-                                              HID_REPORT_TYPE_OUTPUT,
-                                              data, len) == ERROR_CODE_SUCCESS;
+        uint8_t status = hids_client_send_write_report(hid_state.hids_cid, report_id,
+                                                        HID_REPORT_TYPE_OUTPUT,
+                                                        data, len);
+        if (status != ERROR_CODE_SUCCESS) {
+            printf("[BTSTACK_HOST] BLE send_write_report failed: report_id=0x%02X status=0x%02X\n",
+                   report_id, status);
+        }
+        return status == ERROR_CODE_SUCCESS;
     }
 
     if (conn_index >= MAX_CLASSIC_CONNECTIONS) return false;

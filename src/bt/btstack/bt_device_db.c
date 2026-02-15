@@ -42,7 +42,7 @@ const bt_device_profile_t BT_PROFILE_WII_U_PRO = {
 const bt_device_profile_t BT_PROFILE_XBOX = {
     .name = "Xbox",
     .classic = BT_CLASSIC_HID_HOST,
-    .ble = BT_BLE_DIRECT_ATT,
+    .ble = BT_BLE_GATT_HIDS,
     .hid_mode = BT_HID_MODE_FALLBACK,
     .pin_type = BT_PIN_NONE,
 };
