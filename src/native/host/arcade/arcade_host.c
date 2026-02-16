@@ -3,6 +3,7 @@
 // Polls native Arcade controllers and submits input events to the router.
 
 #include "arcade_host.h"
+#include "core/services/hotkeys/hotkeys.h"
 #include "core/router/router.h"
 #include "core/input_event.h"
 #include "core/buttons.h"
@@ -131,13 +132,13 @@ void arcadepad_init(arcade_controller_t* pad, arcade_config_t* conf)
     pad->dpad_left  = false;
     pad->dpad_right = false;
 
+    pad->dpad_mode  = DPAD_MODE_DPAD;
+
     pad->last_read  = 0;
 }
 
 void arcadepad_start(arcade_controller_t* pad)
 {
-    uint32_t packet;
-
 #if ARCADE_PAD_DEBUG
     printf("arcadepad_start\n");
 #endif
@@ -168,6 +169,8 @@ void arcadepad_start(arcade_controller_t* pad)
     pad->dpad_down  = false;
     pad->dpad_left  = false;
     pad->dpad_right = false;
+
+    pad->dpad_mode  = DPAD_MODE_DPAD;
 }
 
 void arcadepad_begin(arcade_controller_t* pad)
@@ -226,6 +229,28 @@ void arcadepad_poll(arcade_controller_t* pad)
     }
     pad->last_read = state;
 #endif
+}
+
+// ============================================================================
+// HOTKEY CallBack
+// ============================================================================
+
+static void dpad_callback(uint8_t player, uint32_t held_ms) {
+    (void)held_ms;
+    arcade_controller_t* pad = &arcade_pads[player];
+    pad->dpad_mode = DPAD_MODE_DPAD;
+}
+
+static void lstick_callback(uint8_t player, uint32_t held_ms) {
+    (void)held_ms;
+    arcade_controller_t* pad = &arcade_pads[player];
+    pad->dpad_mode = DPAD_MODE_LEFT_STICK;
+}
+
+static void rstick_callback(uint8_t player, uint32_t held_ms) {
+    (void)held_ms;
+    arcade_controller_t* pad = &arcade_pads[player];
+    pad->dpad_mode = DPAD_MODE_RIGHT_STICK;
 }
 
 // ============================================================================
@@ -303,6 +328,37 @@ void arcade_host_init_pins(arcade_config_t* conf)
     arcadepad_start(&arcade_pads[0]);
     prev_buttons[0] = 0xFFFFFFFF;
 
+    // Register hotkeys
+    // Long hold (2s) triggers power button
+    HotkeyDef dpad_mode = {
+        .buttons = DPAD_MODE_DP_COMBO_MASK,
+        .duration_ms = DPAD_MODE_HOLD_DURATION,
+        .trigger = HOTKEY_TRIGGER_ON_HOLD,
+        .callback = dpad_callback,
+        .global = false
+    };
+    hotkeys_register(&dpad_mode);
+
+    // Quick tap (release before 2s) triggers stop button
+    HotkeyDef lstick_mode = {
+        .buttons = DPAD_MODE_LS_COMBO_MASK,
+        .duration_ms = DPAD_MODE_HOLD_DURATION,
+        .trigger = HOTKEY_TRIGGER_ON_HOLD,
+        .callback = lstick_callback,
+        .global = false
+    };
+    hotkeys_register(&lstick_mode);
+
+    // Quick tap (release before 2s) triggers stop button
+    HotkeyDef rstick_mode = {
+        .buttons = DPAD_MODE_RS_COMBO_MASK,
+        .duration_ms = DPAD_MODE_HOLD_DURATION,
+        .trigger = HOTKEY_TRIGGER_ON_HOLD,
+        .callback = rstick_callback,
+        .global = false
+    };
+    hotkeys_register(&rstick_mode);
+
     initialized = true;
     printf("[arcade_host] Initialization complete port 0 active\n");
 }
@@ -328,6 +384,28 @@ void arcade_host_task(void)
     uint8_t analog_2y = 128;
 
     buttons = map_arcade_to_joypad(pad);
+    hotkeys_check(buttons, 0);
+    // =================================================================
+    // Apply d-pad mode (remap d-pad to analog stick if needed)
+    // =================================================================
+    if (pad->dpad_mode != DPAD_MODE_DPAD) {
+        uint32_t dpad_bits = buttons & (JP_BUTTON_DU | JP_BUTTON_DD | JP_BUTTON_DL | JP_BUTTON_DR);
+        buttons &= ~(JP_BUTTON_DU | JP_BUTTON_DD | JP_BUTTON_DL | JP_BUTTON_DR);
+
+        uint8_t ax = 128, ay = 128;
+        if (dpad_bits & JP_BUTTON_DL) ax = 0;
+        else if (dpad_bits & JP_BUTTON_DR) ax = 255;
+        if (dpad_bits & JP_BUTTON_DU) ay = 0;
+        else if (dpad_bits & JP_BUTTON_DD) ay = 255;
+
+        if (pad->dpad_mode == DPAD_MODE_LEFT_STICK) {
+            analog_1x = ax;
+            analog_1y = ay;
+        } else {
+            analog_2x = ax;
+            analog_2y = ay;
+        }
+    }
 
     // Only submit if state changed
     if (buttons == prev_buttons[0]) {

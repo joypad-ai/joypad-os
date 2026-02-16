@@ -49,6 +49,21 @@
 }
 
 // ============================================================================
+// D-PAD MODE (S1+S2+direction hotkeys, GP2040-CE compatible)
+// ============================================================================
+
+typedef enum {
+    DPAD_MODE_DPAD,        // D-pad → d-pad buttons (default)
+    DPAD_MODE_LEFT_STICK,  // D-pad → left analog stick
+    DPAD_MODE_RIGHT_STICK, // D-pad → right analog stick
+} dpad_mode_t;
+
+#define DPAD_MODE_DP_COMBO_MASK (JP_BUTTON_S1 | JP_BUTTON_S2 | JP_BUTTON_DD)
+#define DPAD_MODE_LS_COMBO_MASK (JP_BUTTON_S1 | JP_BUTTON_S2 | JP_BUTTON_DL)
+#define DPAD_MODE_RS_COMBO_MASK (JP_BUTTON_S1 | JP_BUTTON_S2 | JP_BUTTON_DR)
+#define DPAD_MODE_HOLD_DURATION 2000
+
+// ============================================================================
 // CONTROLLER STATE
 // ============================================================================
 
@@ -113,6 +128,8 @@ typedef struct {
     bool dpad_down;
     bool dpad_left;
     bool dpad_right;
+
+    dpad_mode_t dpad_mode;
 
     // Debug/internal
     uint32_t last_read;
