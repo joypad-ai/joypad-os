@@ -931,7 +931,7 @@ target_compile_definitions(joypad_neogeo2usb_rp2040zero PRIVATE
     CONFIG_NEOGEO2USB=1
     CONFIG_USB=1
     DISABLE_USB_HOST=1
-    BUTTON_USER_GPIO=${BOARD_BUTTON_GPIO}
+    USE_BOOTSEL_BUTTON=1
     PICO_RP2040_ZERO_BUILD=1
 )
 target_sources(joypad_neogeo2usb_rp2040zero PUBLIC ${CORE_SOURCES} ${USB_DEVICE_SOURCES}
