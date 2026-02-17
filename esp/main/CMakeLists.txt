@@ -64,6 +64,9 @@ set(SRCS
     "${SHARED_SRC}/lib/libxsm3/excrypt_parve.c"
     "${SHARED_SRC}/lib/libxsm3/excrypt_sha.c"
 
+    # --- HID parser (shared with USB path) ---
+    "${SHARED_SRC}/usb/usbh/hid/devices/generic/hid_parser.c"
+
     # --- BT HID device drivers ---
     "${SHARED_SRC}/bt/bthid/bthid.c"
     "${SHARED_SRC}/bt/bthid/bthid_registry.c"

@@ -462,6 +462,21 @@ void bt_on_hid_report(uint8_t conn_index, const uint8_t* data, uint16_t len)
 }
 
 // ============================================================================
+// HID DESCRIPTOR
+// ============================================================================
+
+void bthid_set_hid_descriptor(uint8_t conn_index, const uint8_t* desc, uint16_t desc_len)
+{
+    bthid_device_t* device = bthid_get_device(conn_index);
+    if (!device || !device->driver) return;
+
+    // Only the generic gamepad driver uses HID descriptor parsing
+    if ((const bthid_driver_t*)device->driver == &bthid_gamepad_driver) {
+        bthid_gamepad_set_descriptor(device, desc, desc_len);
+    }
+}
+
+// ============================================================================
 // BATTERY
 // ============================================================================
 

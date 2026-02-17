@@ -63,6 +63,7 @@ extern void bt_on_hid_report(uint8_t conn_index, const uint8_t* data, uint16_t l
 extern void bthid_update_device_info(uint8_t conn_index, const char* name,
                                       uint16_t vendor_id, uint16_t product_id);
 extern void bthid_set_battery_level(uint8_t conn_index, uint8_t level);
+extern void bthid_set_hid_descriptor(uint8_t conn_index, const uint8_t* desc, uint16_t desc_len);
 
 #include <stdio.h>
 #include <string.h>
@@ -3151,6 +3152,14 @@ static void hids_client_handler(uint8_t packet_type, uint16_t channel, uint8_t *
                     printf("[BTSTACK_HOST] Calling bt_on_hid_ready(%d) for BLE device '%s'\n",
                            conn->conn_index, conn->name);
                     bt_on_hid_ready(conn->conn_index);
+
+                    // Pass HID descriptor to bthid for generic gamepad parsing
+                    const uint8_t* hid_desc = hids_client_descriptor_storage_get_descriptor_data(hid_state.hids_cid, 0);
+                    uint16_t hid_desc_len = hids_client_descriptor_storage_get_descriptor_len(hid_state.hids_cid, 0);
+                    if (hid_desc && hid_desc_len > 0) {
+                        printf("[BTSTACK_HOST] BLE HID descriptor: %d bytes\n", hid_desc_len);
+                        bthid_set_hid_descriptor(conn->conn_index, hid_desc, hid_desc_len);
+                    }
 
                     // Query Device Information Service for PnP ID (VID/PID)
                     // This enables re-matching drivers by VID after initial name-based match

@@ -149,4 +149,11 @@ bool bthid_send_feature_report(uint8_t conn_index, uint8_t report_id,
 // Set battery level from BLE Battery Service (only if driver hasn't set it)
 void bthid_set_battery_level(uint8_t conn_index, uint8_t level);
 
+// ============================================================================
+// HID DESCRIPTOR
+// ============================================================================
+
+// Pass BLE HID descriptor to driver for report parsing
+void bthid_set_hid_descriptor(uint8_t conn_index, const uint8_t* desc, uint16_t desc_len);
+
 #endif // BTHID_H

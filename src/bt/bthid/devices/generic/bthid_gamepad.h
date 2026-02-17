@@ -12,4 +12,7 @@ extern const bthid_driver_t bthid_gamepad_driver;
 // Register the generic gamepad driver
 void bthid_gamepad_register(void);
 
+// Parse BLE HID descriptor for dynamic report field extraction
+void bthid_gamepad_set_descriptor(bthid_device_t* device, const uint8_t* desc, uint16_t desc_len);
+
 #endif // BTHID_GAMEPAD_H
