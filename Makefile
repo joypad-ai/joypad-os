@@ -80,6 +80,7 @@ CONSOLE_snes2usb := joypad_snes2usb
 CONSOLE_n642usb := joypad_n642usb
 CONSOLE_gc2usb := joypad_gc2usb
 CONSOLE_neogeo2usb := joypad_neogeo2usb
+CONSOLE_neogeo2usb_rp2040zero := joypad_neogeo2usb_rp2040zero
 CONSOLE_controller_fisherprice := joypad_controller_fisherprice
 CONSOLE_controller_fisherprice_analog := joypad_controller_fisherprice_analog
 CONSOLE_controller_alpakka := joypad_controller_alpakka
@@ -115,6 +116,7 @@ APP_snes2usb_kb2040 := kb2040 snes2usb snes2usb_kb2040 SNES USB
 APP_n642usb_kb2040 := kb2040 n642usb n642usb_kb2040 N64 USB
 APP_gc2usb_kb2040 := kb2040 gc2usb gc2usb_kb2040 GameCube USB
 APP_neogeo2usb_kb2040 := kb2040 neogeo2usb neogeo2usb_kb2040 NEOGEO USB
+APP_neogeo2usb_rp2040zero := rp2040zero neogeo2usb_rp2040zero neogeo2usb_rp2040zero NEOGEO USB
 APP_controller_fisherprice_kb2040 := kb2040 controller_fisherprice controller_fisherprice_kb2040 GPIO USB
 APP_controller_fisherprice_analog_kb2040 := kb2040 controller_fisherprice_analog controller_fisherprice_analog_kb2040 GPIO/ADC USB
 APP_controller_alpakka_pico := pico controller_alpakka controller_alpakka_pico GPIO/I2C USB
@@ -362,6 +364,10 @@ gc2usb_kb2040:
 .PHONY: neogeo2usb_kb2040
 neogeo2usb_kb2040:
 	$(call build_app,neogeo2usb_kb2040)
+
+.PHONY: neogeo2usb_rp2040zero
+neogeo2usb_rp2040zero:
+	$(call build_app,neogeo2usb_rp2040zero)
 
 .PHONY: controller_fisherprice_kb2040
 controller_fisherprice_kb2040:
