@@ -1031,6 +1031,16 @@ void profile_apply(const profile_t* profile,
                 break;
         }
     }
+
+    // Digital-only trigger fallback: if analog is 0 but digital button is pressed,
+    // synthesize full-press analog value. Handles controllers that report L2/R2 as
+    // buttons only (e.g. 8BitDo Pro2 via generic BT driver).
+    if (output->l2_analog == 0 && (output->buttons & JP_BUTTON_L2)) {
+        output->l2_analog = 255;
+    }
+    if (output->r2_analog == 0 && (output->buttons & JP_BUTTON_R2)) {
+        output->r2_analog = 255;
+    }
 }
 
 uint32_t profile_apply_button_map(const profile_t* profile, uint32_t input_buttons)
