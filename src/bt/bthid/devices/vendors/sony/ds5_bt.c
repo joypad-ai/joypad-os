@@ -90,7 +90,14 @@ typedef struct __attribute__((packed)) {
     uint8_t reserved2[4];       // Timestamp/padding bytes
     int16_t gyro[3];            // x, y, z (pitch, yaw, roll)
     int16_t accel[3];           // x, y, z
-    // Touchpad etc follows but not parsed
+    uint32_t sensor_timestamp;  // Sensor timestamp (0.33µs units)
+    uint8_t  reserved3;         // Temperature / reserved
+    // Touchpad: 4 bytes per finger (matches dualsense_touch_point in hid-playstation.c)
+    // Finger 1 at struct offset 32, Finger 2 at struct offset 36
+    struct { uint8_t tpad_f1_count : 7; uint8_t tpad_f1_down : 1; };
+    uint8_t  tpad_f1_pos[3];
+    struct { uint8_t tpad_f2_count : 7; uint8_t tpad_f2_down : 1; };
+    uint8_t  tpad_f2_pos[3];
 } ds5_input_report_t;
 
 // DS5 BT output report for LED/rumble
@@ -180,6 +187,10 @@ typedef struct {
     uint8_t rumble_right;
     uint8_t led_r, led_g, led_b;
     uint8_t player_led;
+
+    // Touchpad swipe tracking
+    uint16_t tpad_last_pos;
+    bool tpad_dragging;
 } ds5_bt_data_t;
 
 static ds5_bt_data_t ds5_data[BTHID_MAX_DEVICES];
@@ -321,6 +332,8 @@ static bool ds5_init(bthid_device_t* device)
             ds5_data[i].led_g = 0;
             ds5_data[i].led_b = 64;  // Default blue
             ds5_data[i].player_led = PLAYER_LED_PATTERNS[0];
+            ds5_data[i].tpad_last_pos = 0;
+            ds5_data[i].tpad_dragging = false;
 
             ds5_data[i].event.type = INPUT_TYPE_GAMEPAD;
             ds5_data[i].event.transport = INPUT_TRANSPORT_BT_CLASSIC;
@@ -457,6 +470,45 @@ static void ds5_process_report(bthid_device_t* device, const uint8_t* data, uint
                 ds5->event.battery_charging = false;
                 break;
         }
+    }
+
+    // Touchpad (only in full 0x31 reports that include touch fields)
+    if (report_len >= sizeof(ds5_input_report_t)) {
+        uint16_t tx = ((rpt->tpad_f1_pos[1] & 0x0f) << 8) | (rpt->tpad_f1_pos[0] & 0xff);
+        uint16_t ty = ((rpt->tpad_f1_pos[1] & 0xf0) >> 4) | ((rpt->tpad_f1_pos[2] & 0xff) << 4);
+        uint16_t tx2 = ((rpt->tpad_f2_pos[1] & 0x0f) << 8) | (rpt->tpad_f2_pos[0] & 0xff);
+        uint16_t ty2 = ((rpt->tpad_f2_pos[1] & 0xf0) >> 4) | ((rpt->tpad_f2_pos[2] & 0xff) << 4);
+
+        // Touchpad left/right click detection (touchpad is ~1920 wide, center at 960)
+        if (rpt->tpad && !rpt->tpad_f1_down && tx < 960)
+            ds5->event.buttons |= JP_BUTTON_L4;
+        if (rpt->tpad && !rpt->tpad_f1_down && tx >= 960)
+            ds5->event.buttons |= JP_BUTTON_R4;
+
+        // Touchpad swipe delta (horizontal)
+        int8_t touchpad_delta_x = 0;
+        if (!rpt->tpad_f1_down) {
+            if (ds5->tpad_dragging) {
+                int16_t delta = (int16_t)tx - (int16_t)ds5->tpad_last_pos;
+                if (delta > 12) delta = 12;
+                if (delta < -12) delta = -12;
+                touchpad_delta_x = (int8_t)delta;
+            }
+            ds5->tpad_last_pos = tx;
+            ds5->tpad_dragging = true;
+        } else {
+            ds5->tpad_dragging = false;
+        }
+        ds5->event.delta_x = touchpad_delta_x;
+
+        // Touch coordinates for SInput pass-through
+        ds5->event.touch[0].x = tx;
+        ds5->event.touch[0].y = ty;
+        ds5->event.touch[0].active = !rpt->tpad_f1_down;
+        ds5->event.touch[1].x = tx2;
+        ds5->event.touch[1].y = ty2;
+        ds5->event.touch[1].active = !rpt->tpad_f2_down;
+        ds5->event.has_touch = true;
     }
 
     // Submit to router

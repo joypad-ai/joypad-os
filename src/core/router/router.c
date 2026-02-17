@@ -648,6 +648,13 @@ static inline void router_merge_mode(const input_event_t* event, output_target_t
                         }
                     }
 
+                    // Touch: use first device that has touch data
+                    if (dev->has_touch && !out->current_state.has_touch) {
+                        out->current_state.has_touch = true;
+                        out->current_state.touch[0] = dev->touch[0];
+                        out->current_state.touch[1] = dev->touch[1];
+                    }
+
                     // Battery: use first device that reports battery
                     if (dev->battery_level > 0 && out->current_state.battery_level == 0) {
                         out->current_state.battery_level = dev->battery_level;

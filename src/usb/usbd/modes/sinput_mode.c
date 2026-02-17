@@ -65,6 +65,7 @@ static bool feature_request_pending = false;
 static uint8_t cached_face_style = SINPUT_FACE_XBOX;
 static uint8_t cached_gamepad_type = SINPUT_TYPE_STANDARD;
 static bool cached_has_motion = false;
+static bool cached_has_touch = false;
 static int16_t last_dev_addr = -1;  // Track connected device for auto feature report
 
 // ============================================================================
@@ -255,8 +256,9 @@ static bool sinput_mode_send_report(uint8_t player_index,
     // Update device face style from connected controller
     update_device_info(event->dev_addr, event->instance, event->transport);
 
-    // Track motion capability from input device
+    // Track capabilities from input device
     cached_has_motion = event->has_motion;
+    cached_has_touch = event->has_touch;
 
     // Send feature report automatically when a new device connects
     if (event->dev_addr != last_dev_addr) {
@@ -299,6 +301,26 @@ static bool sinput_mode_send_report(uint8_t player_index,
         sinput_report.gyro_x = 0;
         sinput_report.gyro_y = 0;
         sinput_report.gyro_z = 0;
+    }
+
+    // Touchpad data
+    if (event->has_touch) {
+        int16_t t1x = event->touch[0].active ? (int16_t)event->touch[0].x : 0;
+        int16_t t1y = event->touch[0].active ? (int16_t)event->touch[0].y : 0;
+        uint16_t t1p = event->touch[0].active ? 0xFFFF : 0;
+        memcpy(sinput_report.touchpad1, &t1x, 2);
+        memcpy(sinput_report.touchpad1 + 2, &t1y, 2);
+        memcpy(sinput_report.touchpad1 + 4, &t1p, 2);
+
+        int16_t t2x = event->touch[1].active ? (int16_t)event->touch[1].x : 0;
+        int16_t t2y = event->touch[1].active ? (int16_t)event->touch[1].y : 0;
+        uint16_t t2p = event->touch[1].active ? 0xFFFF : 0;
+        memcpy(sinput_report.touchpad2, &t2x, 2);
+        memcpy(sinput_report.touchpad2 + 2, &t2y, 2);
+        memcpy(sinput_report.touchpad2 + 4, &t2p, 2);
+    } else {
+        memset(sinput_report.touchpad1, 0, 6);
+        memset(sinput_report.touchpad2, 0, 6);
     }
 
     // Battery status
@@ -502,9 +524,14 @@ static void sinput_mode_task(void)
     // Byte 3: no power/misc buttons
     feature_response[15] = 0x00;
 
-    // Touchpad: not supported
-    feature_response[16] = 0;  // touchpad count
-    feature_response[17] = 0;  // touchpad finger count
+    // Touchpad
+    if (cached_has_touch) {
+        feature_response[16] = 1;  // 1 touchpad
+        feature_response[17] = 2;  // 2 fingers max
+    } else {
+        feature_response[16] = 0;  // no touchpads
+        feature_response[17] = 0;
+    }
 
     // Serial number from board unique ID (last 6 bytes of 8-byte ID)
     uint8_t board_id[8];

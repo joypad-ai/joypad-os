@@ -108,7 +108,8 @@ void input_sony_ds5(uint8_t dev_addr, uint8_t instance, uint8_t const* report, u
 
       uint16_t tx = (((ds5_report.tpad_f1_pos[1] & 0x0f) << 8)) | ((ds5_report.tpad_f1_pos[0] & 0xff) << 0);
       uint16_t ty = (((ds5_report.tpad_f1_pos[1] & 0xf0) >> 4)) | ((ds5_report.tpad_f1_pos[2] & 0xff) << 4);
-      // TU_LOG1(" (tx, ty) = (%u, %u)\r\n", tx, ty);
+      uint16_t tx2 = (((ds5_report.tpad_f2_pos[1] & 0x0f) << 8)) | ((ds5_report.tpad_f2_pos[0] & 0xff) << 0);
+      uint16_t ty2 = (((ds5_report.tpad_f2_pos[1] & 0xf0) >> 4)) | ((ds5_report.tpad_f2_pos[2] & 0xff) << 4);
       TU_LOG1("\r\n");
 
       bool dpad_up    = (ds5_report.dpad == 0 || ds5_report.dpad == 1 || ds5_report.dpad == 7);
@@ -222,6 +223,12 @@ void input_sony_ds5(uint8_t dev_addr, uint8_t instance, uint8_t const* report, u
         .gyro = {ds5_report.gyro[0], ds5_report.gyro[1], ds5_report.gyro[2]},
         .battery_level = bat_level,
         .battery_charging = bat_charging,
+        // Touchpad (2-finger capacitive)
+        .has_touch = true,
+        .touch = {
+          { .x = tx,  .y = ty,  .active = !ds5_report.tpad_f1_down },
+          { .x = tx2, .y = ty2, .active = !ds5_report.tpad_f2_down },
+        },
       };
       router_submit_input(&event);
 

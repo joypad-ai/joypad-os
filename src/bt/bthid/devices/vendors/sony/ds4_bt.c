@@ -64,7 +64,15 @@ typedef struct __attribute__((packed)) {
     uint8_t sensor_temperature;
     int16_t gyro[3];    // x, y, z
     int16_t accel[3];   // x, y, z
-    // Touchpad etc follows but not parsed
+    int8_t   unknown_a[5];
+    uint8_t  headset;
+    int8_t   unknown_b[2];
+    struct { uint8_t tpad_event : 4; uint8_t unknown_c : 4; };
+    uint8_t  tpad_counter;
+    struct { uint8_t tpad_f1_count : 7; uint8_t tpad_f1_down : 1; };
+    int8_t   tpad_f1_pos[3];
+    struct { uint8_t tpad_f2_count : 7; uint8_t tpad_f2_down : 1; };
+    int8_t   tpad_f2_pos[3];
 } ds4_input_report_t;
 
 // DS4 BT output report (for rumble/LED)
@@ -106,6 +114,10 @@ typedef struct {
     uint8_t rumble_left;
     uint8_t rumble_right;
     uint8_t led_r, led_g, led_b;
+
+    // Touchpad swipe tracking
+    uint16_t tpad_last_pos;
+    bool tpad_dragging;
 } ds4_bt_data_t;
 
 static ds4_bt_data_t ds4_data[BTHID_MAX_DEVICES];
@@ -215,6 +227,8 @@ static bool ds4_init(bthid_device_t* device)
             ds4_data[i].led_r = 0;
             ds4_data[i].led_g = 0;
             ds4_data[i].led_b = 64;  // Default blue
+            ds4_data[i].tpad_last_pos = 0;
+            ds4_data[i].tpad_dragging = false;
 
             ds4_data[i].event.type = INPUT_TYPE_GAMEPAD;
             ds4_data[i].event.transport = INPUT_TRANSPORT_BT_CLASSIC;
@@ -359,6 +373,45 @@ static void ds4_process_report(bthid_device_t* device, const uint8_t* data, uint
                 ds4->event.battery_level = 100;
             ds4->event.battery_charging = false;
         }
+    }
+
+    // Touchpad (only in full report 0x11 which includes touch fields)
+    if (report_len >= sizeof(ds4_input_report_t)) {
+        uint16_t tx = ((rpt->tpad_f1_pos[1] & 0x0f) << 8) | (rpt->tpad_f1_pos[0] & 0xff);
+        uint16_t ty = ((rpt->tpad_f1_pos[1] & 0xf0) >> 4) | ((rpt->tpad_f1_pos[2] & 0xff) << 4);
+        uint16_t tx2 = ((rpt->tpad_f2_pos[1] & 0x0f) << 8) | (rpt->tpad_f2_pos[0] & 0xff);
+        uint16_t ty2 = ((rpt->tpad_f2_pos[1] & 0xf0) >> 4) | ((rpt->tpad_f2_pos[2] & 0xff) << 4);
+
+        // Touchpad left/right click detection (touchpad is ~1920 wide, center at 960)
+        if (rpt->tpad && !rpt->tpad_f1_down && tx < 960)
+            ds4->event.buttons |= JP_BUTTON_L4;
+        if (rpt->tpad && !rpt->tpad_f1_down && tx >= 960)
+            ds4->event.buttons |= JP_BUTTON_R4;
+
+        // Touchpad swipe delta (horizontal)
+        int8_t touchpad_delta_x = 0;
+        if (!rpt->tpad_f1_down) {
+            if (ds4->tpad_dragging) {
+                int16_t delta = (int16_t)tx - (int16_t)ds4->tpad_last_pos;
+                if (delta > 12) delta = 12;
+                if (delta < -12) delta = -12;
+                touchpad_delta_x = (int8_t)delta;
+            }
+            ds4->tpad_last_pos = tx;
+            ds4->tpad_dragging = true;
+        } else {
+            ds4->tpad_dragging = false;
+        }
+        ds4->event.delta_x = touchpad_delta_x;
+
+        // Touch coordinates
+        ds4->event.touch[0].x = tx;
+        ds4->event.touch[0].y = ty;
+        ds4->event.touch[0].active = !rpt->tpad_f1_down;
+        ds4->event.touch[1].x = tx2;
+        ds4->event.touch[1].y = ty2;
+        ds4->event.touch[1].active = !rpt->tpad_f2_down;
+        ds4->event.has_touch = true;
     }
 
     // Submit to router

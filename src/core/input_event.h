@@ -152,6 +152,14 @@ typedef struct {
     uint8_t pressure[12];       // 0x00 = released, 0xFF = fully pressed
     bool has_pressure;          // Pressure data is valid
 
+    // Touchpad (DS4/DualSense: 2-finger capacitive, 0-1919 x 0-942)
+    struct {
+        uint16_t x;
+        uint16_t y;
+        bool active;
+    } touch[2];
+    bool has_touch;             // Touch data is valid
+
     // Battery level
     uint8_t battery_level;      // 0-100 percent (0 = unknown/not reported)
     bool battery_charging;      // True if charging / cable connected
@@ -209,6 +217,9 @@ static inline void init_input_event(input_event_t* event) {
     for (int i = 0; i < 12; i++) {
         event->pressure[i] = 0;
     }
+
+    // Clear touch data
+    event->has_touch = false;
 }
 
 // Convert old post_globals() parameters to input_event_t (for migration)

@@ -184,8 +184,8 @@ void input_sony_ds4(uint8_t dev_addr, uint8_t instance, uint8_t const* report, u
 
       uint16_t tx = (((ds4_report.tpad_f1_pos[1] & 0x0f) << 8)) | ((ds4_report.tpad_f1_pos[0] & 0xff) << 0);
       uint16_t ty = (((ds4_report.tpad_f1_pos[1] & 0xf0) >> 4)) | ((ds4_report.tpad_f1_pos[2] & 0xff) << 4);
-      // TU_LOG1(" (tx, ty) = (%u, %u)\r\n", tx, ty);
-      // TU_LOG1("\r\n");
+      uint16_t tx2 = (((ds4_report.tpad_f2_pos[1] & 0x0f) << 8)) | ((ds4_report.tpad_f2_pos[0] & 0xff) << 0);
+      uint16_t ty2 = (((ds4_report.tpad_f2_pos[1] & 0xf0) >> 4)) | ((ds4_report.tpad_f2_pos[2] & 0xff) << 4);
 
       bool dpad_up    = (ds4_report.dpad == 0 || ds4_report.dpad == 1 || ds4_report.dpad == 7);
       bool dpad_right = ((ds4_report.dpad >= 1 && ds4_report.dpad <= 3));
@@ -307,6 +307,12 @@ void input_sony_ds4(uint8_t dev_addr, uint8_t instance, uint8_t const* report, u
         .gyro = {ds4_report.gyro[0], ds4_report.gyro[1], ds4_report.gyro[2]},
         .battery_level = bat_level,
         .battery_charging = bat_charging,
+        // Touchpad (2-finger capacitive)
+        .has_touch = true,
+        .touch = {
+          { .x = tx,  .y = ty,  .active = !ds4_report.tpad_f1_down },
+          { .x = tx2, .y = ty2, .active = !ds4_report.tpad_f2_down },
+        },
       };
       router_submit_input(&event);
 
