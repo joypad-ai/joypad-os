@@ -187,7 +187,9 @@ help:
 	@echo "  make snes2usb_kb2040    - SNES -> USB HID (KB2040)"
 	@echo "  make n642usb_kb2040     - N64 -> USB HID (KB2040)"
 	@echo "  make gc2usb_kb2040      - GameCube -> USB HID (KB2040)"
-	@echo "  make controller_fisherprice_kb2040 - GPIO -> USB HID (KB2040)"
+	@echo "  make neogeo2usb_kb2040  - NEOGEO -> USB HID (KB2040)"
+	@echo "  make neogeo2usb_rp2040zero - NEOGEO -> USB HID (KB2040)"
+	@echo "  make controller_fisherprice_kb2040 - GPIO -> USB HID (RP2040-Zero)"
 	@echo "  make controller_alpakka_pico - GPIO/I2C -> USB HID (Pico)"
 	@echo "  make controller_macropad - 12 keys -> USB HID (MacroPad RP2040)"
 	@echo ""
@@ -601,6 +603,14 @@ flash-n642usb_kb2040:
 .PHONY: flash-gc2usb_kb2040
 flash-gc2usb_kb2040:
 	@$(MAKE) --no-print-directory _flash_app APP_NAME=gc2usb_kb2040
+
+.PHONY: flash-neogeo2usb_kb2040
+flash-neogeo2usb_kb2040:
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=neogeo2usb_kb2040
+
+.PHONY: flash-neogeo2usb_rp2040zero
+flash-neogeo2usb_rp2040zero:
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=neogeo2usb_rp2040zero
 
 .PHONY: flash-controller_fisherprice_kb2040
 flash-controller_fisherprice_kb2040:
