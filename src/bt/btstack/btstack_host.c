@@ -275,6 +275,7 @@ static struct {
     uint16_t pending_pid;
     bool pending_valid;
     bool pending_outgoing;  // True if we initiated the connection (hid_host_connect)
+    hci_con_handle_t pending_acl_handle;  // ACL handle for pending incoming connection
     const bt_device_profile_t* pending_profile;
     // Pending HID connect (deferred until encryption completes)
     bd_addr_t pending_hid_addr;
@@ -1473,6 +1474,7 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                     } else {
                         // Incoming connection (device connected to us)
                         printf("[BTSTACK_HOST] Incoming ACL complete, COD=0x%06X\n", cod);
+                        classic_state.pending_acl_handle = handle;
 
                         // Detect direct L2CAP device by pending profile (if available from prior inquiry).
                         // For incoming reconnections, pending_name is typically empty at
@@ -1837,10 +1839,28 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                 // Late direct-L2CAP device detection for incoming reconnections: if the name
                 // resolves to a direct-L2CAP device and wiimote_conn wasn't set up at
                 // CONNECTION_COMPLETE (because name was unknown), set it up now so
-                // HID_SUBEVENT_INCOMING_CONNECTION can route it correctly.
+                // ENCRYPTION_CHANGE can create outgoing L2CAP channels.
                 const bt_device_profile_t* late_profile = bt_device_lookup_by_name(name);
+                bool late_direct_l2cap = (late_profile->classic == BT_CLASSIC_DIRECT_L2CAP);
+
+#ifdef BTSTACK_USE_CYW43
+                // On CYW43, Sony incoming reconnections use HID Host (not direct L2CAP).
+                // The controller initiates its own L2CAP channels; we just need to stop
+                // scanning and set default VID so the connection slot gets Sony VID.
+                // (Direct L2CAP is only used for outgoing initial pairing to skip SDP.)
+                if (late_profile->default_vid == 0x054C &&
+                    classic_state.pending_valid &&
+                    !classic_state.pending_outgoing &&
+                    memcmp(name_addr, classic_state.pending_addr, 6) == 0) {
+                    printf("[BTSTACK_HOST] Late Sony detection (incoming) - using HID Host path\n");
+                    if (classic_state.pending_vid == 0) {
+                        classic_state.pending_vid = late_profile->default_vid;
+                    }
+                    btstack_host_stop_scan();
+                }
+#endif
                 if (!wiimote_conn.active &&
-                    late_profile->classic == BT_CLASSIC_DIRECT_L2CAP &&
+                    late_direct_l2cap &&
                     classic_state.pending_valid &&
                     !classic_state.pending_outgoing &&
                     memcmp(name_addr, classic_state.pending_addr, 6) == 0) {
@@ -1851,9 +1871,15 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                     wiimote_conn.state = WIIMOTE_STATE_IDLE;
                     wiimote_conn.conn_index = -1;
                     memcpy(wiimote_conn.addr, name_addr, 6);
+                    wiimote_conn.acl_handle = classic_state.pending_acl_handle;
                     memcpy(wiimote_conn.class_of_device, &classic_state.pending_cod, 3);
                     strncpy(wiimote_conn.name, name, sizeof(wiimote_conn.name) - 1);
                     wiimote_conn.name[sizeof(wiimote_conn.name) - 1] = '\0';
+                    wiimote_conn.vendor_id = late_profile->default_vid;
+                    wiimote_conn.product_id = classic_state.pending_pid ? classic_state.pending_pid : late_profile->default_pid;
+
+                    // Stop scanning — we have an incoming connection to handle
+                    btstack_host_stop_scan();
                 }
 
                 // Deferred outgoing connection: name was unavailable at inquiry time,
@@ -2106,6 +2132,22 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
             uint8_t status = packet[2];
             hci_con_handle_t handle = little_endian_read_16(packet, 3);
             printf("[BTSTACK_HOST] Authentication complete: handle=0x%04X status=0x%02X\n", handle, status);
+
+            // Handle PIN_OR_KEY_MISSING (0x06): controller cleared its link key
+            // (e.g., put in pairing mode) but we still have a stale stored key.
+            // Delete the stale key and disconnect so next attempt triggers fresh pairing.
+            if (status == 0x06 && classic_state.pending_valid) {
+                printf("[BTSTACK_HOST] Auth failed (key rejected), deleting stale link key\n");
+                gap_drop_link_key_for_bd_addr(classic_state.pending_addr);
+
+                // Clean up wiimote state if auth failed before L2CAP channels were created
+                if (wiimote_conn.active && wiimote_conn.acl_handle == handle) {
+                    memset(&wiimote_conn, 0, sizeof(wiimote_conn));
+                }
+                classic_state.pending_hid_connect = false;
+
+                gap_disconnect(handle);
+            }
             break;
         }
 
@@ -3521,6 +3563,8 @@ static void hid_host_packet_handler(uint8_t packet_type, uint16_t channel, uint8
                     const bt_device_profile_t* conn_profile = bt_device_lookup_by_name(conn->name);
                     if (conn_profile->classic == BT_CLASSIC_DIRECT_L2CAP) {
                         is_direct_l2cap = true;
+                    }
+                    if (!conn->profile) {
                         conn->profile = conn_profile;
                     }
                 }
@@ -3941,7 +3985,8 @@ bool btstack_classic_send_report(uint8_t conn_index, uint8_t report_id,
         wiimote_conn.conn_index == conn_index &&
         wiimote_conn.state == WIIMOTE_STATE_CONNECTED) {
         // Build HID packet: 0xA2 (DATA|OUTPUT) + report_id + data
-        static uint8_t wiimote_send_buf[64];
+        // Buffer must fit DS5 BT output (79 bytes: 0xA2 + 78-byte report with CRC)
+        static uint8_t wiimote_send_buf[80];
         if (len + 2 > sizeof(wiimote_send_buf)) return false;
         wiimote_send_buf[0] = 0xA2;  // DATA | OUTPUT
         wiimote_send_buf[1] = report_id;
@@ -3992,7 +4037,7 @@ bool btstack_wiimote_send_raw(uint8_t conn_index, const uint8_t* data, uint16_t 
         printf("[BTSTACK_HOST] wiimote_send_raw: no active connection\n");
         return false;
     }
-    if (len == 0 || len > 64) {
+    if (len == 0 || len > 80) {
         printf("[BTSTACK_HOST] wiimote_send_raw: bad len=%d\n", len);
         return false;
     }
