@@ -3866,6 +3866,26 @@ bool btstack_classic_send_set_report_type(uint8_t conn_index, uint8_t report_typ
     classic_connection_t* conn = &classic_state.connections[conn_index];
     if (!conn->active || !conn->hid_ready) return false;
 
+    // Check if this is a Wiimote/direct L2CAP connection (marked with hid_cid = 0xFFFF)
+    if (conn->hid_cid == 0xFFFF && wiimote_conn.active &&
+        wiimote_conn.conn_index == conn_index &&
+        wiimote_conn.state == WIIMOTE_STATE_CONNECTED) {
+        // Send SET_REPORT on control channel via raw L2CAP
+        // HID transaction format: [SET_REPORT | report_type] [report_id] [data...]
+        static uint8_t wiimote_setreport_buf[80];
+        uint16_t total = len + 2;
+        if (total > sizeof(wiimote_setreport_buf)) return false;
+        wiimote_setreport_buf[0] = 0x50 | (report_type & 0x03);  // SET_REPORT | type
+        wiimote_setreport_buf[1] = report_id;
+        if (len > 0) memcpy(wiimote_setreport_buf + 2, data, len);
+        uint8_t status = l2cap_send(wiimote_conn.control_cid, wiimote_setreport_buf, total);
+        if (status != ERROR_CODE_SUCCESS) {
+            printf("[BTSTACK_HOST] wiimote send_set_report failed: type=%d id=0x%02X status=%d\n",
+                   report_type, report_id, status);
+        }
+        return status == ERROR_CODE_SUCCESS;
+    }
+
     // Map report type to BTstack enum
     hid_report_type_t hid_type;
     switch (report_type) {
