@@ -1,10 +1,11 @@
-name: Deploy Web Config
+name: Deploy Docs
 
 on:
   push:
     branches: [main, master]
     paths:
-      - 'tools/web-config/**'
+      - 'docs/**'
+      - 'mkdocs.yml'
   workflow_dispatch:
 
 permissions:
@@ -20,10 +21,18 @@ jobs:
   deploy:
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: https://docs.joypad.ai
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - run: pip install mkdocs-material
+
+      - run: mkdocs build
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
@@ -31,7 +40,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: './tools/web-config'
+          path: 'site'
 
       - name: Deploy to GitHub Pages
         id: deployment

@@ -1,3 +1,5 @@
+import { CDCProtocol } from './cdc-protocol.js';
+
 /**
  * Joypad Config Web App
  */
@@ -736,7 +738,4 @@ class JoypadConfigApp {
     }
 }
 
-// Initialize app when DOM is ready
-document.addEventListener('DOMContentLoaded', () => {
-    window.app = new JoypadConfigApp();
-});
+export { JoypadConfigApp, BUTTON_NAMES, BUTTON_LABELS, REMAPPABLE_BUTTON_COUNT };

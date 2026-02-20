@@ -13,7 +13,7 @@
 #include "core/buttons.h"
 #include "core/services/players/manager.h"
 #include "core/services/players/feedback.h"
-#include "pico/time.h"
+#include "platform/platform.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -90,7 +90,14 @@ typedef struct __attribute__((packed)) {
     uint8_t reserved2[4];       // Timestamp/padding bytes
     int16_t gyro[3];            // x, y, z (pitch, yaw, roll)
     int16_t accel[3];           // x, y, z
-    // Touchpad etc follows but not parsed
+    uint32_t sensor_timestamp;  // Sensor timestamp (0.33µs units)
+    uint8_t  reserved3;         // Temperature / reserved
+    // Touchpad: 4 bytes per finger (matches dualsense_touch_point in hid-playstation.c)
+    // Finger 1 at struct offset 32, Finger 2 at struct offset 36
+    struct { uint8_t tpad_f1_count : 7; uint8_t tpad_f1_down : 1; };
+    uint8_t  tpad_f1_pos[3];
+    struct { uint8_t tpad_f2_count : 7; uint8_t tpad_f2_down : 1; };
+    uint8_t  tpad_f2_pos[3];
 } ds5_input_report_t;
 
 // DS5 BT output report for LED/rumble
@@ -180,6 +187,10 @@ typedef struct {
     uint8_t rumble_right;
     uint8_t led_r, led_g, led_b;
     uint8_t player_led;
+
+    // Touchpad swipe tracking
+    uint16_t tpad_last_pos;
+    bool tpad_dragging;
 } ds5_bt_data_t;
 
 static ds5_bt_data_t ds5_data[BTHID_MAX_DEVICES];
@@ -197,7 +208,8 @@ static void ds5_send_output(bthid_device_t* device, uint8_t rumble_left, uint8_t
     // DS5 BT output report - matches Linux kernel hid-playstation.c dualsense_output_report_common
     // Report structure: report_id(1) + seq_tag(1) + tag(1) + common(47) + reserved(24) + crc(4) = 78 bytes
     // Buffer: 0xA2 header + 78-byte report = 79 bytes total
-    uint8_t buf[79];
+    // Static: BTstack stores pointer to report data for deferred L2CAP send
+    static uint8_t buf[79];
     memset(buf, 0, sizeof(buf));
 
     // BT HID header
@@ -278,9 +290,10 @@ static void ds5_send_output(bthid_device_t* device, uint8_t rumble_left, uint8_t
 // ============================================================================
 
 static bool ds5_match(const char* device_name, const uint8_t* class_of_device,
-                      uint16_t vendor_id, uint16_t product_id)
+                      uint16_t vendor_id, uint16_t product_id, bool is_ble)
 {
     (void)class_of_device;
+    (void)is_ble;
 
     // VID/PID match (highest priority) - Sony vendor ID = 0x054C
     // DualSense = 0x0CE6, DualSense Edge = 0x0DF2
@@ -319,8 +332,11 @@ static bool ds5_init(bthid_device_t* device)
             ds5_data[i].led_g = 0;
             ds5_data[i].led_b = 64;  // Default blue
             ds5_data[i].player_led = PLAYER_LED_PATTERNS[0];
+            ds5_data[i].tpad_last_pos = 0;
+            ds5_data[i].tpad_dragging = false;
 
             ds5_data[i].event.type = INPUT_TYPE_GAMEPAD;
+            ds5_data[i].event.transport = INPUT_TRANSPORT_BT_CLASSIC;
             ds5_data[i].event.dev_addr = device->conn_index;
             ds5_data[i].event.instance = 0;
             ds5_data[i].event.button_count = 14;
@@ -341,6 +357,7 @@ static bool ds5_process_debug_done = false;
 static void ds5_process_report(bthid_device_t* device, const uint8_t* data, uint16_t len)
 {
     ds5_bt_data_t* ds5 = (ds5_bt_data_t*)device->driver_data;
+
     if (!ds5 || len < 1) return;
 
     // Debug: print first report received
@@ -428,6 +445,72 @@ static void ds5_process_report(bthid_device_t* device, const uint8_t* data, uint
         ds5->event.has_motion = false;
     }
 
+    // Battery: status byte at report_data[52] — bits 0-3 = level (0-10), bits 4-7 = status
+    // Per Linux kernel hid-playstation.c: 0=discharging, 1=charging, 2=full, 0xa/0xb/0xf=error
+    if (report_len > 52) {
+        uint8_t raw = report_data[52];
+        uint8_t level = raw & 0x0F;
+        uint8_t status = (raw >> 4) & 0x0F;
+
+        switch (status) {
+            case 0x0:  // Discharging
+                ds5->event.battery_level = (level > 10) ? 100 : level * 10 + 5;
+                ds5->event.battery_charging = false;
+                break;
+            case 0x1:  // Charging
+                ds5->event.battery_level = (level > 10) ? 100 : level * 10 + 5;
+                ds5->event.battery_charging = true;
+                break;
+            case 0x2:  // Full
+                ds5->event.battery_level = 100;
+                ds5->event.battery_charging = false;
+                break;
+            default:   // 0xa=voltage/temp, 0xb=temp, 0xf=charge error
+                ds5->event.battery_level = 0;
+                ds5->event.battery_charging = false;
+                break;
+        }
+    }
+
+    // Touchpad (only in full 0x31 reports that include touch fields)
+    if (report_len >= sizeof(ds5_input_report_t)) {
+        uint16_t tx = ((rpt->tpad_f1_pos[1] & 0x0f) << 8) | (rpt->tpad_f1_pos[0] & 0xff);
+        uint16_t ty = ((rpt->tpad_f1_pos[1] & 0xf0) >> 4) | ((rpt->tpad_f1_pos[2] & 0xff) << 4);
+        uint16_t tx2 = ((rpt->tpad_f2_pos[1] & 0x0f) << 8) | (rpt->tpad_f2_pos[0] & 0xff);
+        uint16_t ty2 = ((rpt->tpad_f2_pos[1] & 0xf0) >> 4) | ((rpt->tpad_f2_pos[2] & 0xff) << 4);
+
+        // Touchpad left/right click detection (touchpad is ~1920 wide, center at 960)
+        if (rpt->tpad && !rpt->tpad_f1_down && tx < 960)
+            ds5->event.buttons |= JP_BUTTON_L4;
+        if (rpt->tpad && !rpt->tpad_f1_down && tx >= 960)
+            ds5->event.buttons |= JP_BUTTON_R4;
+
+        // Touchpad swipe delta (horizontal)
+        int8_t touchpad_delta_x = 0;
+        if (!rpt->tpad_f1_down) {
+            if (ds5->tpad_dragging) {
+                int16_t delta = (int16_t)tx - (int16_t)ds5->tpad_last_pos;
+                if (delta > 12) delta = 12;
+                if (delta < -12) delta = -12;
+                touchpad_delta_x = (int8_t)delta;
+            }
+            ds5->tpad_last_pos = tx;
+            ds5->tpad_dragging = true;
+        } else {
+            ds5->tpad_dragging = false;
+        }
+        ds5->event.delta_x = touchpad_delta_x;
+
+        // Touch coordinates for SInput pass-through
+        ds5->event.touch[0].x = tx;
+        ds5->event.touch[0].y = ty;
+        ds5->event.touch[0].active = !rpt->tpad_f1_down;
+        ds5->event.touch[1].x = tx2;
+        ds5->event.touch[1].y = ty2;
+        ds5->event.touch[1].active = !rpt->tpad_f2_down;
+        ds5->event.has_touch = true;
+    }
+
     // Submit to router
     router_submit_input(&ds5->event);
 }
@@ -437,7 +520,7 @@ static void ds5_task(bthid_device_t* device)
     ds5_bt_data_t* ds5 = (ds5_bt_data_t*)device->driver_data;
     if (!ds5) return;
 
-    uint32_t now = to_ms_since_boot(get_absolute_time());
+    uint32_t now = platform_time_ms();
 
     // State machine for activation with delays
     switch (ds5->activation_state) {

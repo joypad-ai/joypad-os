@@ -19,7 +19,7 @@
 #include "core/services/players/feedback.h"
 #include <string.h>
 #include <stdio.h>
-#include "pico/time.h"
+#include "platform/platform.h"
 
 // Delay before sending init commands (ms)
 #define WII_U_INIT_DELAY_MS     100
@@ -236,9 +236,10 @@ static void wii_u_set_report_mode(bthid_device_t* device)
 // ============================================================================
 
 static bool wii_u_match(const char* device_name, const uint8_t* class_of_device,
-                        uint16_t vendor_id, uint16_t product_id)
+                        uint16_t vendor_id, uint16_t product_id, bool is_ble)
 {
     (void)class_of_device;
+    (void)is_ble;
 
     // Match by VID/PID
     // Nintendo VID = 0x057E, Wii U Pro PID = 0x0330
@@ -265,16 +266,21 @@ static bool wii_u_init(bthid_device_t* device)
             wii_u_data[i].player_led = 0;
 
             wii_u_data[i].event.type = INPUT_TYPE_GAMEPAD;
+            wii_u_data[i].event.transport = INPUT_TRANSPORT_BT_CLASSIC;
             wii_u_data[i].event.dev_addr = device->conn_index;
             wii_u_data[i].event.instance = 0;
             wii_u_data[i].event.button_count = 14;
+
+            // Ensure VID/PID are set (Wiimote-family lacks PnP SDP)
+            if (device->vendor_id == 0) device->vendor_id = 0x057E;
+            if (device->product_id == 0) device->product_id = 0x0330;
 
             device->driver_data = &wii_u_data[i];
 
             // Defer init commands to task() to avoid ACL buffer full errors
             // Start with initial delay, then send commands one at a time
             wii_u_data[i].state = WII_U_STATE_WAIT_INIT;
-            wii_u_data[i].init_time = time_us_32() + (WII_U_INIT_DELAY_MS * 1000);
+            wii_u_data[i].init_time = platform_time_us() + (WII_U_INIT_DELAY_MS * 1000);
             wii_u_data[i].init_retries = 0;
 
             printf("[WII_U_PRO] Init started, waiting %d ms before sending commands\n", WII_U_INIT_DELAY_MS);
@@ -315,7 +321,7 @@ static void wii_u_process_report(bthid_device_t* device, const uint8_t* data, ui
             }
             // If already READY, don't change state
         }
-        wii->last_report = time_us_32();
+        wii->last_report = platform_time_us();
 
         // Extension data starts at byte 1 (after report ID)
         const uint8_t* ext = &data[1];
@@ -370,6 +376,11 @@ static void wii_u_process_report(bthid_device_t* device, const uint8_t* data, ui
         wii->event.analog[ANALOG_RX] = scale_stick(rx);
         wii->event.analog[ANALOG_RY] = 255 - scale_stick(ry); // Invert Y
 
+        // Battery: ext[10] bits 6-4 = level (0-4, 4=full), bit 3 = USB (active-low), bit 2 = charging (active-low)
+        uint8_t battery_raw = (ext[10] >> 4) & 0x07;
+        wii->event.battery_level = (battery_raw >= 4) ? 100 : battery_raw * 25;
+        wii->event.battery_charging = (ext[10] & 0x04) == 0;
+
         router_submit_input(&wii->event);
 
     } else if (report_id == WIIU_REPORT_EXT_16 && len >= 22) {
@@ -387,7 +398,7 @@ static void wii_u_process_report(bthid_device_t* device, const uint8_t* data, ui
                 wii->state = WII_U_STATE_READY;
             }
         }
-        wii->last_report = time_us_32();
+        wii->last_report = platform_time_us();
 
         // Report 0x35: bytes 1-2 = core buttons, 3-5 = accel, 6-21 = extension
         const uint8_t* ext = &data[6];  // Extension data starts at byte 6
@@ -442,6 +453,11 @@ static void wii_u_process_report(bthid_device_t* device, const uint8_t* data, ui
         wii->event.analog[ANALOG_RX] = scale_stick(rx);
         wii->event.analog[ANALOG_RY] = 255 - scale_stick(ry); // Invert Y
 
+        // Battery: ext[10] bits 6-4 = level (0-4, 4=full), bit 3 = USB (active-low), bit 2 = charging (active-low)
+        uint8_t battery_raw = (ext[10] >> 4) & 0x07;
+        wii->event.battery_level = (battery_raw >= 4) ? 100 : battery_raw * 25;
+        wii->event.battery_charging = (ext[10] & 0x04) == 0;
+
         router_submit_input(&wii->event);
 
     } else if (report_id == WIIU_REPORT_EXT_19 && len >= 22) {
@@ -491,6 +507,11 @@ static void wii_u_process_report(bthid_device_t* device, const uint8_t* data, ui
         wii->event.analog[ANALOG_RX] = scale_stick(rx);
         wii->event.analog[ANALOG_RY] = 255 - scale_stick(ry);
 
+        // Battery: ext[10] bits 6-4 = level (0-4, 4=full), bit 3 = USB (active-low), bit 2 = charging (active-low)
+        uint8_t battery_raw = (ext[10] >> 4) & 0x07;
+        wii->event.battery_level = (battery_raw >= 4) ? 100 : battery_raw * 25;
+        wii->event.battery_charging = (ext[10] & 0x04) == 0;
+
         router_submit_input(&wii->event);
 
     } else if (report_id == WIIU_REPORT_STATUS && len >= 7) {
@@ -530,7 +551,7 @@ static void wii_u_process_report(bthid_device_t* device, const uint8_t* data, ui
             } else if (wii->state == WII_U_STATE_WAIT_LED_ACK && acked_report == WIIU_CMD_LED) {
                 printf("[WII_U_PRO] LED ACK received, init complete! Waiting for data reports...\n");
                 wii->state = WII_U_STATE_READY;
-                wii->last_keepalive = time_us_32();
+                wii->last_keepalive = platform_time_us();
                 wii->last_report = 0;
             }
         } else {
@@ -572,7 +593,7 @@ static void wii_u_task(bthid_device_t* device)
     wii_u_pro_data_t* wii = (wii_u_pro_data_t*)device->driver_data;
     if (!wii) return;
 
-    uint32_t now = time_us_32();
+    uint32_t now = platform_time_us();
 
     // USB Host Shield sequence: status → ext init → report mode → LED
     switch (wii->state) {

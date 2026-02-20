@@ -262,47 +262,6 @@ bool parse_hid_gamepad(uint8_t dev_addr, uint8_t instance, uint8_t const* desc_r
 // {
 // }
 
-// called from parser for filtering report items
-bool CALLBACK_HIDParser_FilterHIDReportItem(uint8_t dev_addr, uint8_t instance, HID_ReportItem_t *const CurrentItem)
-{
-  if (CurrentItem->ItemType != HID_REPORT_ITEM_In)
-    return false;
-
-  // if (hid_devices[dev_addr].instances[instance].reportID == INVALID_REPORT_ID)
-  // {
-  //   hid_devices[dev_addr].instances[instance].reportID = CurrentItem->ReportID;
-  // }
-
-  TU_LOG1("ITEM_PAGE: 0x%x", CurrentItem->Attributes.Usage.Page);
-  TU_LOG1(" USAGE: 0x%x\n", CurrentItem->Attributes.Usage.Usage);
-  switch (CurrentItem->Attributes.Usage.Page)
-  {
-    case HID_USAGE_PAGE_DESKTOP:
-      switch (CurrentItem->Attributes.Usage.Usage)
-      {
-        case HID_USAGE_DESKTOP_X:
-        case HID_USAGE_DESKTOP_Y:
-        case HID_USAGE_DESKTOP_Z:
-        case HID_USAGE_DESKTOP_RZ:
-        case HID_USAGE_DESKTOP_RX:
-        case HID_USAGE_DESKTOP_RY:
-        case HID_USAGE_DESKTOP_HAT_SWITCH:
-        case HID_USAGE_DESKTOP_DPAD_UP:
-        case HID_USAGE_DESKTOP_DPAD_DOWN:
-        case HID_USAGE_DESKTOP_DPAD_LEFT:
-        case HID_USAGE_DESKTOP_DPAD_RIGHT:
-        case HID_USAGE_DESKTOP_WHEEL:
-        case HID_USAGE_DESKTOP_MOUSE:
-        case HID_USAGE_DESKTOP_KEYBOARD:
-          return true;
-      }
-      return false;
-    case HID_USAGE_PAGE_BUTTON:
-      return true;
-  }
-  return false;
-}
-
 // scales down switch analog value to a single byte
 uint8_t scale_analog_hid_gamepad(uint16_t value, uint32_t max_value)
 {

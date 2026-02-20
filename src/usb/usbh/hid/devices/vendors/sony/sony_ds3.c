@@ -235,6 +235,21 @@ void input_sony_ds3(uint8_t dev_addr, uint8_t instance, uint8_t const* report, u
       // keep analog within range [1-255]
       ensureAllNonZero(&analog_1x, &analog_1y, &analog_2x, &analog_2y);
 
+      // Battery: report[29] (after report ID stripped)
+      // Per Linux kernel hid-sony.c: 0-5 = discharge lookup, 0xEE = charging, 0xEF = full
+      uint8_t bat_level = 0;
+      bool bat_charging = false;
+      if (len > 29) {
+        static const uint8_t ds3_battery[] = { 0, 1, 25, 50, 75, 100 };
+        uint8_t charge = report[29];
+        if (charge >= 0xEE) {
+            bat_level = 100;
+            bat_charging = (charge & 0x01) == 0;  // 0xEE=charging, 0xEF=full
+        } else if (charge <= 5) {
+            bat_level = ds3_battery[charge];
+        }
+      }
+
       // add to accumulator and post to the state machine
       // if a scan from the host machine is ongoing, wait
       input_event_t event = {
@@ -254,6 +269,8 @@ void input_sony_ds3(uint8_t dev_addr, uint8_t instance, uint8_t const* report, u
         .gyro = {0, 0, gyro_z},  // DS3 only has Z-axis gyro
         .gyro_range = 100,   // DS3 gyro is ±100 dps
         .accel_range = 2000, // DS3 accel is ±2g (2000 milli-g)
+        .battery_level = bat_level,
+        .battery_charging = bat_charging,
         .has_pressure = true,
         // DS3 pressure mapping: struct indices are shifted due to report ID stripping
         // D-pad: up, right, down, left at pressure[4-7]

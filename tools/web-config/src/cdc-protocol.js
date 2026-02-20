@@ -430,7 +430,4 @@ class CDCProtocol {
 
 }
 
-// Export for module use
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { CDCProtocol, crc16, buildPacket };
-}
+export { CDCProtocol, crc16, buildPacket };

@@ -98,11 +98,4 @@ void uart_host_set_profile_callback(uart_host_profile_callback_t callback);
 typedef void (*uart_host_mode_callback_t)(uint8_t mode);
 void uart_host_set_output_mode_callback(uart_host_mode_callback_t callback);
 
-// ============================================================================
-// HOST INTERFACE (for generic host system)
-// ============================================================================
-
-#include "native/host/host_interface.h"
-extern const HostInterface uart_host_interface;
-
 #endif // UART_HOST_H

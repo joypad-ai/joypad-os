@@ -184,8 +184,8 @@ void input_sony_ds4(uint8_t dev_addr, uint8_t instance, uint8_t const* report, u
 
       uint16_t tx = (((ds4_report.tpad_f1_pos[1] & 0x0f) << 8)) | ((ds4_report.tpad_f1_pos[0] & 0xff) << 0);
       uint16_t ty = (((ds4_report.tpad_f1_pos[1] & 0xf0) >> 4)) | ((ds4_report.tpad_f1_pos[2] & 0xff) << 4);
-      // TU_LOG1(" (tx, ty) = (%u, %u)\r\n", tx, ty);
-      // TU_LOG1("\r\n");
+      uint16_t tx2 = (((ds4_report.tpad_f2_pos[1] & 0x0f) << 8)) | ((ds4_report.tpad_f2_pos[0] & 0xff) << 0);
+      uint16_t ty2 = (((ds4_report.tpad_f2_pos[1] & 0xf0) >> 4)) | ((ds4_report.tpad_f2_pos[2] & 0xff) << 4);
 
       bool dpad_up    = (ds4_report.dpad == 0 || ds4_report.dpad == 1 || ds4_report.dpad == 7);
       bool dpad_right = ((ds4_report.dpad >= 1 && ds4_report.dpad <= 3));
@@ -259,13 +259,42 @@ void input_sony_ds4(uint8_t dev_addr, uint8_t instance, uint8_t const* report, u
 
       // add to accumulator and post to the state machine
       // if a scan from the host machine is ongoing, wait
+      // Battery: status[0] at report[29] — bits 0-3 = level, bit 4 = cable connected
+      // Level interpretation differs based on cable state (per Linux kernel hid-playstation.c)
+      uint8_t bat_level = 0;
+      bool bat_charging = false;
+      if (len >= 30) {
+        uint8_t raw = report[29];
+        uint8_t battery_data = (raw & 0x0F);
+        bool cable_connected = (raw & 0x10) != 0;
+
+        if (cable_connected) {
+            if (battery_data < 10) {
+                bat_level = battery_data * 10 + 5;
+                bat_charging = true;
+            } else if (battery_data == 10) {
+                bat_level = 100;
+                bat_charging = true;
+            } else if (battery_data == 11) {
+                bat_level = 100;
+                bat_charging = false;  // Full
+            } else {
+                bat_level = 0;  // Error (14=voltage/temp, 15=charge)
+                bat_charging = false;
+            }
+        } else {
+            if (battery_data < 10)
+                bat_level = battery_data * 10 + 5;
+            else
+                bat_level = 100;
+            bat_charging = false;
+        }
+      }
+
       input_event_t event = {
         .dev_addr = dev_addr,
         .instance = instance,
         .type = INPUT_TYPE_GAMEPAD,
-        .transport = INPUT_TRANSPORT_USB,
-        .transport = INPUT_TRANSPORT_USB,
-        .transport = INPUT_TRANSPORT_USB,
         .transport = INPUT_TRANSPORT_USB,
         .buttons = buttons,
         .button_count = 10,  // PS4: Cross, Circle, Square, Triangle, L1, R1, L2, R2, L3, R3
@@ -276,6 +305,14 @@ void input_sony_ds4(uint8_t dev_addr, uint8_t instance, uint8_t const* report, u
         .has_motion = true,
         .accel = {ds4_report.accel[0], ds4_report.accel[1], ds4_report.accel[2]},
         .gyro = {ds4_report.gyro[0], ds4_report.gyro[1], ds4_report.gyro[2]},
+        .battery_level = bat_level,
+        .battery_charging = bat_charging,
+        // Touchpad (2-finger capacitive)
+        .has_touch = true,
+        .touch = {
+          { .x = tx,  .y = ty,  .active = !ds4_report.tpad_f1_down },
+          { .x = tx2, .y = ty2, .active = !ds4_report.tpad_f2_down },
+        },
       };
       router_submit_input(&event);
 

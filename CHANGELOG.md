@@ -6,9 +6,43 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
-## [Unreleased]
+## [1.8.0] — 2026-02-15
 
-*No unreleased changes.*
+### Added
+- **Generic BLE gamepad detection** via GAP Appearance — auto-connects devices advertising Gamepad (0x03C4) or Joystick (0x03C3) as fallback when no name-based driver matches
+- **Xbox BLE rumble support** — GATT HIDS-based output reports with strong/weak motor scaling
+- **Microsoft SideWinder Strategic Commander** USB host driver — 90s RTS command controller with tilt X/Y, twist Rz, 12 buttons, 3-position toggle switch, and reactive LED feedback
+- **usb2neogeo_pico** and **usb2neogeo_rp2040zero** build targets — Neo Geo adapter support for Pico and RP2040-Zero boards
+- **Battery level reporting** for DS4/DS5 via SInput
+- **Stadia BT rumble support** and BLE output report path fix
+- **Keyboard/Mouse twist axis support** — twist (Rz) axis mapped to delta-based scroll wheel in KB/Mouse mode
+- **LED mode color system** — NeoPixel shows color by active USB output mode (white=SInput, green=XInput, blue=PS3/PS4, red=Switch, yellow=KB/Mouse, purple=HID/GC Adapter), pulses when idle, solid on device connect
+- **Player LED expansion** from 4 to 7 across all drivers and apps
+- **Neo Geo generic GPIO device** — refactored neogeo_device into reusable gpio_device implementation
+- **MkDocs Material documentation site** at docs.joypad.ai
+- **Web config Vite build** — single-file HTML output with pre-commit auto-build
+- **Vercel deployment** for web-config with GitHub Actions workflow
+- USB host wiring guide for all supported boards
+- Neo Geo RP2040-Zero wiring docs with open drain mode
+
+### Fixed
+- **DS4 v2 Bluetooth pairing** — use report mode with boot fallback to bypass SDP parsing failure (status 0x11) on CUH-ZCT2 controllers
+- **DS4 BT Sony driver stability** — remove malformed ds4_enable_sixaxis, make output buffers static to fix use-after-free, skip SDP PnP query for Sony devices
+- **Xbox BLE input report parsing** — strip HIDS client report ID prefix that shifted all axes and buttons by one byte
+- **Switch Pro BT face button mapping** — corrected to match USB driver
+- **BT disconnect recovery and BLE reconnection** improvements
+- **BT remote name request failure** — handle gracefully in deferred connection flow instead of stalling
+- **Analog-to-mouse conversion** — added speed cap and sub-pixel accumulation for smoother cursor movement
+- SInput type fix for Switch 2 NSO GameCube controller
+- Wii U Pro VID/PID set in driver init for correct SInput device type reporting
+- Docs logo visibility for both dark and light themes
+
+### Changed
+- Standardized P2–P5 player LED colors to red, green, pink, yellow (PS4-style) across console output apps
+- NeoPixel init changed from orange to off to eliminate stale color on boot
+- Documentation reorganized: "Console Adapters" renamed to "Firmware Apps"
+- Docs domain updated to docs.joypad.ai
+- Protocol documentation audited and cleaned up (removed implementation details/code)
 
 ---
 
@@ -354,7 +388,9 @@ Initial tagged release. Represents the modernization of the firmware with a prop
 
 ---
 
-[Unreleased]: https://github.com/joypad-ai/joypad-os/compare/v1.6.0...HEAD
+[1.8.0]: https://github.com/joypad-ai/joypad-os/compare/v1.7.1...v1.8.0
+[1.7.1]: https://github.com/joypad-ai/joypad-os/compare/v1.7.0...v1.7.1
+[1.7.0]: https://github.com/joypad-ai/joypad-os/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/joypad-ai/joypad-os/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/joypad-ai/joypad-os/compare/v1.4.1...v1.5.0
 [1.4.1]: https://github.com/joypad-ai/joypad-os/compare/v1.4.0...v1.4.1

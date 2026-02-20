@@ -413,6 +413,37 @@ uint8_t USB_ProcessHIDReport(uint8_t dev_addr,
 	return Result;
 }
 
+// Default filter: accept gamepad axes, hat, dpad, buttons, mouse, keyboard
+bool CALLBACK_HIDParser_FilterHIDReportItem(uint8_t dev_addr, uint8_t instance,
+                                             HID_ReportItem_t *const CurrentItem)
+{
+	(void)dev_addr;
+	(void)instance;
+
+	if (CurrentItem->ItemType != HID_REPORT_ITEM_In)
+		return false;
+
+	switch (CurrentItem->Attributes.Usage.Page)
+	{
+		case 0x01:  // Generic Desktop
+			switch (CurrentItem->Attributes.Usage.Usage)
+			{
+				case 0x30: case 0x31: case 0x32:  // X, Y, Z
+				case 0x33: case 0x34: case 0x35:  // RX, RY, RZ
+				case 0x39:  // Hat switch
+				case 0x90: case 0x91: case 0x92: case 0x93:  // DPad U/D/R/L
+				case 0x38:  // Wheel
+				case 0x02:  // Mouse
+				case 0x06:  // Keyboard
+					return true;
+			}
+			return false;
+		case 0x09:  // Button
+			return true;
+	}
+	return false;
+}
+
 bool USB_GetHIDReportItemInfo(uint16_t report_id, const uint8_t *ReportData,
 							  HID_ReportItem_t *const ReportItem)
 {

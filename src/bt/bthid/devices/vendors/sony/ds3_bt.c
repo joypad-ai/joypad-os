@@ -14,7 +14,7 @@
 #include "core/buttons.h"
 #include "core/services/players/manager.h"
 #include "core/services/players/feedback.h"
-#include "pico/time.h"
+#include "platform/platform.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -107,8 +107,9 @@ static ds3_bt_data_t ds3_data[BTHID_MAX_DEVICES] = {0};
 // ============================================================================
 
 static bool ds3_match(const char* device_name, const uint8_t* class_of_device,
-                      uint16_t vendor_id, uint16_t product_id)
+                      uint16_t vendor_id, uint16_t product_id, bool is_ble)
 {
+    (void)is_ble;
     // VID/PID match (highest priority) - Sony vendor ID = 0x054C
     // DS3/Sixaxis = 0x0268
     if (vendor_id == 0x054C && product_id == 0x0268) {
@@ -180,7 +181,9 @@ static bool ds3_init(bthid_device_t* device)
 // Send LED/rumble output report to DS3
 static void ds3_send_output(bthid_device_t* device, uint8_t leds, uint8_t rumble_left, uint8_t rumble_right)
 {
-    ds3_bt_output_report_t report = {0};
+    // Static: BTstack stores pointer to report data for deferred L2CAP send
+    static ds3_bt_output_report_t report;
+    memset(&report, 0, sizeof(report));
 
     report.transaction_type = 0x52;  // SET_REPORT | Output
     report.report_id = 0x01;
@@ -352,6 +355,20 @@ static void ds3_process_report(bthid_device_t* device, const uint8_t* data, uint
     ds3->event.pressure[10] = rpt->reserved4[2]; // cross
     ds3->event.pressure[11] = rpt->reserved4[3]; // square
 
+    // Battery: data[29] (after report ID stripped)
+    // Per Linux kernel hid-sony.c: 0-5 = discharge lookup, 0xEE = charging, 0xEF = full
+    if (len > 29) {
+        static const uint8_t ds3_battery[] = { 0, 1, 25, 50, 75, 100 };
+        uint8_t charge = data[29];
+        if (charge >= 0xEE) {
+            ds3->event.battery_level = 100;
+            ds3->event.battery_charging = (charge & 0x01) == 0;  // 0xEE=charging, 0xEF=full
+        } else if (charge <= 5) {
+            ds3->event.battery_level = ds3_battery[charge];
+            ds3->event.battery_charging = false;
+        }
+    }
+
     router_submit_input(&ds3->event);
 }
 
@@ -403,7 +420,7 @@ static void ds3_task(bthid_device_t* device)
     ds3_bt_data_t* ds3 = (ds3_bt_data_t*)device->driver_data;
     if (!ds3) return;
 
-    uint32_t now = to_ms_since_boot(get_absolute_time());
+    uint32_t now = platform_time_ms();
 
     // State machine for activation with delays
     switch (ds3->activation_state) {

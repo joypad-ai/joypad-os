@@ -8,7 +8,7 @@
 #include "descriptors/pcemini_descriptors.h"
 #include "core/buttons.h"
 #include <string.h>
-#include "pico/time.h"
+#include "platform/platform.h"
 
 // ============================================================================
 // STATE
@@ -67,7 +67,7 @@ static bool pcemini_build_and_send(uint32_t buttons, uint8_t lx, uint8_t ly)
 {
     pcemini_report.buttons = 0;
 
-    uint32_t now = to_ms_since_boot(get_absolute_time());
+    uint32_t now = platform_time_ms();
     uint32_t period = turbo_periods[turbo_speed_index];
 
     // L1/R1 toggle turbo speed (edge-triggered)

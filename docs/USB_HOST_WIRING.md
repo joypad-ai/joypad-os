@@ -11,6 +11,7 @@ Joypad uses PIO-based USB host (bit-banged via the RP2040's PIO1 peripheral). Th
 - Full Speed (12 Mbps) only
 - D+ and D- must be on consecutive GPIOs (D- = D+ + 1)
 - PIO1 is used for USB host (PIO0 is reserved for NeoPixel/status LED)
+- **Single device only** — USB hubs are not supported on PIO USB host due to [upstream issues](https://github.com/sekigon-gonnoc/Pico-PIO-USB/issues/149) with enumeration and disconnect detection
 
 ## Pin Reference
 
@@ -53,7 +54,7 @@ Joypad uses PIO-based USB host (bit-banged via the RP2040's PIO1 peripheral). Th
 | VBUS (pin 40) | 1 | 5V (red) |
 | GND (pin 38) | 4 | GND (black) |
 
-> **Power note:** VBUS on pin 40 passes through 5V from the Pico's own USB connection. If you need more power (multiple controllers, rumble), use an externally powered USB hub on the host port, or power the Pico via VSYS with a 5V supply and connect that supply to USB-A pin 1 instead.
+> **Power note:** VBUS on pin 40 passes through 5V from the Pico's own USB connection. If your controller needs more power (e.g. rumble), power the Pico via VSYS with a 5V supply and connect that supply to USB-A pin 1 instead.
 
 ### Waveshare RP2040-Zero
 
@@ -68,15 +69,13 @@ Joypad uses PIO-based USB host (bit-banged via the RP2040's PIO1 peripheral). Th
 
 - **USB-A female breakout board** ([example](https://www.adafruit.com/product/1833)) or a cut USB-A extension cable
 - **4 jumper wires** (or 22-26 AWG wire + soldering)
-- **USB hub** (optional, for multiple controllers)
 
 ## Tips
 
 - **Double-check D+ and D-** — swapping them is the most common mistake and will silently fail
 - **Keep wires short** — USB signal integrity degrades with long runs; under 15cm is ideal
-- **Use a USB hub** for multiple controllers — connect the hub to your wired USB-A port
-- **Powered hubs recommended** for 3+ controllers or when using rumble-heavy controllers (Xbox, DualShock)
 - **USB-A breakout boards** are easier than cutting cables — labeled pins reduce wiring errors
+- **No hubs** — connect your controller directly to the USB-A port (hubs are not reliable on PIO USB)
 
 ## Troubleshooting
 
@@ -89,9 +88,7 @@ Joypad uses PIO-based USB host (bit-banged via the RP2040's PIO1 peripheral). Th
 **Controller disconnects or is flaky:**
 - Shorten your wires
 - Check for cold solder joints
-- Try a powered USB hub
-- Some controllers draw more current than VBUS can supply
+- Some controllers draw more current than VBUS can supply — use external 5V power
 
 **Works with some controllers but not others:**
-- High-power controllers (Xbox, DS4 with light bar) may need a powered hub
 - Check [HARDWARE.md](HARDWARE.md#supported-usb-input-devices) for the compatibility list

@@ -228,7 +228,7 @@ typedef struct {
 // PROFILE SYSTEM CONFIGURATION
 // ============================================================================
 
-#define MAX_OUTPUT_TARGETS 8
+#define MAX_OUTPUT_TARGETS OUTPUT_TARGET_COUNT
 
 typedef struct {
     // Profile sets indexed by output_target_t

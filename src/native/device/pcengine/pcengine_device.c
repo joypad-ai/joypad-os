@@ -1,7 +1,7 @@
 // pcengine.c
 
 #include "pcengine_device.h"
-#include "hardware/clocks.h"
+#include "pico/time.h"
 #include "hardware/gpio.h"
 #include "hardware/structs/iobank0.h"
 #include "hardware/structs/padsbank0.h"
@@ -31,11 +31,8 @@ static void pce_early_gpio_init(void)
 #include "hardware/uart.h"
 #endif
 
-uint64_t cpu_frequency;
-uint64_t timer_threshold;
-uint64_t timer_threshold_a;
-uint64_t timer_threshold_b;
-uint64_t turbo_frequency;
+#define TURBO_SPEED_COUNT 3
+static const uint32_t turbo_periods[TURBO_SPEED_COUNT] = { 50, 33, 25 }; // ms: 10Hz, 15Hz, 20Hz
 
 PIO pio;
 uint sm1, sm2, sm3;
@@ -90,6 +87,14 @@ static struct {
     volatile int16_t mouse_global_y[MAX_PLAYERS];  // Accumulated Y deltas (like PCEMouse global_y)
     volatile int16_t mouse_output_x[MAX_PLAYERS];  // Output X being sent (like PCEMouse output_x)
     volatile int16_t mouse_output_y[MAX_PLAYERS];  // Output Y being sent (like PCEMouse output_y)
+    uint32_t turbo_b3_start[MAX_PLAYERS];
+    bool     turbo_b3_held[MAX_PLAYERS];
+    uint32_t turbo_b4_start[MAX_PLAYERS];
+    bool     turbo_b4_held[MAX_PLAYERS];
+    uint8_t  turbo_speed_index[MAX_PLAYERS];
+    bool     l1_prev[MAX_PLAYERS];
+    bool     r1_prev[MAX_PLAYERS];
+    uint8_t  normal_base[MAX_PLAYERS];  // Pre-turbo normal byte for continuous re-evaluation
 } pce_state = {
     .button_mode = {BUTTON_MODE_2, BUTTON_MODE_2, BUTTON_MODE_2, BUTTON_MODE_2, BUTTON_MODE_2},
     .normal_byte = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF},
@@ -134,9 +139,6 @@ void pce_init()
   gpio_set_function(UART_RX_PIN, GPIO_FUNC_UART);
   #endif
 
-  // use turbo button feature with PCE
-  turbo_init();
-
   pio = pio0; // Both state machines can run on the same PIO processor
 
   // Load the plex (multiplex output) program, and configure a free state machine
@@ -168,16 +170,6 @@ void pce_init()
   
   // Initialize timing (like PCEMouse)
   init_time = get_absolute_time();
-}
-
-// init turbo button timings
-void turbo_init()
-{
-    cpu_frequency = clock_get_hz(clk_sys);
-    turbo_frequency = 1000000; // Default turbo frequency
-    timer_threshold_a = cpu_frequency / (turbo_frequency * 2);
-    timer_threshold_b = cpu_frequency / (turbo_frequency * 20);
-    timer_threshold = timer_threshold_a;
 }
 
 // task process - runs on core0, keeps cached button values fresh
@@ -253,17 +245,7 @@ void __not_in_flash_func(core1_task)(void)
 //
 void __not_in_flash_func(read_inputs)(void)
 {
-  static uint32_t turbo_timer = 0;
-  static bool turbo_state = false;
   int16_t hotkey = 0;
-
-  // Increment the timer and check if it reaches the threshold
-  turbo_timer++;
-  if (turbo_timer >= timer_threshold)
-  {
-    turbo_timer = 0;
-    turbo_state = !turbo_state;
-  }
 
   for (unsigned short int i = 0; i < MAX_PLAYERS; ++i)
   {
@@ -283,6 +265,17 @@ void __not_in_flash_func(read_inputs)(void)
     
     // No new event - keep existing state (important for mouse!)
     if (!event) {
+      // Re-evaluate turbo timing even without new input events
+      if (pce_state.turbo_b3_held[i] || pce_state.turbo_b4_held[i]) {
+        uint32_t now = to_ms_since_boot(get_absolute_time());
+        uint32_t period = turbo_periods[pce_state.turbo_speed_index[i]];
+        uint8_t normal = pce_state.normal_base[i];
+        if (pce_state.turbo_b3_held[i] && ((now - pce_state.turbo_b3_start[i]) / period) % 2 == 0)
+          normal &= ~(1 << 5);
+        if (pce_state.turbo_b4_held[i] && ((now - pce_state.turbo_b4_start[i]) / period) % 2 == 0)
+          normal &= ~(1 << 4);
+        pce_state.normal_byte[i] = normal;
+      }
       continue;
     }
 
@@ -342,13 +335,40 @@ void __not_in_flash_func(read_inputs)(void)
     } else if (is3btnRun && (event->buttons & JP_BUTTON_B3)) {
       normal &= ~(1 << 7);
     } else if (!is6btn) {
-      // Turbo buttons
-      if (turbo_state) {
-        if (event->buttons & JP_BUTTON_B3) normal &= ~(1 << 5);
-        if (event->buttons & JP_BUTTON_B4) normal &= ~(1 << 4);
+      // Save pre-turbo byte for re-evaluation when no new events arrive
+      pce_state.normal_base[i] = normal;
+
+      // Turbo buttons (per-player, ms-based timing)
+      uint32_t now = to_ms_since_boot(get_absolute_time());
+      uint32_t period = turbo_periods[pce_state.turbo_speed_index[i]];
+
+      // Edge-triggered speed cycling via L1/R1
+      bool l1_now = (event->buttons & JP_BUTTON_L1) != 0;
+      bool r1_now = (event->buttons & JP_BUTTON_R1) != 0;
+      if (l1_now && !pce_state.l1_prev[i] && pce_state.turbo_speed_index[i] > 0)
+        pce_state.turbo_speed_index[i]--;
+      if (r1_now && !pce_state.r1_prev[i] && pce_state.turbo_speed_index[i] < TURBO_SPEED_COUNT - 1)
+        pce_state.turbo_speed_index[i]++;
+      pce_state.l1_prev[i] = l1_now;
+      pce_state.r1_prev[i] = r1_now;
+
+      // Turbo B3 → II
+      if (event->buttons & JP_BUTTON_B3) {
+        if (!pce_state.turbo_b3_held[i]) { pce_state.turbo_b3_start[i] = now; pce_state.turbo_b3_held[i] = true; }
+        if (((now - pce_state.turbo_b3_start[i]) / period) % 2 == 0)
+          normal &= ~(1 << 5);
+      } else {
+        pce_state.turbo_b3_held[i] = false;
       }
-      if (event->buttons & JP_BUTTON_L1) timer_threshold = timer_threshold_a;
-      if (event->buttons & JP_BUTTON_R1) timer_threshold = timer_threshold_b;
+
+      // Turbo B4 → I
+      if (event->buttons & JP_BUTTON_B4) {
+        if (!pce_state.turbo_b4_held[i]) { pce_state.turbo_b4_start[i] = now; pce_state.turbo_b4_held[i] = true; }
+        if (((now - pce_state.turbo_b4_start[i]) / period) % 2 == 0)
+          normal &= ~(1 << 4);
+      } else {
+        pce_state.turbo_b4_held[i] = false;
+      }
     }
 
     // Build extended byte (6-button mode)

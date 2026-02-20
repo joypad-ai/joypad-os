@@ -62,19 +62,12 @@ typedef struct TU_ATTR_PACKED {
 
   int8_t tpad_f1_pos[3];
 
-  // struct {
-  //   uint8_t tpad_f2_count : 7;
-  //   uint8_t tpad_f2_down  : 1;
-  // };
+  struct {
+    uint8_t tpad_f2_count : 7;
+    uint8_t tpad_f2_down  : 1;
+  };
 
-  // int8_t tpad_f2_pos[3];
-
-  // struct {
-  //   uint8_t tpad_f1_count_prev : 7;
-  //   uint8_t tpad_f1_down_prev  : 1;
-  // };
-
-  // int8_t [3];
+  int8_t tpad_f2_pos[3];
 
 } sony_ds4_report_t;
 

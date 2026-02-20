@@ -40,20 +40,12 @@
 #define BUTTON_MODE_3_SEL 0x02
 #define BUTTON_MODE_3_RUN 0x03
 
-// Declaration of global variables
-extern uint64_t cpu_frequency;
-extern uint64_t timer_threshold;
-extern uint64_t timer_threshold_a;
-extern uint64_t timer_threshold_b;
-extern uint64_t turbo_frequency;
-
 extern PIO pio;
 extern uint sm1, sm2, sm3; // sm1 = plex; sm2 = clock, sm3 = select
 
 // Function declarations
 void pce_init(void);
 void pce_task(void);
-void turbo_init(void);
 void __not_in_flash_func(core1_task)(void);
 void __not_in_flash_func(update_output)(void);
 

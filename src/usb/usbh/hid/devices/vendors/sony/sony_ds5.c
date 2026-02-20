@@ -108,7 +108,8 @@ void input_sony_ds5(uint8_t dev_addr, uint8_t instance, uint8_t const* report, u
 
       uint16_t tx = (((ds5_report.tpad_f1_pos[1] & 0x0f) << 8)) | ((ds5_report.tpad_f1_pos[0] & 0xff) << 0);
       uint16_t ty = (((ds5_report.tpad_f1_pos[1] & 0xf0) >> 4)) | ((ds5_report.tpad_f1_pos[2] & 0xff) << 4);
-      // TU_LOG1(" (tx, ty) = (%u, %u)\r\n", tx, ty);
+      uint16_t tx2 = (((ds5_report.tpad_f2_pos[1] & 0x0f) << 8)) | ((ds5_report.tpad_f2_pos[0] & 0xff) << 0);
+      uint16_t ty2 = (((ds5_report.tpad_f2_pos[1] & 0xf0) >> 4)) | ((ds5_report.tpad_f2_pos[2] & 0xff) << 4);
       TU_LOG1("\r\n");
 
       bool dpad_up    = (ds5_report.dpad == 0 || ds5_report.dpad == 1 || ds5_report.dpad == 7);
@@ -175,15 +176,41 @@ void input_sony_ds5(uint8_t dev_addr, uint8_t instance, uint8_t const* report, u
       // keep analog within range [1-255]
       ensureAllNonZero(&analog_1x, &analog_1y, &analog_2x, &analog_2y);
 
+      // Battery: common data offset 52 (after report ID stripped) — bits 0-3 = level (0-10), bits 4-7 = status
+      // Per Linux kernel hid-playstation.c: 0=discharging, 1=charging, 2=full, 0xa/0xb/0xf=error
+      uint8_t bat_level = 0;
+      bool bat_charging = false;
+      if (len >= 53) {
+        uint8_t raw = report[52];
+        uint8_t level = raw & 0x0F;
+        uint8_t status = (raw >> 4) & 0x0F;
+
+        switch (status) {
+            case 0x0:  // Discharging
+                bat_level = (level > 10) ? 100 : level * 10 + 5;
+                bat_charging = false;
+                break;
+            case 0x1:  // Charging
+                bat_level = (level > 10) ? 100 : level * 10 + 5;
+                bat_charging = true;
+                break;
+            case 0x2:  // Full
+                bat_level = 100;
+                bat_charging = false;
+                break;
+            default:   // 0xa=voltage/temp, 0xb=temp, 0xf=charge error
+                bat_level = 0;
+                bat_charging = false;
+                break;
+        }
+      }
+
       // add to accumulator and post to the state machine
       // if a scan from the host machine is ongoing, wait
       input_event_t event = {
         .dev_addr = dev_addr,
         .instance = instance,
         .type = INPUT_TYPE_GAMEPAD,
-        .transport = INPUT_TRANSPORT_USB,
-        .transport = INPUT_TRANSPORT_USB,
-        .transport = INPUT_TRANSPORT_USB,
         .transport = INPUT_TRANSPORT_USB,
         .buttons = buttons,
         .button_count = 10,  // PS5: Cross, Circle, Square, Triangle, L1, R1, L2, R2, L3, R3
@@ -194,6 +221,14 @@ void input_sony_ds5(uint8_t dev_addr, uint8_t instance, uint8_t const* report, u
         .has_motion = true,
         .accel = {ds5_report.accel[0], ds5_report.accel[1], ds5_report.accel[2]},
         .gyro = {ds5_report.gyro[0], ds5_report.gyro[1], ds5_report.gyro[2]},
+        .battery_level = bat_level,
+        .battery_charging = bat_charging,
+        // Touchpad (2-finger capacitive)
+        .has_touch = true,
+        .touch = {
+          { .x = tx,  .y = ty,  .active = !ds5_report.tpad_f1_down },
+          { .x = tx2, .y = ty2, .active = !ds5_report.tpad_f2_down },
+        },
       };
       router_submit_input(&event);
 

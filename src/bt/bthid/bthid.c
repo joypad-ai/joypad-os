@@ -2,6 +2,7 @@
 // Handles Bluetooth HID devices and routes reports to device-specific drivers
 
 #include "bthid.h"
+#include "core/input_event.h"
 #include "bt/transport/bt_transport.h"
 #include "devices/generic/bthid_gamepad.h"
 #include "devices/vendors/sony/ds3_bt.h"
@@ -23,7 +24,7 @@
 // CONFIGURATION
 // ============================================================================
 
-#define BTHID_MAX_DRIVERS       8   // Max registered drivers
+#define BTHID_MAX_DRIVERS       16  // Max registered drivers
 
 // ============================================================================
 // STATIC DATA
@@ -39,7 +40,8 @@ static uint8_t driver_count = 0;
 
 static bthid_device_t* find_or_create_device(uint8_t conn_index);
 static const bthid_driver_t* find_driver(const char* name, const uint8_t* cod,
-                                          uint16_t vendor_id, uint16_t product_id);
+                                          uint16_t vendor_id, uint16_t product_id,
+                                          bool is_ble);
 static bthid_device_type_t classify_device(const uint8_t* class_of_device);
 static bool try_reclassify_sony_device(bthid_device_t* device, uint8_t report_id);
 
@@ -176,44 +178,41 @@ void bthid_update_device_info(uint8_t conn_index, const char* name,
         device->name[BTHID_MAX_NAME_LEN - 1] = '\0';
     }
 
-    // Check if we should re-evaluate the driver now that VID/PID is known
-    if (vendor_id || product_id) {
-        const bthid_driver_t* current = (const bthid_driver_t*)device->driver;
+    // Update VID/PID if provided
+    if (vendor_id) device->vendor_id = vendor_id;
+    if (product_id) device->product_id = product_id;
+
+    // Re-evaluate the driver if currently using generic gamepad.
+    // This handles late-arriving info: name from remote name request,
+    // VID/PID from SDP query, or both.
+    const bthid_driver_t* current = (const bthid_driver_t*)device->driver;
+    if (current == &bthid_gamepad_driver) {
+        const bt_connection_t* conn = bt_get_connection(conn_index);
+        const uint8_t* cod = conn ? conn->class_of_device : NULL;
+
         const bthid_driver_t* new_driver = NULL;
-
-        // Look for a better driver match with the new VID/PID
-        // Skip if we already have a specific driver (not generic gamepad)
-        if (current == &bthid_gamepad_driver) {
-            // Get COD from transport if available
-            const bt_connection_t* conn = bt_get_connection(conn_index);
-            const uint8_t* cod = conn ? conn->class_of_device : NULL;
-
-            // Try to find a specific driver
-            for (int i = 0; i < driver_count; i++) {
-                if (drivers[i] != &bthid_gamepad_driver &&
-                    drivers[i]->match && drivers[i]->match(device->name, cod, vendor_id, product_id)) {
-                    new_driver = drivers[i];
-                    break;
-                }
+        for (int i = 0; i < driver_count; i++) {
+            if (drivers[i] != &bthid_gamepad_driver &&
+                drivers[i]->match && drivers[i]->match(device->name, cod,
+                                                        device->vendor_id, device->product_id,
+                                                        device->is_ble)) {
+                new_driver = drivers[i];
+                break;
             }
+        }
 
-            if (new_driver) {
-                printf("[BTHID] Re-selecting driver: %s -> %s (VID=0x%04X PID=0x%04X)\n",
-                       current->name, new_driver->name, vendor_id, product_id);
+        if (new_driver) {
+            printf("[BTHID] Re-selecting driver: %s -> %s (name=%s VID=0x%04X PID=0x%04X)\n",
+                   current->name, new_driver->name, device->name,
+                   device->vendor_id, device->product_id);
 
-                // Disconnect old driver
-                if (current && current->disconnect) {
-                    current->disconnect(device);
-                }
-
-                // Clear driver data
-                device->driver_data = NULL;
-
-                // Initialize new driver
-                device->driver = new_driver;
-                if (new_driver->init) {
-                    new_driver->init(device);
-                }
+            if (current->disconnect) {
+                current->disconnect(device);
+            }
+            device->driver_data = NULL;
+            device->driver = new_driver;
+            if (new_driver->init) {
+                new_driver->init(device);
             }
         }
     }
@@ -224,11 +223,12 @@ void bthid_update_device_info(uint8_t conn_index, const char* name,
 // ============================================================================
 
 static const bthid_driver_t* find_driver(const char* name, const uint8_t* cod,
-                                          uint16_t vendor_id, uint16_t product_id)
+                                          uint16_t vendor_id, uint16_t product_id,
+                                          bool is_ble)
 {
     // First try registered drivers
     for (int i = 0; i < driver_count; i++) {
-        if (drivers[i]->match && drivers[i]->match(name, cod, vendor_id, product_id)) {
+        if (drivers[i]->match && drivers[i]->match(name, cod, vendor_id, product_id, is_ble)) {
             return drivers[i];
         }
     }
@@ -347,6 +347,7 @@ void bt_on_hid_ready(uint8_t conn_index)
     device->type = classify_device(conn->class_of_device);
     device->vendor_id = conn->vendor_id;
     device->product_id = conn->product_id;
+    device->is_ble = conn->is_ble;
 
     char addr_str[18];
     sprintf(addr_str, "%02X:%02X:%02X:%02X:%02X:%02X",
@@ -359,7 +360,8 @@ void bt_on_hid_ready(uint8_t conn_index)
 
     // Find matching driver (VID/PID takes priority over name/COD)
     const bthid_driver_t* driver = find_driver(device->name, conn->class_of_device,
-                                               conn->vendor_id, conn->product_id);
+                                               conn->vendor_id, conn->product_id,
+                                               device->is_ble);
     if (driver) {
         printf("[BTHID] Using driver: %s\n", driver->name);
         device->driver = driver;
@@ -456,6 +458,42 @@ void bt_on_hid_report(uint8_t conn_index, const uint8_t* data, uint16_t len)
         default:
             printf("[BTHID] Unhandled transaction: 0x%02X\n", trans_type);
             break;
+    }
+}
+
+// ============================================================================
+// HID DESCRIPTOR
+// ============================================================================
+
+void bthid_set_hid_descriptor(uint8_t conn_index, const uint8_t* desc, uint16_t desc_len)
+{
+    bthid_device_t* device = bthid_get_device(conn_index);
+    if (!device || !device->driver) return;
+
+    // Only the generic gamepad driver uses HID descriptor parsing
+    if ((const bthid_driver_t*)device->driver == &bthid_gamepad_driver) {
+        bthid_gamepad_set_descriptor(device, desc, desc_len);
+    }
+}
+
+// ============================================================================
+// BATTERY
+// ============================================================================
+
+void bthid_set_battery_level(uint8_t conn_index, uint8_t level)
+{
+    bthid_device_t* device = bthid_get_device(conn_index);
+    if (!device || !device->driver_data) {
+        return;
+    }
+
+    // All driver data structs have input_event_t as their first field
+    input_event_t* event = (input_event_t*)device->driver_data;
+
+    // Only set if driver hasn't already provided battery from HID reports
+    if (event->battery_level == 0 && level > 0) {
+        event->battery_level = level;
+        printf("[BTHID] BAS battery: %d%% (conn %d)\n", level, conn_index);
     }
 }
 

@@ -4,7 +4,6 @@
 // input events to the router.
 
 #include "snes_host.h"
-#include "native/host/host_interface.h"
 #include "snespad_c.h"
 #include "core/router/router.h"
 #include "core/input_event.h"
@@ -315,36 +314,6 @@ bool snes_host_is_connected(void)
     }
     return false;
 }
-
-static uint8_t snes_host_get_port_count(void)
-{
-    return SNES_MAX_PORTS;
-}
-
-// Generic init_pins wrapper for HostInterface
-// pins[0]=clock, pins[1]=latch, pins[2]=data0, pins[3]=data1, pins[4]=iobit
-static void snes_host_init_pins_generic(const uint8_t* pins, uint8_t pin_count)
-{
-    if (pin_count >= 5) {
-        snes_host_init_pins(pins[0], pins[1], pins[2], pins[3], pins[4]);
-    } else {
-        snes_host_init();  // Use defaults
-    }
-}
-
-// ============================================================================
-// HOST INTERFACE
-// ============================================================================
-
-const HostInterface snes_host_interface = {
-    .name = "SNES",
-    .init = snes_host_init,
-    .init_pins = snes_host_init_pins_generic,
-    .task = snes_host_task,
-    .is_connected = snes_host_is_connected,
-    .get_device_type = snes_host_get_device_type,
-    .get_port_count = snes_host_get_port_count,
-};
 
 // ============================================================================
 // INPUT INTERFACE (for app declaration)

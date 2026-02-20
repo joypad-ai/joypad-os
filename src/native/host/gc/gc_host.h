@@ -8,7 +8,6 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-#include "native/host/host_interface.h"
 #include "core/input_interface.h"
 
 // ============================================================================
@@ -51,13 +50,6 @@ int16_t gc_host_get_device_type(uint8_t port);
 
 // Set rumble state for a port
 void gc_host_set_rumble(uint8_t port, bool enabled);
-
-// ============================================================================
-// HOST INTERFACE
-// ============================================================================
-
-// GC host interface (implements HostInterface pattern)
-extern const HostInterface gc_host_interface;
 
 // GC input interface (implements InputInterface pattern for app declaration)
 extern const InputInterface gc_input_interface;

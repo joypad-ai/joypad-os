@@ -18,7 +18,7 @@
 #define USB2NEOGEO_PROFILES_H
 
 #include "core/services/profiles/profile.h"
-#include "native/device/neogeo/neogeo_buttons.h"
+#include "native/device/gpio/neogeo_buttons.h"
 
 // ============================================================================
 // PROFILE: Default - Standard Six Button Layout

@@ -38,7 +38,7 @@ Joypad OS is the real-time nervous system of the Joypad platform.
 
 | Output | Features | Documentation |
 |--------|----------|---------------|
-| **USB Device** | HID Gamepad, XInput, Xbox OG, Xbox One, XAC, PS3, PS4, PS Classic, Switch | [Docs](docs/USB_OUTPUT.md) |
+| **USB Device** | HID Gamepad, XInput, Xbox OG, Xbox One, XAC, PS3, PS4, PS Classic, Switch | [Docs](docs/apps/USB2USB.md) |
 | **PCEngine / TurboGrafx-16** | Multitap (5 players), Mouse, 2/3/6-button | [Docs](docs/consoles/PCENGINE.md) |
 | **GameCube / Wii** | Profiles, Rumble, Keyboard mode | [Docs](docs/consoles/GAMECUBE.md) |
 | **Sega Dreamcast** | ~~VMU emulation~~, Rumble, Profiles | [Docs](docs/consoles/DREAMCAST.md) |
@@ -156,7 +156,7 @@ Output firmware files appear in `releases/` directory.
 
 ### USB Output & Web Config
 
-- **[USB Output Modes](docs/USB_OUTPUT.md)** - Mode switching, Xbox 360 support, web config at [config.joypad.ai](https://config.joypad.ai)
+- **[USB Output Modes](docs/apps/USB2USB.md)** - Mode switching, Xbox 360 support, web config at [config.joypad.ai](https://config.joypad.ai)
 
 ### Console-Specific Guides
 

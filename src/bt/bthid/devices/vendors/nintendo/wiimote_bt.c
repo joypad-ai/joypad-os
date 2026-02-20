@@ -18,7 +18,7 @@
 #include "core/services/storage/flash.h"
 #include <string.h>
 #include <stdio.h>
-#include "pico/time.h"
+#include "platform/platform.h"
 
 #define WIIMOTE_INIT_DELAY_MS     100
 #define WIIMOTE_INIT_MAX_RETRIES  5
@@ -300,9 +300,10 @@ static uint32_t wiimote_rotate_controls(uint32_t buttons, wiimote_orient_t orien
 // ============================================================================
 
 static bool wiimote_match(const char* device_name, const uint8_t* class_of_device,
-                          uint16_t vendor_id, uint16_t product_id)
+                          uint16_t vendor_id, uint16_t product_id, bool is_ble)
 {
     (void)class_of_device;
+    (void)is_ble;
 
     // Match by VID/PID (Nintendo VID = 0x057E, Wiimote PID = 0x0306)
     if (vendor_id == 0x057E && product_id == 0x0306) {
@@ -337,7 +338,7 @@ static bool wiimote_init(bthid_device_t* device)
             device->driver_data = &wiimote_data[i];
 
             wiimote_data[i].state = WII_STATE_WAIT_INIT;
-            wiimote_data[i].init_time = time_us_32() + (WIIMOTE_INIT_DELAY_MS * 1000);
+            wiimote_data[i].init_time = platform_time_us() + (WIIMOTE_INIT_DELAY_MS * 1000);
             wiimote_data[i].init_retries = 0;
 
             printf("[WIIMOTE] Init started, waiting %d ms\n", WIIMOTE_INIT_DELAY_MS);
@@ -579,10 +580,10 @@ static void wiimote_process_report(bthid_device_t* device, const uint8_t* data, 
                 } else if (wii->extension_connected) {
                     // Debug: unknown extension type
                     static uint32_t last_ext_debug = 0;
-                    if (time_us_32() - last_ext_debug > 2000000) {
+                    if (platform_time_us() - last_ext_debug > 2000000) {
                         printf("[WIIMOTE] Ext data (unknown type): %02X %02X %02X %02X %02X %02X\n",
                                ext[0], ext[1], ext[2], ext[3], ext[4], ext[5]);
-                        last_ext_debug = time_us_32();
+                        last_ext_debug = platform_time_us();
                     }
                 }
             }
@@ -661,7 +662,7 @@ static void wiimote_process_report(bthid_device_t* device, const uint8_t* data, 
             } else if (wii->state == WII_STATE_WAIT_LED_ACK && acked_report == WII_CMD_LED) {
                 printf("[WIIMOTE] Init complete!\n");
                 wii->state = WII_STATE_READY;
-                wii->last_keepalive = time_us_32();
+                wii->last_keepalive = platform_time_us();
             }
         }
     }
@@ -732,7 +733,7 @@ static void wiimote_task(bthid_device_t* device)
     wiimote_data_t* wii = (wiimote_data_t*)device->driver_data;
     if (!wii) return;
 
-    uint32_t now = time_us_32();
+    uint32_t now = platform_time_us();
 
     switch (wii->state) {
         case WII_STATE_WAIT_INIT:
