@@ -30,6 +30,9 @@
 #define XBOX_BLE_GUIDE           0x1000  // Xbox button
 #define XBOX_BLE_LEFT_THUMB      0x2000  // L3
 #define XBOX_BLE_RIGHT_THUMB     0x4000  // R3
+// Share button: NOT in the buttons bitfield — sent as byte 15 (bit 0) of the
+// 16-byte report, replacing what was padding on pre-Series controllers
+#define XBOX_BLE_SHARE           0x01
 
 // Rumble output report (Report ID 0x03, 8 bytes)
 #define XBOX_BLE_REPORT_RUMBLE    0x03
@@ -191,6 +194,9 @@ static void xbox_ble_process_report(bthid_device_t* device, const uint8_t* data,
     if (btn & XBOX_BLE_LEFT_THUMB)     buttons |= JP_BUTTON_L3;
     if (btn & XBOX_BLE_RIGHT_THUMB)    buttons |= JP_BUTTON_R3;
     if (btn & XBOX_BLE_GUIDE)          buttons |= JP_BUTTON_A1;
+
+    // Share button: byte 15 of the 16-byte report (replaces padding on Series X/S)
+    if (report[15] & XBOX_BLE_SHARE)   buttons |= JP_BUTTON_A2;
 
     // Fill event struct
     xbox->event.buttons = buttons;

@@ -1562,9 +1562,11 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                             // Request remote name for driver matching (we don't have it from inquiry)
                             gap_remote_name_request(addr, 0, 0);
 
-                            // Query VID/PID via SDP (PnP Information service)
-                            sdp_client_query_uuid16(&sdp_query_vid_pid_callback, addr,
-                                                    BLUETOOTH_SERVICE_CLASS_PNP_INFORMATION);
+                            // Don't query VID/PID via SDP here — BTstack HID Host runs its
+                            // own SDP query after accepting the incoming connection, and the
+                            // SDP client only handles one query at a time. Our VID/PID query
+                            // would delay HID Host's descriptor query. Instead, query VID/PID
+                            // at HID_SUBEVENT_CONNECTION_OPENED after HID channels are established.
 
                             // Request authentication only if we have a stored key (reconnection).
                             // For new pairings (no key), defer auth to after name resolution
@@ -3504,8 +3506,17 @@ static void hid_host_packet_handler(uint8_t packet_type, uint16_t channel, uint8
                 break;
             }
 
-            printf("[BTSTACK_HOST] HID incoming connection, cid=0x%04X - accepting\n", hid_cid);
-            hid_host_accept_connection(hid_cid, HID_PROTOCOL_MODE_REPORT);
+            // Determine protocol mode from device profile (if name is available)
+            hid_protocol_mode_t accept_mode = HID_PROTOCOL_MODE_REPORT_WITH_FALLBACK_TO_BOOT;
+            if (classic_state.pending_valid && classic_state.pending_name[0]) {
+                const bt_device_profile_t* profile = bt_device_lookup_by_name(classic_state.pending_name);
+                if (profile->hid_mode == BT_HID_MODE_REPORT) {
+                    accept_mode = HID_PROTOCOL_MODE_REPORT;
+                }
+            }
+            printf("[BTSTACK_HOST] HID incoming connection, cid=0x%04X - accepting (mode=%s)\n",
+                   hid_cid, accept_mode == HID_PROTOCOL_MODE_REPORT ? "REPORT" : "FALLBACK");
+            hid_host_accept_connection(hid_cid, accept_mode);
 
             // Allocate connection slot if needed
             if (!find_classic_connection_by_cid(hid_cid)) {
@@ -3560,7 +3571,7 @@ static void hid_host_packet_handler(uint8_t packet_type, uint16_t channel, uint8
             classic_state.pending_valid = false;
 
             if (status != ERROR_CODE_SUCCESS) {
-                printf("[BTSTACK_HOST] HID connection failed, status=0x%02X\n", status);
+                printf("[BTSTACK_HOST] HID connection failed, cid=0x%04X status=0x%02X\n", hid_cid, status);
                 // Remove connection slot
                 classic_connection_t* conn = find_classic_connection_by_cid(hid_cid);
                 if (conn) {

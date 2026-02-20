@@ -66,7 +66,7 @@ static const uint8_t HAT_SWITCH_TO_DIRECTION_BUTTONS[] = {
 
 // Xbox BT HID: buttons 1-15 with gaps at 3,6,9,10
 // A=1, B=2, X=4, Y=5, LB=7, RB=8, View=11, Menu=12, Xbox=13, L3=14, R3=15
-static const uint32_t XBOX_BUTTON_MAP[16] = {
+static const uint32_t XBOX_BUTTON_MAP[17] = {
     0,                  // usage 0: invalid
     JP_BUTTON_B1,       // usage 1: A
     JP_BUTTON_B2,       // usage 2: B
@@ -83,6 +83,7 @@ static const uint32_t XBOX_BUTTON_MAP[16] = {
     JP_BUTTON_A1,       // usage 13: Xbox
     JP_BUTTON_L3,       // usage 14: L3
     JP_BUTTON_R3,       // usage 15: R3
+    JP_BUTTON_A2,       // usage 16: Share (Series X/S)
 };
 
 // Standard sequential HID gamepads (8BitDo, generic controllers)
@@ -300,7 +301,15 @@ static void process_report_dynamic(bthid_gamepad_data_t* gp, const uint8_t* data
     // Map buttons by HID usage number using descriptor-derived layout detection
     // Simulation Controls triggers (Brake/Accelerator) = Xbox gap pattern
     // Generic Desktop triggers (Rx/Ry) = sequential button layout
-    const uint32_t* btn_map = map->has_sim_triggers ? XBOX_BUTTON_MAP : SEQ_BUTTON_MAP;
+    const uint32_t* btn_map;
+    uint8_t btn_map_size;
+    if (map->has_sim_triggers) {
+        btn_map = XBOX_BUTTON_MAP;
+        btn_map_size = sizeof(XBOX_BUTTON_MAP) / sizeof(XBOX_BUTTON_MAP[0]);
+    } else {
+        btn_map = SEQ_BUTTON_MAP;
+        btn_map_size = sizeof(SEQ_BUTTON_MAP) / sizeof(SEQ_BUTTON_MAP[0]);
+    }
 
     uint8_t buttonCount = 0;
     for (int i = 0; i < BLE_MAX_BUTTONS; i++) {
@@ -309,7 +318,7 @@ static void process_report_dynamic(bthid_gamepad_data_t* gp, const uint8_t* data
             if (map->buttonLoc[i].byteIndex < len &&
                 (data[map->buttonLoc[i].byteIndex] & map->buttonLoc[i].bitMask)) {
                 uint8_t usage = i + 1;  // usage number = slot index + 1
-                if (usage < 16) {
+                if (usage < btn_map_size) {
                     buttons |= btn_map[usage];
                 }
             }

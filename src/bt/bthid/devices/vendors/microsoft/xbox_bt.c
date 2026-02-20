@@ -18,22 +18,40 @@
 // XBOX BT CONSTANTS
 // ============================================================================
 
-// Xbox controller button masks (from standard HID gamepad report)
-#define XBOX_BT_DPAD_UP         0x0001
-#define XBOX_BT_DPAD_DOWN       0x0002
-#define XBOX_BT_DPAD_LEFT       0x0004
-#define XBOX_BT_DPAD_RIGHT      0x0008
-#define XBOX_BT_START           0x0010  // Menu button
-#define XBOX_BT_BACK            0x0020  // View button
-#define XBOX_BT_LEFT_THUMB      0x0040
-#define XBOX_BT_RIGHT_THUMB     0x0080
-#define XBOX_BT_LEFT_SHOULDER   0x0100
-#define XBOX_BT_RIGHT_SHOULDER  0x0200
-#define XBOX_BT_GUIDE           0x0400
-#define XBOX_BT_A               0x1000
-#define XBOX_BT_B               0x2000
-#define XBOX_BT_X               0x4000
-#define XBOX_BT_Y               0x8000
+// Standard format button masks — matches HID descriptor button usages 1-15
+// Same layout as Xbox BLE (same hardware, same HID report descriptor)
+// Button usages have gaps: 1,2,_,4,5,_,7,8,_,_,11,12,13,14,15
+#define XBOX_BT_A               0x0001  // Button 1
+#define XBOX_BT_B               0x0002  // Button 2
+#define XBOX_BT_X               0x0008  // Button 4
+#define XBOX_BT_Y               0x0010  // Button 5
+#define XBOX_BT_LEFT_SHOULDER   0x0040  // Button 7 (LB)
+#define XBOX_BT_RIGHT_SHOULDER  0x0080  // Button 8 (RB)
+#define XBOX_BT_BACK            0x0400  // Button 11 (View)
+#define XBOX_BT_START           0x0800  // Button 12 (Menu)
+#define XBOX_BT_GUIDE           0x1000  // Button 13 (Xbox)
+#define XBOX_BT_LEFT_THUMB      0x2000  // Button 14 (L3)
+#define XBOX_BT_RIGHT_THUMB     0x4000  // Button 15 (R3)
+// Share button: NOT in the buttons bitfield — sent as a separate byte (data[16])
+// after the standard 16-byte report on Xbox Series X/S controllers
+#define XBOX_BT_SHARE           0x01
+
+// Alternative format button masks — older controllers with D-pad in button field
+#define XBOX_BT_ALT_DPAD_UP         0x0001
+#define XBOX_BT_ALT_DPAD_DOWN       0x0002
+#define XBOX_BT_ALT_DPAD_LEFT       0x0004
+#define XBOX_BT_ALT_DPAD_RIGHT      0x0008
+#define XBOX_BT_ALT_START           0x0010
+#define XBOX_BT_ALT_BACK            0x0020
+#define XBOX_BT_ALT_LEFT_THUMB      0x0040
+#define XBOX_BT_ALT_RIGHT_THUMB     0x0080
+#define XBOX_BT_ALT_LEFT_SHOULDER   0x0100
+#define XBOX_BT_ALT_RIGHT_SHOULDER  0x0200
+#define XBOX_BT_ALT_GUIDE           0x0400
+#define XBOX_BT_ALT_A               0x1000
+#define XBOX_BT_ALT_B               0x2000
+#define XBOX_BT_ALT_X               0x4000
+#define XBOX_BT_ALT_Y               0x8000
 
 // ============================================================================
 // XBOX BT REPORT STRUCTURE
@@ -51,7 +69,7 @@ typedef struct __attribute__((packed)) {
     uint16_t lt;                // Left trigger (0-1023)
     uint16_t rt;                // Right trigger (0-1023)
 
-    uint8_t dpad;               // D-pad as hat (0-7, 8=center)
+    uint8_t dpad;               // D-pad as hat (1=N..8=NW, 0=center)
 
     uint16_t buttons;           // Button bitfield
 } xbox_bt_input_report_t;
@@ -175,19 +193,7 @@ static void xbox_process_report(bthid_device_t* device, const uint8_t* data, uin
     xbox_bt_data_t* xbox = (xbox_bt_data_t*)device->driver_data;
     if (!xbox || len < 2) return;
 
-    // Debug: dump first report for diagnostics
-    static bool xbox_report_debug_done = false;
-    if (!xbox_report_debug_done) {
-        printf("[XBOX_BT] First report: len=%d, data:", len);
-        for (int i = 0; i < len && i < 20; i++) {
-            printf(" %02X", data[i]);
-        }
-        printf("\n");
-        xbox_report_debug_done = true;
-    }
-
     // Only parse report ID 0x01 (standard gamepad input)
-    // Other report IDs (battery, system, etc.) have different layouts
     uint8_t report_id = data[0];
     if (report_id != 0x01) {
         return;
@@ -214,12 +220,12 @@ static void xbox_process_report(bthid_device_t* device, const uint8_t* data, uin
         lt = scale_trigger_10to8(rpt->lt);
         rt = scale_trigger_10to8(rpt->rt);
 
-        // Parse D-pad (hat format)
+        // Parse D-pad (hat format: 0=center, 1=N, 2=NE, 3=E, 4=SE, 5=S, 6=SW, 7=W, 8=NW)
         uint8_t dpad = rpt->dpad;
-        if (dpad == 0 || dpad == 1 || dpad == 7) buttons |= JP_BUTTON_DU;
-        if (dpad >= 1 && dpad <= 3) buttons |= JP_BUTTON_DR;
-        if (dpad >= 3 && dpad <= 5) buttons |= JP_BUTTON_DD;
-        if (dpad >= 5 && dpad <= 7) buttons |= JP_BUTTON_DL;
+        if (dpad == 1 || dpad == 2 || dpad == 8) buttons |= JP_BUTTON_DU;
+        if (dpad >= 2 && dpad <= 4)              buttons |= JP_BUTTON_DR;
+        if (dpad >= 4 && dpad <= 6)              buttons |= JP_BUTTON_DD;
+        if (dpad >= 6 && dpad <= 8)              buttons |= JP_BUTTON_DL;
 
         // Parse buttons
         uint16_t btn = rpt->buttons;
@@ -236,6 +242,10 @@ static void xbox_process_report(bthid_device_t* device, const uint8_t* data, uin
         if (btn & XBOX_BT_LEFT_THUMB)     buttons |= JP_BUTTON_L3;
         if (btn & XBOX_BT_RIGHT_THUMB)    buttons |= JP_BUTTON_R3;
         if (btn & XBOX_BT_GUIDE)          buttons |= JP_BUTTON_A1;
+
+        // Share button: Xbox Series X/S sends it as an extra byte after the
+        // standard 16-byte report (byte 16, bit 0) — not in the buttons bitfield
+        if (len > 16 && (data[16] & XBOX_BT_SHARE)) buttons |= JP_BUTTON_A2;
 
     } else if (len >= sizeof(xbox_bt_input_alt_t)) {
         // Alternative format (older controllers or different firmware)
@@ -254,24 +264,24 @@ static void xbox_process_report(bthid_device_t* device, const uint8_t* data, uin
         // Parse buttons (button bitfield in different position)
         uint16_t btn = rpt->buttons;
 
-        // D-pad might be in buttons for this format
-        if (btn & XBOX_BT_DPAD_UP)        buttons |= JP_BUTTON_DU;
-        if (btn & XBOX_BT_DPAD_DOWN)      buttons |= JP_BUTTON_DD;
-        if (btn & XBOX_BT_DPAD_LEFT)      buttons |= JP_BUTTON_DL;
-        if (btn & XBOX_BT_DPAD_RIGHT)     buttons |= JP_BUTTON_DR;
-        if (btn & XBOX_BT_A)              buttons |= JP_BUTTON_B1;
-        if (btn & XBOX_BT_B)              buttons |= JP_BUTTON_B2;
-        if (btn & XBOX_BT_X)              buttons |= JP_BUTTON_B3;
-        if (btn & XBOX_BT_Y)              buttons |= JP_BUTTON_B4;
-        if (btn & XBOX_BT_LEFT_SHOULDER)  buttons |= JP_BUTTON_L1;
-        if (btn & XBOX_BT_RIGHT_SHOULDER) buttons |= JP_BUTTON_R1;
-        if (lt > 10)                      buttons |= JP_BUTTON_L2;
-        if (rt > 10)                      buttons |= JP_BUTTON_R2;
-        if (btn & XBOX_BT_BACK)           buttons |= JP_BUTTON_S1;
-        if (btn & XBOX_BT_START)          buttons |= JP_BUTTON_S2;
-        if (btn & XBOX_BT_LEFT_THUMB)     buttons |= JP_BUTTON_L3;
-        if (btn & XBOX_BT_RIGHT_THUMB)    buttons |= JP_BUTTON_R3;
-        if (btn & XBOX_BT_GUIDE)          buttons |= JP_BUTTON_A1;
+        // D-pad is in button bitfield for this format
+        if (btn & XBOX_BT_ALT_DPAD_UP)        buttons |= JP_BUTTON_DU;
+        if (btn & XBOX_BT_ALT_DPAD_DOWN)      buttons |= JP_BUTTON_DD;
+        if (btn & XBOX_BT_ALT_DPAD_LEFT)      buttons |= JP_BUTTON_DL;
+        if (btn & XBOX_BT_ALT_DPAD_RIGHT)     buttons |= JP_BUTTON_DR;
+        if (btn & XBOX_BT_ALT_A)              buttons |= JP_BUTTON_B1;
+        if (btn & XBOX_BT_ALT_B)              buttons |= JP_BUTTON_B2;
+        if (btn & XBOX_BT_ALT_X)              buttons |= JP_BUTTON_B3;
+        if (btn & XBOX_BT_ALT_Y)              buttons |= JP_BUTTON_B4;
+        if (btn & XBOX_BT_ALT_LEFT_SHOULDER)  buttons |= JP_BUTTON_L1;
+        if (btn & XBOX_BT_ALT_RIGHT_SHOULDER) buttons |= JP_BUTTON_R1;
+        if (lt > 10)                           buttons |= JP_BUTTON_L2;
+        if (rt > 10)                           buttons |= JP_BUTTON_R2;
+        if (btn & XBOX_BT_ALT_BACK)           buttons |= JP_BUTTON_S1;
+        if (btn & XBOX_BT_ALT_START)          buttons |= JP_BUTTON_S2;
+        if (btn & XBOX_BT_ALT_LEFT_THUMB)     buttons |= JP_BUTTON_L3;
+        if (btn & XBOX_BT_ALT_RIGHT_THUMB)    buttons |= JP_BUTTON_R3;
+        if (btn & XBOX_BT_ALT_GUIDE)          buttons |= JP_BUTTON_A1;
 
     } else {
         // Unknown format, skip

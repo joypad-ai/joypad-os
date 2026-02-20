@@ -416,7 +416,11 @@ void bt_on_hid_report(uint8_t conn_index, const uint8_t* data, uint16_t len)
 
     bthid_device_t* device = bthid_get_device(conn_index);
     if (!device) {
-        printf("[BTHID] Report for unknown device on conn %d\n", conn_index);
+        static uint8_t unknown_report_count = 0;
+        if (unknown_report_count < 3) {
+            printf("[BTHID] Report for unknown device on conn %d (len=%d)\n", conn_index, len);
+            unknown_report_count++;
+        }
         return;
     }
 
