@@ -4,7 +4,7 @@
 // Supports per-output-target profile sets with shared fallback.
 
 #include "profile.h"
-#include "pico/stdlib.h"
+#include "platform/platform.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -403,7 +403,7 @@ void profile_check_player_switch_combo(uint8_t player_index, uint32_t buttons)
     }
 
     // Select is held
-    uint32_t current_time = to_ms_since_boot(get_absolute_time());
+    uint32_t current_time = platform_time_ms();
 
     if (!combo->p_select_was_held) {
         combo->p_select_hold_start = current_time;
@@ -483,8 +483,7 @@ void profile_check_switch_combo(uint32_t buttons)
     output_target_t output = router_get_primary_output();
     if (output == OUTPUT_TARGET_NONE) return;
 
-    uint8_t player_count = get_player_count ? get_player_count() : 0;
-    if (player_count == 0) return;  // No controllers connected
+    uint8_t player_count = get_player_count ? get_player_count() : 1;
 
     // Check button states (buttons are active-high: 1 = pressed)
     bool select_held = ((buttons & JP_BUTTON_S1) != 0);
@@ -506,7 +505,7 @@ void profile_check_switch_combo(uint32_t buttons)
     }
 
     // Select is held
-    uint32_t current_time = to_ms_since_boot(get_absolute_time());
+    uint32_t current_time = platform_time_ms();
 
     if (!select_was_held) {
         // Select just pressed - start timer
@@ -551,21 +550,15 @@ void profile_check_switch_combo(uint32_t buttons)
 
     // D-pad Up - cycle profile forward
     if (trigger_up) {
-        uint8_t count = profile_get_count(output);
-        if (count > 1) {
-            profile_cycle_next(output);
-            initial_trigger_done = true;
-        }
+        profile_cycle_next(output);
+        initial_trigger_done = true;
     }
     dpad_up_was_pressed = dpad_up_pressed;
 
     // D-pad Down - cycle profile backward
     if (trigger_down && !trigger_up) {  // Don't trigger both directions
-        uint8_t count = profile_get_count(output);
-        if (count > 1) {
-            profile_cycle_prev(output);
-            initial_trigger_done = true;
-        }
+        profile_cycle_prev(output);
+        initial_trigger_done = true;
     }
     dpad_down_was_pressed = dpad_down_pressed;
 
@@ -1037,6 +1030,16 @@ void profile_apply(const profile_t* profile,
                 // Already set above
                 break;
         }
+    }
+
+    // Digital-only trigger fallback: if analog is 0 but digital button is pressed,
+    // synthesize full-press analog value. Handles controllers that report L2/R2 as
+    // buttons only (e.g. 8BitDo Pro2 via generic BT driver).
+    if (output->l2_analog == 0 && (output->buttons & JP_BUTTON_L2)) {
+        output->l2_analog = 255;
+    }
+    if (output->r2_analog == 0 && (output->buttons & JP_BUTTON_R2)) {
+        output->r2_analog = 255;
     }
 }
 

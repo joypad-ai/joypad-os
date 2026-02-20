@@ -9,7 +9,6 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-#include "native/host/host_interface.h"
 #include "core/input_interface.h"
 
 // ============================================================================
@@ -69,13 +68,6 @@ void snes_host_set_rumble(uint8_t port, uint8_t left, uint8_t right);
 
 // Check if any SNES controller is connected
 bool snes_host_is_connected(void);
-
-// ============================================================================
-// HOST INTERFACE
-// ============================================================================
-
-// SNES host interface (implements HostInterface pattern)
-extern const HostInterface snes_host_interface;
 
 // SNES input interface (implements InputInterface pattern for app declaration)
 extern const InputInterface snes_input_interface;

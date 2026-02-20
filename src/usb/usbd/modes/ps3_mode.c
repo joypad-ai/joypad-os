@@ -8,7 +8,7 @@
 #include "descriptors/ps3_descriptors.h"
 #include "core/buttons.h"
 #include "core/services/players/manager.h"
-#include "pico/unique_id.h"
+#include "platform/platform.h"
 #include <string.h>
 
 // ============================================================================
@@ -32,19 +32,19 @@ static void ps3_mode_init(void)
     ps3_output_available = false;
     ps3_ef_byte = 0;
 
-    // Generate plausible BT addresses from RP2040 unique board ID
+    // Generate plausible BT addresses from board unique ID
     memset(&ps3_pairing, 0, sizeof(ps3_pairing));
-    pico_unique_board_id_t board_id;
-    pico_get_unique_board_id(&board_id);
+    uint8_t board_id[8];
+    platform_get_unique_id(board_id, sizeof(board_id));
     // Device address: bytes 0-5 of board ID
     ps3_pairing.device_address[0] = 0x00;  // Leading zero
     for (int i = 0; i < 6; i++) {
-        ps3_pairing.device_address[1 + i] = board_id.id[i];
+        ps3_pairing.device_address[1 + i] = board_id[i];
     }
     // Host address: bytes 2-7 XOR'd for differentiation
     ps3_pairing.host_address[0] = 0x00;  // Leading zero
     for (int i = 0; i < 6; i++) {
-        ps3_pairing.host_address[1 + i] = board_id.id[i] ^ 0xAA;
+        ps3_pairing.host_address[1 + i] = board_id[i] ^ 0xAA;
     }
 }
 

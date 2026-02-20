@@ -80,6 +80,8 @@ CONSOLE_snes2usb := joypad_snes2usb
 CONSOLE_nes2usb := joypad_nes2usb
 CONSOLE_n642usb := joypad_n642usb
 CONSOLE_gc2usb := joypad_gc2usb
+CONSOLE_neogeo2usb := joypad_neogeo2usb
+CONSOLE_neogeo2usb_rp2040zero := joypad_neogeo2usb_rp2040zero
 CONSOLE_controller_fisherprice := joypad_controller_fisherprice
 CONSOLE_controller_fisherprice_analog := joypad_controller_fisherprice_analog
 CONSOLE_controller_alpakka := joypad_controller_alpakka
@@ -115,6 +117,8 @@ APP_wifi2usb_pico2_w := pico2_w wifi2usb wifi2usb_pico2_w WiFi USB
 APP_snes2usb_kb2040 := kb2040 snes2usb snes2usb_kb2040 SNES USB
 APP_n642usb_kb2040 := kb2040 n642usb n642usb_kb2040 N64 USB
 APP_gc2usb_kb2040 := kb2040 gc2usb gc2usb_kb2040 GameCube USB
+APP_neogeo2usb_kb2040 := kb2040 neogeo2usb neogeo2usb_kb2040 NEOGEO USB
+APP_neogeo2usb_rp2040zero := rp2040zero neogeo2usb_rp2040zero neogeo2usb_rp2040zero NEOGEO USB
 APP_controller_fisherprice_kb2040 := kb2040 controller_fisherprice controller_fisherprice_kb2040 GPIO USB
 APP_controller_fisherprice_analog_kb2040 := kb2040 controller_fisherprice_analog controller_fisherprice_analog_kb2040 GPIO/ADC USB
 APP_controller_alpakka_pico := pico controller_alpakka controller_alpakka_pico GPIO/I2C USB
@@ -157,6 +161,7 @@ help:
 	@echo ""
 	@echo "$(GREEN)Quick Start:$(NC)"
 	@echo "  make init          - Initialize submodules (run once after clone)"
+	@echo "  make init-esp      - Install ESP-IDF for ESP32-S3 builds"
 	@echo "  make build         - Build all apps (alias for 'make all')"
 	@echo ""
 	@echo "$(GREEN)App Targets:$(NC)"
@@ -181,11 +186,14 @@ help:
 	@echo "  make usb2usb_rp2040zero - USB/BT -> USB HID (RP2040-Zero)"
 	@echo "  make usb2usb_rp2350usba - USB/BT -> USB HID (Waveshare RP2350A)"
 	@echo "  make bt2usb_pico_w      - Bluetooth -> USB HID (Pico W)"
+	@echo "  make bt2usb_esp32s3     - Bluetooth -> USB HID (ESP32-S3, requires ESP-IDF)"
 	@echo "  make wifi2usb_pico_w    - WiFi -> USB HID (Pico W)"
 	@echo "  make snes2usb_kb2040    - SNES -> USB HID (KB2040)"
 	@echo "  make n642usb_kb2040     - N64 -> USB HID (KB2040)"
 	@echo "  make gc2usb_kb2040      - GameCube -> USB HID (KB2040)"
-	@echo "  make controller_fisherprice_kb2040 - GPIO -> USB HID (KB2040)"
+	@echo "  make neogeo2usb_kb2040  - NEOGEO -> USB HID (KB2040)"
+	@echo "  make neogeo2usb_rp2040zero - NEOGEO -> USB HID (KB2040)"
+	@echo "  make controller_fisherprice_kb2040 - GPIO -> USB HID (RP2040-Zero)"
 	@echo "  make controller_alpakka_pico - GPIO/I2C -> USB HID (Pico)"
 	@echo "  make controller_macropad - 12 keys -> USB HID (MacroPad RP2040)"
 	@echo "  make nes2usb_pico_w     - NES -> USB HID (Pico W)"
@@ -226,6 +234,24 @@ init:
 	@cd src/lib/tinyusb && git fetch --tags && git checkout 0.19.0
 	@echo "$(GREEN)✓ Initialization complete!$(NC)"
 	@echo "$(GREEN)  You can now run 'make build' or 'make all'$(NC)"
+	@echo ""
+
+# Initialize ESP-IDF for ESP32-S3 builds
+.PHONY: init-esp
+init-esp:
+	@echo "$(YELLOW)Setting up ESP-IDF for ESP32-S3...$(NC)"
+	@if [ ! -d "$(HOME)/esp-idf" ]; then \
+		echo "$(YELLOW)Cloning ESP-IDF v6.0...$(NC)"; \
+		git clone --branch v6.0 --depth 1 --recursive https://github.com/espressif/esp-idf.git $(HOME)/esp-idf; \
+	else \
+		echo "$(GREEN)  ESP-IDF already installed at ~/esp-idf$(NC)"; \
+	fi
+	@echo "$(YELLOW)Installing ESP-IDF tools for ESP32-S3...$(NC)"
+	@cd $(HOME)/esp-idf && ./install.sh esp32s3
+	@echo "$(YELLOW)Setting up Python environment...$(NC)"
+	@bash -c 'source $(HOME)/esp-idf/export.sh && echo "$(GREEN)  Python env: $$IDF_PYTHON_ENV_PATH$(NC)"'
+	@echo "$(GREEN)✓ ESP-IDF setup complete!$(NC)"
+	@echo "$(GREEN)  You can now run 'make bt2usb_esp32s3'$(NC)"
 	@echo ""
 
 # Alias for all
@@ -340,6 +366,25 @@ bt2usb_pico_w:
 bt2usb_pico2_w:
 	$(call build_app,bt2usb_pico2_w)
 
+# --- ESP32-S3 bt2usb (requires ESP-IDF) ---
+.PHONY: bt2usb_esp32s3
+bt2usb_esp32s3:
+	@echo "$(YELLOW)Building bt2usb for ESP32-S3...$(NC)"
+	@cd esp && $(MAKE) build
+	@echo "$(GREEN)✓ bt2usb_esp32s3 built successfully$(NC)"
+	@echo ""
+
+.PHONY: flash-bt2usb_esp32s3
+flash-bt2usb_esp32s3:
+	@echo "$(YELLOW)Flashing bt2usb to ESP32-S3...$(NC)"
+	@cd esp && $(MAKE) flash
+	@echo "$(GREEN)✓ bt2usb_esp32s3 flashed successfully$(NC)"
+	@echo ""
+
+.PHONY: monitor-bt2usb_esp32s3
+monitor-bt2usb_esp32s3:
+	@cd esp && $(MAKE) monitor
+
 .PHONY: wifi2usb_pico_w
 wifi2usb_pico_w:
 	$(call build_app,wifi2usb_pico_w)
@@ -359,6 +404,14 @@ n642usb_kb2040:
 .PHONY: gc2usb_kb2040
 gc2usb_kb2040:
 	$(call build_app,gc2usb_kb2040)
+
+.PHONY: neogeo2usb_kb2040
+neogeo2usb_kb2040:
+	$(call build_app,neogeo2usb_kb2040)
+
+.PHONY: neogeo2usb_rp2040zero
+neogeo2usb_rp2040zero:
+	$(call build_app,neogeo2usb_rp2040zero)
 
 .PHONY: controller_fisherprice_kb2040
 controller_fisherprice_kb2040:
@@ -596,6 +649,14 @@ flash-n642usb_kb2040:
 .PHONY: flash-gc2usb_kb2040
 flash-gc2usb_kb2040:
 	@$(MAKE) --no-print-directory _flash_app APP_NAME=gc2usb_kb2040
+
+.PHONY: flash-neogeo2usb_kb2040
+flash-neogeo2usb_kb2040:
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=neogeo2usb_kb2040
+
+.PHONY: flash-neogeo2usb_rp2040zero
+flash-neogeo2usb_rp2040zero:
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=neogeo2usb_rp2040zero
 
 .PHONY: flash-controller_fisherprice_kb2040
 flash-controller_fisherprice_kb2040:

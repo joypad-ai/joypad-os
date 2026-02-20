@@ -1,0 +1,78 @@
+site_name: Joypad OS
+site_url: https://docs.joypad.ai
+site_description: Universal controller firmware for adapters, controllers, and input systems
+repo_url: https://github.com/joypad-ai/joypad-os
+repo_name: joypad-ai/joypad-os
+
+theme:
+  name: material
+  palette:
+    - scheme: slate
+      primary: deep purple
+      accent: pink
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+    - scheme: default
+      primary: deep purple
+      accent: pink
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+  features:
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.highlight
+    - search.suggest
+    - content.code.copy
+  logo: images/logo_solid.svg
+  favicon: images/logo_solid.svg
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Installation: INSTALLATION.md
+    - Building: BUILD.md
+    - Hardware Compatibility: HARDWARE.md
+  - Firmware Apps:
+    - USB2USB: apps/USB2USB.md
+    - BT2USB: apps/BT2USB.md
+    - USB2GC (GameCube / Wii): apps/USB2GC.md
+    - USB23DO (3DO): apps/USB23DO.md
+    - USB2DC (Dreamcast): apps/USB2DC.md
+    - USB2Neo (Neo Geo): apps/USB2NEO.md
+    - USB2Nuon (Nuon): apps/USB2NUON.md
+    - USB2PCE (PC Engine): apps/USB2PCE.md
+    - USB2Loopy (Casio Loopy): apps/USB2LOOPY.md
+  - Features:
+    - SNES Rumble: features/SNES_RUMBLE.md
+  - Protocol Reference:
+    - Overview: protocols/README.md
+    - 3DO PBus: protocols/3DO_PBUS.md
+    - GameCube Joybus: protocols/GAMECUBE_JOYBUS.md
+    - Nuon Polyface: protocols/NUON_POLYFACE.md
+    - PC Engine: protocols/PCENGINE.md
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - toc:
+      permalink: true
+
+plugins:
+  - search
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/joypad-ai/joypad-os
+    - icon: fontawesome/brands/twitter
+      link: https://twitter.com/joypad_ai

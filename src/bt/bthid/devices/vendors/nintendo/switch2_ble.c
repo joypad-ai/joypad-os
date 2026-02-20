@@ -109,10 +109,11 @@ static uint8_t scale_analog_calibrated(uint16_t val, uint16_t center, uint16_t r
 // ============================================================================
 
 static bool switch2_ble_match(const char* device_name, const uint8_t* class_of_device,
-                               uint16_t vendor_id, uint16_t product_id)
+                               uint16_t vendor_id, uint16_t product_id, bool is_ble)
 {
     (void)class_of_device;  // BLE doesn't use COD
     (void)device_name;      // We match by manufacturer data, not name
+    (void)is_ble;
 
     // Match by VID/PID if available (extracted from BLE manufacturer data)
     if (vendor_id == 0x057E) {

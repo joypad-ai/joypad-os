@@ -5,6 +5,7 @@
 // Replaces console-specific post_input_event() with unified routing.
 
 #include "router.h"
+#include "platform/platform.h"
 #include "core/services/players/manager.h"
 #include <string.h>
 #include <stdio.h>
@@ -372,7 +373,7 @@ bool router_add_route(input_source_t input, output_target_t output, uint8_t prio
         output == OUTPUT_TARGET_PCENGINE ? "PCEngine" :
         output == OUTPUT_TARGET_NUON ? "Nuon" :
         output == OUTPUT_TARGET_XBOXONE ? "XboxOne" :
-        output == OUTPUT_TARGET_NEOGEO ? "NEOGEO" :
+        output == OUTPUT_TARGET_GPIO ? "GPIO" :
         output == OUTPUT_TARGET_LOOPY ? "Loopy" : "?",
         priority);
 
@@ -645,6 +646,19 @@ static inline void router_merge_mode(const input_event_t* event, output_target_t
                         for (int j = 0; j < 12; j++) {
                             out->current_state.pressure[j] = dev->pressure[j];
                         }
+                    }
+
+                    // Touch: use first device that has touch data
+                    if (dev->has_touch && !out->current_state.has_touch) {
+                        out->current_state.has_touch = true;
+                        out->current_state.touch[0] = dev->touch[0];
+                        out->current_state.touch[1] = dev->touch[1];
+                    }
+
+                    // Battery: use first device that reports battery
+                    if (dev->battery_level > 0 && out->current_state.battery_level == 0) {
+                        out->current_state.battery_level = dev->battery_level;
+                        out->current_state.battery_charging = dev->battery_charging;
                     }
 
                     // Use metadata from first active device
@@ -964,6 +978,12 @@ void router_device_disconnected(uint8_t dev_addr, int8_t instance) {
                             out_state->current_state.analog[j] = dev->analog[j];
                         }
                     }
+                }
+
+                // Battery: use first device that reports battery
+                if (dev->battery_level > 0 && out_state->current_state.battery_level == 0) {
+                    out_state->current_state.battery_level = dev->battery_level;
+                    out_state->current_state.battery_charging = dev->battery_charging;
                 }
             }
         }

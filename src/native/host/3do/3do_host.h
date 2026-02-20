@@ -29,8 +29,6 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-#include "native/host/host_interface.h"
-
 // ============================================================================
 // CONFIGURATION
 // ============================================================================
@@ -134,12 +132,5 @@ bool tdo_host_is_connected(void);
 
 // Get number of detected controllers
 uint8_t tdo_host_get_controller_count(void);
-
-// ============================================================================
-// HOST INTERFACE
-// ============================================================================
-
-// 3DO host interface (implements HostInterface pattern)
-extern const HostInterface tdo_host_interface;
 
 #endif // TDO_HOST_H

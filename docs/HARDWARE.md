@@ -133,10 +133,35 @@ Joypad Core supports Bluetooth controllers via USB Bluetooth dongles.
 
 ### Bluetooth Dongles
 
-Any USB Bluetooth adapter should work. Tested:
-- Generic CSR 4.0 dongles
-- TP-Link UB400/UB500
-- ASUS USB-BT400
+**Important**: Only dongles with firmware in ROM work on embedded. Most BT 5.0+ dongles use Realtek chips that require host-side firmware loading and **will not work**.
+
+**Supported Chipsets:**
+- **Broadcom** (e.g. BCM20702A0) — firmware in ROM, recommended
+- **CSR/Cambridge Silicon Radio** (e.g. CSR8510 A10) — firmware in ROM, works but beware counterfeits
+
+**Not Supported:**
+- **Realtek** (RTL8761B, RTL8761BU, etc.) — requires firmware loading at every boot, not implemented
+- This includes almost all BT 5.0+ dongles on the market
+
+**Tested and Working:**
+- Kinivo BTD-400 (Broadcom BCM20702A0, BT 4.0) — recommended
+- Panda PBU40 (Broadcom BCM20702A0, BT 4.0) — recommended
+- Amazon Basics BT 4.0 (unknown Chinese chip, BT 4.0)
+- ASUS USB-BT400 (Broadcom BCM20702, BT 4.0)
+- Adafruit Bluetooth 4.0 USB Module #1327 (CSR8510 A10)
+
+**Known Not Working:**
+- TP-Link UB400/UB500 (Realtek RTL8761B)
+- ASUS USB-BT500 (Realtek RTL8761B)
+- UGREEN BT 5.0 adapters (Realtek)
+- Avantree DG45 (Realtek)
+- Zexmte BT 5.0 (Realtek)
+
+**Buying Tips:**
+- Look for BT 4.0 dongles with Broadcom chips
+- Kinivo BTD-400 and Panda PBU40 are safe choices (~$12)
+- Avoid random "CSR8510" listings on Amazon — many are counterfeit clones with pairing issues
+- BT 5.0+ dongles are almost all Realtek — avoid for embedded use
 
 **Note**: Bluetooth adds slight latency compared to wired USB. For competitive play, wired is recommended.
 
@@ -150,7 +175,7 @@ Any USB Bluetooth adapter should work. Tested:
 - **Input Types**: Controller, Mouse
 - **Features**: 2/3/6-button modes, Turbo buttons
 - **Protocol**: PIO-based scanning
-- **Documentation**: [PCENGINE.md](consoles/PCENGINE.md)
+- **Documentation**: [PCENGINE.md](apps/USB2PCE.md)
 
 ### GameCube / Wii
 
@@ -158,7 +183,7 @@ Any USB Bluetooth adapter should work. Tested:
 - **Input Types**: Controller, Keyboard
 - **Features**: Profiles, Rumble, Copilot mode
 - **Protocol**: Joybus via PIO (130MHz clock required)
-- **Documentation**: [GAMECUBE.md](consoles/GAMECUBE.md)
+- **Documentation**: [GAMECUBE.md](apps/USB2GC.md)
 
 ### Nuon DVD Players
 
@@ -166,7 +191,7 @@ Any USB Bluetooth adapter should work. Tested:
 - **Input Types**: Controller, Spinner (mouse)
 - **Features**: Spinner mode, In-Game Reset (IGR)
 - **Protocol**: Polyface serial via PIO
-- **Documentation**: [NUON.md](consoles/NUON.md)
+- **Documentation**: [NUON.md](apps/USB2NUON.md)
 
 ### 3DO Interactive Multiplayer
 
@@ -174,7 +199,7 @@ Any USB Bluetooth adapter should work. Tested:
 - **Input Types**: Controller, Joystick, Mouse
 - **Features**: Extension passthrough, Profiles
 - **Protocol**: PBUS serial via PIO
-- **Documentation**: [3DO.md](consoles/3DO.md)
+- **Documentation**: [3DO.md](apps/USB23DO.md)
 
 ### Casio Loopy
 
@@ -183,7 +208,7 @@ Any USB Bluetooth adapter should work. Tested:
 - **Features**: Basic controller support
 - **Protocol**: PIO-based
 - **Status**: Experimental
-- **Documentation**: [LOOPY.md](consoles/LOOPY.md)
+- **Documentation**: [LOOPY.md](apps/USB2LOOPY.md)
 
 ### USB Device Output
 
@@ -201,6 +226,21 @@ Joypad Core can also output as a USB HID gamepad, allowing you to:
 - `usb2usb` - USB/BT controller → USB HID gamepad
 - `snes2usb` - SNES controller → USB HID gamepad
 - `controller_*` - Custom GPIO controllers → USB HID gamepad
+
+## Supported ESP32-S3 Boards
+
+### Seeed XIAO ESP32-S3
+
+- **Features**: USB-C, BLE, WiFi, 11 GPIO pins, boot button, user LED
+- **Form Factor**: Ultra-compact (0.84" x 0.70")
+- **Products**: bt2usb (BLE to USB adapter)
+- **Purchase**: [Seeed Studio](https://www.seeedstudio.com/XIAO-ESP32S3-p-5627.html)
+
+**Notes:**
+- User LED on GPIO 21 (active low)
+- BLE only (no Classic Bluetooth)
+- Requires ESP-IDF to build (not pico-sdk)
+- See [ESP32 docs](ESP32.md) for build setup
 
 ## Supported RP2040 Boards
 
@@ -324,10 +364,10 @@ Most boards need a USB-A connector wired to specific GPIO pins for controller in
 ### Console-Specific Pinouts
 
 See individual console documentation for pinouts:
-- [PCEngine Pinout](consoles/PCENGINE.md#pin-configuration)
-- [GameCube Pinout](consoles/GAMECUBE.md#hardware-requirements)
-- [Nuon Pinout](consoles/NUON.md#hardware-requirements)
-- [3DO Pinout](consoles/3DO.md#hardware-requirements)
+- [PCEngine Pinout](apps/USB2PCE.md#pin-configuration)
+- [GameCube Pinout](apps/USB2GC.md#hardware-requirements)
+- [Nuon Pinout](apps/USB2NUON.md#hardware-requirements)
+- [3DO Pinout](apps/USB23DO.md#hardware-requirements)
 
 ### Common Mistakes
 

@@ -30,7 +30,7 @@ make init
 make usb2pce       # or: usb2gc, usb2nuon, usb23do, usb2usb, etc.
 ```
 
-Output: `releases/usbr_<commit>_<board>_<app>.uf2`
+Output: `releases/joypad_<commit>_<app>_<board>.uf2`
 
 ---
 
@@ -178,10 +178,20 @@ make controller_macropad           # MacroPad RP2040 → USB HID
 make usb2uart      # USB → UART (ESP32 Bluetooth bridge)
 ```
 
+### ESP32-S3 (BT2USB)
+
+Requires ESP-IDF v6.0+ (separate from the ARM toolchain). See [ESP32 docs](ESP32.md) for full setup.
+
+```bash
+make bt2usb_esp32s3            # Build
+make flash-bt2usb_esp32s3      # Flash
+make monitor-bt2usb_esp32s3    # UART serial monitor
+```
+
 ### Build All
 
 ```bash
-make all           # Build all apps
+make all           # Build all RP2040 apps
 make releases      # Build stable release apps only
 make clean         # Clean build artifacts
 ```

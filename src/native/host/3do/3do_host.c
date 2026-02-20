@@ -451,37 +451,3 @@ uint8_t tdo_host_get_controller_count(void) {
     return controller_count;
 }
 
-// ============================================================================
-// HOST INTERFACE CALLBACKS
-// ============================================================================
-
-static uint8_t tdo_host_get_port_count(void) {
-    return TDO_HOST_MAX_CONTROLLERS;
-}
-
-static int8_t tdo_host_get_device_type_wrapper(uint8_t port) {
-    tdo_device_type_t type = tdo_host_get_device_type(port);
-    return (type == TDO_DEVICE_NONE) ? -1 : (int8_t)type;
-}
-
-static void tdo_host_init_pins_generic(const uint8_t* pins, uint8_t pin_count) {
-    if (pin_count >= 2) {
-        tdo_host_init_pins(pins[0], pins[1]);
-    } else {
-        tdo_host_init();
-    }
-}
-
-// ============================================================================
-// HOST INTERFACE
-// ============================================================================
-
-const HostInterface tdo_host_interface = {
-    .name = "3DO",
-    .init = tdo_host_init,
-    .init_pins = tdo_host_init_pins_generic,
-    .task = tdo_host_task,
-    .is_connected = tdo_host_is_connected,
-    .get_device_type = tdo_host_get_device_type_wrapper,
-    .get_port_count = tdo_host_get_port_count,
-};

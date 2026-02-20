@@ -11,7 +11,7 @@
 #include "descriptors/sinput_descriptors.h"
 #include "core/buttons.h"
 #include "core/services/players/manager.h"
-#include "pico/unique_id.h"
+#include "platform/platform.h"
 #include <string.h>
 
 #if (defined(CONFIG_USB_HOST) || defined(CONFIG_USB)) && !defined(DISABLE_USB_HOST)
@@ -65,6 +65,7 @@ static bool feature_request_pending = false;
 static uint8_t cached_face_style = SINPUT_FACE_XBOX;
 static uint8_t cached_gamepad_type = SINPUT_TYPE_STANDARD;
 static bool cached_has_motion = false;
+static bool cached_has_touch = false;
 static int16_t last_dev_addr = -1;  // Track connected device for auto feature report
 
 // ============================================================================
@@ -148,10 +149,21 @@ static void update_device_info(uint8_t dev_addr, int8_t instance, input_transpor
                 cached_gamepad_type = SINPUT_TYPE_PS5;
                 return;
             case CONTROLLER_SWITCH:
-            case CONTROLLER_SWITCH2:
                 cached_face_style = SINPUT_FACE_NINTENDO;
                 cached_gamepad_type = SINPUT_TYPE_SWITCH_PRO;
                 return;
+            case CONTROLLER_SWITCH2: {
+                uint16_t vid, pid;
+                tuh_vid_pid_get(dev_addr, &vid, &pid);
+                if (pid == 0x2073) {  // NSO GameCube Controller
+                    cached_face_style = SINPUT_FACE_GAMECUBE;
+                    cached_gamepad_type = SINPUT_TYPE_GAMECUBE;
+                } else {
+                    cached_face_style = SINPUT_FACE_NINTENDO;
+                    cached_gamepad_type = SINPUT_TYPE_SWITCH_PRO;
+                }
+                return;
+            }
             case CONTROLLER_GAMECUBE:
                 cached_face_style = SINPUT_FACE_GAMECUBE;
                 cached_gamepad_type = SINPUT_TYPE_GAMECUBE;
@@ -183,8 +195,13 @@ static void update_device_info(uint8_t dev_addr, int8_t instance, input_transpor
                     }
                     return;
                 case 0x057E:  // Nintendo
-                    cached_face_style = SINPUT_FACE_NINTENDO;
-                    cached_gamepad_type = SINPUT_TYPE_SWITCH_PRO;
+                    if (bt_dev->product_id == 0x2073) {  // NSO GameCube Controller
+                        cached_face_style = SINPUT_FACE_GAMECUBE;
+                        cached_gamepad_type = SINPUT_TYPE_GAMECUBE;
+                    } else {
+                        cached_face_style = SINPUT_FACE_NINTENDO;
+                        cached_gamepad_type = SINPUT_TYPE_SWITCH_PRO;
+                    }
                     return;
                 case 0x045E:  // Microsoft
                     cached_face_style = SINPUT_FACE_XBOX;
@@ -239,8 +256,9 @@ static bool sinput_mode_send_report(uint8_t player_index,
     // Update device face style from connected controller
     update_device_info(event->dev_addr, event->instance, event->transport);
 
-    // Track motion capability from input device
+    // Track capabilities from input device
     cached_has_motion = event->has_motion;
+    cached_has_touch = event->has_touch;
 
     // Send feature report automatically when a new device connects
     if (event->dev_addr != last_dev_addr) {
@@ -266,7 +284,7 @@ static bool sinput_mode_send_report(uint8_t player_index,
     sinput_report.rt = convert_trigger_to_s16(profile_out->r2_analog);
 
     // IMU timestamp (microseconds since boot)
-    sinput_report.imu_timestamp = time_us_32();
+    sinput_report.imu_timestamp = platform_time_us();
 
     // IMU data - passthrough from input controller if available
     if (event->has_motion) {
@@ -285,6 +303,30 @@ static bool sinput_mode_send_report(uint8_t player_index,
         sinput_report.gyro_z = 0;
     }
 
+    // Touchpad data
+    if (event->has_touch) {
+        int16_t t1x = event->touch[0].active ? (int16_t)event->touch[0].x : 0;
+        int16_t t1y = event->touch[0].active ? (int16_t)event->touch[0].y : 0;
+        uint16_t t1p = event->touch[0].active ? 0xFFFF : 0;
+        memcpy(sinput_report.touchpad1, &t1x, 2);
+        memcpy(sinput_report.touchpad1 + 2, &t1y, 2);
+        memcpy(sinput_report.touchpad1 + 4, &t1p, 2);
+
+        int16_t t2x = event->touch[1].active ? (int16_t)event->touch[1].x : 0;
+        int16_t t2y = event->touch[1].active ? (int16_t)event->touch[1].y : 0;
+        uint16_t t2p = event->touch[1].active ? 0xFFFF : 0;
+        memcpy(sinput_report.touchpad2, &t2x, 2);
+        memcpy(sinput_report.touchpad2 + 2, &t2y, 2);
+        memcpy(sinput_report.touchpad2 + 4, &t2p, 2);
+    } else {
+        memset(sinput_report.touchpad1, 0, 6);
+        memset(sinput_report.touchpad2, 0, 6);
+    }
+
+    // Battery status
+    sinput_report.charge_level = event->battery_level;
+    sinput_report.plug_status = event->battery_charging ? 1 : 0;
+
     // Send report on gamepad interface (skip report_id byte since TinyUSB handles it)
     return tud_hid_n_report(ITF_NUM_HID_GAMEPAD, SINPUT_REPORT_ID_INPUT,
                             ((uint8_t*)&sinput_report) + 1,
@@ -293,8 +335,6 @@ static bool sinput_mode_send_report(uint8_t player_index,
 
 static void sinput_mode_handle_output(uint8_t report_id, const uint8_t* data, uint16_t len)
 {
-    printf("[sinput] handle_output: report_id=%d len=%d data[0]=%d\n", report_id, len, data[0]);
-
     // Handle report ID in buffer (interrupt OUT endpoint case)
     // When report_id=0, the actual report ID may be the first byte of data
     if (report_id == 0 && len > 0 && data[0] == SINPUT_REPORT_ID_OUTPUT) {
@@ -302,18 +342,14 @@ static void sinput_mode_handle_output(uint8_t report_id, const uint8_t* data, ui
         report_id = data[0];
         data = data + 1;
         len = len - 1;
-        printf("[sinput] Extracted report_id from buffer: %d\n", report_id);
     }
 
     // Handle output report (rumble, LEDs)
     if (report_id != SINPUT_REPORT_ID_OUTPUT || len < 2) {
-        printf("[sinput] Ignoring: expected report_id=%d\n", SINPUT_REPORT_ID_OUTPUT);
         return;
     }
 
     uint8_t command = data[0];
-    printf("[sinput] command=%d data=[%d,%d,%d,%d,%d,%d]\n",
-           command, data[0], data[1], data[2], data[3], data[4], data[5]);
 
     switch (command) {
         case SINPUT_CMD_HAPTIC:
@@ -331,7 +367,6 @@ static void sinput_mode_handle_output(uint8_t report_id, const uint8_t* data, ui
                     rumble_left = new_left;
                     rumble_right = new_right;
                     rumble_dirty = true;
-                    printf("[sinput] Rumble changed: L=%d R=%d\n", rumble_left, rumble_right);
                 }
             }
             break;
@@ -343,14 +378,12 @@ static void sinput_mode_handle_output(uint8_t report_id, const uint8_t* data, ui
                 if (new_led != player_led) {
                     player_led = new_led;
                     player_led_dirty = true;
-                    printf("[sinput] Player LED changed: %d\n", player_led);
                 }
             }
             break;
 
         case SINPUT_CMD_FEATURES:
             // Feature request - queue a response
-            printf("[sinput] Feature request received\n");
             feature_request_pending = true;
             break;
 
@@ -362,7 +395,6 @@ static void sinput_mode_handle_output(uint8_t report_id, const uint8_t* data, ui
                     rgb_g = data[2];
                     rgb_b = data[3];
                     rgb_dirty = true;
-                    printf("[sinput] RGB LED changed: R=%d G=%d B=%d\n", rgb_r, rgb_g, rgb_b);
                 }
             }
             break;
@@ -492,21 +524,25 @@ static void sinput_mode_task(void)
     // Byte 3: no power/misc buttons
     feature_response[15] = 0x00;
 
-    // Touchpad: not supported
-    feature_response[16] = 0;  // touchpad count
-    feature_response[17] = 0;  // touchpad finger count
+    // Touchpad
+    if (cached_has_touch) {
+        feature_response[16] = 1;  // 1 touchpad
+        feature_response[17] = 2;  // 2 fingers max
+    } else {
+        feature_response[16] = 0;  // no touchpads
+        feature_response[17] = 0;
+    }
 
     // Serial number from board unique ID (last 6 bytes of 8-byte ID)
-    pico_unique_board_id_t board_id;
-    pico_get_unique_board_id(&board_id);
-    feature_response[18] = board_id.id[2];
-    feature_response[19] = board_id.id[3];
-    feature_response[20] = board_id.id[4];
-    feature_response[21] = board_id.id[5];
-    feature_response[22] = board_id.id[6];
-    feature_response[23] = board_id.id[7];
+    uint8_t board_id[8];
+    platform_get_unique_id(board_id, sizeof(board_id));
+    feature_response[18] = board_id[2];
+    feature_response[19] = board_id[3];
+    feature_response[20] = board_id[4];
+    feature_response[21] = board_id[5];
+    feature_response[22] = board_id[6];
+    feature_response[23] = board_id[7];
 
-    printf("[sinput] Sending feature response (24 bytes)\n");
     tud_hid_n_report(ITF_NUM_HID_GAMEPAD, SINPUT_REPORT_ID_FEATURES, feature_response, sizeof(feature_response));
 }
 

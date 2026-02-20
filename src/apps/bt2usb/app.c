@@ -17,12 +17,23 @@
 #include "core/services/leds/leds.h"
 
 #include "tusb.h"
-#include "pico/stdlib.h"
-#include "pico/cyw43_arch.h"
+#include "platform/platform.h"
 #include <stdio.h>
 
-// External: CYW43 transport
+#ifdef BTSTACK_USE_ESP32
+#include "driver/gpio.h"
+extern const bt_transport_t bt_transport_esp32;
+// Status LED GPIO (Seeed XIAO ESP32-S3 = GPIO 21, active low)
+#ifndef STATUS_LED_GPIO
+#define STATUS_LED_GPIO 21
+#endif
+#ifndef STATUS_LED_ACTIVE_LOW
+#define STATUS_LED_ACTIVE_LOW 1
+#endif
+#else
+#include "pico/cyw43_arch.h"
 extern const bt_transport_t bt_transport_cyw43;
+#endif
 
 // ============================================================================
 // LED STATUS
@@ -31,32 +42,34 @@ extern const bt_transport_t bt_transport_cyw43;
 static uint32_t led_last_toggle = 0;
 static bool led_state = false;
 
-// Update LED based on connection/scan status
-// - Slow blink (1Hz): Scanning
-// - Solid on: Device paired, not scanning
-// - Off: No devices, not scanning
+// Update LED based on connection status
+// - Blink (0.8s): No device connected (scanning, connecting, or idle)
+// - Solid on: Device connected
+static void platform_led_set(bool on)
+{
+#ifdef BTSTACK_USE_ESP32
+    gpio_set_level(STATUS_LED_GPIO, (on ^ STATUS_LED_ACTIVE_LOW) ? 1 : 0);
+#else
+    cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, on ? 1 : 0);
+#endif
+}
+
 static void led_status_update(void)
 {
-    uint32_t now = to_ms_since_boot(get_absolute_time());
+    uint32_t now = platform_time_ms();
 
-    if (btstack_host_is_scanning()) {
-        // Scanning - blink (500ms on/off = 1Hz)
-        if (now - led_last_toggle >= 500) {
-            led_state = !led_state;
-            cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, led_state ? 1 : 0);
-            led_last_toggle = now;
-        }
-    } else if (btstack_classic_get_connection_count() > 0) {
-        // Device connected, not scanning - solid on
+    if (btstack_classic_get_connection_count() > 0) {
+        // Device connected - solid on
         if (!led_state) {
-            cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
+            platform_led_set(true);
             led_state = true;
         }
     } else {
-        // No devices, not scanning - off
-        if (led_state) {
-            cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 0);
-            led_state = false;
+        // No device connected - blink
+        if (now - led_last_toggle >= 400) {
+            led_state = !led_state;
+            platform_led_set(led_state);
+            led_last_toggle = now;
         }
     }
 }
@@ -78,7 +91,7 @@ static void on_button_event(button_event_t event)
             // Double-click to cycle USB output mode
             printf("[app:bt2usb] Double-click - switching USB output mode...\n");
             tud_task();
-            sleep_ms(50);
+            platform_sleep_ms(50);
             tud_task();
 
             usb_output_mode_t next = usbd_get_next_mode();
@@ -141,7 +154,18 @@ const OutputInterface** app_get_output_interfaces(uint8_t* count)
 void app_init(void)
 {
     printf("[app:bt2usb] Initializing BT2USB v%s\n", APP_VERSION);
+#ifdef BTSTACK_USE_ESP32
+    printf("[app:bt2usb] ESP32-S3 BLE -> USB HID\n");
+    // Init status LED GPIO
+    gpio_config_t led_cfg = {
+        .pin_bit_mask = (1ULL << STATUS_LED_GPIO),
+        .mode = GPIO_MODE_OUTPUT,
+    };
+    gpio_config(&led_cfg);
+    gpio_set_level(STATUS_LED_GPIO, STATUS_LED_ACTIVE_LOW ? 1 : 0);  // Start OFF
+#else
     printf("[app:bt2usb] Pico W built-in Bluetooth -> USB HID\n");
+#endif
 
     // Initialize button service (uses BOOTSEL button on Pico W)
     button_init();
@@ -170,10 +194,14 @@ void app_init(void)
     };
     players_init_with_config(&player_cfg);
 
-    // Initialize Bluetooth transport (CYW43)
+    // Initialize Bluetooth transport
     // Must use bt_init() to set global transport pointer and register drivers
     printf("[app:bt2usb] Initializing Bluetooth...\n");
+#ifdef BTSTACK_USE_ESP32
+    bt_init(&bt_transport_esp32);
+#else
     bt_init(&bt_transport_cyw43);
+#endif
 
     printf("[app:bt2usb] Initialization complete\n");
     printf("[app:bt2usb]   Routing: Bluetooth -> USB Device (HID Gamepad)\n");

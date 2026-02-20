@@ -3,7 +3,7 @@
 // Based on GP2040-CE implementation (gp2040-ce.info)
 
 #include "tud_xbone.h"
-#include "pico/time.h"
+#include "platform/platform.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -120,7 +120,7 @@ static bool dequeue_report(uint8_t* report, uint16_t* len)
 static void set_ack_wait(void)
 {
     waiting_ack = true;
-    waiting_ack_timeout = to_ms_since_boot(get_absolute_time());
+    waiting_ack_timeout = platform_time_ms();
 }
 
 static bool send_report_internal(uint8_t* report, uint16_t len)
@@ -157,7 +157,7 @@ static void xbone_init(void)
     xgip_init(&outgoing_xgip);
     xgip_init(&incoming_xgip);
 
-    timer_announce = to_ms_since_boot(get_absolute_time());
+    timer_announce = platform_time_ms();
     xbox_powered_on = false;
 
     // Clear queue
@@ -343,7 +343,7 @@ bool tud_xbone_send_report(gip_input_report_t* report)
 
 void tud_xbone_update(void)
 {
-    uint32_t now = to_ms_since_boot(get_absolute_time());
+    uint32_t now = platform_time_ms();
 
     // Process report queue
     if (queue_count > 0 && (now - last_report_queue_sent) > REPORT_QUEUE_INTERVAL) {
@@ -357,7 +357,7 @@ void tud_xbone_update(void)
                 // Failed - re-queue at front (by adjusting head back)
                 queue_head = (queue_head + REPORT_QUEUE_SIZE - 1) % REPORT_QUEUE_SIZE;
                 queue_count++;
-                busy_wait_ms(REPORT_QUEUE_INTERVAL);
+                platform_sleep_ms(REPORT_QUEUE_INTERVAL);
             }
         }
     }

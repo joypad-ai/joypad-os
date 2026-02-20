@@ -17,7 +17,7 @@
 #ifndef BT_MAX_CONNECTIONS
 #define BT_MAX_CONNECTIONS      6
 #endif
-#define BT_MAX_NAME_LEN         32
+#define BT_MAX_NAME_LEN         48
 
 // ============================================================================
 // CONNECTION INFO
@@ -33,6 +33,7 @@ typedef struct {
     uint16_t interrupt_cid;         // HID Interrupt channel (local CID)
     bool     connected;             // Connection active
     bool     hid_ready;             // HID channels established
+    bool     is_ble;                // True if BLE (not Classic BT)
 } bt_connection_t;
 
 // ============================================================================

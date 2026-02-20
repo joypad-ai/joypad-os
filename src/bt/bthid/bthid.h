@@ -12,7 +12,7 @@
 // ============================================================================
 
 #define BTHID_MAX_DEVICES       4   // Max simultaneous BT HID devices
-#define BTHID_MAX_NAME_LEN      32  // Max device name length
+#define BTHID_MAX_NAME_LEN      48  // Max device name length
 
 // ============================================================================
 // HID REPORT TYPES (Bluetooth HID spec)
@@ -70,6 +70,8 @@ typedef struct {
     uint16_t vendor_id;                 // USB VID (from SDP/manufacturer data)
     uint16_t product_id;                // USB PID (from SDP/manufacturer data)
 
+    bool is_ble;                        // True if BLE (not Classic BT)
+
     // Device driver info
     const void* driver;                 // Pointer to device driver interface
     void* driver_data;                  // Driver-specific data
@@ -82,10 +84,10 @@ typedef struct {
 typedef struct {
     const char* name;
 
-    // Check if this driver handles a device (by VID/PID, name, or COD)
+    // Check if this driver handles a device (by VID/PID, name, COD, or transport)
     // Priority: VID/PID match > name match > COD match
     bool (*match)(const char* device_name, const uint8_t* class_of_device,
-                  uint16_t vendor_id, uint16_t product_id);
+                  uint16_t vendor_id, uint16_t product_id, bool is_ble);
 
     // Initialize driver for a device
     bool (*init)(bthid_device_t* device);
@@ -139,5 +141,19 @@ bool bthid_send_output_report(uint8_t conn_index, uint8_t report_id,
 // Send feature report
 bool bthid_send_feature_report(uint8_t conn_index, uint8_t report_id,
                                 const uint8_t* data, uint16_t len);
+
+// ============================================================================
+// BATTERY
+// ============================================================================
+
+// Set battery level from BLE Battery Service (only if driver hasn't set it)
+void bthid_set_battery_level(uint8_t conn_index, uint8_t level);
+
+// ============================================================================
+// HID DESCRIPTOR
+// ============================================================================
+
+// Pass BLE HID descriptor to driver for report parsing
+void bthid_set_hid_descriptor(uint8_t conn_index, const uint8_t* desc, uint16_t desc_len);
 
 #endif // BTHID_H

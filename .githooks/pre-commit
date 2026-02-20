@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Pre-commit hook: auto-build web-config when src/ files change
+
+# Check if any staged files are in tools/web-config/src/
+STAGED_WEB_CONFIG=$(git diff --cached --name-only -- 'tools/web-config/src/')
+
+if [ -n "$STAGED_WEB_CONFIG" ]; then
+    echo "🔨 Web config source changed, rebuilding..."
+
+    # Run the build
+    (cd tools/web-config && npm run build) || {
+        echo "❌ Web config build failed!"
+        exit 1
+    }
+
+    # Stage the built output
+    git add tools/web-config/dist/index.html
+
+    echo "✅ Web config built and dist/index.html staged"
+fi

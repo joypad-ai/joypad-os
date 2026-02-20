@@ -12,7 +12,7 @@
 #include "core/buttons.h"
 #include "core/services/players/manager.h"
 #include "core/services/players/feedback.h"
-#include "pico/time.h"
+#include "platform/platform.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -61,10 +61,18 @@ typedef struct __attribute__((packed)) {
 
     // Extended data for motion
     uint16_t timestamp;
-    uint8_t battery;
+    uint8_t sensor_temperature;
     int16_t gyro[3];    // x, y, z
     int16_t accel[3];   // x, y, z
-    // Touchpad etc follows but not parsed
+    int8_t   unknown_a[5];
+    uint8_t  headset;
+    int8_t   unknown_b[2];
+    struct { uint8_t tpad_event : 4; uint8_t unknown_c : 4; };
+    uint8_t  tpad_counter;
+    struct { uint8_t tpad_f1_count : 7; uint8_t tpad_f1_down : 1; };
+    int8_t   tpad_f1_pos[3];
+    struct { uint8_t tpad_f2_count : 7; uint8_t tpad_f2_down : 1; };
+    int8_t   tpad_f2_pos[3];
 } ds4_input_report_t;
 
 // DS4 BT output report (for rumble/LED)
@@ -106,6 +114,10 @@ typedef struct {
     uint8_t rumble_left;
     uint8_t rumble_right;
     uint8_t led_r, led_g, led_b;
+
+    // Touchpad swipe tracking
+    uint16_t tpad_last_pos;
+    bool tpad_dragging;
 } ds4_bt_data_t;
 
 static ds4_bt_data_t ds4_data[BTHID_MAX_DEVICES];
@@ -113,6 +125,11 @@ static ds4_bt_data_t ds4_data[BTHID_MAX_DEVICES];
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
+
+// Static buffer for DS4 output report — BTstack's hid_host_send_set_report
+// stores a pointer to report data for deferred L2CAP send, so the buffer
+// must remain valid until the CAN_SEND_NOW callback fires.
+static uint8_t ds4_output_buf[79];
 
 static void ds4_send_output(bthid_device_t* device, uint8_t rumble_left, uint8_t rumble_right,
                             uint8_t r, uint8_t g, uint8_t b)
@@ -122,22 +139,22 @@ static void ds4_send_output(bthid_device_t* device, uint8_t rumble_left, uint8_t
 
     // DS4 BT output report - must use SET_REPORT on control channel
     // Format: [SET_REPORT header][Report ID 0x11][flags][data...]
-    uint8_t buf[79];
-    memset(buf, 0, sizeof(buf));
+    // This also triggers enhanced report mode (0x11) on first send.
+    memset(ds4_output_buf, 0, sizeof(ds4_output_buf));
 
-    buf[0] = 0x52;  // SET_REPORT | Output (0x50 | 0x02)
-    buf[1] = 0x11;  // Report ID
-    buf[2] = 0x80;  // Flags (BT)
-    buf[3] = 0x00;
-    buf[4] = 0xFF;  // Enable rumble+LED
+    ds4_output_buf[0] = 0x52;  // SET_REPORT | Output (0x50 | 0x02)
+    ds4_output_buf[1] = 0x11;  // Report ID
+    ds4_output_buf[2] = 0x80;  // Flags (BT)
+    ds4_output_buf[3] = 0x00;
+    ds4_output_buf[4] = 0xFF;  // Enable rumble+LED
 
-    buf[7] = rumble_right;  // High frequency motor
-    buf[8] = rumble_left;   // Low frequency motor
-    buf[9] = r;
-    buf[10] = g;
-    buf[11] = b;
+    ds4_output_buf[7] = rumble_right;  // High frequency motor
+    ds4_output_buf[8] = rumble_left;   // Low frequency motor
+    ds4_output_buf[9] = r;
+    ds4_output_buf[10] = g;
+    ds4_output_buf[11] = b;
 
-    bt_send_control(device->conn_index, buf, sizeof(buf));
+    bt_send_control(device->conn_index, ds4_output_buf, sizeof(ds4_output_buf));
 
     // Update cached state
     ds4->rumble_left = rumble_left;
@@ -147,22 +164,15 @@ static void ds4_send_output(bthid_device_t* device, uint8_t rumble_left, uint8_t
     ds4->led_b = b;
 }
 
-static void ds4_enable_sixaxis(bthid_device_t* device)
-{
-    // Send GET_REPORT Feature to enable full reports
-    // buf[0] = 0x43 (GET_REPORT | Feature), buf[1] = 0x02 (report ID)
-    uint8_t buf[2] = {0x43, 0x02};
-    bt_send_control(device->conn_index, buf, sizeof(buf));
-}
-
 // ============================================================================
 // DRIVER IMPLEMENTATION
 // ============================================================================
 
 static bool ds4_match(const char* device_name, const uint8_t* class_of_device,
-                      uint16_t vendor_id, uint16_t product_id)
+                      uint16_t vendor_id, uint16_t product_id, bool is_ble)
 {
     (void)class_of_device;
+    (void)is_ble;
 
     // VID/PID match (highest priority) - Sony vendor ID = 0x054C
     // DS4 v1 = 0x05C4, DS4 v2 (Slim) = 0x09CC
@@ -217,8 +227,11 @@ static bool ds4_init(bthid_device_t* device)
             ds4_data[i].led_r = 0;
             ds4_data[i].led_g = 0;
             ds4_data[i].led_b = 64;  // Default blue
+            ds4_data[i].tpad_last_pos = 0;
+            ds4_data[i].tpad_dragging = false;
 
             ds4_data[i].event.type = INPUT_TYPE_GAMEPAD;
+            ds4_data[i].event.transport = INPUT_TRANSPORT_BT_CLASSIC;
             ds4_data[i].event.dev_addr = device->conn_index;
             ds4_data[i].event.instance = 0;
             ds4_data[i].event.button_count = 14;
@@ -332,6 +345,75 @@ static void ds4_process_report(bthid_device_t* device, const uint8_t* data, uint
         ds4->event.has_motion = false;
     }
 
+    // Battery: status[0] at report_data[29] — bits 0-3 = level, bit 4 = cable connected
+    // Level interpretation differs based on cable state (per Linux kernel hid-playstation.c)
+    if (report_len > 29) {
+        uint8_t raw = report_data[29];
+        uint8_t battery_data = (raw & 0x0F);
+        bool cable_connected = (raw & 0x10) != 0;
+
+        if (cable_connected) {
+            if (battery_data < 10) {
+                ds4->event.battery_level = battery_data * 10 + 5;
+                ds4->event.battery_charging = true;
+            } else if (battery_data == 10) {
+                ds4->event.battery_level = 100;
+                ds4->event.battery_charging = true;
+            } else if (battery_data == 11) {
+                ds4->event.battery_level = 100;
+                ds4->event.battery_charging = false;  // Full
+            } else {
+                ds4->event.battery_level = 0;  // Error (14=voltage/temp, 15=charge)
+                ds4->event.battery_charging = false;
+            }
+        } else {
+            if (battery_data < 10)
+                ds4->event.battery_level = battery_data * 10 + 5;
+            else
+                ds4->event.battery_level = 100;
+            ds4->event.battery_charging = false;
+        }
+    }
+
+    // Touchpad (only in full report 0x11 which includes touch fields)
+    if (report_len >= sizeof(ds4_input_report_t)) {
+        uint16_t tx = ((rpt->tpad_f1_pos[1] & 0x0f) << 8) | (rpt->tpad_f1_pos[0] & 0xff);
+        uint16_t ty = ((rpt->tpad_f1_pos[1] & 0xf0) >> 4) | ((rpt->tpad_f1_pos[2] & 0xff) << 4);
+        uint16_t tx2 = ((rpt->tpad_f2_pos[1] & 0x0f) << 8) | (rpt->tpad_f2_pos[0] & 0xff);
+        uint16_t ty2 = ((rpt->tpad_f2_pos[1] & 0xf0) >> 4) | ((rpt->tpad_f2_pos[2] & 0xff) << 4);
+
+        // Touchpad left/right click detection (touchpad is ~1920 wide, center at 960)
+        if (rpt->tpad && !rpt->tpad_f1_down && tx < 960)
+            ds4->event.buttons |= JP_BUTTON_L4;
+        if (rpt->tpad && !rpt->tpad_f1_down && tx >= 960)
+            ds4->event.buttons |= JP_BUTTON_R4;
+
+        // Touchpad swipe delta (horizontal)
+        int8_t touchpad_delta_x = 0;
+        if (!rpt->tpad_f1_down) {
+            if (ds4->tpad_dragging) {
+                int16_t delta = (int16_t)tx - (int16_t)ds4->tpad_last_pos;
+                if (delta > 12) delta = 12;
+                if (delta < -12) delta = -12;
+                touchpad_delta_x = (int8_t)delta;
+            }
+            ds4->tpad_last_pos = tx;
+            ds4->tpad_dragging = true;
+        } else {
+            ds4->tpad_dragging = false;
+        }
+        ds4->event.delta_x = touchpad_delta_x;
+
+        // Touch coordinates
+        ds4->event.touch[0].x = tx;
+        ds4->event.touch[0].y = ty;
+        ds4->event.touch[0].active = !rpt->tpad_f1_down;
+        ds4->event.touch[1].x = tx2;
+        ds4->event.touch[1].y = ty2;
+        ds4->event.touch[1].active = !rpt->tpad_f2_down;
+        ds4->event.has_touch = true;
+    }
+
     // Submit to router
     router_submit_input(&ds4->event);
 }
@@ -341,19 +423,20 @@ static void ds4_task(bthid_device_t* device)
     ds4_bt_data_t* ds4 = (ds4_bt_data_t*)device->driver_data;
     if (!ds4) return;
 
-    uint32_t now = to_ms_since_boot(get_absolute_time());
+    uint32_t now = platform_time_ms();
 
     // State machine for activation with delays
     switch (ds4->activation_state) {
-        case 0:  // Send enable_sixaxis
-            ds4_enable_sixaxis(device);
-            ds4->activation_state = 1;
+        case 0:  // Wait 100ms after init before sending first output
             ds4->activation_time = now;
+            ds4->activation_state = 1;
             break;
 
-        case 1:  // Wait 100ms then send initial LED
+        case 1:  // Send initial LED output (also triggers enhanced report mode)
             if (now - ds4->activation_time >= 100) {
                 // Set initial LED color (blue for player 1)
+                // First SET_REPORT Output triggers DS4 to switch from basic (0x01)
+                // to enhanced (0x11) report mode with motion/touchpad data.
                 ds4_send_output(device, 0, 0, 0, 0, 64);
                 ds4->activation_state = 2;
             }

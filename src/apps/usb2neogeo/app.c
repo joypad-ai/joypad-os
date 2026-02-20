@@ -11,9 +11,42 @@
 #include "core/services/profiles/profile.h"
 #include "core/input_interface.h"
 #include "core/output_interface.h"
-#include "native/device/neogeo/neogeo_device.h"
+#include "native/device/gpio/gpio_device.h"
 #include "usb/usbh/usbh.h"
 #include <stdio.h>
+
+static gpio_device_config_t gpio_gpio_config[GPIO_MAX_PLAYERS] = {
+    [0] = {
+        .pin_du = P1_NEOGEO_DU_PIN,
+        .pin_dd = P1_NEOGEO_DD_PIN,
+        .pin_dl = P1_NEOGEO_DL_PIN,
+        .pin_dr = P1_NEOGEO_DR_PIN,
+
+        // Action Buttons
+        .pin_b1 = P1_NEOGEO_B4_PIN,
+        .pin_b2 = P1_NEOGEO_B5_PIN,
+        .pin_b3 = P1_NEOGEO_B1_PIN,
+        .pin_b4 = P1_NEOGEO_B2_PIN,
+        .pin_l1 = GPIO_DISABLED,
+        .pin_r1 = P1_NEOGEO_B3_PIN,
+        .pin_l2 = GPIO_DISABLED,
+        .pin_r2 = P1_NEOGEO_B6_PIN,
+
+        // Meta Buttons
+
+        .pin_s1 = P1_NEOGEO_S1_PIN,
+        .pin_s2 = P1_NEOGEO_S2_PIN,
+        .pin_a1 = GPIO_DISABLED,
+        .pin_a2 = GPIO_DISABLED,
+
+        // Extra Buttons
+        .pin_l3 = GPIO_DISABLED,
+        .pin_r3 = GPIO_DISABLED,
+        .pin_l4 = GPIO_DISABLED,
+        .pin_r4 = GPIO_DISABLED,
+    },
+    [1] = PORT_CONFIG_INIT
+};
 
 // ============================================================================
 // APP PROFILE CONFIGURATION
@@ -21,7 +54,7 @@
 
 static const profile_config_t app_profile_config = {
     .output_profiles = {
-        [OUTPUT_TARGET_NEOGEO] = &neogeo_profile_set,
+        [OUTPUT_TARGET_GPIO] = &neogeo_profile_set,
     },
     .shared_profiles = NULL,
 };
@@ -44,10 +77,10 @@ const InputInterface** app_get_input_interfaces(uint8_t* count)
 // APP OUTPUT INTERFACES
 // ============================================================================
 
-extern const OutputInterface neogeo_output_interface;
+extern const OutputInterface gpio_output_interface;
 
 static const OutputInterface* output_interfaces[] = {
-    &neogeo_output_interface,
+    &gpio_output_interface,
 };
 
 const OutputInterface** app_get_output_interfaces(uint8_t* count)
@@ -64,12 +97,15 @@ void app_init(void)
 {
     printf("[app:usb2neogeo] Initializing USB2NEOGEO v%s\n", APP_VERSION);
 
+    // Initialize GPIO PINS, with active_high = false
+    gpio_device_init_pins(gpio_gpio_config, false);
+
     // Configure router for USB2NEOGEO
     router_config_t router_cfg = {
         .mode = ROUTING_MODE,
         .merge_mode = MERGE_MODE,
         .max_players_per_output = {
-            [OUTPUT_TARGET_NEOGEO] = NEOGEO_OUTPUT_PORTS,  // 1 players
+            [OUTPUT_TARGET_GPIO] = NEOGEO_OUTPUT_PORTS,  // 1 players
         },
         .merge_all_inputs = false,  // Simple 1:1 mapping (each USB device → NEOGEO adapter)
         .transform_flags = TRANSFORM_FLAGS,
@@ -78,7 +114,7 @@ void app_init(void)
     router_init(&router_cfg);
 
     // Add default route: USB → NEOGEO
-    router_add_route(INPUT_SOURCE_USB_HOST, OUTPUT_TARGET_NEOGEO, 0);
+    router_add_route(INPUT_SOURCE_USB_HOST, OUTPUT_TARGET_GPIO, 0);
 
     // Configure player management
     player_config_t player_cfg = {
@@ -91,9 +127,9 @@ void app_init(void)
     // Initialize profile system with app-defined profiles
     profile_init(&app_profile_config);
 
-    uint8_t profile_count = profile_get_count(OUTPUT_TARGET_NEOGEO);
-    const char* active_name = profile_get_name(OUTPUT_TARGET_NEOGEO,
-                                                profile_get_active_index(OUTPUT_TARGET_NEOGEO));
+    uint8_t profile_count = profile_get_count(OUTPUT_TARGET_GPIO);
+    const char* active_name = profile_get_name(OUTPUT_TARGET_GPIO,
+                                                profile_get_active_index(OUTPUT_TARGET_GPIO));
 
     printf("[app:usb2neogeo] Initialization complete\n");
     printf("[app:usb2neogeo]   Routing: %s\n", "SIMPLE (USB → NEOGEO+ adapter 1:1)");

@@ -10,6 +10,8 @@
 #include "core/router/router.h"
 #include "core/buttons.h"
 #include "core/services/players/manager.h"
+#include "core/services/players/feedback.h"
+#include "platform/platform.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -32,6 +34,9 @@
 
 // Input modes
 #define SWITCH_INPUT_MODE_FULL          0x30
+
+// Init delay between subcommands (ms)
+#define SWITCH_INIT_DELAY_MS            200
 
 // ============================================================================
 // SWITCH PRO REPORT STRUCTURE
@@ -111,9 +116,21 @@ typedef struct __attribute__((packed)) {
     };
 
     uint8_t hat;            // D-pad as hat (0-7, 8=center)
-    uint8_t lx, ly;         // Left stick (0-255)
-    uint8_t rx, ry;         // Right stick (0-255)
+    uint16_t lx, ly;        // Left stick (0-65535, center ~32768)
+    uint16_t rx, ry;        // Right stick (0-65535, center ~32768)
 } switch_simple_report_t;
+
+// ============================================================================
+// INIT STATE MACHINE
+// ============================================================================
+
+typedef enum {
+    SWITCH_STATE_WAIT_READY,        // Wait before sending first subcommand
+    SWITCH_STATE_SET_INPUT_MODE,    // Send set input mode (0x03 → 0x30)
+    SWITCH_STATE_ENABLE_VIBRATION,  // Send enable vibration (0x48 → 0x01)
+    SWITCH_STATE_SET_PLAYER_LED,    // Send player LED (0x30)
+    SWITCH_STATE_ACTIVE,            // Init complete, monitor feedback
+} switch_init_state_t;
 
 // ============================================================================
 // DRIVER DATA
@@ -124,7 +141,10 @@ typedef struct {
     bool initialized;
     bool full_report_mode;
     uint8_t output_seq;     // Sequence counter for output reports
-    uint8_t player_led;
+    switch_init_state_t init_state;
+    uint32_t init_time;     // Timestamp for init delays
+    uint8_t rumble_left;    // Cached rumble state
+    uint8_t rumble_right;
 } switch_bt_data_t;
 
 static switch_bt_data_t switch_data[BTHID_MAX_DEVICES];
@@ -152,44 +172,60 @@ static uint8_t scale_12bit_to_8bit(uint16_t val)
     return 1 + ((val * 254) / 4095);
 }
 
+// Encode rumble intensity to Switch rumble format (from USB Switch Pro driver)
+// Each motor uses 4 bytes: [amplitude, HF_freq, amplitude/2, LF_freq]
+// Neutral state: [00 01 40 40]
+static void encode_rumble(uint8_t intensity, uint8_t* out)
+{
+    if (intensity == 0) {
+        out[0] = 0x00;
+        out[1] = 0x01;
+        out[2] = 0x40;
+        out[3] = 0x40;
+        return;
+    }
+    uint16_t scaled = ((uint16_t)intensity * 102) / 255 + 64;
+    uint8_t amplitude = (uint8_t)(scaled + 64);
+    out[0] = amplitude;
+    out[1] = 0x88;
+    out[2] = amplitude / 2;
+    out[3] = 0x61;
+}
+
 static void switch_send_subcommand(bthid_device_t* device, uint8_t subcmd,
                                     const uint8_t* data, uint8_t len)
 {
     switch_bt_data_t* sw = (switch_bt_data_t*)device->driver_data;
     if (!sw) return;
 
-    uint8_t buf[50];
+    uint8_t buf[48];
     memset(buf, 0, sizeof(buf));
 
-    buf[0] = SWITCH_REPORT_OUTPUT;
-    buf[1] = sw->output_seq++ & 0x0F;
+    buf[0] = sw->output_seq++ & 0x0F;
 
     // Neutral rumble data (8 bytes)
-    buf[2] = 0x00; buf[3] = 0x01; buf[4] = 0x40; buf[5] = 0x40;
-    buf[6] = 0x00; buf[7] = 0x01; buf[8] = 0x40; buf[9] = 0x40;
+    buf[1] = 0x00; buf[2] = 0x01; buf[3] = 0x40; buf[4] = 0x40;
+    buf[5] = 0x00; buf[6] = 0x01; buf[7] = 0x40; buf[8] = 0x40;
 
-    buf[10] = subcmd;
+    buf[9] = subcmd;
     if (data && len > 0 && len < 38) {
-        memcpy(&buf[11], data, len);
+        memcpy(&buf[10], data, len);
     }
 
-    bt_send_interrupt(device->conn_index, buf, 11 + len);
+    bthid_send_output_report(device->conn_index, SWITCH_REPORT_OUTPUT, buf, 10 + len);
 }
 
-static void switch_set_player_led(bthid_device_t* device, uint8_t player)
+static void switch_send_rumble(bthid_device_t* device, uint8_t left, uint8_t right)
 {
-    // Player LED patterns: 1=0x01, 2=0x03, 3=0x07, 4=0x0F
-    uint8_t pattern = 0;
-    if (player >= 1 && player <= 4) {
-        pattern = (1 << player) - 1;
-    }
-    switch_send_subcommand(device, SWITCH_SUBCMD_SET_PLAYER_LED, &pattern, 1);
-}
+    switch_bt_data_t* sw = (switch_bt_data_t*)device->driver_data;
+    if (!sw) return;
 
-static void switch_enable_full_report_mode(bthid_device_t* device)
-{
-    uint8_t mode = SWITCH_INPUT_MODE_FULL;
-    switch_send_subcommand(device, SWITCH_SUBCMD_SET_INPUT_MODE, &mode, 1);
+    uint8_t buf[9];
+    buf[0] = sw->output_seq++ & 0x0F;
+    encode_rumble(left, &buf[1]);
+    encode_rumble(right, &buf[5]);
+
+    bthid_send_output_report(device->conn_index, SWITCH_REPORT_RUMBLE_ONLY, buf, 9);
 }
 
 // ============================================================================
@@ -197,9 +233,10 @@ static void switch_enable_full_report_mode(bthid_device_t* device)
 // ============================================================================
 
 static bool switch_match(const char* device_name, const uint8_t* class_of_device,
-                         uint16_t vendor_id, uint16_t product_id)
+                         uint16_t vendor_id, uint16_t product_id, bool is_ble)
 {
     (void)class_of_device;
+    (void)is_ble;
 
     // Match Switch 1 controllers by VID/PID
     // Nintendo VID = 0x057E
@@ -239,21 +276,20 @@ static bool switch_init(bthid_device_t* device)
             switch_data[i].initialized = true;
             switch_data[i].full_report_mode = false;
             switch_data[i].output_seq = 0;
-            switch_data[i].player_led = 0;
+            switch_data[i].rumble_left = 0;
+            switch_data[i].rumble_right = 0;
+
+            // Start init state machine — commands sent from task()
+            switch_data[i].init_state = SWITCH_STATE_WAIT_READY;
+            switch_data[i].init_time = platform_time_ms();
 
             switch_data[i].event.type = INPUT_TYPE_GAMEPAD;
+            switch_data[i].event.transport = INPUT_TRANSPORT_BT_CLASSIC;
             switch_data[i].event.dev_addr = device->conn_index;
             switch_data[i].event.instance = 0;
             switch_data[i].event.button_count = 10;
 
             device->driver_data = &switch_data[i];
-
-            // Request full report mode (0x30 reports)
-            switch_enable_full_report_mode(device);
-
-            // Set player LED
-            switch_set_player_led(device, 1);
-
             return true;
         }
     }
@@ -277,11 +313,11 @@ static void switch_process_report(bthid_device_t* device, const uint8_t* data, u
         // Build button state
         uint32_t buttons = 0x00000000;
 
-        // Face buttons
-        if (rpt->a)      buttons |= JP_BUTTON_B1;
-        if (rpt->b)      buttons |= JP_BUTTON_B2;
-        if (rpt->x)      buttons |= JP_BUTTON_B3;
-        if (rpt->y)      buttons |= JP_BUTTON_B4;
+        // Face buttons (map by position, not label — Nintendo layout is rotated)
+        if (rpt->b)      buttons |= JP_BUTTON_B1;  // B = bottom
+        if (rpt->a)      buttons |= JP_BUTTON_B2;  // A = right
+        if (rpt->y)      buttons |= JP_BUTTON_B3;  // Y = left
+        if (rpt->x)      buttons |= JP_BUTTON_B4;  // X = top
 
         // Shoulder buttons
         if (rpt->l)      buttons |= JP_BUTTON_L1;
@@ -295,6 +331,7 @@ static void switch_process_report(bthid_device_t* device, const uint8_t* data, u
         if (rpt->lstick) buttons |= JP_BUTTON_L3;
         if (rpt->rstick) buttons |= JP_BUTTON_R3;
         if (rpt->home)   buttons |= JP_BUTTON_A1;
+        if (rpt->capture) buttons |= JP_BUTTON_A2;
 
         // D-pad
         if (rpt->up)     buttons |= JP_BUTTON_DU;
@@ -316,6 +353,11 @@ static void switch_process_report(bthid_device_t* device, const uint8_t* data, u
         sw->event.analog[ANALOG_RX] = scale_12bit_to_8bit(rx);
         sw->event.analog[ANALOG_RY] = 255 - scale_12bit_to_8bit(ry);
 
+        // Battery: bits 7-4 = level (0/2/4/6/8), bit 3 = charging
+        uint8_t bat_raw = rpt->battery_conn >> 4;
+        sw->event.battery_level = (bat_raw > 8) ? 100 : bat_raw * 12 + 5;
+        sw->event.battery_charging = (rpt->battery_conn & 0x08) != 0;
+
         router_submit_input(&sw->event);
 
     } else if (report_id == SWITCH_REPORT_INPUT_SIMPLE && len >= 12) {
@@ -324,10 +366,10 @@ static void switch_process_report(bthid_device_t* device, const uint8_t* data, u
 
         uint32_t buttons = 0x00000000;
 
-        if (rpt->a)      buttons |= JP_BUTTON_B1;
-        if (rpt->b)      buttons |= JP_BUTTON_B2;
-        if (rpt->x)      buttons |= JP_BUTTON_B3;
-        if (rpt->y)      buttons |= JP_BUTTON_B4;
+        if (rpt->b)      buttons |= JP_BUTTON_B1;  // B = bottom
+        if (rpt->a)      buttons |= JP_BUTTON_B2;  // A = right
+        if (rpt->y)      buttons |= JP_BUTTON_B3;  // Y = left
+        if (rpt->x)      buttons |= JP_BUTTON_B4;  // X = top
         if (rpt->l)      buttons |= JP_BUTTON_L1;
         if (rpt->r)      buttons |= JP_BUTTON_R1;
         if (rpt->zl)     buttons |= JP_BUTTON_L2;
@@ -337,6 +379,7 @@ static void switch_process_report(bthid_device_t* device, const uint8_t* data, u
         if (rpt->lstick) buttons |= JP_BUTTON_L3;
         if (rpt->rstick) buttons |= JP_BUTTON_R3;
         if (rpt->home)   buttons |= JP_BUTTON_A1;
+        if (rpt->capture) buttons |= JP_BUTTON_A2;
 
         // Hat to D-pad
         if (rpt->hat == 0 || rpt->hat == 1 || rpt->hat == 7) buttons |= JP_BUTTON_DU;
@@ -345,24 +388,103 @@ static void switch_process_report(bthid_device_t* device, const uint8_t* data, u
         if (rpt->hat >= 5 && rpt->hat <= 7) buttons |= JP_BUTTON_DL;
 
         sw->event.buttons = buttons;
-        sw->event.analog[ANALOG_LX] = rpt->lx;
-        sw->event.analog[ANALOG_LY] = 255 - rpt->ly;  // Invert Y (Nintendo: up=high, HID: up=low)
-        sw->event.analog[ANALOG_RX] = rpt->rx;
-        sw->event.analog[ANALOG_RY] = 255 - rpt->ry; // Invert Y (Nintendo: up=high, HID: up=low)
+        // 16-bit sticks scaled to 8-bit (0-65535 → 0-255)
+        sw->event.analog[ANALOG_LX] = rpt->lx >> 8;
+        sw->event.analog[ANALOG_LY] = 255 - (rpt->ly >> 8);  // Invert Y (Nintendo: up=high, HID: up=low)
+        sw->event.analog[ANALOG_RX] = rpt->rx >> 8;
+        sw->event.analog[ANALOG_RY] = 255 - (rpt->ry >> 8);  // Invert Y (Nintendo: up=high, HID: up=low)
 
         router_submit_input(&sw->event);
-
-        // If we're still getting simple reports, request full mode again
-        if (!sw->full_report_mode) {
-            switch_enable_full_report_mode(device);
-        }
     }
 }
 
 static void switch_task(bthid_device_t* device)
 {
-    (void)device;
-    // Could send periodic keep-alive or rumble updates here
+    switch_bt_data_t* sw = (switch_bt_data_t*)device->driver_data;
+    if (!sw) return;
+
+    uint32_t now = platform_time_ms();
+
+    switch (sw->init_state) {
+        case SWITCH_STATE_WAIT_READY:
+            // Wait before sending first subcommand
+            if (now - sw->init_time >= SWITCH_INIT_DELAY_MS) {
+                printf("[SWITCH_BT] Sending set input mode (0x30)\n");
+                uint8_t mode = SWITCH_INPUT_MODE_FULL;
+                switch_send_subcommand(device, SWITCH_SUBCMD_SET_INPUT_MODE, &mode, 1);
+                sw->init_state = SWITCH_STATE_SET_INPUT_MODE;
+                sw->init_time = now;
+            }
+            break;
+
+        case SWITCH_STATE_SET_INPUT_MODE:
+            if (now - sw->init_time >= SWITCH_INIT_DELAY_MS) {
+                printf("[SWITCH_BT] Sending enable vibration\n");
+                uint8_t enable = 0x01;
+                switch_send_subcommand(device, SWITCH_SUBCMD_ENABLE_VIBRATION, &enable, 1);
+                sw->init_state = SWITCH_STATE_ENABLE_VIBRATION;
+                sw->init_time = now;
+            }
+            break;
+
+        case SWITCH_STATE_ENABLE_VIBRATION:
+            if (now - sw->init_time >= SWITCH_INIT_DELAY_MS) {
+                // Set player LED based on player index
+                int player_idx = find_player_index(sw->event.dev_addr, sw->event.instance);
+                uint8_t player_num = (player_idx >= 0) ? player_idx + 1 : 1;
+                uint8_t pattern = 0;
+                if (player_num >= 1 && player_num <= 4) {
+                    pattern = (1 << player_num) - 1;
+                }
+                printf("[SWITCH_BT] Sending player LED (player %d, pattern 0x%02X)\n",
+                       player_num, pattern);
+                switch_send_subcommand(device, SWITCH_SUBCMD_SET_PLAYER_LED, &pattern, 1);
+                sw->init_state = SWITCH_STATE_SET_PLAYER_LED;
+                sw->init_time = now;
+            }
+            break;
+
+        case SWITCH_STATE_SET_PLAYER_LED:
+            if (now - sw->init_time >= SWITCH_INIT_DELAY_MS) {
+                printf("[SWITCH_BT] Init complete\n");
+                sw->init_state = SWITCH_STATE_ACTIVE;
+            }
+            break;
+
+        case SWITCH_STATE_ACTIVE: {
+            // Monitor feedback system for rumble/LED updates
+            int player_idx = find_player_index(sw->event.dev_addr, sw->event.instance);
+            if (player_idx < 0) break;
+
+            feedback_state_t* fb = feedback_get_state(player_idx);
+            if (!fb) break;
+
+            // Handle rumble updates
+            if (fb->rumble_dirty) {
+                uint8_t left = fb->rumble.left;
+                uint8_t right = fb->rumble.right;
+                if (left != sw->rumble_left || right != sw->rumble_right) {
+                    switch_send_rumble(device, left, right);
+                    sw->rumble_left = left;
+                    sw->rumble_right = right;
+                }
+            }
+
+            // Handle LED updates
+            if (fb->led_dirty) {
+                uint8_t pattern = fb->led.pattern;
+                if (pattern != 0) {
+                    printf("[SWITCH_BT] LED update: pattern=0x%02X\n", pattern);
+                    switch_send_subcommand(device, SWITCH_SUBCMD_SET_PLAYER_LED, &pattern, 1);
+                }
+            }
+
+            if (fb->rumble_dirty || fb->led_dirty) {
+                feedback_clear_dirty(player_idx);
+            }
+            break;
+        }
+    }
 }
 
 static void switch_disconnect(bthid_device_t* device)

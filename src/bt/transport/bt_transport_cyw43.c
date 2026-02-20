@@ -128,6 +128,7 @@ static const bt_connection_t* cyw43_transport_get_connection(uint8_t index)
     conn->product_id = info.product_id;
     conn->connected = info.active;
     conn->hid_ready = info.hid_ready;
+    conn->is_ble = info.is_ble;
 
     return conn;
 }

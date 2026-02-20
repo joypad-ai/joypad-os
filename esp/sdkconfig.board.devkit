@@ -1,0 +1,3 @@
+# ESP32-S3-DevKitC board overrides
+# Button: GPIO 0 (BOOT button)
+# No NeoPixel LED

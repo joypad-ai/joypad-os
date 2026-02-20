@@ -8,7 +8,6 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-#include "native/host/host_interface.h"
 #include "core/input_interface.h"
 
 // ============================================================================
@@ -55,13 +54,6 @@ void n64_host_set_rumble(uint8_t port, bool enabled);
 // Flush pending rumble commands (blocking joybus write)
 // Call AFTER time-critical tasks like Dreamcast Maple response
 void n64_host_flush_rumble(void);
-
-// ============================================================================
-// HOST INTERFACE
-// ============================================================================
-
-// N64 host interface (implements HostInterface pattern)
-extern const HostInterface n64_host_interface;
 
 // N64 input interface (implements InputInterface pattern for app declaration)
 extern const InputInterface n64_input_interface;

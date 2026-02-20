@@ -1,7 +1,7 @@
 // hotkeys.c - Button combination detection service
 
 #include "hotkeys.h"
-#include "pico/time.h"
+#include "platform/platform.h"
 #include "core/services/players/manager.h"
 
 // Registered hotkeys
@@ -12,7 +12,7 @@ static int hotkey_count = 0;
 // Per-player hold state tracking
 typedef struct {
     uint32_t held_buttons;       // Currently held buttons
-    absolute_time_t hold_start;  // When the current combo started being held
+    uint32_t hold_start_ms;      // When the current combo started being held
     bool holding[MAX_HOTKEYS];   // Track if currently holding this hotkey's combo
     bool triggered[MAX_HOTKEYS]; // Track if hotkey already triggered (prevent repeat for ON_HOLD)
 } PlayerHoldState;
@@ -21,7 +21,7 @@ static PlayerHoldState player_state[MAX_PLAYERS];
 
 // Global input state (combined from all players)
 static uint32_t global_buttons = 0x00000000;  // Start with all released (active-high)
-static absolute_time_t global_hold_start;
+static uint32_t global_hold_start_ms;
 static bool global_holding[MAX_HOTKEYS];
 static bool global_triggered[MAX_HOTKEYS];
 
@@ -55,7 +55,7 @@ void hotkeys_reset_player(uint8_t player) {
     if (player >= MAX_PLAYERS) return;
 
     player_state[player].held_buttons = 0x00000000;  // All released (active-high)
-    player_state[player].hold_start = nil_time;
+    player_state[player].hold_start_ms = 0;
     for (int i = 0; i < MAX_HOTKEYS; i++) {
         player_state[player].holding[i] = false;
         player_state[player].triggered[i] = false;
@@ -72,7 +72,7 @@ void hotkeys_check(uint32_t buttons, uint8_t player) {
     if (player >= MAX_PLAYERS) return;
 
     PlayerHoldState* state = &player_state[player];
-    absolute_time_t now = get_absolute_time();
+    uint32_t now = platform_time_ms();
 
     // Update global combined state (OR for active-high: 1 means ANY player has it pressed)
     global_buttons |= buttons;
@@ -95,18 +95,18 @@ void hotkeys_check(uint32_t buttons, uint8_t player) {
             // Currently holding the combo
             if (!was_holding) {
                 // Just started holding
-                state->hold_start = now;
+                state->hold_start_ms = now;
                 state->triggered[i] = false;
             }
             state->holding[i] = true;
 
             // Check for ON_HOLD trigger
             if (hotkey->trigger == HOTKEY_TRIGGER_ON_HOLD && !state->triggered[i]) {
-                int64_t held_ms = absolute_time_diff_us(state->hold_start, now) / 1000;
+                uint32_t held_ms = now - state->hold_start_ms;
 
                 if (held_ms >= hotkey->duration_ms) {
                     if (hotkey->callback) {
-                        hotkey->callback(player, (uint32_t)held_ms);
+                        hotkey->callback(player, held_ms);
                     }
                     state->triggered[i] = true;
                 }
@@ -115,20 +115,20 @@ void hotkeys_check(uint32_t buttons, uint8_t player) {
             // Combo released
             if (was_holding) {
                 // Just released - check for release-based triggers
-                int64_t held_ms = absolute_time_diff_us(state->hold_start, now) / 1000;
+                uint32_t held_ms = now - state->hold_start_ms;
 
                 if (hotkey->trigger == HOTKEY_TRIGGER_ON_RELEASE) {
                     // Trigger if held long enough
                     if (held_ms >= hotkey->duration_ms) {
                         if (hotkey->callback) {
-                            hotkey->callback(player, (uint32_t)held_ms);
+                            hotkey->callback(player, held_ms);
                         }
                     }
                 } else if (hotkey->trigger == HOTKEY_TRIGGER_ON_TAP) {
                     // Trigger if released quickly (tap)
                     if (held_ms < hotkey->duration_ms) {
                         if (hotkey->callback) {
-                            hotkey->callback(player, (uint32_t)held_ms);
+                            hotkey->callback(player, held_ms);
                         }
                     }
                 }
@@ -143,7 +143,7 @@ void hotkeys_check(uint32_t buttons, uint8_t player) {
 }
 
 void hotkeys_check_global(void) {
-    absolute_time_t now = get_absolute_time();
+    uint32_t now = platform_time_ms();
 
     for (int i = 0; i < hotkey_count; i++) {
         if (!hotkey_active[i]) continue;
@@ -157,35 +157,35 @@ void hotkeys_check_global(void) {
 
         if (match) {
             if (!was_holding) {
-                global_hold_start = now;
+                global_hold_start_ms = now;
                 global_triggered[i] = false;
             }
             global_holding[i] = true;
 
             if (hotkey->trigger == HOTKEY_TRIGGER_ON_HOLD && !global_triggered[i]) {
-                int64_t held_ms = absolute_time_diff_us(global_hold_start, now) / 1000;
+                uint32_t held_ms = now - global_hold_start_ms;
 
                 if (held_ms >= hotkey->duration_ms) {
                     if (hotkey->callback) {
-                        hotkey->callback(0xFF, (uint32_t)held_ms);
+                        hotkey->callback(0xFF, held_ms);
                     }
                     global_triggered[i] = true;
                 }
             }
         } else {
             if (was_holding) {
-                int64_t held_ms = absolute_time_diff_us(global_hold_start, now) / 1000;
+                uint32_t held_ms = now - global_hold_start_ms;
 
                 if (hotkey->trigger == HOTKEY_TRIGGER_ON_RELEASE) {
                     if (held_ms >= hotkey->duration_ms) {
                         if (hotkey->callback) {
-                            hotkey->callback(0xFF, (uint32_t)held_ms);
+                            hotkey->callback(0xFF, held_ms);
                         }
                     }
                 } else if (hotkey->trigger == HOTKEY_TRIGGER_ON_TAP) {
                     if (held_ms < hotkey->duration_ms) {
                         if (hotkey->callback) {
-                            hotkey->callback(0xFF, (uint32_t)held_ms);
+                            hotkey->callback(0xFF, held_ms);
                         }
                     }
                 }

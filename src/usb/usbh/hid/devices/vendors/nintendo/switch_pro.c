@@ -386,19 +386,23 @@ void input_report_switch_pro(uint8_t dev_addr, uint8_t instance, uint8_t const* 
           switch_devices[dev_addr].merged_event.buttons = 0x00000000;  // All released
         }
       } else {
+        // Battery: bits 7-4 = level (0/2/4/6/8), bit 3 = charging
+        uint8_t bat_raw = update_report.battery_level_and_connection_info >> 4;
+        uint8_t bat_level = (bat_raw > 8) ? 100 : bat_raw * 12 + 5;
+        bool bat_charging = (update_report.battery_level_and_connection_info & 0x08) != 0;
+
         // Single instance device (normal Switch Pro controller)
         input_event_t event = {
           .dev_addr = dev_addr,
           .instance = instance,
           .type = INPUT_TYPE_GAMEPAD,
-        .transport = INPUT_TRANSPORT_USB,
-        .transport = INPUT_TRANSPORT_USB,
-        .transport = INPUT_TRANSPORT_USB,
-        .transport = INPUT_TRANSPORT_USB,
+          .transport = INPUT_TRANSPORT_USB,
           .buttons = buttons,
           .button_count = 10,  // B, A, Y, X, L, R, ZL, ZR, L3, R3
           .analog = {leftX, leftY, rightX, rightY, 0, 0},
           .keys = 0,
+          .battery_level = bat_level,
+          .battery_charging = bat_charging,
         };
         router_submit_input(&event);
       }

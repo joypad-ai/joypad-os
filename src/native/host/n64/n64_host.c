@@ -4,7 +4,6 @@
 // input events to the router.
 
 #include "n64_host.h"
-#include "native/host/host_interface.h"
 #include "N64Controller.h"
 #include "n64_definitions.h"
 #include "joybus.h"
@@ -382,34 +381,6 @@ void n64_host_flush_rumble(void)
         }
     }
 }
-
-// ============================================================================
-// HOST INTERFACE
-// ============================================================================
-
-static uint8_t n64_host_get_port_count(void)
-{
-    return N64_MAX_PORTS;
-}
-
-static void n64_host_init_pins_generic(const uint8_t* pins, uint8_t pin_count)
-{
-    if (pin_count >= 1) {
-        n64_host_init_pin(pins[0]);
-    } else {
-        n64_host_init();
-    }
-}
-
-const HostInterface n64_host_interface = {
-    .name = "N64",
-    .init = n64_host_init,
-    .init_pins = n64_host_init_pins_generic,
-    .task = n64_host_task,
-    .is_connected = n64_host_is_connected,
-    .get_device_type = n64_host_get_device_type,
-    .get_port_count = n64_host_get_port_count,
-};
 
 // ============================================================================
 // INPUT INTERFACE

@@ -121,4 +121,7 @@
 // Number of HIDS clients (BLE HID Service clients)
 #define MAX_NR_HIDS_CLIENTS 1
 
+// Number of Battery Service clients (BLE Battery Service)
+#define MAX_NR_BATTERY_SERVICE_CLIENTS 1
+
 #endif // BTSTACK_CONFIG_H

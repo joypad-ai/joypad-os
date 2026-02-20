@@ -10,12 +10,11 @@
 #include "core/services/profiles/profile.h"
 #include "core/services/players/manager.h"
 #include "core/services/players/feedback.h"
-#include "hardware/watchdog.h"
-#include "pico/unique_id.h"
-#include "pico/bootrom.h"
-#include "pico/time.h"
+#include "platform/platform.h"
+#ifndef PLATFORM_ESP32
 #include "pico/stdio.h"
 #include "pico/stdio/driver.h"
+#endif
 #include "tusb.h"
 #include <string.h>
 #include <stdio.h>
@@ -33,6 +32,14 @@
 
 static cdc_protocol_t protocol_ctx;
 static char response_buf[CDC_MAX_PAYLOAD];
+
+// Deferred reboot flags — set by command handlers, executed in cdc_commands_task()
+// to avoid nested tud_task() calls inside protocol handlers (breaks ESP32 FreeRTOS)
+#define PENDING_NONE    0
+#define PENDING_REBOOT  1
+#define PENDING_BOOTSEL 2
+static volatile uint8_t pending_reboot = PENDING_NONE;
+static uint32_t pending_reboot_time = 0;
 
 // ============================================================================
 // LOG CAPTURE (ring buffer + stdio driver)
@@ -59,6 +66,21 @@ static void log_stdio_out_chars(const char *buf, int len)
     }
 }
 
+#ifdef PLATFORM_ESP32
+// ESP32: capture printf by replacing stdout with a custom FILE* (funopen)
+// that feeds output into the ring buffer AND writes to the original UART.
+static FILE *esp32_uart_stdout = NULL;
+
+static int esp32_log_writefn(void *cookie, const char *buf, int len)
+{
+    (void)cookie;
+    log_stdio_out_chars(buf, len);
+    if (esp32_uart_stdout) {
+        fwrite(buf, 1, len, esp32_uart_stdout);
+    }
+    return len;
+}
+#else
 static stdio_driver_t log_stdio_driver = {
     .out_chars = log_stdio_out_chars,
     .out_flush = NULL,
@@ -69,6 +91,7 @@ static stdio_driver_t log_stdio_driver = {
     .crlf_enabled = PICO_STDIO_DEFAULT_CRLF,
 #endif
 };
+#endif
 
 // Separate buffer for log events (not shared with response_buf)
 static char log_event_buf[384];
@@ -196,8 +219,8 @@ static void cmd_info(const char* json)
 {
     (void)json;
 
-    char serial[PICO_UNIQUE_BOARD_ID_SIZE_BYTES * 2 + 1];
-    pico_get_unique_board_id_string(serial, sizeof(serial));
+    char serial[17];
+    platform_get_serial(serial, sizeof(serial));
 
     snprintf(response_buf, sizeof(response_buf),
              "{\"app\":\"%s\",\"version\":\"%s\",\"board\":\"%s\",\"serial\":\"%s\",\"commit\":\"%s\",\"build\":\"%s\"}",
@@ -216,25 +239,18 @@ static void cmd_reboot(const char* json)
 {
     (void)json;
     send_ok();
-    // Flush response
-    tud_task();
-    sleep_ms(50);
-    tud_task();
-    // Reboot
-    watchdog_enable(100, false);
-    while(1);
+    // Defer reboot to cdc_commands_task() to avoid nested tud_task() calls
+    pending_reboot = PENDING_REBOOT;
+    pending_reboot_time = platform_time_ms();
 }
 
 static void cmd_bootsel(const char* json)
 {
     (void)json;
     send_ok();
-    // Flush response
-    tud_task();
-    sleep_ms(50);
-    tud_task();
-    // Reboot into BOOTSEL/UF2 bootloader mode
-    reset_usb_boot(0, 0);
+    // Defer reboot to cdc_commands_task() to avoid nested tud_task() calls
+    pending_reboot = PENDING_BOOTSEL;
+    pending_reboot_time = platform_time_ms();
 }
 
 static void cmd_mode_get(const char* json)
@@ -276,7 +292,7 @@ static void cmd_mode_set(const char* json)
 
     // Flush then switch mode (triggers reboot)
     tud_task();
-    sleep_ms(50);
+    platform_sleep_ms(50);
     tud_task();
     usbd_set_mode((usb_output_mode_t)mode);
 }
@@ -774,11 +790,11 @@ static void cmd_profile_clone(const char* json)
         if (is_builtin_profile(source_index)) {
             const char* src_name = (get_builtin_count() > 0) ?
                 profile_get_name(OUTPUT_TARGET_USB_DEVICE, source_index) : "Default";
-            snprintf(new_name, CUSTOM_PROFILE_NAME_LEN, "%.7s Copy", src_name ? src_name : "Default");
+            snprintf(new_name, CUSTOM_PROFILE_NAME_LEN, "%.6s Copy", src_name ? src_name : "Default");
         } else {
             int src_custom_idx = unified_to_custom_index(source_index);
             if (src_custom_idx >= 0 && src_custom_idx < settings->custom_profile_count - 1) {
-                snprintf(new_name, CUSTOM_PROFILE_NAME_LEN, "%.7s Copy",
+                snprintf(new_name, CUSTOM_PROFILE_NAME_LEN, "%.6s Copy",
                          settings->profiles[src_custom_idx].name);
             } else {
                 snprintf(new_name, CUSTOM_PROFILE_NAME_LEN, "Custom %d", new_custom_idx + 1);
@@ -911,12 +927,9 @@ static void cmd_settings_reset(const char* json)
              "{\"ok\":true,\"reboot\":true}");
     send_json(response_buf);
 
-    // Reboot
-    tud_task();
-    sleep_ms(50);
-    tud_task();
-    watchdog_enable(100, false);
-    while(1);
+    // Defer reboot to cdc_commands_task()
+    pending_reboot = PENDING_REBOOT;
+    pending_reboot_time = platform_time_ms();
 }
 
 #ifdef ENABLE_BTSTACK
@@ -1076,7 +1089,7 @@ static void cmd_rumble_test(const char* json)
     // Store state for auto-stop
     if (duration > 0 && (left > 0 || right > 0)) {
         rumble_test_state.active = true;
-        rumble_test_state.start_ms = to_ms_since_boot(get_absolute_time());
+        rumble_test_state.start_ms = platform_time_ms();
         rumble_test_state.duration_ms = duration;
         rumble_test_state.player = player;
     }
@@ -1111,8 +1124,27 @@ static void cmd_rumble_stop(const char* json)
 // Call from main loop to auto-stop rumble after duration and drain log buffer
 void cdc_commands_task(void)
 {
+    // Handle deferred reboots (runs outside tud_task/protocol handler context)
+    if (pending_reboot != PENDING_NONE) {
+        uint32_t elapsed = platform_time_ms() - pending_reboot_time;
+        if (elapsed >= 50) {
+            uint8_t type = pending_reboot;
+            pending_reboot = PENDING_NONE;
+            printf("[CDC] Executing deferred %s...\n",
+                   type == PENDING_BOOTSEL ? "bootloader" : "reboot");
+            // Disconnect USB cleanly so host sees device removal
+            tud_disconnect();
+            platform_sleep_ms(500);
+            if (type == PENDING_BOOTSEL) {
+                platform_reboot_bootloader();
+            } else {
+                platform_reboot();
+            }
+        }
+    }
+
     if (rumble_test_state.active) {
-        uint32_t now = to_ms_since_boot(get_absolute_time());
+        uint32_t now = platform_time_ms();
         if (now - rumble_test_state.start_ms >= rumble_test_state.duration_ms) {
             // Stop rumble
             if (rumble_test_state.player == -1) {
@@ -1269,8 +1301,18 @@ void cdc_commands_init(void)
 {
     cdc_protocol_init(&protocol_ctx, packet_handler);
 
-    // Register stdio driver to capture printf output into ring buffer
+    // Register stdio hook to capture printf output into ring buffer
+#ifdef PLATFORM_ESP32
+    // Replace stdout with a tee: ring buffer + original UART
+    esp32_uart_stdout = stdout;
+    FILE *f = funopen(NULL, NULL, esp32_log_writefn, NULL, NULL);
+    if (f) {
+        setvbuf(f, NULL, _IONBF, 0);
+        stdout = f;
+    }
+#else
     stdio_set_driver_enabled(&log_stdio_driver, true);
+#endif
 
     // Debug: print build info at startup
     printf("[CDC] Build Info Debug:\n");

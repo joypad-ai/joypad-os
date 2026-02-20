@@ -1,0 +1,6 @@
+{
+  "installCommand": "cd tools/web-config && npm install",
+  "buildCommand": "cd tools/web-config && npm run build",
+  "outputDirectory": "tools/web-config/dist",
+  "ignoreCommand": "git diff --quiet HEAD^ HEAD -- tools/web-config/"
+}

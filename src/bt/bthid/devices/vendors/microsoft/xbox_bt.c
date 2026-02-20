@@ -108,10 +108,11 @@ static uint8_t scale_trigger_10to8(uint16_t val)
 // ============================================================================
 
 static bool xbox_match(const char* device_name, const uint8_t* class_of_device,
-                       uint16_t vendor_id, uint16_t product_id)
+                       uint16_t vendor_id, uint16_t product_id, bool is_ble)
 {
     (void)class_of_device;
     (void)product_id;
+    (void)is_ble;
 
     // VID match - Microsoft vendor ID = 0x045E
     // Many Xbox controller PIDs exist, so just match VID
@@ -150,6 +151,7 @@ static bool xbox_init(bthid_device_t* device)
             xbox_data[i].initialized = true;
 
             xbox_data[i].event.type = INPUT_TYPE_GAMEPAD;
+            xbox_data[i].event.transport = INPUT_TRANSPORT_BT_CLASSIC;
             xbox_data[i].event.dev_addr = device->conn_index;
             xbox_data[i].event.instance = 0;
             xbox_data[i].event.button_count = 10;

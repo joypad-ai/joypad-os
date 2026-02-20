@@ -5,7 +5,11 @@
 // Emulates Nintendo GameCube Controller Adapter for Wii U/Switch.
 // Uses a custom USB class driver (like HOJA) for reliable OUT endpoint handling.
 
+#ifdef CFG_TUSB_CONFIG_FILE
+#include CFG_TUSB_CONFIG_FILE
+#else
 #include "tusb_config.h"
+#endif
 
 #if CFG_TUD_GC_ADAPTER
 

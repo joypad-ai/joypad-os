@@ -7,7 +7,7 @@
 #include "profile_indicator.h"
 #include "core/services/players/feedback.h"
 #include "core/services/players/manager.h"
-#include "pico/stdlib.h"
+#include "platform/platform.h"
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -18,12 +18,12 @@ static volatile uint8_t indicating_player = 0;
 // Rumble pattern state
 static volatile uint8_t rumble_blinks_remaining = 0;
 static volatile bool rumble_is_on = false;
-static absolute_time_t rumble_state_change_time;
+static uint32_t rumble_state_change_us;
 
 // LED pattern state
 static volatile uint8_t led_blinks_remaining = 0;
 static volatile bool led_is_on = false;
-static absolute_time_t led_state_change_time;
+static uint32_t led_state_change_us;
 
 // Timing constants
 #define RUMBLE_ON_TIME_US  100000   // 100ms rumble on
@@ -59,13 +59,13 @@ void profile_indicator_trigger_player(uint8_t player_index, uint8_t profile_inde
     // Start rumble pattern (use internal setter to bypass indicator check)
     rumble_blinks_remaining = blink_count;
     rumble_is_on = true;
-    rumble_state_change_time = get_absolute_time();
+    rumble_state_change_us = platform_time_us();
     feedback_set_rumble_internal(player_index, 255, 255);
 
     // Start LED pattern (use internal setter to bypass indicator check)
     led_blinks_remaining = blink_count;
     led_is_on = true;
-    led_state_change_time = get_absolute_time();
+    led_state_change_us = platform_time_us();
     feedback_set_led_player_internal(player_index, profile_index + 1);
 }
 
@@ -129,43 +129,43 @@ int8_t profile_indicator_get_display_player_index(int8_t actual_player_index)
 
 void profile_indicator_task(void)
 {
-    absolute_time_t now = get_absolute_time();
+    uint32_t now = platform_time_us();
 
     // Handle rumble state machine (use internal setters to bypass indicator check)
     if (rumble_blinks_remaining > 0 && !rumble_disabled) {
-        int64_t elapsed = absolute_time_diff_us(rumble_state_change_time, now);
+        uint32_t elapsed = now - rumble_state_change_us;
 
         if (rumble_is_on && elapsed >= RUMBLE_ON_TIME_US) {
             // Turn off rumble
             rumble_is_on = false;
             rumble_blinks_remaining--;
-            rumble_state_change_time = now;
+            rumble_state_change_us = now;
             feedback_set_rumble_internal(indicating_player, 0, 0);
         }
         else if (!rumble_is_on && elapsed >= RUMBLE_OFF_TIME_US && rumble_blinks_remaining > 0) {
             // Turn on rumble for next pulse
             rumble_is_on = true;
-            rumble_state_change_time = now;
+            rumble_state_change_us = now;
             feedback_set_rumble_internal(indicating_player, 255, 255);
         }
     }
 
     // Handle LED state machine (use internal setters to bypass indicator check)
     if (led_blinks_remaining > 0) {
-        int64_t elapsed = absolute_time_diff_us(led_state_change_time, now);
+        uint32_t elapsed = now - led_state_change_us;
 
         if (led_is_on && elapsed >= LED_ON_TIME_US) {
             // Turn off LED
             led_is_on = false;
             led_blinks_remaining--;
-            led_state_change_time = now;
+            led_state_change_us = now;
             // Set LED to "off" state (could be all off or dim)
             feedback_set_led_rgb_internal(indicating_player, 0, 0, 0);
         }
         else if (!led_is_on && elapsed >= LED_OFF_TIME_US && led_blinks_remaining > 0) {
             // Turn on LED for next blink
             led_is_on = true;
-            led_state_change_time = now;
+            led_state_change_us = now;
             feedback_set_led_player_internal(indicating_player, profile_to_indicate + 1);
         }
     }
