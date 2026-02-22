@@ -1484,7 +1484,7 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                         // authentication when creating HID L2CAP channels after SDP.
                         // Requesting auth here concurrently with SDP causes CYW43 SPI
                         // bus failures on devices with large HID descriptors (DS4 clones).
-                        if (classic_state.pending_hid_connect) {
+                        if (classic_state.pending_hid_connect && wiimote_conn.active) {
                             gap_request_security_level(handle, LEVEL_2);
                         }
                     } else {
