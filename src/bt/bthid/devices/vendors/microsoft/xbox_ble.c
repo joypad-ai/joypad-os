@@ -145,11 +145,15 @@ static void xbox_ble_process_report(bthid_device_t* device, const uint8_t* data,
         report_len--;
     }
 
-    if (report_len < 16) {
-        return;  // Too short
+    // Standard Xbox BLE report is exactly 16 bytes. Some Xbox controllers
+    // (e.g., Elite Series 2) have a different HID report layout with longer
+    // reports. Fall back to the generic gamepad driver which parses the HID
+    // descriptor to handle any layout.
+    if (report_len != 16) {
+        printf("[XBOX_BLE] Unexpected report size %d (expected 16), falling back to generic\n", report_len);
+        bthid_fallback_to_generic(device->conn_index);
+        return;
     }
-
-    if (report_len < 16) return;
 
     // Parse bytes directly - Xbox BLE report layout:
     // 0-1:lx, 2-3:ly, 4-5:rx, 6-7:ry, 8-9:lt, 10-11:rt, 12:hat, 13-14:buttons

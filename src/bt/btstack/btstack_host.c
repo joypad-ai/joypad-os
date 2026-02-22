@@ -3701,23 +3701,12 @@ static void hid_host_packet_handler(uint8_t packet_type, uint16_t channel, uint8
                                conn->vendor_id, conn->profile->name);
                     }
 
-                    // For non-Wiimote devices, query SDP for VID/PID if we don't have it
-                    if (conn->vendor_id == 0 && conn->product_id == 0) {
-                        // Store pending info for SDP callback
-                        memcpy(classic_state.pending_addr, conn->addr, 6);
-                        classic_state.pending_vid = 0;
-                        classic_state.pending_pid = 0;
-
-                        // Query VID/PID via SDP (PnP Information service)
-                        sdp_client_query_uuid16(&sdp_query_vid_pid_callback, conn->addr,
-                                                BLUETOOTH_SERVICE_CLASS_PNP_INFORMATION);
-
-                        // Also request remote name if we don't have it
-                        if (conn->name[0] == '\0') {
-                            gap_remote_name_request(conn->addr, 0, 0);
-                        }
-                    }
                     // Non-Wiimote: wait for HID_SUBEVENT_DESCRIPTOR_AVAILABLE
+                    // NOTE: Do NOT issue SDP queries here — BTstack HID Host starts its
+                    // own SDP query (for HID descriptor) immediately after CONNECTION_OPENED.
+                    // sdp_client only handles one query at a time, so issuing ours here
+                    // would block BTstack's, preventing DESCRIPTOR_AVAILABLE from firing.
+                    // VID/PID SDP query is deferred to DESCRIPTOR_AVAILABLE instead.
                 }
             }
             break;
@@ -3746,6 +3735,18 @@ static void hid_host_packet_handler(uint8_t packet_type, uint16_t channel, uint8
                 scan_timeout_end = 0;
                 printf("[BTSTACK_HOST] Calling bt_on_hid_ready(%d)\n", conn_index);
                 bt_on_hid_ready(conn_index);
+
+                // Query VID/PID via SDP if not yet known (deferred from CONNECTION_OPENED
+                // to avoid conflicting with BTstack's internal HID descriptor SDP query)
+                classic_connection_t* desc_conn = find_classic_connection_by_cid(hid_cid);
+                if (desc_conn && desc_conn->vendor_id == 0 && desc_conn->product_id == 0) {
+                    memcpy(classic_state.pending_addr, desc_conn->addr, 6);
+                    classic_state.pending_vid = 0;
+                    classic_state.pending_pid = 0;
+                    printf("[BTSTACK_HOST] Querying VID/PID via SDP (deferred)\n");
+                    sdp_client_query_uuid16(&sdp_query_vid_pid_callback, desc_conn->addr,
+                                            BLUETOOTH_SERVICE_CLASS_PNP_INFORMATION);
+                }
             }
             break;
         }

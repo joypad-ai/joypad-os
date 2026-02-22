@@ -13,8 +13,7 @@
 #include "devices/vendors/nintendo/switch2_ble.h"
 #include "devices/vendors/nintendo/wii_u_pro_bt.h"
 #include "devices/vendors/nintendo/wiimote_bt.h"
-#include "devices/vendors/microsoft/xbox_bt.h"
-#include "devices/vendors/microsoft/xbox_ble.h"
+// xbox_bt.h and xbox_ble.h no longer registered — generic driver handles all Xbox
 #include "devices/vendors/google/stadia_bt.h"
 
 void bthid_registry_init(void)
@@ -36,9 +35,8 @@ void bthid_registry_init(void)
     wii_u_pro_bt_register();  // Must be before wiimote (Wii U Pro has "-UC" suffix)
     wiimote_bt_register();
 
-    // Microsoft controllers (BLE first since it's more specific)
-    xbox_ble_register();
-    xbox_bt_register();
+    // Microsoft controllers — handled by generic gamepad driver via HID descriptor
+    // parsing (like BlueRetro). Covers all Xbox variants without layout assumptions.
 
     // Google controllers
     stadia_bt_register();

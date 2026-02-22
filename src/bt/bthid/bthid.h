@@ -156,4 +156,8 @@ void bthid_set_battery_level(uint8_t conn_index, uint8_t level);
 // Pass BLE HID descriptor to driver for report parsing
 void bthid_set_hid_descriptor(uint8_t conn_index, const uint8_t* desc, uint16_t desc_len);
 
+// Switch a device from its current vendor driver to the generic gamepad driver.
+// Used when a vendor driver detects an incompatible report format at runtime.
+void bthid_fallback_to_generic(uint8_t conn_index);
+
 #endif // BTHID_H

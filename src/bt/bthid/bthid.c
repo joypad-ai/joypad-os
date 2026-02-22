@@ -34,6 +34,13 @@ static bthid_device_t devices[BTHID_MAX_DEVICES];
 static const bthid_driver_t* drivers[BTHID_MAX_DRIVERS];
 static uint8_t driver_count = 0;
 
+// HID descriptor cache — stored when a vendor driver is active so the generic
+// driver can use it if a fallback is triggered later
+#define BTHID_MAX_DESC_LEN 512
+static uint8_t cached_hid_desc[BTHID_MAX_DESC_LEN];
+static uint16_t cached_hid_desc_len = 0;
+static uint8_t cached_hid_desc_conn = 0xFF;  // conn_index of cached descriptor
+
 // ============================================================================
 // FORWARD DECLARATIONS
 // ============================================================================
@@ -230,6 +237,15 @@ void bthid_update_device_info(uint8_t conn_index, const char* name,
             if (new_driver->init) {
                 new_driver->init(device);
             }
+
+            // Pass cached HID descriptor if switching to generic
+            if (new_driver == &bthid_gamepad_driver &&
+                cached_hid_desc_len > 0 && cached_hid_desc_conn == conn_index) {
+                bthid_gamepad_set_descriptor(device, cached_hid_desc, cached_hid_desc_len);
+            }
+        } else if (current == &bthid_gamepad_driver) {
+            // Still generic but VID/PID changed — update VID-dependent flags
+            bthid_gamepad_update_vid(device);
         }
     }
 }
@@ -392,6 +408,12 @@ void bt_on_hid_ready(uint8_t conn_index)
         }
     }
 
+    // Pass cached HID descriptor if available (often arrives before device creation)
+    if ((const bthid_driver_t*)device->driver == &bthid_gamepad_driver &&
+        cached_hid_desc_len > 0 && cached_hid_desc_conn == conn_index) {
+        bthid_gamepad_set_descriptor(device, cached_hid_desc, cached_hid_desc_len);
+    }
+
     // Debug: confirm device state directly from array
     printf("[BTHID] Setup complete: devices[0].active=%d, devices[0].driver=%p\n",
            devices[0].active, devices[0].driver);
@@ -400,6 +422,10 @@ void bt_on_hid_ready(uint8_t conn_index)
 void bt_on_disconnect(uint8_t conn_index)
 {
     printf("[BTHID] Disconnect on connection %d\n", conn_index);
+    if (cached_hid_desc_conn == conn_index) {
+        cached_hid_desc_len = 0;
+        cached_hid_desc_conn = 0xFF;
+    }
     remove_device(conn_index);
 
     // Check if we have pending flash writes now that BT may be idle
@@ -487,12 +513,48 @@ void bt_on_hid_report(uint8_t conn_index, const uint8_t* data, uint16_t len)
 
 void bthid_set_hid_descriptor(uint8_t conn_index, const uint8_t* desc, uint16_t desc_len)
 {
+    // Always cache — descriptor often arrives before device is created (Classic BT)
+    if (desc_len <= BTHID_MAX_DESC_LEN) {
+        memcpy(cached_hid_desc, desc, desc_len);
+        cached_hid_desc_len = desc_len;
+        cached_hid_desc_conn = conn_index;
+    }
+
     bthid_device_t* device = bthid_get_device(conn_index);
     if (!device || !device->driver) return;
 
-    // Only the generic gamepad driver uses HID descriptor parsing
+    // Pass to generic gamepad driver for parsing
     if ((const bthid_driver_t*)device->driver == &bthid_gamepad_driver) {
         bthid_gamepad_set_descriptor(device, desc, desc_len);
+    }
+}
+
+void bthid_fallback_to_generic(uint8_t conn_index)
+{
+    bthid_device_t* device = bthid_get_device(conn_index);
+    if (!device || !device->driver) return;
+
+    const bthid_driver_t* current = (const bthid_driver_t*)device->driver;
+    if (current == &bthid_gamepad_driver) return;  // Already generic
+
+    printf("[BTHID] Fallback to generic: %s -> %s (name=%s)\n",
+           current->name, bthid_gamepad_driver.name, device->name);
+
+    // Disconnect current vendor driver
+    if (current->disconnect) {
+        current->disconnect(device);
+    }
+    device->driver_data = NULL;
+
+    // Switch to generic
+    device->driver = &bthid_gamepad_driver;
+    if (bthid_gamepad_driver.init) {
+        bthid_gamepad_driver.init(device);
+    }
+
+    // Pass cached HID descriptor if available for this device
+    if (cached_hid_desc_len > 0 && cached_hid_desc_conn == conn_index) {
+        bthid_gamepad_set_descriptor(device, cached_hid_desc, cached_hid_desc_len);
     }
 }
 

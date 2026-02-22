@@ -438,6 +438,14 @@ bool CALLBACK_HIDParser_FilterHIDReportItem(uint8_t dev_addr, uint8_t instance,
 					return true;
 			}
 			return false;
+		case 0x02:  // Simulation Controls (Xbox triggers: Brake/Accelerator)
+			switch (CurrentItem->Attributes.Usage.Usage)
+			{
+				case 0xC4:  // Accelerator
+				case 0xC5:  // Brake
+					return true;
+			}
+			return false;
 		case 0x09:  // Button
 			return true;
 	}
