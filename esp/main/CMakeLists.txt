@@ -197,6 +197,7 @@ target_compile_definitions(${COMPONENT_LIB} PUBLIC
     BTSTACK_USE_ESP32=1
     ENABLE_BTSTACK=1
     PLATFORM_ESP32=1
+    BUTTON_USER_GPIO=0
     # Use ESP32-specific TinyUSB config instead of src/tusb_config.h
     CFG_TUSB_CONFIG_FILE="tusb_config_esp32.h"
 )

@@ -291,9 +291,15 @@ static void cmd_mode_set(const char* json)
     send_json(response_buf);
 
     // Flush then switch mode (triggers reboot)
+#ifdef PLATFORM_ESP32
+    tud_task_ext(1, false);
+    platform_sleep_ms(50);
+    tud_task_ext(1, false);
+#else
     tud_task();
     platform_sleep_ms(50);
     tud_task();
+#endif
     usbd_set_mode((usb_output_mode_t)mode);
 }
 
