@@ -92,9 +92,49 @@ jobs:
           path: releases/*.uf2
           if-no-files-found: error
 
+  # Build ESP32-S3 bt2usb (separate job — needs ESP-IDF toolchain)
+  build-esp32:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code with submodules
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.JOYBOT_PAT || secrets.GITHUB_TOKEN }}
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Get commit hash
+        id: commit
+        run: echo "hash=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+
+      - name: Build bt2usb_esp32s3
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace/esp \
+            espressif/idf:v6.0 \
+            bash -c "SDKCONFIG_DEFAULTS=sdkconfig.defaults idf.py build"
+
+          sudo chown -R $(id -u):$(id -g) esp/build/
+
+      - name: Generate UF2
+        run: |
+          mkdir -p releases
+          python3 esp/tools/uf2conv.py esp/build/joypad_bt2usb.bin \
+            --base 0 --family 0xc47e5767 \
+            --output releases/joypad_${{ steps.commit.outputs.hash }}_bt2usb_esp32s3.uf2 \
+            --convert
+
+      - name: Upload firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-bt2usb_esp32s3
+          path: releases/*.uf2
+          if-no-files-found: error
+
   # Collect all artifacts and create combined release package
   collect:
-    needs: build
+    needs: [build, build-esp32]
     runs-on: ubuntu-latest
     steps:
       - name: Download all firmware artifacts
@@ -114,7 +154,7 @@ jobs:
           mv artifacts/*.uf2 releases/
 
           # Known board suffixes (order matters - check longer suffixes first)
-          BOARDS="pico2_w pico_w rp2040zero rp2350usba kb2040 feather pico macropad"
+          BOARDS="esp32s3 pico2_w pico_w rp2040zero rp2350usba kb2040 feather pico macropad"
 
           for file in releases/joypad_*.uf2; do
             if [ -f "$file" ]; then
@@ -381,13 +421,19 @@ jobs:
           body: |
             📋 **See [CHANGELOG.md](https://github.com/joypad-ai/joypad-os/blob/main/CHANGELOG.md) for full release notes.**
 
-            ## Installation
+            ## Installation (RP2040)
 
             1. Disconnect adapter from console and all USB devices
             2. Hold BOOT button while connecting USB-C to computer
                - For usb2gc: just connect USB-C (no BOOT button needed)
             3. Drag & drop the `.uf2` file to the `RPI-RP2` drive
             4. Drive will auto-eject when complete
+
+            ## Installation (ESP32-S3)
+
+            1. Double-tap reset to enter TinyUF2 mode (USB drive appears)
+            2. Drag & drop the `bt2usb_esp32s3.uf2` file to the drive
+            3. See [ESP32 docs](https://github.com/joypad-ai/joypad-os/blob/main/docs/ESP32.md) for first-time TinyUF2 setup
           files: |
             releases/*
           draft: false
