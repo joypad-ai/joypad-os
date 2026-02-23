@@ -185,6 +185,8 @@ help:
 	@echo "  make usb2usb_rp2350usba - USB/BT -> USB HID (Waveshare RP2350A)"
 	@echo "  make bt2usb_pico_w      - Bluetooth -> USB HID (Pico W)"
 	@echo "  make bt2usb_esp32s3     - Bluetooth -> USB HID (ESP32-S3, requires ESP-IDF)"
+	@echo "  make uf2-bt2usb_esp32s3       - Build + generate .uf2 for drag-and-drop update"
+	@echo "  make flash-uf2-bt2usb_esp32s3 - Build + flash .uf2 via TinyUF2 drive"
 	@echo "  make wifi2usb_pico_w    - WiFi -> USB HID (Pico W)"
 	@echo "  make snes2usb_kb2040    - SNES -> USB HID (KB2040)"
 	@echo "  make n642usb_kb2040     - N64 -> USB HID (KB2040)"
@@ -381,6 +383,31 @@ flash-bt2usb_esp32s3:
 .PHONY: monitor-bt2usb_esp32s3
 monitor-bt2usb_esp32s3:
 	@cd esp && $(MAKE) monitor
+
+# --- ESP32-S3 UF2 / Combined targets ---
+.PHONY: uf2-bt2usb_esp32s3
+uf2-bt2usb_esp32s3:
+	@echo "$(YELLOW)Building bt2usb UF2 for ESP32-S3...$(NC)"
+	@cd esp && $(MAKE) uf2
+	@mkdir -p $(RELEASE_DIR)
+	@cp esp/build/joypad_bt2usb.uf2 \
+	    $(RELEASE_DIR)/joypad_$(VERSION_ID)_bt2usb_esp32s3.uf2
+	@echo "$(GREEN)✓ UF2 built: $(RELEASE_DIR)/joypad_$(VERSION_ID)_bt2usb_esp32s3.uf2$(NC)"
+	@echo ""
+
+.PHONY: flash-uf2-bt2usb_esp32s3
+flash-uf2-bt2usb_esp32s3: uf2-bt2usb_esp32s3
+	@if [ ! -d "/Volumes/XIAOS3BOOT" ]; then \
+		echo "$(YELLOW)⚠ /Volumes/XIAOS3BOOT not found$(NC)"; \
+		echo "$(YELLOW)  Put device in TinyUF2 mode:$(NC)"; \
+		echo "$(YELLOW)  - Double-tap reset button$(NC)"; \
+		echo "$(YELLOW)  - Or send BOOTSEL via CDC$(NC)"; \
+		exit 1; \
+	fi
+	@echo "$(YELLOW)Flashing UF2 to TinyUF2 drive...$(NC)"
+	@cp $(RELEASE_DIR)/joypad_$(VERSION_ID)_bt2usb_esp32s3.uf2 /Volumes/XIAOS3BOOT/
+	@echo "$(GREEN)✓ Firmware flashed, device will reboot$(NC)"
+	@echo ""
 
 .PHONY: wifi2usb_pico_w
 wifi2usb_pico_w:

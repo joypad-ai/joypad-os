@@ -1,7 +1,7 @@
 # Joypad ESP32-S3 bt2usb Build System
 # Board selection via BOARD variable (default: devkit)
 
-.PHONY: init build flash monitor clean menuconfig help
+.PHONY: init build flash monitor clean menuconfig help uf2
 
 # Default board
 BOARD ?= devkit
@@ -32,9 +32,25 @@ build:
 	@echo "Building bt2usb for ESP32-S3 ($(BOARD))"
 	$(IDF_ENV) SDKCONFIG_DEFAULTS="$(SDKCONFIG_FILES)" idf.py build
 
-flash:
+# --- UF2 / Flash variables ---
+
+UF2CONV := tools/uf2conv.py
+UF2_FAMILY := 0xc47e5767
+OTA_DATA := tools/ota_data_ota0.bin
+BUILD_APP := build/joypad_bt2usb.bin
+BUILD_PARTITION := build/partition_table/partition-table.bin
+
+# Flash app to ota_0 with otadata pointing to ota_0.
+# Assumes TinyUF2 bootloader release is already flashed (one-time setup).
+# Only writes partition table, otadata, and app — does not touch bootloader
+# or factory partition.
+flash: build
 	@echo "Flashing bt2usb to ESP32-S3 ($(BOARD))"
-	$(IDF_ENV) SDKCONFIG_DEFAULTS="$(SDKCONFIG_FILES)" idf.py flash
+	$(IDF_ENV) esptool.py --chip esp32s3 write_flash \
+		--flash_mode dio --flash_freq 80m --flash_size 8MB \
+		0x8000 $(BUILD_PARTITION) \
+		0xe000 $(OTA_DATA) \
+		0x10000 $(BUILD_APP)
 
 monitor:
 	@echo "Opening serial monitor"
@@ -47,6 +63,17 @@ clean:
 menuconfig:
 	$(IDF_ENV) SDKCONFIG_DEFAULTS="$(SDKCONFIG_FILES)" idf.py menuconfig
 
+# Generate .uf2 update file from built app binary.
+# Base address 0 = offset within ota_0 partition (TinyUF2 convention).
+uf2: build
+	@echo "Generating UF2 file..."
+	python3 $(UF2CONV) $(BUILD_APP) \
+		--base 0 \
+		--family $(UF2_FAMILY) \
+		--output build/joypad_bt2usb.uf2 \
+		--convert
+	@echo "UF2 file: build/joypad_bt2usb.uf2"
+
 # Board shortcuts
 devkit:
 	@$(MAKE) BOARD=devkit build
@@ -58,10 +85,19 @@ help:
 	@echo "  make [BOARD=devkit]  - Build for specified board (default: devkit)"
 	@echo "  make devkit          - Build for ESP32-S3 DevKit"
 	@echo ""
-	@echo "  make flash [BOARD=...] - Flash firmware"
+	@echo "  make flash [BOARD=...] - Flash app via esptool (requires TinyUF2 bootloader)"
 	@echo "  make monitor           - Monitor serial output"
+	@echo "  make uf2               - Build + generate .uf2 for drag-and-drop update"
 	@echo "  make clean             - Clean build files"
 	@echo "  make menuconfig        - Open ESP-IDF config menu"
+	@echo ""
+	@echo "First-time setup:"
+	@echo "  1. Flash TinyUF2 release for your board (from github.com/adafruit/tinyuf2)"
+	@echo "  2. Run: make flash"
+	@echo ""
+	@echo "Firmware updates:"
+	@echo "  - Drag-and-drop: make uf2, copy .uf2 to TinyUF2 USB drive"
+	@echo "  - Esptool: make flash"
 	@echo ""
 	@echo "Add new boards:"
 	@echo "  1. Create sdkconfig.board.<name> with board-specific overrides"
@@ -69,7 +105,4 @@ help:
 	@echo ""
 	@echo "Setup:"
 	@echo "  make init            - Install ESP-IDF v6.0 and tools"
-	@echo ""
-	@echo "Prerequisites:"
-	@echo "  Run 'make init' or install ESP-IDF v6.0+ at ~/esp-idf manually"
 	@echo ""

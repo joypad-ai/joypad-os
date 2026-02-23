@@ -183,9 +183,11 @@ make usb2uart      # USB → UART (ESP32 Bluetooth bridge)
 Requires ESP-IDF v6.0+ (separate from the ARM toolchain). See [ESP32 docs](ESP32.md) for full setup.
 
 ```bash
-make bt2usb_esp32s3            # Build
-make flash-bt2usb_esp32s3      # Flash
-make monitor-bt2usb_esp32s3    # UART serial monitor
+make bt2usb_esp32s3                 # Build
+make uf2-bt2usb_esp32s3             # Build + generate .uf2
+make flash-uf2-bt2usb_esp32s3       # Build + flash .uf2 via TinyUF2 drive
+make flash-bt2usb_esp32s3           # Build + flash via esptool
+make monitor-bt2usb_esp32s3         # UART serial monitor
 ```
 
 ### Build All
