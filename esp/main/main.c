@@ -36,13 +36,18 @@ const OutputInterface* active_output = NULL;
 
 void app_main(void)
 {
-    // Initialize NVS (required for BTstack TLV and our flash settings)
+    // Initialize NVS first (needed for double-tap detection and flash settings)
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK(nvs_flash_erase());
         ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK(ret);
+
+    // Double-tap reset detection — if user tapped reset twice within 500ms,
+    // reboots into TinyUF2. Uses NVS (survives power-on reset on all boards).
+    extern void platform_check_double_tap(void);
+    platform_check_double_tap();
 
     ESP_LOGI(TAG, "Starting Joypad bt2usb on ESP32-S3...");
 

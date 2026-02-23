@@ -1,0 +1,14 @@
+# Joypad ESP32-S3 Partition Table (8MB flash)
+#
+# Must match TinyUF2's partitions-8MB.csv layout exactly.
+# Users flash the TinyUF2 release for their board first (one-time setup),
+# which installs the bootloader, partition table, and TinyUF2 at factory.
+# Subsequent updates via .uf2 drag-and-drop or esptool to ota_0.
+#
+# Name,      Type, SubType, Offset,    Size
+nvs,          data, nvs,     0x9000,    20K,
+otadata,      data, ota,     0xe000,    8K,
+ota_0,        app,  ota_0,   0x10000,   2048K,
+ota_1,        app,  ota_1,   0x210000,  2048K,
+uf2,          app,  factory, 0x410000,  256K,
+ffat,         data, fat,     0x450000,  3776K,

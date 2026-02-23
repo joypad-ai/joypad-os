@@ -41,7 +41,7 @@ Classic BT controllers (DS3, DS4, DS5, Switch Pro, Wii U Pro) are not supported 
 |---|---|
 | Pico W | `joypad_*_bt2usb_pico_w.uf2` |
 | Pico 2 W | `joypad_*_bt2usb_pico2_w.uf2` |
-| ESP32-S3 | Built via `make bt2usb_esp32s3`, flashed with esptool |
+| ESP32-S3 | `joypad_*_bt2usb_esp32s3.uf2` (drag-and-drop via TinyUF2) |
 
 ## Pairing
 
