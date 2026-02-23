@@ -91,6 +91,7 @@ jobs:
           name: firmware-${{ matrix.app }}
           path: releases/*.uf2
           if-no-files-found: error
+          retention-days: 1
 
   # Build ESP32-S3 bt2usb (separate job — needs ESP-IDF toolchain)
   build-esp32:
@@ -131,6 +132,7 @@ jobs:
           name: firmware-bt2usb_esp32s3
           path: releases/*.uf2
           if-no-files-found: error
+          retention-days: 1
 
   # Collect all artifacts and create combined release package
   collect:
@@ -284,6 +286,12 @@ jobs:
           name: release-firmware
           path: releases/*.uf2
           if-no-files-found: error
+          retention-days: 1
+
+      - name: Delete intermediate artifacts
+        uses: geekyeggo/delete-artifact@v5
+        with:
+          name: firmware-*
 
       - name: Build summary
         run: |
