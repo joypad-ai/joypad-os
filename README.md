@@ -39,13 +39,13 @@ Joypad OS is the real-time nervous system of the Joypad platform.
 | Output | Features | Documentation |
 |--------|----------|---------------|
 | **USB Device** | HID Gamepad, XInput, Xbox OG, Xbox One, XAC, PS3, PS4, PS Classic, Switch | [Docs](docs/apps/USB2USB.md) |
-| **PCEngine / TurboGrafx-16** | Multitap (5 players), Mouse, 2/3/6-button | [Docs](docs/consoles/PCENGINE.md) |
-| **GameCube / Wii** | Profiles, Rumble, Keyboard mode | [Docs](docs/consoles/GAMECUBE.md) |
-| **Sega Dreamcast** | ~~VMU emulation~~, Rumble, Profiles | [Docs](docs/consoles/DREAMCAST.md) |
-| **Nuon DVD Players** | Controller, Spinner (Tempest 3000), IGR | [Docs](docs/consoles/NUON.md) |
-| **3DO Interactive Multiplayer** | 8 players, Mouse, Extension passthrough | [Docs](docs/consoles/3DO.md) |
-| **Neo Geo / SuperGun** | Profiles, 1L6B layouts | [Docs](docs/consoles/NEOGEO.md) |
-| **Casio Loopy** | 4 players (experimental) | [Docs](docs/consoles/LOOPY.md) |
+| **PCEngine / TurboGrafx-16** | Multitap (5 players), Mouse, 2/3/6-button | [Docs](docs/apps/USB2PCE.md) |
+| **GameCube / Wii** | Profiles, Rumble, Keyboard mode | [Docs](docs/apps/USB2GC.md) |
+| **Sega Dreamcast** | ~~VMU emulation~~, Rumble, Profiles | [Docs](docs/apps/USB2DC.md) |
+| **Nuon DVD Players** | Controller, Spinner (Tempest 3000), IGR | [Docs](docs/apps/USB2NUON.md) |
+| **3DO Interactive Multiplayer** | 8 players, Mouse, Extension passthrough | [Docs](docs/apps/USB23DO.md) |
+| **Neo Geo / SuperGun** | Profiles, 1L6B layouts | [Docs](docs/apps/USB2NEO.md) |
+| **Casio Loopy** | 4 players (experimental) | [Docs](docs/apps/USB2LOOPY.md) |
 
 ---
 
@@ -160,13 +160,13 @@ Output firmware files appear in `releases/` directory.
 
 ### Console-Specific Guides
 
-- **[GameCube/Wii](docs/consoles/GAMECUBE.md)** - Profiles, keyboard mode, rumble
-- **[PCEngine/TurboGrafx-16](docs/consoles/PCENGINE.md)** - Multitap, mouse, button modes
-- **[Sega Dreamcast](docs/consoles/DREAMCAST.md)** - ~~VMU emulation~~, rumble, profiles
-- **[Nuon](docs/consoles/NUON.md)** - Controller, Tempest 3000 spinner, IGR
-- **[3DO](docs/consoles/3DO.md)** - 8-player support, mouse, profiles
-- **[Neo Geo / SuperGun](docs/consoles/NEOGEO.md)** - Profiles, arcade layouts
-- **[Casio Loopy](docs/consoles/LOOPY.md)** - Experimental support
+- **[GameCube/Wii](docs/apps/USB2GC.md)** - Profiles, keyboard mode, rumble
+- **[PCEngine/TurboGrafx-16](docs/apps/USB2PCE.md)** - Multitap, mouse, button modes
+- **[Sega Dreamcast](docs/apps/USB2DC.md)** - ~~VMU emulation~~, rumble, profiles
+- **[Nuon](docs/apps/USB2NUON.md)** - Controller, Tempest 3000 spinner, IGR
+- **[3DO](docs/apps/USB23DO.md)** - 8-player support, mouse, profiles
+- **[Neo Geo / SuperGun](docs/apps/USB2NEO.md)** - Profiles, arcade layouts
+- **[Casio Loopy](docs/apps/USB2LOOPY.md)** - Experimental support
 
 ---
 
