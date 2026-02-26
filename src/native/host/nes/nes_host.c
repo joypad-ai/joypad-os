@@ -1,12 +1,12 @@
 #include "nes_host.h"
 #include "nes_host.pio.h"
-#include "native/host/host_interface.h"
 #include "core/router/router.h"
 #include "core/input_event.h"
 #include "core/buttons.h"
 #include "pico/time.h"
 #include "hardware/pio.h"
 #include "hardware/clocks.h"
+#include "hardware/gpio.h"
 #include "hardware/timer.h"
 
 #define NES_BTN_INDEX_A       0
@@ -19,12 +19,18 @@
 #define NES_BTN_INDEX_RIGHT   7
 #define NES_BTN_COUNT         8
 
+#define NES_DEBOUNCE_US 500000  // 500ms debounce for connect/disconnect
+
 typedef struct
 {
     PIO pio;
     uint sm;
     uint8_t irq_flag;
     uint8_t prev_buttons;
+    bool data_line_idle_high;   // Sampled before PIO trigger
+    bool connected;
+    bool prev_data_line_state;  // Track state changes to reset timer
+    uint64_t state_change_time; // Timestamp when data line state last changed
 } tick_ctx_t;
 
 static tick_ctx_t *s_ctx;
@@ -39,6 +45,11 @@ static repeating_timer_t nes_timer;
 static bool nes_timer_cb(repeating_timer_t *rt)
 {
     tick_ctx_t *ctx = (tick_ctx_t*)rt->user_data;
+
+    // Sample DATA line BEFORE triggering PIO latch sequence.
+    // A connected NES controller pulls data LOW at idle.
+    // An unconnected pin stays HIGH due to internal pull-up.
+    ctx->data_line_idle_high = gpio_get(NES_PIN_DATA0);
 
     // Force/set PIO IRQ flag N (CPU -> PIO). PIO will see it in `wait 1 irq N`.
     // Write-one-to-set on irq_force.
@@ -132,6 +143,10 @@ void nes_host_init(void)
     ctx.sm = sm;
     ctx.irq_flag = 0;
     ctx.prev_buttons = 0xFF;
+    ctx.data_line_idle_high = true;
+    ctx.connected = false;
+    ctx.prev_data_line_state = true;
+    ctx.state_change_time = time_us_64();
     enable_fifo_irq(&ctx);
 
     bool ok = add_repeating_timer_us(-(PERIOD_US_INT), nes_timer_cb, &ctx, &nes_timer);
@@ -144,6 +159,44 @@ void nes_host_init(void)
 
 void nes_host_task(void)
 {
+    // Connection detection: check data line state sampled by timer callback.
+    // Use timestamp-based debounce since task() runs much faster than 60Hz.
+    bool line_high = s_ctx->data_line_idle_high;
+
+    // Reset timer whenever the data line changes state
+    if (line_high != s_ctx->prev_data_line_state) {
+        s_ctx->prev_data_line_state = line_high;
+        s_ctx->state_change_time = time_us_64();
+    }
+
+    uint64_t elapsed = time_us_64() - s_ctx->state_change_time;
+
+    if (line_high && s_ctx->connected && elapsed >= NES_DEBOUNCE_US) {
+        // Data line held HIGH for 500ms — controller disconnected
+        s_ctx->connected = false;
+        printf("[nes_host] Port 0: disconnected\n");
+
+        // Send cleared input to prevent stuck buttons
+        input_event_t event;
+        init_input_event(&event);
+        event.dev_addr = 0xF0;
+        event.instance = 0;
+        event.type = INPUT_TYPE_GAMEPAD;
+        event.transport = INPUT_TRANSPORT_NATIVE;
+        event.buttons = 0;
+        event.analog[ANALOG_LX] = 128;
+        event.analog[ANALOG_LY] = 128;
+        event.analog[ANALOG_RX] = 128;
+        event.analog[ANALOG_RY] = 128;
+        router_submit_input(&event);
+    } else if (!line_high && !s_ctx->connected && elapsed >= NES_DEBOUNCE_US) {
+        // Data line held LOW for 500ms — controller connected
+        s_ctx->connected = true;
+        printf("[nes_host] Port 0: connected\n");
+    }
+
+    if (!s_ctx->connected) return;
+
     uint8_t b = s_ctx->prev_buttons;
     uint32_t buttons = 0;
 
@@ -159,9 +212,9 @@ void nes_host_task(void)
     input_event_t event;
     init_input_event(&event);
 
-    int port = 0; 
+    int port = 0;
 
-    event.dev_addr = 0xF0 + port; // port number // TODO : Check the address number here
+    event.dev_addr = 0xF0 + port; // port number 
     event.instance = 0; // Instance number for multi controller devices
     event.type = INPUT_TYPE_GAMEPAD;
     event.transport = INPUT_TRANSPORT_NATIVE;
@@ -177,8 +230,8 @@ void nes_host_task(void)
 
 bool nes_host_is_connected(void)
 {
-    // TODO : Implement connection and disconnection logic and report acordingly
-    return true;
+    if (!s_ctx) return false;
+    return s_ctx->connected;
 }
 
 // ============================================================================
@@ -186,8 +239,7 @@ bool nes_host_is_connected(void)
 // ============================================================================
 
 static uint8_t nes_get_device_count(void) {
-    // TODO : implement connect and disconnect tracking of device(s)
-    return NES_MAX_PORTS;
+    return (s_ctx && s_ctx->connected) ? 1 : 0;
 }
 
 const InputInterface nes_input_interface = {

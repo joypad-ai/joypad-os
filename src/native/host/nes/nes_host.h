@@ -7,7 +7,6 @@
 #ifndef NES_HOST_H
 #define NES_HOST_H
 
-#include "native/host/host_interface.h"
 #include "core/input_interface.h"
 
 #ifndef NES_PIN_CLOCK
