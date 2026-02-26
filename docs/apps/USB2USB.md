@@ -2,7 +2,7 @@
 
 The USB output interface lets Joypad adapters emulate various USB gamepads. Any connected controller (USB, Bluetooth, WiFi, or native) is translated into the selected output protocol.
 
-Used by: `usb2usb`, `bt2usb`, `wifi2usb`, `snes2usb`, `n642usb`, `gc2usb`, `controller`
+Used by: `usb2usb`, `bt2usb`, `wifi2usb`, `nes2usb`, `snes2usb`, `n642usb`, `gc2usb`, `controller`
 
 ## Web Configuration
 
