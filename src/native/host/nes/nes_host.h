@@ -29,8 +29,6 @@ void nes_host_task(void);
 
 bool nes_host_is_connected(void);
 
-static uint8_t nes_get_device_count(void);
-
 extern const InputInterface nes_input_interface;
 
 #endif

@@ -122,19 +122,15 @@ void nes_host_init(void)
 {
     printf("[nes_host] Initializing NES host\n");
     PIO pio = pio0;
+    // NOTE: pio_claim_unused_sm with required=true will panic if no SM is
+    // available.  The previous `if (sm < 0)` check was dead code because
+    // the return type is unsigned.  If graceful handling is preferred,
+    // pass false and check for -1 (cast to int).
     uint sm = pio_claim_unused_sm(pio, true);
-    if(sm < 0) {
-        printf("[nes_host] Error claiming State Machine\n");
-    } else {
-        printf("[nes_host] State Machine claimed\n");
-    }
+    printf("[nes_host] State Machine %u claimed\n", sm);
 
     uint offset = pio_add_program(pio, &nes_host_program);
-    if(offset < 0) {
-        printf("[nes_host] Error adding PIO program\n");
-    } else {
-        printf("[nes_host] PIO Program added\n");
-    }
+    printf("[nes_host] PIO program loaded at offset %u\n", offset);
 
     nes_sm_init(pio, sm, offset);
 
