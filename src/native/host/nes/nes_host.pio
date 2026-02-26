@@ -1,6 +1,6 @@
 .program nes_host
 .side_set 2
-;side set pins: bit 0 = CLK (GPIO 2), bit 1 = LATCH (GPIO 3)
+;side set pins: bit 0 = CLK (NES_PIN_CLOCK), bit 1 = LATCH (NES_PIN_LATCH)
 .define SIDE_BOTH_LOW 0
 .define SIDE_CLK_HIGH 1
 .define SIDE_LATCH_HIGH 2

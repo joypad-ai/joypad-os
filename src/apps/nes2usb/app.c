@@ -37,22 +37,22 @@ static void on_button_event(button_event_t event)
 
         case BUTTON_EVENT_DOUBLE_CLICK: {
             // Double-click to cycle USB output mode
-            printf("[app:bt2usb] Double-click - switching USB output mode...\n");
+            printf("[app:nes2usb] Double-click - switching USB output mode...\n");
             tud_task();
             sleep_ms(50);
             tud_task();
 
             usb_output_mode_t next = usbd_get_next_mode();
-            printf("[app:bt2usb] Switching to %s\n", usbd_get_mode_name(next));
+            printf("[app:nes2usb] Switching to %s\n", usbd_get_mode_name(next));
             usbd_set_mode(next);
             break;
         }
 
         case BUTTON_EVENT_TRIPLE_CLICK:
             // Triple-click to reset to default HID mode
-            printf("[app:bt2usb] Triple-click - resetting to HID mode...\n");
+            printf("[app:nes2usb] Triple-click - resetting to HID mode...\n");
             if (!usbd_reset_to_hid()) {
-                printf("[app:bt2usb] Already in HID mode\n");
+                printf("[app:nes2usb] Already in HID mode\n");
             }
             break;
 

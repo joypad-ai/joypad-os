@@ -6,7 +6,7 @@
 #ifndef CONSOLE_LED_CONFIG_H
 #define CONSOLE_LED_CONFIG_H
 
-// Player 1 - Purple (SNES theme)
+// Player 1 - Purple (NES theme)
 #define LED_P1_R 40
 #define LED_P1_G 0
 #define LED_P1_B 60

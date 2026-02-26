@@ -1,5 +1,5 @@
 // app.h - NES2USB App Manifest
-// SNES/NES controller to USB HID gamepad adapter
+// NES controller to USB HID gamepad adapter
 //
 // This app reads native NES controllers and outputs USB HID gamepad.
 // Supports NES controller.
@@ -19,10 +19,6 @@
 // CORE DEPENDENCIES
 // ============================================================================
 
-// Input drivers - Native SNES host (NOT USB)
-// #define REQUIRE_NATIVE_SNES_HOST 1
-// #define SNES_MAX_CONTROLLERS 1          // Single SNES port for now
-
 // Output drivers
 #define REQUIRE_USB_DEVICE 1
 #define USB_OUTPUT_PORTS 1              // Single USB gamepad output
@@ -33,7 +29,7 @@
 // ============================================================================
 // PIN CONFIGURATION
 // ============================================================================
-// SNES controller pins (directly from controller port)
+// NES controller pins (directly from controller port)
 // These can be customized for different boards
 #define NES_PIN_CLOCK  5   // CLK - output to controller
 #define NES_PIN_LATCH  6   // LATCH - output to controller
@@ -42,7 +38,7 @@
 // ============================================================================
 // ROUTING CONFIGURATION
 // ============================================================================
-#define ROUTING_MODE ROUTING_MODE_SIMPLE   // Simple 1:1 (SNES → USB)
+#define ROUTING_MODE ROUTING_MODE_SIMPLE   // Simple 1:1 (NES → USB)
 #define MERGE_MODE MERGE_ALL
 
 // ============================================================================
