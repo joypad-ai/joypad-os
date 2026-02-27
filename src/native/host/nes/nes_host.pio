@@ -1,0 +1,20 @@
+.program nes_host
+.side_set 2
+;side set pins: bit 0 = CLK (NES_PIN_CLOCK), bit 1 = LATCH (NES_PIN_LATCH)
+.define SIDE_BOTH_LOW 0
+.define SIDE_CLK_HIGH 1
+.define SIDE_LATCH_HIGH 2
+.define SIDE_BOTH_HIGH 3
+
+.wrap_target
+wait_irq:
+    wait 1 irq 0            side SIDE_BOTH_LOW       ; wait until flag 0 aserted
+    set x, 7                side SIDE_LATCH_HIGH [5] ; put 7 into the x register and set LATCH high while waiting (6 cycles)
+    nop                     side SIDE_LATCH_HIGH [5] ; hold (6 cycles)
+
+bitloop:
+    in pins, 1              side SIDE_BOTH_LOW [5]   ; sample DATA while CLK low LATCH low (6 cycles)
+    nop                     side SIDE_CLK_HIGH [4]   ; CLK high LATCH low (5 cycles)
+    jmp x-- bitloop         side SIDE_CLK_HIGH       ; CLK low LATCH low and loop (1 cycle)
+    irq clear 0             side SIDE_BOTH_LOW 
+.wrap

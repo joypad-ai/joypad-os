@@ -230,6 +230,11 @@ set(USB_DEVICE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/lib/libxsm3/excrypt_sha.c
 )
 
+# NES host sources
+set(NES_HOST_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/host/nes/nes_host.c
+)
+
 # SNES host sources
 set(SNES_HOST_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/native/host/snes/snes_host.c
@@ -1092,6 +1097,23 @@ target_include_directories(joypad_neogeo2usb_rp2040zero PUBLIC
 )
 target_link_libraries(joypad_neogeo2usb_rp2040zero PRIVATE pico_stdlib pico_multicore hardware_pio pico_rand tinyusb_device tinyusb_board)
 joypad_target_common(joypad_neogeo2usb_rp2040zero)
+
+# --- NES2USB (NES -> USB HID) ---
+add_executable(joypad_nes2usb)
+target_compile_definitions(joypad_nes2usb PRIVATE CONFIG_NES2USB=1 CONFIG_USB=1 DISABLE_USB_HOST=1)
+target_sources(joypad_nes2usb PUBLIC ${CORE_SOURCES} ${USB_DEVICE_SOURCES}
+    ${NES_HOST_SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/nes2usb/app.c
+)
+target_include_directories(joypad_nes2usb PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/nes2usb
+    ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/host/nes
+)
+target_link_libraries(joypad_nes2usb PRIVATE pico_stdlib pico_multicore hardware_pio pico_rand tinyusb_device tinyusb_board)
+joypad_target_common(joypad_nes2usb)
+pico_generate_pio_header(joypad_nes2usb ${CMAKE_CURRENT_LIST_DIR}/native/host/nes/nes_host.pio)
+
 
 # ============================================================================
 # CONTROLLER APPS (GPIO/pad input -> USB output)

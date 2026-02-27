@@ -46,6 +46,7 @@ jobs:
           - bt2usb_pico2_w
           - snes2usb_kb2040
           - n642usb_kb2040
+          - nes2usb_pico_w
           - gc2usb_kb2040
           - controller_fisherprice_kb2040
           - controller_alpakka_pico
