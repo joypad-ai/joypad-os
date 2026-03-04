@@ -1,0 +1,9 @@
+PRIMARY_SERVICE, GAP_SERVICE
+CHARACTERISTIC, GAP_DEVICE_NAME, READ, "Joypad Gamepad"
+
+#import <battery_service.gatt>
+#import <device_information_service.gatt>
+#import <hids.gatt>
+
+PRIMARY_SERVICE, GATT_SERVICE
+CHARACTERISTIC, GATT_DATABASE_HASH, READ,

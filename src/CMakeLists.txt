@@ -842,6 +842,8 @@ target_include_directories(joypad_usb_feather_rp2040_usb_host_max3421 PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd
 )
 target_link_libraries(joypad_usb_feather_rp2040_usb_host_max3421 PRIVATE ${COMMON_LIBRARIES} tinyusb_device tinyusb_max3421 hardware_i2c pico_i2c_slave)
+# Wrap buggy tuh_max3421_spi_xfer_api in TinyUSB BSP (hardcodes spi0 instead of MAX3421_SPI)
+target_link_options(joypad_usb_feather_rp2040_usb_host_max3421 PRIVATE -Wl,--wrap=tuh_max3421_spi_xfer_api)
 joypad_target_common(joypad_usb_feather_rp2040_usb_host_max3421)
 joypad_add_btstack(joypad_usb_feather_rp2040_usb_host_max3421)
 pico_enable_stdio_uart(joypad_usb_feather_rp2040_usb_host_max3421 1)
@@ -1149,6 +1151,57 @@ if (PICO_BOARD STREQUAL "pico_w" OR PICO_BOARD STREQUAL "pico2_w")
     joypad_target_common(joypad_btusb2usb)
     pico_enable_stdio_usb(joypad_btusb2usb 0)
     pico_enable_stdio_uart(joypad_btusb2usb 1)
+
+    # --- USB to BLE (Pico W / Pico 2 W: PIO-USB host + CYW43 BLE peripheral output) ---
+    # USB controllers via PIO-USB host → BLE gamepad output via HOGP peripheral.
+    # Uses CYW43 Bluetooth for BLE advertising + GATT server (hids_device).
+    # Same PIO/DMA resource management as btusb2usb.
+    add_executable(joypad_usb2ble)
+    target_compile_definitions(joypad_usb2ble PRIVATE
+        CONFIG_USB2BLE=1
+        CONFIG_USB=1
+        CONFIG_NO_NEOPIXEL=1
+        PICO_DEFAULT_PIO_USB_DP_PIN=16
+        BOARD_TUH_RHPORT=1
+        USE_BOOTSEL_BUTTON=1
+        CYW43_LWIP=0
+        BTSTACK_USE_CYW43=1
+        ENABLE_BTSTACK=1
+    )
+    target_sources(joypad_usb2ble PUBLIC
+        ${COMMON_SOURCES}
+        ${USB_DEVICE_SOURCES}
+        ${BTHID_DEVICE_SOURCES}
+        ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/hid/devices/generic/hid_parser.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/bt/btstack/btstack_host.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/bt/btstack/bt_device_db.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/bt/transport/bt_transport.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/bt/transport/bt_transport_cyw43.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/bt/ble_output/ble_output.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2ble/app.c
+    )
+    target_include_directories(joypad_usb2ble PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2ble
+        ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd
+        ${CMAKE_CURRENT_SOURCE_DIR}/bt
+        ${CMAKE_CURRENT_SOURCE_DIR}/bt/btstack
+        ${CMAKE_CURRENT_SOURCE_DIR}/bt/bthid
+        ${CMAKE_CURRENT_SOURCE_DIR}/bt/ble_output
+        ${BTSTACK_INCLUDES}
+    )
+    target_link_libraries(joypad_usb2ble PRIVATE
+        ${COMMON_LIBRARIES}
+        tinyusb_device
+        tinyusb_pico_pio_usb
+        pico_cyw43_arch_poll
+        pico_btstack_ble
+        pico_btstack_classic
+        pico_btstack_cyw43
+    )
+    pico_btstack_make_gatt_header(joypad_usb2ble PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/bt/ble_output/ble_gamepad.gatt)
+    joypad_target_common(joypad_usb2ble)
+    pico_enable_stdio_usb(joypad_usb2ble 0)
+    pico_enable_stdio_uart(joypad_usb2ble 1)
 
     # --- WiFi to USB (Pico W / Pico 2 W WiFi AP mode) ---
     add_executable(joypad_wifi2usb)
