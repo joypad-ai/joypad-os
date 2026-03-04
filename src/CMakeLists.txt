@@ -1080,6 +1080,7 @@ if (PICO_BOARD STREQUAL "pico_w" OR PICO_BOARD STREQUAL "pico2_w")
     target_compile_definitions(joypad_bt2n64 PRIVATE
         CONFIG_BT2N64=1
         DISABLE_USB_HOST=1
+        CONFIG_NO_NEOPIXEL=1
         USE_BOOTSEL_BUTTON=1
         CYW43_LWIP=0
         BTSTACK_USE_CYW43=1
@@ -1124,7 +1125,7 @@ if (PICO_BOARD STREQUAL "pico_w" OR PICO_BOARD STREQUAL "pico2_w")
         tinyusb_board
     )
     joypad_target_common(joypad_bt2n64)
-    pico_enable_stdio_usb(joypad_bt2n64 0)
+    pico_enable_stdio_usb(joypad_bt2n64 1)
     pico_enable_stdio_uart(joypad_bt2n64 1)
     pico_generate_pio_header(joypad_bt2n64 ${CMAKE_CURRENT_LIST_DIR}/lib/joybus-pio/src/joybus.pio)
 
