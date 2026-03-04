@@ -23,6 +23,7 @@
 #include <stdio.h>
 
 extern const bt_transport_t bt_transport_cyw43;
+extern int playersCount;
 
 // ============================================================================
 // LED STATUS
@@ -32,25 +33,53 @@ static uint32_t led_last_toggle = 0;
 static bool led_state = false;
 
 // Update LED based on connection status
-// - Blink (0.8s): No device connected (scanning, connecting, or idle)
-// - Solid on: Device connected
+// - Fast blink (200ms): N64 console not communicating (check wiring)
+// - Slow blink (800ms): N64 OK but no BT device connected
+// - Solid on: N64 OK and BT device connected
 static void platform_led_set(bool on)
 {
     cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, on ? 1 : 0);
 }
 
+// Diagnostic: set by Core 1 when N64 console is communicating
+extern volatile bool n64_console_active;
+extern volatile bool n64_router_has_data;
+extern volatile bool n64_player_assigned;
+
+// LED patterns:
+//   Fast blink  (100ms): N64 console not communicating
+//   Slow blink  (400ms): N64 OK but no BT device connected
+//   Solid on:            N64 OK + BT connected + data flowing
+//   Very fast   (50ms):  N64 OK + BT connected but NO data flowing
+//                        (router or player issue)
 static void led_status_update(void)
 {
     uint32_t now = platform_time_ms();
 
-    if (btstack_classic_get_connection_count() > 0) {
-        // Device connected - solid on
-        if (!led_state) {
-            platform_led_set(true);
-            led_state = true;
+    if (!n64_console_active) {
+        // N64 console not communicating - fast blink
+        if (now - led_last_toggle >= 100) {
+            led_state = !led_state;
+            platform_led_set(led_state);
+            led_last_toggle = now;
+        }
+    } else if (btstack_classic_get_connection_count() > 0) {
+        if (n64_player_assigned && n64_router_has_data) {
+            // N64 OK + BT connected + data flowing - solid on
+            if (!led_state) {
+                platform_led_set(true);
+                led_state = true;
+            }
+        } else {
+            // N64 OK + BT connected but NO data path - very fast blink
+            if (now - led_last_toggle >= 50) {
+                led_state = !led_state;
+                platform_led_set(led_state);
+                led_last_toggle = now;
+            }
         }
     } else {
-        // No device connected - blink
+        // N64 OK but no BT device - slow blink
         if (now - led_last_toggle >= 400) {
             led_state = !led_state;
             platform_led_set(led_state);
@@ -191,6 +220,19 @@ void app_task(void)
 
     // Process Bluetooth transport
     bt_task();
+
+    // Periodic diagnostic (every ~5 seconds)
+    static uint32_t diag_last = 0;
+    uint32_t now = platform_time_ms();
+    if (now - diag_last >= 5000) {
+        diag_last = now;
+        printf("[diag] n64_active=%d bt_conns=%d players=%d router_data=%d player_assigned=%d\n",
+               n64_console_active ? 1 : 0,
+               btstack_classic_get_connection_count(),
+               playersCount,
+               n64_router_has_data ? 1 : 0,
+               n64_player_assigned ? 1 : 0);
+    }
 
     // Update LED status
     leds_set_connected_devices(btstack_classic_get_connection_count());

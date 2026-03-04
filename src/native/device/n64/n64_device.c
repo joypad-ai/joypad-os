@@ -29,6 +29,13 @@ PIO pio = pio0;
 // N64-specific state
 static uint8_t n64_rumble = 0;
 
+// Diagnostic: set by Core 1 when N64 console is communicating
+volatile bool n64_console_active = false;
+
+// Diagnostic: data path status (set by Core 1, read by Core 0 for LED)
+volatile bool n64_router_has_data = false;  // router_get_output returned non-NULL at least once
+volatile bool n64_player_assigned = false;  // playersCount > 0 seen in update_output
+
 static uint8_t n64_get_rumble(void) { return n64_rumble; }
 
 // ============================================================================
@@ -110,8 +117,15 @@ void n64_init()
 
     int sm = -1;
     int offset = -1;
+
+    printf("[n64] Initializing joybus on PIO%d, data pin GP%d\n",
+           pio == pio0 ? 0 : 1, N64_DATA_PIN);
+
     N64Console_init(&n64, N64_DATA_PIN, pio, sm, offset);
     n64_report = default_n64_report;
+
+    printf("[n64] Joybus initialized: SM=%d, offset=%d\n",
+           n64._port.sm, n64._port.offset);
 
     const profile_t* profile = profile_get_active(OUTPUT_TARGET_N64);
     if (profile) {
@@ -132,6 +146,14 @@ void __not_in_flash_func(core1_task)(void)
     {
         // Wait for N64 console to poll controller
         n64_rumble = N64Console_WaitForPoll(&n64) ? 255 : 0;
+
+        // Mark N64 console as active (Core 0 reads this for LED status)
+        n64_console_active = true;
+
+        // DIAGNOSTIC: Force A button on to verify joybus report format
+        // If A is held on N64, the protocol works and issue is in data path
+        // Remove this line once confirmed
+        n64_report.a = 1;
 
         // Send N64 controller report
         N64Console_SendReport(&n64, &n64_report);
@@ -219,12 +241,13 @@ void __not_in_flash_func(update_output)(void)
     // Get input from router (N64 uses MERGE mode, single player)
     const input_event_t* event = router_get_output(OUTPUT_TARGET_N64, 0);
 
+    // Diagnostic: track data path status
     if (event) {
+        n64_router_has_data = true;
         last_buttons = event->buttons;
     }
-
-    // Check profile switching combo
     if (playersCount > 0) {
+        n64_player_assigned = true;
         profile_check_switch_combo(last_buttons);
     }
 
