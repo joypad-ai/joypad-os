@@ -1,8 +1,8 @@
 // max3421_host.c - MAX3421E SPI USB Host initialization
 //
-// SPI callbacks (CS, transfer, interrupt) are provided by TinyUSB's
-// rp2040 family.c BSP. This file provides the initialization call
-// since family.c's max3421_init() is static and not exposed.
+// Provides initialization, probe, and diagnostics for the MAX3421E.
+// Also overrides TinyUSB's BSP tuh_max3421_spi_xfer_api() via --wrap
+// to fix a bug where family.c hardcodes spi0 instead of MAX3421_SPI.
 //
 // Pin configuration is passed via compile definitions from CMakeLists.txt:
 //   MAX3421_SPI, MAX3421_CS_PIN, MAX3421_INTR_PIN,
@@ -123,6 +123,36 @@ void max3421_host_enable_int(void)
                                        true,
                                        max3421_int_handler);
     printf("[max3421] INT enabled on GPIO %d\n", MAX3421_INTR_PIN);
+}
+
+// ============================================================================
+// TinyUSB BSP SPI transfer override (--wrap)
+// ============================================================================
+// TinyUSB's rp2040 family.c has a bug: tuh_max3421_spi_xfer_api() hardcodes
+// spi0 in the write+read path instead of using MAX3421_SPI. Since we can't
+// modify the submodule, we use --wrap to intercept and provide the correct
+// implementation. The linker flag is set in CMakeLists.txt.
+
+bool __wrap_tuh_max3421_spi_xfer_api(uint8_t rhport, uint8_t const* tx_buf,
+                                      uint8_t* rx_buf, size_t xfer_bytes)
+{
+    (void) rhport;
+
+    if (tx_buf == NULL && rx_buf == NULL) {
+        return false;
+    }
+
+    int ret;
+
+    if (tx_buf == NULL) {
+        ret = spi_read_blocking(MAX3421_SPI, 0, rx_buf, xfer_bytes);
+    } else if (rx_buf == NULL) {
+        ret = spi_write_blocking(MAX3421_SPI, tx_buf, xfer_bytes);
+    } else {
+        ret = spi_write_read_blocking(MAX3421_SPI, tx_buf, rx_buf, xfer_bytes);
+    }
+
+    return ret == (int) xfer_bytes;
 }
 
 // Read key registers for diagnostics (callable from CDC command handler)
