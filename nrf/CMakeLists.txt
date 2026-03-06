@@ -27,6 +27,10 @@ set(SRCS
     # --- App ---
     "${SHARED_SRC}/apps/bt2usb/app.c"
 
+    # --- Display (SSD1306 I2C on XIAO Expansion Board) ---
+    "src/display_i2c_nrf.c"
+    "${SHARED_SRC}/core/services/display/display.c"
+
     # --- Core services ---
     "${SHARED_SRC}/core/router/router.c"
     "${SHARED_SRC}/core/services/leds/leds.c"
@@ -189,6 +193,8 @@ target_compile_definitions(app PRIVATE
     ENABLE_BTSTACK=1
     PLATFORM_NRF=1
     CONFIG_NO_NEOPIXEL=1
+    DISABLE_DISPLAY_SPI=1
+    OLED_I2C_DISPLAY=1
     # Use nRF-specific TinyUSB config instead of src/tusb_config.h
     CFG_TUSB_CONFIG_FILE="tusb_config_nrf.h"
 )

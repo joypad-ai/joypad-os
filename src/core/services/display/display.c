@@ -4,7 +4,7 @@
 
 #include "display.h"
 #include "display_transport.h"
-#include "pico/stdlib.h"
+#include "platform/platform.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -188,13 +188,16 @@ static inline void write_data(const uint8_t* data, size_t len) {
 // FORWARD DECLARATIONS (transport init in separate files)
 // ============================================================================
 
+#ifndef DISABLE_DISPLAY_SPI
 extern void display_spi_init(const display_config_t* config);
+#endif
 extern void display_i2c_init(const display_i2c_config_t* config);
 
 // ============================================================================
 // INITIALIZATION
 // ============================================================================
 
+#ifndef DISABLE_DISPLAY_SPI
 void display_init(const display_config_t* config) {
     // SPI transport init (sets function pointers + col_offset)
     display_spi_init(config);
@@ -231,6 +234,7 @@ void display_init(const display_config_t* config) {
     initialized = true;
     printf("[display] Initialized SH1106 128x64 OLED (SPI)\n");
 }
+#endif
 
 void display_init_i2c(const display_i2c_config_t* config) {
     // I2C transport init (sets function pointers + col_offset)
@@ -260,7 +264,7 @@ void display_init_i2c(const display_i2c_config_t* config) {
     write_cmd(0x3F);                     // 64 lines
     write_cmd(SH110X_DISPLAY_ALL_ON_RESUME);
     write_cmd(SH110X_NORMAL_DISPLAY);
-    sleep_ms(100);
+    platform_sleep_ms(100);
     write_cmd(SH110X_DISPLAY_ON);
 
     // Clear framebuffer and display
@@ -269,6 +273,44 @@ void display_init_i2c(const display_i2c_config_t* config) {
 
     initialized = true;
     printf("[display] Initialized SH1107 128x64 OLED (I2C)\n");
+}
+
+void display_init_ssd1306_i2c(const display_i2c_config_t* config) {
+    // I2C transport init (sets function pointers + col_offset)
+    display_i2c_init(config);
+    // SSD1306 is native 128x64, no rotation needed
+
+    // SSD1306 init sequence
+    write_cmd(SH110X_DISPLAY_OFF);
+    write_cmd(SH110X_SET_DISPLAY_CLOCK);
+    write_cmd(0x80);  // Default clock
+    write_cmd(SH110X_SET_MULTIPLEX);
+    write_cmd(0x3F);  // 64 lines
+    write_cmd(SH110X_SET_DISPLAY_OFFSET);
+    write_cmd(0x00);
+    write_cmd(SH110X_SET_START_LINE | 0x00);
+    write_cmd(SH110X_CHARGE_PUMP);
+    write_cmd(0x14);  // Enable charge pump
+    write_cmd(SH110X_SEG_REMAP | 0x01);  // Flip horizontally
+    write_cmd(SH110X_COM_SCAN_DEC);      // Flip vertically
+    write_cmd(SH110X_SET_COM_PINS);
+    write_cmd(0x12);
+    write_cmd(SH110X_SET_CONTRAST);
+    write_cmd(0xCF);
+    write_cmd(SH110X_SET_PRECHARGE);
+    write_cmd(0xF1);
+    write_cmd(SH110X_SET_VCOM_DETECT);
+    write_cmd(0x40);
+    write_cmd(SH110X_DISPLAY_ALL_ON_RESUME);
+    write_cmd(SH110X_NORMAL_DISPLAY);
+    write_cmd(SH110X_DISPLAY_ON);
+
+    // Clear framebuffer and display
+    display_clear();
+    display_update();
+
+    initialized = true;
+    printf("[display] Initialized SSD1306 128x64 OLED (I2C)\n");
 }
 
 bool display_is_initialized(void) {
@@ -465,7 +507,7 @@ void display_marquee_add(const char* text) {
     if (!text || !text[0]) return;
 
     size_t add_len = strlen(text);
-    uint32_t now = to_ms_since_boot(get_absolute_time());
+    uint32_t now = platform_time_ms();
 
     // Add space separator if buffer has content
     size_t sep_len = (marquee_len > 0) ? 1 : 0;
@@ -507,7 +549,7 @@ void display_marquee_add(const char* text) {
 bool display_marquee_tick(void) {
     if (!marquee_visible || marquee_len == 0) return false;
 
-    uint32_t now = to_ms_since_boot(get_absolute_time());
+    uint32_t now = platform_time_ms();
 
     // Check for fade timeout
     if (now - marquee_last_activity > MARQUEE_FADE_MS) {
