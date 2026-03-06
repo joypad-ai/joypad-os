@@ -62,10 +62,15 @@ void flash_init(void)
     printf("[flash_nrf] NVS initialized (%d sectors)\n", nvs.sector_count);
 
     // Try to load runtime settings
-    if (flash_load(&runtime_settings)) {
-        runtime_settings_loaded = true;
-        current_sequence = runtime_settings.sequence;
+    if (!flash_load(&runtime_settings)) {
+        // No valid settings - initialize defaults
+        memset(&runtime_settings, 0, sizeof(flash_t));
+        runtime_settings.magic = SETTINGS_MAGIC;
+        runtime_settings.sequence = 0;
+        runtime_settings.active_profile_index = 0;
+        runtime_settings.custom_profile_count = 0;
     }
+    runtime_settings_loaded = true;
 }
 
 bool flash_load(flash_t* settings)
