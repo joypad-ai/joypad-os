@@ -229,8 +229,8 @@ help:
 	@echo "  make flash-bt2usb_seeed_xiao_nrf52840 - Flash Seeed XIAO nRF52840 via UF2 bootloader"
 	@echo "  make bt2usb_feather_nrf52840       - Bluetooth -> USB HID (Adafruit Feather nRF52840, requires NCS)"
 	@echo "  make flash-bt2usb_feather_nrf52840 - Flash Feather nRF52840 via UF2 bootloader"
-	@echo "  make usb2usb_feather_nrf52840_max3421 - USB -> USB HID (Feather nRF52840 + MAX3421E FeatherWing)"
-	@echo "  make flash-usb2usb_feather_nrf52840_max3421 - Flash Feather nRF52840 + MAX3421E via UF2"
+	@echo "  make usb2usb_feather_nrf52840 - USB -> USB HID (Feather nRF52840 + MAX3421E FeatherWing)"
+	@echo "  make flash-usb2usb_feather_nrf52840 - Flash Feather nRF52840 + MAX3421E via UF2"
 	@echo "  make bt2nuon_pico_w     - Bluetooth -> Nuon (Pico W)"
 	@echo "  make bt2n64_pico_w      - Bluetooth -> N64 (Pico W)"
 	@echo "  make wifi2usb_pico_w    - WiFi -> USB HID (Pico W)"
@@ -564,25 +564,25 @@ flash-bt2usb_feather_nrf52840: bt2usb_feather_nrf52840
 monitor-bt2usb_feather_nrf52840:
 	@cd nrf && $(MAKE) monitor
 
-# --- Adafruit Feather nRF52840 + MAX3421E FeatherWing usb2usb (requires nRF Connect SDK) ---
-.PHONY: usb2usb_feather_nrf52840_max3421
-usb2usb_feather_nrf52840_max3421:
-	@echo "$(YELLOW)Building usb2usb for Adafruit Feather nRF52840 + MAX3421E...$(NC)"
+# --- Adafruit Feather nRF52840 usb2usb (MAX3421E FeatherWing, requires nRF Connect SDK) ---
+.PHONY: usb2usb_feather_nrf52840
+usb2usb_feather_nrf52840:
+	@echo "$(YELLOW)Building usb2usb for Adafruit Feather nRF52840...$(NC)"
 	@cd nrf && $(MAKE) build BOARD=adafruit_feather_nrf52840 APP_TYPE=usb2usb
 	@mkdir -p $(RELEASE_DIR)
 	@cp nrf/build/nrf/zephyr/zephyr.uf2 \
-	    $(RELEASE_DIR)/joypad_$(VERSION_ID)_usb2usb_feather_nrf52840_max3421.uf2
-	@echo "$(GREEN)✓ usb2usb_feather_nrf52840_max3421 built successfully$(NC)"
-	@echo "  File: $(RELEASE_DIR)/joypad_$(VERSION_ID)_usb2usb_feather_nrf52840_max3421.uf2"
+	    $(RELEASE_DIR)/joypad_$(VERSION_ID)_usb2usb_feather_nrf52840.uf2
+	@echo "$(GREEN)✓ usb2usb_feather_nrf52840 built successfully$(NC)"
+	@echo "  File: $(RELEASE_DIR)/joypad_$(VERSION_ID)_usb2usb_feather_nrf52840.uf2"
 	@echo ""
 
-.PHONY: flash-usb2usb_feather_nrf52840_max3421
-flash-usb2usb_feather_nrf52840_max3421: usb2usb_feather_nrf52840_max3421
+.PHONY: flash-usb2usb_feather_nrf52840
+flash-usb2usb_feather_nrf52840: usb2usb_feather_nrf52840
 	@cd nrf && $(MAKE) flash-uf2
 	@echo ""
 
-.PHONY: monitor-usb2usb_feather_nrf52840_max3421
-monitor-usb2usb_feather_nrf52840_max3421:
+.PHONY: monitor-usb2usb_feather_nrf52840
+monitor-usb2usb_feather_nrf52840:
 	@cd nrf && $(MAKE) monitor
 
 .PHONY: wifi2usb_pico_w
