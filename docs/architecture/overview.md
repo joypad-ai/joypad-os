@@ -112,4 +112,4 @@ An "app" is a build configuration that selects which inputs, outputs, and featur
 
 For example, `usb2gc` enables USB host + Bluetooth input, GameCube joybus output, SIMPLE routing, and 5 GameCube-specific button profiles. Meanwhile, `bt2usb` enables Bluetooth input, USB device output, and MERGE routing.
 
-See the [adapter docs](../adapters/pcengine.md) for per-app details, or [CLAUDE.md](../../CLAUDE.md) for developer architecture reference.
+See the [adapter docs](../adapters/pcengine.md) for per-app details, or the [layers & internals](layers.md) doc for the full developer architecture reference.

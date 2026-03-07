@@ -55,6 +55,7 @@ nav:
     - nRF52840: platforms/nrf52840.md
   - Architecture:
     - How It Works: architecture/overview.md
+    - Layers & Internals: architecture/layers.md
   - Protocol Reference:
     - 3DO PBus: protocols/3DO_PBUS.md
     - GameCube Joybus: protocols/GAMECUBE_JOYBUS.md

@@ -80,6 +80,7 @@ Convert retro controllers to USB or bridge them to other consoles:
 Learn how Joypad OS works under the hood:
 
 - [**How It Works**](architecture/overview.md) — Data flow, router, input/output layers, platform support
+- [**Layers & Internals**](architecture/layers.md) — Developer reference: interfaces, router pipeline, dual-core, latency design
 
 ---
 

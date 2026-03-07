@@ -185,6 +185,7 @@ Output: `releases/joypad_<commit>_<app>_<board>.uf2`
 
 ### Reference
 - **[Architecture Overview](docs/architecture/overview.md)** — How it works
+- **[Layers & Internals](docs/architecture/layers.md)** — Developer reference: interfaces, router, dual-core, latency
 - **[Protocol Reference](docs/protocols/)** — 3DO PBus, GameCube Joybus, Nuon Polyface, PCEngine
 
 ---
