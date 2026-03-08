@@ -111,6 +111,7 @@ bool is_sony_ds4(uint16_t vid, uint16_t pid) {
     || (vid == 0x20d6 && pid == 0x792a) // PowerA FUSION Wired FightPad (6-button layout)
     || (vid == 0x1f4f && pid == 0x1002) // ASW Guilty Gear xrd Controller (Collector's Edition)
     || (vid == 0x04d8 && pid == 0x1529) // Universal PCB Project (UPCB Open Source)
+    || (vid == 0x0e6f && pid == 0x020a) // Victrix Pro FS for PS4
   );
 }
 
