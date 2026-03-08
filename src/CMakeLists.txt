@@ -605,13 +605,18 @@ pico_generate_pio_header(joypad_n642dc ${CMAKE_CURRENT_LIST_DIR}/lib/joybus-pio/
 pico_generate_pio_header(joypad_n642dc ${CMAKE_CURRENT_LIST_DIR}/native/device/dreamcast/maple.pio)
 
 # --- N64 to Dreamcast (Pico 2 W) ---
+# Pinout: DC SDCKA=GPIO14, SDCKB=GPIO15 (physical pins 19/20)
+#         N64 Data=GPIO18 (physical pin 24)
+#         Power: DC 5V=VSYS(pin39), N64 3.3V=3V3OUT(pin36), GND=pins 23/38
 add_executable(joypad_n642dc_pico2_w)
 target_compile_definitions(joypad_n642dc_pico2_w PRIVATE
     CONFIG_N642DC=1
     CONFIG_DC=1
     CONFIG_NO_NEOPIXEL=1
     USE_BOOTSEL_BUTTON=1
-    N64_PIN_DATA=4
+    MAPLE_PIN1=14
+    MAPLE_PIN5=15
+    N64_PIN_DATA=18
 )
 target_sources(joypad_n642dc_pico2_w PUBLIC ${COMMON_SOURCES}
     ${N64_HOST_SOURCES}
