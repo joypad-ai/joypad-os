@@ -752,8 +752,10 @@ void usbd_task(void)
             const usbd_mode_t* mode = usbd_modes[USB_OUTPUT_MODE_XINPUT];
             if (mode) {
                 if (mode->task) mode->task();
-                if (mode->is_ready && mode->is_ready()) {
-                    usbd_send_report(0);
+                for (uint8_t i = 0; i < USB_OUTPUT_PADS; i++) {
+                    if (mode->is_ready_itf && mode->is_ready_itf(i)) {
+                        usbd_send_report(i);
+                    }
                 }
             }
             break;
@@ -773,8 +775,10 @@ void usbd_task(void)
         case USB_OUTPUT_MODE_PS3: {
             // PS3 mode: delegate to mode interface
             const usbd_mode_t* mode = usbd_modes[USB_OUTPUT_MODE_PS3];
-            if (mode && mode->is_ready && mode->is_ready()) {
-                usbd_send_report(0);
+            for (uint8_t i = 0; i < USB_OUTPUT_PADS; i++) {
+                if (mode && mode->is_ready_itf && mode->is_ready_itf(i)) {
+                    usbd_send_report(i);
+                }
             }
             break;
         }
@@ -870,8 +874,10 @@ void usbd_task(void)
             const usbd_mode_t* mode = usbd_modes[USB_OUTPUT_MODE_SINPUT];
             if (mode && mode->task) mode->task();
             // Send SInput report if device is ready
-            if (tud_hid_ready()) {
-                usbd_send_report(0);
+            for (uint8_t i = 0; i < USB_OUTPUT_PADS; i++) {
+                if (tud_hid_n_ready(i)) {
+                    usbd_send_report(i);
+                }
             }
             break;
         }
@@ -940,7 +946,7 @@ static bool usbd_send_sinput_report(uint8_t player_index)
     }
 
     // Check ready via mode interface
-    if (mode->is_ready && !mode->is_ready()) {
+    if (mode->is_ready_itf && !mode->is_ready_itf(player_index)) {
         return false;
     }
 
@@ -971,7 +977,7 @@ static bool usbd_send_xinput_report(uint8_t player_index)
     }
 
     // Check ready via mode interface
-    if (mode->is_ready && !mode->is_ready()) {
+    if (mode->is_ready_itf && !mode->is_ready_itf(player_index)) {
         return false;
     }
 
@@ -1032,7 +1038,7 @@ static bool usbd_send_ps3_report(uint8_t player_index)
     }
 
     // Check ready via mode interface
-    if (mode->is_ready && !mode->is_ready()) {
+    if (mode->is_ready_itf && !mode->is_ready_itf(player_index)) {
         return false;
     }
 
@@ -1450,8 +1456,8 @@ enum {
 #define EPNUM_HID_GAMEPAD_OUT   0x01  // Gamepad OUT (rumble/output reports)
 #ifndef PLATFORM_ESP32
 // Keyboard/mouse endpoints only on RP2040 (ESP32 skips these to save FIFOs)
-#define EPNUM_HID_KEYBOARD      0x82  // Keyboard IN
-#define EPNUM_HID_MOUSE         0x83  // Mouse IN
+#define EPNUM_HID_KEYBOARD      (EPNUM_HID_GAMEPAD + USB_OUTPUT_PADS)  // Keyboard IN
+#define EPNUM_HID_MOUSE         (EPNUM_HID_GAMEPAD + USB_OUTPUT_PADS + 1)  // Mouse IN
 #endif
 
 // Backward compatibility aliases
@@ -1465,9 +1471,9 @@ enum {
 #define EPNUM_CDC_0_OUT     0x03
 #define EPNUM_CDC_0_IN      0x83
 #else
-#define EPNUM_CDC_0_NOTIF   0x84
-#define EPNUM_CDC_0_OUT     0x05
-#define EPNUM_CDC_0_IN      0x85
+#define EPNUM_CDC_0_NOTIF   (EPNUM_HID_GAMEPAD + USB_OUTPUT_PADS + 2)
+#define EPNUM_CDC_0_OUT     (EPNUM_HID_GAMEPAD_OUT + USB_OUTPUT_PADS + 2)
+#define EPNUM_CDC_0_IN      (EPNUM_HID_GAMEPAD + USB_OUTPUT_PADS + 3)
 #endif
 #endif
 
@@ -1539,6 +1545,22 @@ uint8_t const *tud_descriptor_device_cb(void)
 // CONFIGURATION DESCRIPTOR
 // ============================================================================
 
+// String descriptor indices
+enum {
+    STRID_LANGID = 0,
+    STRID_MANUFACTURER,
+    STRID_PRODUCT,
+    STRID_SERIAL,
+#if CFG_TUD_CDC >= 1
+    STRID_CDC_DATA,
+#endif
+    STRID_SINPUT_P1,
+    STRID_SINPUT_P2,
+    STRID_SINPUT_P3,
+    STRID_SINPUT_P4,
+    STRID_COUNT
+};
+
 // Compile-time descriptor fragments (always compiled, concatenated at runtime)
 
 // HID gamepad fragment (IN-only, for HID/DInput mode)
@@ -1547,9 +1569,18 @@ static const uint8_t desc_frag_hid_gamepad[] = {
 };
 
 // SInput HID fragments (composite: gamepad INOUT + keyboard + mouse)
-static const uint8_t desc_frag_sinput_gamepad[] = {
-    TUD_HID_INOUT_DESCRIPTOR(ITF_NUM_HID_GAMEPAD, 0, HID_ITF_PROTOCOL_NONE, sizeof(sinput_report_descriptor), EPNUM_HID_GAMEPAD_OUT, EPNUM_HID_GAMEPAD, CFG_TUD_HID_EP_BUFSIZE, 1),
-};
+#define SINPUT_GAMEPAD_DESCRIPTOR(n) \
+    TUD_HID_INOUT_DESCRIPTOR( \
+        ITF_NUM_HID_GAMEPAD + (n), \
+        (USB_OUTPUT_PADS > 1) ? (STRID_SINPUT_P1 + (n)) : 0, \
+        HID_ITF_PROTOCOL_NONE, \
+        sizeof(sinput_report_descriptor), \
+        EPNUM_HID_GAMEPAD_OUT + (n), \
+        EPNUM_HID_GAMEPAD + (n), \
+        CFG_TUD_HID_EP_BUFSIZE, \
+        1 \
+    )
+
 #ifndef PLATFORM_ESP32
 static const uint8_t desc_frag_sinput_keyboard[] = {
     TUD_HID_DESCRIPTOR(ITF_NUM_HID_KEYBOARD, 0, HID_ITF_PROTOCOL_NONE, sizeof(sinput_keyboard_report_descriptor), EPNUM_HID_KEYBOARD, 16, 1),
@@ -1566,7 +1597,13 @@ static const uint8_t desc_frag_cdc0[] = {
 
 // Max possible config descriptor sizes
 #define MAX_CONFIG_LEN_HID    (TUD_CONFIG_DESC_LEN + TUD_HID_DESC_LEN + TUD_CDC_DESC_LEN)
-#define MAX_CONFIG_LEN_SINPUT (TUD_CONFIG_DESC_LEN + TUD_HID_INOUT_DESC_LEN + 2 * TUD_HID_DESC_LEN + TUD_CDC_DESC_LEN)
+#define MAX_CONFIG_LEN_SINPUT ( \
+    TUD_CONFIG_DESC_LEN + \
+    (TUD_HID_INOUT_DESC_LEN * USB_OUTPUT_PADS) + \
+    TUD_HID_DESC_LEN + \
+    TUD_HID_DESC_LEN + \
+    TUD_CDC_DESC_LEN \
+)
 
 // Runtime-built config descriptor buffers
 static uint8_t runtime_desc_hid[MAX_CONFIG_LEN_HID];
@@ -1606,13 +1643,23 @@ static void build_config_descriptors(void)
     off = append_fragment(runtime_desc_sinput, off, desc_frag_sinput_gamepad, sizeof(desc_frag_sinput_gamepad));
     off = append_fragment(runtime_desc_sinput, off, desc_frag_cdc0, sizeof(desc_frag_cdc0));
 #else
-    // RP2040: full composite (gamepad + keyboard + mouse + CDC)
-    uint8_t sinput_itf_count = 3 + 2;  // 3 HID + CDC0 (2 interfaces)
+    // RP2040: full composite (gamepads + keyboard + mouse + CDC)
+    uint8_t sinput_itf_count = 0;  // USB_OUTPUT_PADS + Keyboard(1) + Mouse(1) + CDC(2)
     off = TUD_CONFIG_DESC_LEN;  // Skip header
-    off = append_fragment(runtime_desc_sinput, off, desc_frag_sinput_gamepad, sizeof(desc_frag_sinput_gamepad));
+    for (uint8_t i = 0; i < USB_OUTPUT_PADS; i++) {
+        uint8_t temp_gp_desc[] = { SINPUT_GAMEPAD_DESCRIPTOR(i) };
+        off = append_fragment(runtime_desc_sinput, off, temp_gp_desc, sizeof(temp_gp_desc));
+        sinput_itf_count++;
+    }
+
     off = append_fragment(runtime_desc_sinput, off, desc_frag_sinput_keyboard, sizeof(desc_frag_sinput_keyboard));
+    sinput_itf_count++;
+
     off = append_fragment(runtime_desc_sinput, off, desc_frag_sinput_mouse, sizeof(desc_frag_sinput_mouse));
+    sinput_itf_count++;
+
     off = append_fragment(runtime_desc_sinput, off, desc_frag_cdc0, sizeof(desc_frag_cdc0));
+    sinput_itf_count += 2;
 #endif
 
     // Write config header (9 bytes)
@@ -1660,18 +1707,6 @@ uint8_t const *tud_descriptor_configuration_cb(uint8_t index)
 // ============================================================================
 // STRING DESCRIPTORS
 // ============================================================================
-
-// String descriptor indices
-enum {
-    STRID_LANGID = 0,
-    STRID_MANUFACTURER,
-    STRID_PRODUCT,
-    STRID_SERIAL,
-#if CFG_TUD_CDC >= 1
-    STRID_CDC_DATA,
-#endif
-    STRID_COUNT
-};
 
 uint16_t const *tud_descriptor_string_cb(uint8_t index, uint16_t langid)
 {
@@ -1800,6 +1835,20 @@ uint16_t const *tud_descriptor_string_cb(uint8_t index, uint16_t langid)
         case STRID_SERIAL:
             str = usb_serial_str;  // Dynamic from board unique ID
             break;
+        #if USB_OUTPUT_PADS > 1
+        case STRID_SINPUT_P1:
+        case STRID_SINPUT_P2:
+        case STRID_SINPUT_P3:
+        case STRID_SINPUT_P4:
+            if (output_mode == USB_OUTPUT_MODE_SINPUT) {
+                static char pad_n_str[32];
+                const char* base_name = SINPUT_PRODUCT; 
+                int port_num = (index - STRID_SINPUT_P1) + 1;
+                snprintf(pad_n_str, sizeof(pad_n_str), "%s P%d", base_name, port_num);
+                str = pad_n_str;
+            }
+            break;
+        #endif
 #if CFG_TUD_CDC >= 1
         case STRID_CDC_DATA:
             str = "Joypad Data";
@@ -1874,7 +1923,7 @@ uint16_t tud_hid_get_report_cb(uint8_t itf, uint8_t report_id, hid_report_type_t
     // SInput/KB/Mouse composite: route by interface
     if ((output_mode == USB_OUTPUT_MODE_SINPUT ||
          output_mode == USB_OUTPUT_MODE_KEYBOARD_MOUSE) &&
-        itf != ITF_NUM_HID_GAMEPAD) {
+        itf >= USB_OUTPUT_PADS) {
         // Keyboard/mouse interfaces don't have get_report handlers
         return 0;
     }
@@ -1883,7 +1932,7 @@ uint16_t tud_hid_get_report_cb(uint8_t itf, uint8_t report_id, hid_report_type_t
     if (output_mode == USB_OUTPUT_MODE_PS3) {
         const usbd_mode_t* mode = usbd_modes[USB_OUTPUT_MODE_PS3];
         if (mode && mode->get_report) {
-            uint16_t result = mode->get_report(report_id, report_type, buffer, reqlen);
+            uint16_t result = mode->get_report_itf(itf, report_id, report_type, buffer, reqlen);
             if (result > 0) return result;
         }
     }
@@ -1914,11 +1963,11 @@ void tud_hid_set_report_cb(uint8_t itf, uint8_t report_id, hid_report_type_t rep
     // SInput/KB/Mouse composite: route by interface
     if (output_mode == USB_OUTPUT_MODE_SINPUT ||
         output_mode == USB_OUTPUT_MODE_KEYBOARD_MOUSE) {
-        if (itf == ITF_NUM_HID_GAMEPAD) {
+        if (itf < USB_OUTPUT_PADS) {
             // Gamepad output report (rumble, LEDs) → SInput handler
             const usbd_mode_t* mode = usbd_modes[USB_OUTPUT_MODE_SINPUT];
             if (mode && mode->handle_output) {
-                mode->handle_output(report_id, buffer, bufsize);
+                mode->handle_output_itf(itf, report_id, buffer, bufsize);
             }
             return;
         }
@@ -1938,11 +1987,11 @@ void tud_hid_set_report_cb(uint8_t itf, uint8_t report_id, hid_report_type_t rep
     if (output_mode == USB_OUTPUT_MODE_PS3) {
         const usbd_mode_t* mode = usbd_modes[USB_OUTPUT_MODE_PS3];
         if (mode && mode->handle_output) {
-            mode->handle_output(report_id, buffer, bufsize);
+            mode->handle_output_itf(itf, report_id, buffer, bufsize);
         }
         // Also handle feature reports for auth handshake
         if (report_type == HID_REPORT_TYPE_FEATURE) {
-            ps3_mode_set_feature_report(report_id, buffer, bufsize);
+            ps3_mode_set_feature_report(itf, report_id, buffer, bufsize);
         }
         return;
     }
