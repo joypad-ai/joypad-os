@@ -17,10 +17,15 @@
 // ============================================================================
 // PS3 USB IDENTIFIERS
 // ============================================================================
-
-#define PS3_VID              0x054C  // Sony
-#define PS3_PID              0x0268  // DualShock 3
-#define PS3_BCD_DEVICE       0x0100  // v1.0
+#if (USB_OUTPUT_PADS > 1)
+    #define PS3_VID              0x10C4  /* Silicon Laboratories, Inc. */
+    #define PS3_PID              0x82C0
+    #define PS3_BCD_DEVICE       0x0100  /* v1.0 */
+#else
+    #define PS3_VID              0x054C  // Sony
+    #define PS3_PID              0x0268  // DualShock 3
+    #define PS3_BCD_DEVICE       0x0100  // v1.0
+#endif
 
 // ============================================================================
 // PS3 CONSTANTS
@@ -39,6 +44,7 @@
 #define PS3_GYRO_Z_OFFSET    46
 
 // Report IDs
+#define PS3_REPORT_ID_FEATURE_00 0x00  // Magic Handshake
 #define PS3_REPORT_ID_INPUT      0x01
 #define PS3_REPORT_ID_FEATURE_01 0x01
 #define PS3_REPORT_ID_FEATURE_EF 0xEF
@@ -62,6 +68,17 @@
 // ============================================================================
 // PS3 BUTTON DEFINITIONS
 // ============================================================================
+
+// HAT report (4 bits)
+#define PS3_HAT_UP        0x00
+#define PS3_HAT_UPRIGHT   0x01
+#define PS3_HAT_RIGHT     0x02
+#define PS3_HAT_DOWNRIGHT 0x03
+#define PS3_HAT_DOWN      0x04
+#define PS3_HAT_DOWNLEFT  0x05
+#define PS3_HAT_LEFT      0x06
+#define PS3_HAT_UPLEFT    0x07
+#define PS3_HAT_NOTHING   0x08
 
 // Buttons byte 0
 #define PS3_BTN_SELECT       0x01
@@ -142,6 +159,37 @@ typedef struct __attribute__((packed)) {
 
 _Static_assert(sizeof(ps3_in_report_t) == 50, "ps3_in_report_t must be 50 bytes");
 
+typedef struct __attribute__((packed)) {
+    uint8_t  buttons[3];         // Digital buttons
+
+    uint8_t  lx;                 // Left stick X
+    uint8_t  ly;                 // Left stick Y
+    uint8_t  rx;                 // Right stick X
+    uint8_t  ry;                 // Right stick Y
+
+    uint8_t  pressure_right;
+    uint8_t  pressure_left;
+    uint8_t  pressure_up;
+    uint8_t  pressure_down;
+
+    uint8_t  pressure_square;
+    uint8_t  pressure_cross;
+    uint8_t  pressure_circle;
+    uint8_t  pressure_triangle;
+
+    uint8_t  pressure_l2;
+    uint8_t  pressure_r2;
+    uint8_t  pressure_l1;
+    uint8_t  pressure_r1;
+
+    uint16_t accel_x;            // Accelerometer X
+    uint16_t accel_y;            // Accelerometer Y
+    uint16_t accel_z;            // Accelerometer Z
+    uint16_t gyro_z;             // Gyroscope Z
+} ps3_in_report_alt_t;
+
+_Static_assert(sizeof(ps3_in_report_alt_t) == 27, "ps3_in_report_alt_t must be 28 bytes");
+
 // Output Report - 48 bytes (rumble and LEDs)
 typedef struct __attribute__((packed)) {
     uint8_t  reserved0;
@@ -171,6 +219,11 @@ _Static_assert(sizeof(ps3_pairing_info_t) == 17, "ps3_pairing_info_t must be 17 
 // ============================================================================
 // PS3 FEATURE REPORT DATA
 // ============================================================================
+
+// Feature report 0x01 response makes the PS button work
+static const uint8_t ps3_feature_00[] = {
+    0x21, 0x26, 0x01, 0x07, 0x00, 0x00, 0x00, 0x00
+};
 
 // Feature report 0x01 response
 static const uint8_t ps3_feature_01[] = {
@@ -331,24 +384,118 @@ static const uint8_t ps3_report_descriptor[] = {
     0xC0,              // End Collection
 };
 
+// HID Alternative Report Descriptor (157 bytes)
+static const uint8_t ps3_alt_report_descriptor[] =
+{
+    0x05, 0x01,        // Usage Page (Generic Desktop Ctrls)
+    0x09, 0x05,        // Usage (Game Pad)
+    0xA1, 0x01,        // Collection (Application)
+    0xA1, 0x02,        //   Collection (Logical)
+    0x15, 0x00,        //     Logical Minimum (0)
+    0x25, 0x01,        //     Logical Maximum (1)
+    0x35, 0x00,        //     Physical Minimum (0)
+    0x45, 0x01,        //     Physical Maximum (1)
+    0x75, 0x01,        //     Report Size (1)
+    0x95, 0x0D,        //     Report Count (13)
+    0x05, 0x09,        //     Usage Page (Button)
+    0x19, 0x01,        //     Usage Minimum (0x01)
+    0x29, 0x0D,        //     Usage Maximum (0x0D)
+    0x81, 0x02,        //     Input (Data,Var,Abs,No Wrap,Linear,Preferred State,No Null Position)
+    0x95, 0x03,        //     Report Count (3)
+    0x81, 0x01,        //     Input (Const,Array,Abs,No Wrap,Linear,Preferred State,No Null Position)
+    0x05, 0x01,        //     Usage Page (Generic Desktop Ctrls)
+    0x25, 0x07,        //     Logical Maximum (7)
+    0x46, 0x3B, 0x01,  //     Physical Maximum (315)
+    0x75, 0x04,        //     Report Size (4)
+    0x95, 0x01,        //     Report Count (1)
+    0x65, 0x14,        //     Unit (System: English Rotation, Length: Centimeter)
+    0x09, 0x39,        //     Usage (Hat switch)
+    0x81, 0x42,        //     Input (Data,Var,Abs,No Wrap,Linear,Preferred State,Null State)
+    0x65, 0x00,        //     Unit (None)
+    0x95, 0x01,        //     Report Count (1)
+    0x81, 0x01,        //     Input (Const,Array,Abs,No Wrap,Linear,Preferred State,No Null Position)
+    0x26, 0xFF, 0x00,  //     Logical Maximum (255)
+    0x46, 0xFF, 0x00,  //     Physical Maximum (255)
+    0x09, 0x30,        //     Usage (X)
+    0x09, 0x31,        //     Usage (Y)
+    0x09, 0x32,        //     Usage (Z)
+    0x09, 0x35,        //     Usage (Rz)
+    0x75, 0x08,        //     Report Size (8)
+    0x95, 0x04,        //     Report Count (4)
+    0x81, 0x02,        //     Input (Data,Var,Abs,No Wrap,Linear,Preferred State,No Null Position)
+    0x06, 0x00, 0xFF,  //     Usage Page (Vendor Defined 0xFF00)
+    0x09, 0x20,        //     Usage (0x20)
+    0x09, 0x21,        //     Usage (0x21)
+    0x09, 0x22,        //     Usage (0x22)
+    0x09, 0x23,        //     Usage (0x23)
+    0x09, 0x24,        //     Usage (0x24)
+    0x09, 0x25,        //     Usage (0x25)
+    0x09, 0x26,        //     Usage (0x26)
+    0x09, 0x27,        //     Usage (0x27)
+    0x09, 0x28,        //     Usage (0x28)
+    0x09, 0x29,        //     Usage (0x29)
+    0x09, 0x2A,        //     Usage (0x2A)
+    0x09, 0x2B,        //     Usage (0x2B)
+    0x95, 0x0C,        //     Report Count (12)
+    0x81, 0x02,        //     Input (Data,Var,Abs,No Wrap,Linear,Preferred State,No Null Position)
+    0x0A, 0x21, 0x26,  //     Usage (0x2621)
+    0x95, 0x08,        //     Report Count (8)
+    0xB1, 0x02,        //     Feature (Data,Var,Abs,No Wrap,Linear,Preferred State,No Null Position,Non-volatile)
+    0x0A, 0x21, 0x26,  //     Usage (0x2621)
+    0x91, 0x02,        //     Output (Data,Var,Abs,No Wrap,Linear,Preferred State,No Null Position,Non-volatile)
+    0x26, 0xFF, 0x03,  //     Logical Maximum (1023)
+    0x46, 0xFF, 0x03,  //     Physical Maximum (1023)
+    0x09, 0x2C,        //     Usage (0x2C)
+    0x09, 0x2D,        //     Usage (0x2D)
+    0x09, 0x2E,        //     Usage (0x2E)
+    0x09, 0x2F,        //     Usage (0x2F)
+    0x75, 0x10,        //     Report Size (16)
+    0x95, 0x04,        //     Report Count (4)
+    0x81, 0x02,        //     Input (Data,Var,Abs,No Wrap,Linear,Preferred State,No Null Position)
+    0xC0,              //   End Collection
+    0xA1, 0x02,        //   Collection (Logical)
+    0x26, 0xFF, 0x00,  //     Logical Maximum (255)
+    0x46, 0xFF, 0x00,  //     Physical Maximum (255)
+    0x95, 0x07,        //     Report Count (7)
+    0x75, 0x08,        //     Report Size (8)
+    0x09, 0x03,        //     Usage (0x03)
+    0x91, 0x02,        //     Output (Data,Var,Abs,No Wrap,Linear,Preferred State,No Null Position,Non-volatile)
+    0xC0,              //   End Collection
+    0xC0,              // End Collection
+};
+
 // Configuration descriptor (41 bytes)
-#define PS3_CONFIG_TOTAL_LEN  (TUD_CONFIG_DESC_LEN + TUD_HID_INOUT_DESC_LEN)
+#define PS3_CONFIG_TOTAL_LEN  (TUD_CONFIG_DESC_LEN + (TUD_HID_INOUT_DESC_LEN * USB_OUTPUT_PADS))
+#if (USB_OUTPUT_PADS > 1)
+    #define PS3_REPORT_DESC_SIZE  sizeof(ps3_alt_report_descriptor)
+#else
+    #define PS3_REPORT_DESC_SIZE  sizeof(ps3_report_descriptor)
+#endif
+#define PS3_INTERFACE_DESC(_itfnum) \
+    /* Interface Descriptor */ \
+    9, TUSB_DESC_INTERFACE, (_itfnum), 0, 2, TUSB_CLASS_HID, 0, 0, 0, \
+    /* HID Descriptor */ \
+    9, HID_DESC_TYPE_HID, U16_TO_U8S_LE(0x0111), 0, 1, HID_DESC_TYPE_REPORT, U16_TO_U8S_LE(PS3_REPORT_DESC_SIZE), \
+    /* Endpoint OUT: 0x02, 0x03, 0x04... */ \
+    7, TUSB_DESC_ENDPOINT, (uint8_t)((_itfnum) + 0x02), TUSB_XFER_INTERRUPT, U16_TO_U8S_LE(64), 0x01, \
+    /* Endpoint IN: 0x81, 0x82, 0x83... */ \
+    7, TUSB_DESC_ENDPOINT, (uint8_t)((_itfnum) + 0x81), TUSB_XFER_INTERRUPT, U16_TO_U8S_LE(64), 0x01
 
 static const uint8_t ps3_config_descriptor[] = {
     // Config descriptor
-    TUD_CONFIG_DESCRIPTOR(1, 1, 0, PS3_CONFIG_TOTAL_LEN, 0x80, 250),  // 500mA
+    TUD_CONFIG_DESCRIPTOR(1, USB_OUTPUT_PADS, 0, PS3_CONFIG_TOTAL_LEN, 0x80, 250),  // 500mA
 
-    // Interface
-    9, TUSB_DESC_INTERFACE, 0, 0, 2, TUSB_CLASS_HID, 0, 0, 0,
+    PS3_INTERFACE_DESC(0),
 
-    // HID descriptor
-    9, HID_DESC_TYPE_HID, U16_TO_U8S_LE(0x0111), 0, 1, HID_DESC_TYPE_REPORT, U16_TO_U8S_LE(sizeof(ps3_report_descriptor)),
-
-    // Endpoint OUT (for rumble/LED)
-    7, TUSB_DESC_ENDPOINT, 0x02, TUSB_XFER_INTERRUPT, U16_TO_U8S_LE(64), 1,
-
-    // Endpoint IN (for reports)
-    7, TUSB_DESC_ENDPOINT, 0x81, TUSB_XFER_INTERRUPT, U16_TO_U8S_LE(64), 1,
+#if (USB_OUTPUT_PADS > 1)
+    PS3_INTERFACE_DESC(1),
+#endif
+#if (USB_OUTPUT_PADS > 2)
+    PS3_INTERFACE_DESC(2),
+#endif
+#if (USB_OUTPUT_PADS > 3)
+    PS3_INTERFACE_DESC(3),
+#endif
 };
 
 // String descriptors
@@ -376,6 +523,27 @@ static inline void ps3_init_report(ps3_in_report_t* report)
     report->accel_y = PS3_SIXAXIS_MID_BE;
     report->accel_z = PS3_SIXAXIS_MID_BE;
     report->gyro_z = PS3_SIXAXIS_MID_BE;
+}
+
+static inline void ps3_init_report_alt(ps3_in_report_alt_t* report)
+{
+    // Use the size of the alternative structure
+    memset(report, 0, sizeof(ps3_in_report_alt_t));
+    
+    // Set sticks to neutral (0x7F = 127)
+    report->lx = PS3_JOYSTICK_MID;
+    report->ly = PS3_JOYSTICK_MID;
+    report->rx = PS3_JOYSTICK_MID;
+    report->ry = PS3_JOYSTICK_MID;
+    
+    // Set D-Pad to neutral (8 = neutral for Hat Switch)
+    report->buttons[2] = PS3_HAT_NOTHING;
+    
+    // Set Sixaxis to neutral (big-endian 0x0002 = 512)
+    report->accel_x = PS3_SIXAXIS_MID_BE;
+    report->accel_y = PS3_SIXAXIS_MID_BE;
+    report->accel_z = PS3_SIXAXIS_MID_BE;
+    report->gyro_z  = PS3_SIXAXIS_MID_BE;
 }
 
 #endif // PS3_DESCRIPTORS_H
