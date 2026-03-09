@@ -7,7 +7,6 @@
 #include "n64_device.h"
 #include "n64_buttons.h"
 #include "N64Console.h"
-#include "joybus.pio.h"
 #include "pico/bootrom.h"
 #include "pico/stdlib.h"
 #include "pico/flash.h"
@@ -20,6 +19,7 @@
 
 // Defined in N64Console.c
 extern n64_report_t default_n64_report;
+extern n64_status_t default_n64_status;
 
 // Declaration of global variables
 N64Console_t n64;
@@ -137,27 +137,36 @@ void n64_init()
 // CORE 1 TASK (Timing-Critical)
 // ============================================================================
 
+// Core 1: timing-critical joybus protocol only.
+// WaitForPoll handles PROBE/RESET/READ/WRITE internally, returns on POLL.
+// No SM cleanup between sends/receives — PIO transitions write→read via jmp.
+//
+// IMPORTANT: On RP2350 (Pico 2 W), Core 0's CYW43 periodically locks flash.
+// Core 1 must NOT call flash-resident functions after CYW43 init.
+// update_output() (which calls router/profile functions in flash) runs on Core 0
+// via n64_task() instead.
 void __not_in_flash_func(core1_task)(void)
 {
-    // Initialize Core 1 for safe flash writes
-    flash_safe_execute_core_init();
+    printf("[n64] Core 1 started, waiting for console...\n");
 
-    while (1)
-    {
-        // Wait for N64 console to poll controller
-        n64_rumble = N64Console_WaitForPoll(&n64) ? 255 : 0;
+    // Note: use busy_wait_us, not sleep_ms — Core 1 has no alarm pool
+    // N64Console_Detect uses flash functions (busy_wait_us, joybus_send_bytes)
+    // but this runs before any BT device pairs, so no flash writes occur yet.
+    while (!N64Console_Detect(&n64)) {
+        busy_wait_us(100000);
+    }
+    n64_console_active = true;
 
-        // Mark N64 console as active (Core 0 reads this for LED status)
-        n64_console_active = true;
+    while (1) {
+        N64Console_WaitForPoll(&n64);
+    }
+}
 
-        // DIAGNOSTIC: Force A button on to verify joybus report format
-        // If A is held on N64, the protocol works and issue is in data path
-        // Remove this line once confirmed
-        n64_report.a = 1;
-
-        // Send N64 controller report
-        N64Console_SendReport(&n64, &n64_report);
-
+// Core 0 task: update n64_report from router/profile system.
+// Must run on Core 0 because router_get_output, profile_apply, etc. are in flash.
+static void n64_task(void)
+{
+    if (n64_console_active) {
         update_output();
     }
 }
@@ -288,7 +297,7 @@ const OutputInterface n64_output_interface = {
     .target = OUTPUT_TARGET_N64,
     .init = n64_init,
     .core1_task = core1_task,
-    .task = NULL,
+    .task = n64_task,
     .get_rumble = n64_get_rumble,
     .get_player_led = NULL,
     .get_profile_count = n64_get_profile_count,

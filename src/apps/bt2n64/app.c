@@ -19,11 +19,18 @@
 #include "core/services/leds/leds.h"
 
 #include "pico/cyw43_arch.h"
+#include "pico/bootrom.h"
 #include "platform/platform.h"
 #include <stdio.h>
 
 extern const bt_transport_t bt_transport_cyw43;
 extern int playersCount;
+
+// Stubs for CDC commands (bt2n64 has no USB device stack)
+void cdc_commands_send_input_event(uint32_t buttons, const uint8_t* axes) { (void)buttons; (void)axes; }
+void cdc_commands_send_output_event(uint32_t buttons, const uint8_t* axes) { (void)buttons; (void)axes; }
+void cdc_commands_send_connect_event(uint8_t port, const char* name, uint16_t vid, uint16_t pid) { (void)port; (void)name; (void)vid; (void)pid; }
+void cdc_commands_send_disconnect_event(uint8_t port) { (void)port; }
 
 // ============================================================================
 // LED STATUS
@@ -45,6 +52,13 @@ static void platform_led_set(bool on)
 extern volatile bool n64_console_active;
 extern volatile bool n64_router_has_data;
 extern volatile bool n64_player_assigned;
+extern volatile uint32_t n64_diag_poll_count;
+extern volatile uint8_t n64_diag_last_cmd;
+extern volatile uint32_t n64_diag_probe_count;
+extern volatile uint32_t n64_diag_rx_count;
+extern volatile uint32_t n64_diag_pak_read_count;
+extern volatile uint8_t n64_diag_last_rx;
+extern volatile uint8_t n64_diag_phase;
 
 // LED patterns:
 //   Fast blink  (100ms): N64 console not communicating
@@ -215,23 +229,45 @@ void app_init(void)
 
 void app_task(void)
 {
+    // Check for bootloader command on CDC serial ('B' = reboot to bootloader)
+    int c = getchar_timeout_us(0);
+    if (c == 'B') {
+        reset_usb_boot(0, 0);
+    }
+
     // Process button input
     button_task();
 
     // Process Bluetooth transport
     bt_task();
 
-    // Periodic diagnostic (every ~5 seconds)
+    // Periodic diagnostic (every ~2 seconds)
     static uint32_t diag_last = 0;
     uint32_t now = platform_time_ms();
-    if (now - diag_last >= 5000) {
+    if (now - diag_last >= 2000) {
         diag_last = now;
-        printf("[diag] n64_active=%d bt_conns=%d players=%d router_data=%d player_assigned=%d\n",
-               n64_console_active ? 1 : 0,
-               btstack_classic_get_connection_count(),
-               playersCount,
-               n64_router_has_data ? 1 : 0,
-               n64_player_assigned ? 1 : 0);
+
+        // Count GPIO transitions over 20ms (N64 polls at 60Hz, one poll every ~16.6ms)
+        int edges = 0;
+        bool last_pin = gpio_get(N64_DATA_PIN);
+        absolute_time_t end = make_timeout_time_ms(20);
+        while (!time_reached(end)) {
+            bool cur = gpio_get(N64_DATA_PIN);
+            if (cur != last_pin) {
+                edges++;
+                last_pin = cur;
+            }
+        }
+
+        printf("[diag] rx=%lu probe=%lu poll=%lu pak=%lu lastRx=0x%02x lastCmd=0x%02x phase=%d edges=%d\n",
+               (unsigned long)n64_diag_rx_count,
+               (unsigned long)n64_diag_probe_count,
+               (unsigned long)n64_diag_poll_count,
+               (unsigned long)n64_diag_pak_read_count,
+               n64_diag_last_rx,
+               n64_diag_last_cmd,
+               n64_diag_phase,
+               edges);
     }
 
     // Update LED status
