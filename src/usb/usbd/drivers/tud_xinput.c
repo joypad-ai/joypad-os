@@ -39,19 +39,19 @@ typedef struct {
     bool output_available;
 } xinput_interface_t;
 
-static xinput_interface_t _xinput_itf;
+static xinput_interface_t _xinput_itf_n[USB_OUTPUT_PADS];
 
 // Security interface number (Interface 3)
-static uint8_t _sec_itf_num = 0xFF;
+static uint8_t _sec_itf_num_n[USB_OUTPUT_PADS] = {0xFF};
 
 // XSM3 auth state
-static xsm3_auth_state_t _auth_state = XSM3_AUTH_IDLE;
+static xsm3_auth_state_t _auth_state_n[USB_OUTPUT_PADS] = {XSM3_AUTH_IDLE};
 
 // Auth data buffers
-static uint8_t _auth_buffer[48];    // Receive buffer for 0x82/0x87 data
-static uint8_t _auth_response[48];  // Response buffer for 0x83
-static uint8_t _auth_response_len;  // Response length for 0x83
-static uint8_t _auth_request_id;    // Which request triggered processing
+static uint8_t _auth_buffer_n[USB_OUTPUT_PADS][48];    // Receive buffer for 0x82/0x87 data
+static uint8_t _auth_response_n[USB_OUTPUT_PADS][48];  // Response buffer for 0x83
+static uint8_t _auth_response_len_n[USB_OUTPUT_PADS];  // Response length for 0x83
+static uint8_t _auth_request_id_n[USB_OUTPUT_PADS];    // Which request triggered processing
 
 // ============================================================================
 // CLASS DRIVER CALLBACKS
@@ -59,19 +59,22 @@ static uint8_t _auth_request_id;    // Which request triggered processing
 
 static void xinput_init(void)
 {
-    memset(&_xinput_itf, 0, sizeof(_xinput_itf));
-    _xinput_itf.itf_num = 0xFF;
-    _xinput_itf.ep_in = 0xFF;
-    _xinput_itf.ep_out = 0xFF;
+    for (uint8_t i = 0; i < USB_OUTPUT_PADS; i++) 
+    {
+        memset(&_xinput_itf_n[i], 0, sizeof(xinput_interface_t));
+        _xinput_itf_n[i].itf_num = 0xFF;
+        _xinput_itf_n[i].ep_in = 0xFF;
+        _xinput_itf_n[i].ep_out = 0xFF;
 
-    // Initialize input report to neutral state
-    _xinput_itf.in_report.report_id = 0x00;
-    _xinput_itf.in_report.report_size = sizeof(xinput_in_report_t);
+        // Initialize input report to neutral state
+        _xinput_itf_n[i].in_report.report_id = 0x00 ;
+        _xinput_itf_n[i].in_report.report_size = sizeof(xinput_in_report_t);
 
-    _sec_itf_num = 0xFF;
-    _auth_state = XSM3_AUTH_IDLE;
-    _auth_response_len = 0;
-    _auth_request_id = 0;
+        _sec_itf_num_n[i] = 0xFF;
+        _auth_state_n[i] = XSM3_AUTH_IDLE;
+        _auth_response_len_n[i] = 0;
+        _auth_request_id_n[i] = 0;
+    }
 }
 
 static bool xinput_deinit(void)
@@ -97,7 +100,7 @@ static uint16_t xinput_open(uint8_t rhport, tusb_desc_interface_t const* itf_des
     if (itf_desc->bInterfaceSubClass == XINPUT_INTERFACE_SUBCLASS &&
         itf_desc->bInterfaceProtocol == XINPUT_INTERFACE_PROTOCOL)
     {
-        _xinput_itf.itf_num = itf_desc->bInterfaceNumber;
+        _xinput_itf_n[player_index].itf_num = itf_desc->bInterfaceNumber;
 
         // Skip vendor descriptor (type 0x21)
         if (p_desc[1] == XINPUT_DESC_TYPE_VENDOR) {
@@ -112,9 +115,9 @@ static uint16_t xinput_open(uint8_t rhport, tusb_desc_interface_t const* itf_des
             TU_VERIFY(usbd_edpt_open(rhport, ep_desc), 0);
 
             if (tu_edpt_dir(ep_desc->bEndpointAddress) == TUSB_DIR_IN) {
-                _xinput_itf.ep_in = ep_desc->bEndpointAddress;
+                _xinput_itf_n[player_index].ep_in = ep_desc->bEndpointAddress;
             } else {
-                _xinput_itf.ep_out = ep_desc->bEndpointAddress;
+                _xinput_itf_n[player_index].ep_out = ep_desc->bEndpointAddress;
             }
 
             drv_len += sizeof(tusb_desc_endpoint_t);
@@ -122,12 +125,12 @@ static uint16_t xinput_open(uint8_t rhport, tusb_desc_interface_t const* itf_des
         }
 
         // Start receiving on OUT endpoint
-        if (_xinput_itf.ep_out != 0xFF) {
-            usbd_edpt_xfer(rhport, _xinput_itf.ep_out, _xinput_itf.ep_out_buf, sizeof(_xinput_itf.ep_out_buf));
+        if (_xinput_itf_n[player_index].ep_out != 0xFF) {
+            usbd_edpt_xfer(rhport, _xinput_itf_n[player_index].ep_out, _xinput_itf_n[player_index].ep_out_buf, sizeof(_xinput_itf_n[player_index].ep_out_buf));
         }
 
         TU_LOG1("[XINPUT] Opened gamepad itf %u, EP IN=0x%02X, EP OUT=0x%02X\r\n",
-                _xinput_itf.itf_num, _xinput_itf.ep_in, _xinput_itf.ep_out);
+                _xinput_itf_n[player_index].itf_num, _xinput_itf_n[player_index].ep_in, _xinput_itf_n[player_index].ep_out);
     }
     // --- Interface 1: Audio (SubClass 0x5D, Protocol 0x03) ---
     else if (itf_desc->bInterfaceSubClass == XINPUT_INTERFACE_SUBCLASS &&
@@ -171,7 +174,7 @@ static uint16_t xinput_open(uint8_t rhport, tusb_desc_interface_t const* itf_des
     else if (itf_desc->bInterfaceSubClass == XINPUT_SEC_INTERFACE_SUBCLASS &&
              itf_desc->bInterfaceProtocol == XINPUT_SEC_INTERFACE_PROTOCOL)
     {
-        _sec_itf_num = itf_desc->bInterfaceNumber;
+        _sec_itf_num_n[player_index] = itf_desc->bInterfaceNumber;
 
         // Skip security descriptor (type 0x41)
         if (p_desc[1] == XINPUT_DESC_TYPE_SEC) {
@@ -180,7 +183,7 @@ static uint16_t xinput_open(uint8_t rhport, tusb_desc_interface_t const* itf_des
         }
 
         // 0 endpoints for security interface
-        TU_LOG1("[XINPUT] Opened security itf %u\r\n", _sec_itf_num);
+        TU_LOG1("[XINPUT] Opened security itf %u\r\n", _sec_itf_num_n[player_index]);
     }
     else
     {
@@ -210,6 +213,9 @@ static bool xinput_control_xfer_cb(uint8_t rhport, uint8_t stage, tusb_control_r
 
 bool tud_xinput_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage, tusb_control_request_t const* request)
 {
+    uint8_t itf = (uint8_t)(request->wIndex & 0xFF);
+    uint8_t player_index = itf / 2;
+    
     if (request->bmRequestType_bit.direction == TUSB_DIR_IN) {
         // Device-to-host: respond on SETUP stage
         if (stage != CONTROL_STAGE_SETUP) return true;
@@ -226,11 +232,11 @@ bool tud_xinput_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage, tusb_contr
 
             case XSM3_REQ_RESPOND: {
                 // 0x83: Return challenge response
-                if (_auth_state == XSM3_AUTH_RESPONDED || _auth_state == XSM3_AUTH_AUTHENTICATED) {
-                    TU_LOG1("[XINPUT] Auth: RESPOND (%u bytes)\r\n", _auth_response_len);
-                    tud_control_xfer(rhport, request, _auth_response, _auth_response_len);
+                if (_auth_state_n[player_index] == XSM3_AUTH_RESPONDED || _auth_state_n[player_index] == XSM3_AUTH_AUTHENTICATED) {
+                    TU_LOG1("[XINPUT] Auth: RESPOND (%u bytes)\r\n", _auth_response_len_n[player_index]);
+                    tud_control_xfer(rhport, request, _auth_response_n[player_index], _auth_response_len_n[player_index]);
                 } else {
-                    TU_LOG1("[XINPUT] Auth: RESPOND (not ready, state=%u)\r\n", _auth_state);
+                    TU_LOG1("[XINPUT] Auth: RESPOND (not ready, state=%u)\r\n", _auth_state_n[player_index]);
                     return false;  // STALL if not ready
                 }
                 return true;
@@ -247,8 +253,8 @@ bool tud_xinput_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage, tusb_contr
                 // 0x86: Return auth state (2 bytes)
                 // state=2 means response ready, state=1 means processing
                 static uint16_t state_val;
-                state_val = (_auth_state == XSM3_AUTH_RESPONDED ||
-                             _auth_state == XSM3_AUTH_AUTHENTICATED) ? 2 : 1;
+                state_val = (_auth_state_n[player_index] == XSM3_AUTH_RESPONDED ||
+                             _auth_state_n[player_index] == XSM3_AUTH_AUTHENTICATED) ? 2 : 1;
                 TU_LOG1("[XINPUT] Auth: STATE=%u\r\n", state_val);
                 tud_control_xfer(rhport, request, &state_val, sizeof(state_val));
                 return true;
@@ -262,23 +268,23 @@ bool tud_xinput_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage, tusb_contr
         // Host-to-device: accept data on SETUP, process on DATA stage
         if (stage == CONTROL_STAGE_SETUP) {
             // Accept the data phase
-            tud_control_xfer(rhport, request, _auth_buffer, request->wLength);
+            tud_control_xfer(rhport, request, _auth_buffer_n[player_index], request->wLength);
             return true;
         } else if (stage == CONTROL_STAGE_DATA) {
             switch (request->bRequest) {
                 case XSM3_REQ_INIT_AUTH: {
                     // 0x82: Console sends 34-byte challenge init
                     TU_LOG1("[XINPUT] Auth: INIT_AUTH (%u bytes)\r\n", request->wLength);
-                    _auth_request_id = XSM3_REQ_INIT_AUTH;
-                    _auth_state = XSM3_AUTH_INIT_RECEIVED;
+                    _auth_request_id_n[player_index] = XSM3_REQ_INIT_AUTH;
+                    _auth_state_n[player_index] = XSM3_AUTH_INIT_RECEIVED;
                     return true;
                 }
 
                 case XSM3_REQ_VERIFY: {
                     // 0x87: Console sends 22-byte verify challenge
                     TU_LOG1("[XINPUT] Auth: VERIFY (%u bytes)\r\n", request->wLength);
-                    _auth_request_id = XSM3_REQ_VERIFY;
-                    _auth_state = XSM3_AUTH_VERIFY_RECEIVED;
+                    _auth_request_id_n[player_index] = XSM3_REQ_VERIFY;
+                    _auth_state_n[player_index] = XSM3_AUTH_VERIFY_RECEIVED;
                     return true;
                 }
 
@@ -294,16 +300,18 @@ bool tud_xinput_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage, tusb_contr
 static bool xinput_xfer_cb(uint8_t rhport, uint8_t ep_addr, xfer_result_t result, uint32_t xferred_bytes)
 {
     (void)result;
+    for (uint8_t i = 0; i < USB_OUTPUT_PADS; i++) 
+    {
+        if (ep_addr == _xinput_itf_n[i].ep_out) {
+            // Received rumble/LED data on OUT endpoint
+            if (xferred_bytes >= sizeof(xinput_out_report_t)) {
+                memcpy(&_xinput_itf_n[i].out_report, _xinput_itf_n[i].ep_out_buf, sizeof(xinput_out_report_t));
+                _xinput_itf_n[i].output_available = true;
+            }
 
-    if (ep_addr == _xinput_itf.ep_out) {
-        // Received rumble/LED data on OUT endpoint
-        if (xferred_bytes >= sizeof(xinput_out_report_t)) {
-            memcpy(&_xinput_itf.out_report, _xinput_itf.ep_out_buf, sizeof(xinput_out_report_t));
-            _xinput_itf.output_available = true;
+            // Queue next receive
+            usbd_edpt_xfer(rhport, _xinput_itf_n[i].ep_out, _xinput_itf_n[i].ep_out_buf, sizeof(_xinput_itf_n[i].ep_out_buf));
         }
-
-        // Queue next receive
-        usbd_edpt_xfer(rhport, _xinput_itf.ep_out, _xinput_itf.ep_out_buf, sizeof(_xinput_itf.ep_out_buf));
     }
 
     return true;
@@ -340,36 +348,43 @@ const usbd_class_driver_t* tud_xinput_class_driver(void)
 bool tud_xinput_ready(void)
 {
     return tud_ready() &&
-           (_xinput_itf.ep_in != 0xFF) &&
-           !usbd_edpt_busy(0, _xinput_itf.ep_in);
+           (_xinput_itf_n[0].ep_in != 0xFF) &&
+           !usbd_edpt_busy(0, _xinput_itf_n[0].ep_in);
 }
 
-bool tud_xinput_send_report(const xinput_in_report_t* report)
+bool tud_xinput_ready_itf(uint8_t itf)
+{
+    return tud_ready() &&
+           (_xinput_itf_n[itf].ep_in != 0xFF) &&
+           !usbd_edpt_busy(0, _xinput_itf_n[itf].ep_in);
+}
+
+bool tud_xinput_send_report(uint8_t itf, const xinput_in_report_t* report)
 {
     TU_VERIFY(report != NULL);
-    TU_VERIFY(tud_xinput_ready());
+    TU_VERIFY(tud_xinput_ready_itf(itf));
 
     // Update internal report state
-    memcpy(&_xinput_itf.in_report, report, sizeof(xinput_in_report_t));
+    memcpy(&_xinput_itf_n[itf].in_report, report, sizeof(xinput_in_report_t));
 
     // Copy to endpoint buffer
-    memcpy(_xinput_itf.ep_in_buf, report, sizeof(xinput_in_report_t));
+    memcpy(_xinput_itf_n[itf].ep_in_buf, report, sizeof(xinput_in_report_t));
 
     // Wake host if suspended
     if (tud_suspended()) {
         tud_remote_wakeup();
     }
 
-    return usbd_edpt_xfer(0, _xinput_itf.ep_in, _xinput_itf.ep_in_buf, sizeof(xinput_in_report_t));
+    return usbd_edpt_xfer(0, _xinput_itf_n[itf].ep_in, _xinput_itf_n[itf].ep_in_buf, sizeof(xinput_in_report_t));
 }
 
 bool tud_xinput_get_output(xinput_out_report_t* output)
 {
     TU_VERIFY(output != NULL);
 
-    if (_xinput_itf.output_available) {
-        memcpy(output, &_xinput_itf.out_report, sizeof(xinput_out_report_t));
-        _xinput_itf.output_available = false;
+    if (_xinput_itf_n[0].output_available) {
+        memcpy(output, &_xinput_itf_n[0].out_report, sizeof(xinput_out_report_t));
+        _xinput_itf_n[0].output_available = false;
         return true;
     }
 
@@ -384,39 +399,42 @@ void tud_xinput_xsm3_init(void)
 {
     xsm3_initialise_state();
     xsm3_set_identification_data(xsm3_id_data_ms_controller);
-    _auth_state = XSM3_AUTH_IDLE;
-    _auth_response_len = 0;
-    _auth_request_id = 0;
+    for (uint8_t i = 0; i < USB_OUTPUT_PADS; i++) 
+    {
+        _auth_state_n[i] = XSM3_AUTH_IDLE;
+        _auth_response_len_n[i] = 0;
+        _auth_request_id_n[i] = 0;
+    }
     TU_LOG1("[XINPUT] XSM3 auth initialized\r\n");
 }
 
-void tud_xinput_xsm3_process(void)
+void tud_xinput_xsm3_process(uint8_t player_index)
 {
-    if (_auth_state == XSM3_AUTH_INIT_RECEIVED &&
-        _auth_request_id == XSM3_REQ_INIT_AUTH)
+    if (_auth_state_n[player_index] == XSM3_AUTH_INIT_RECEIVED &&
+        _auth_request_id_n[player_index] == XSM3_REQ_INIT_AUTH)
     {
         // Process challenge init (34 bytes in _auth_buffer)
-        xsm3_do_challenge_init(_auth_buffer);
+        xsm3_do_challenge_init(_auth_buffer_n[player_index]);
         // Copy response (header + 0x28 payload + checksum = 0x2E = 46 bytes)
-        _auth_response_len = XSM3_RESPONSE_INIT_LEN;
-        memcpy(_auth_response, xsm3_challenge_response, _auth_response_len);
-        _auth_state = XSM3_AUTH_RESPONDED;
-        _auth_request_id = 0;
+        _auth_response_len_n[player_index] = XSM3_RESPONSE_INIT_LEN;
+        memcpy(_auth_response_n[player_index], xsm3_challenge_response, _auth_response_len_n[player_index]);
+        _auth_state_n[player_index] = XSM3_AUTH_RESPONDED;
+        _auth_request_id_n[player_index] = 0;
         TU_LOG1("[XINPUT] XSM3: challenge init processed, response ready (%u bytes)\r\n",
-                _auth_response_len);
+                _auth_response_len_n[player_index]);
     }
-    else if (_auth_state == XSM3_AUTH_VERIFY_RECEIVED &&
-             _auth_request_id == XSM3_REQ_VERIFY)
+    else if (_auth_state_n[player_index] == XSM3_AUTH_VERIFY_RECEIVED &&
+             _auth_request_id_n[player_index] == XSM3_REQ_VERIFY)
     {
         // Process verify challenge (22 bytes in _auth_buffer)
-        xsm3_do_challenge_verify(_auth_buffer);
+        xsm3_do_challenge_verify(_auth_buffer_n[player_index]);
         // Copy response (header + 0x10 payload + checksum = 0x16 = 22 bytes)
-        _auth_response_len = XSM3_RESPONSE_VERIFY_LEN;
-        memcpy(_auth_response, xsm3_challenge_response, _auth_response_len);
-        _auth_state = XSM3_AUTH_AUTHENTICATED;
-        _auth_request_id = 0;
+        _auth_response_len_n[player_index] = XSM3_RESPONSE_VERIFY_LEN;
+        memcpy(_auth_response_n[player_index], xsm3_challenge_response, _auth_response_len_n[player_index]);
+        _auth_state_n[player_index] = XSM3_AUTH_AUTHENTICATED;
+        _auth_request_id_n[player_index] = 0;
         TU_LOG1("[XINPUT] XSM3: verify processed, auth complete (%u bytes)\r\n",
-                _auth_response_len);
+                _auth_response_len_n[player_index]);
     }
 }
 

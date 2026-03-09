@@ -752,8 +752,10 @@ void usbd_task(void)
             const usbd_mode_t* mode = usbd_modes[USB_OUTPUT_MODE_XINPUT];
             if (mode) {
                 if (mode->task) mode->task();
-                if (mode->is_ready && mode->is_ready()) {
-                    usbd_send_report(0);
+                for (uint8_t i = 0; i < USB_OUTPUT_PADS; i++) {
+                    if (mode->is_ready_itf && mode->is_ready_itf(i)) {
+                        usbd_send_report(i);
+                    }
                 }
             }
             break;
@@ -975,7 +977,7 @@ static bool usbd_send_xinput_report(uint8_t player_index)
     }
 
     // Check ready via mode interface
-    if (mode->is_ready && !mode->is_ready()) {
+    if (mode->is_ready_itf && !mode->is_ready_itf(player_index)) {
         return false;
     }
 
@@ -1761,6 +1763,7 @@ uint16_t const *tud_descriptor_string_cb(uint8_t index, uint16_t langid)
             case 2: xinput_str = XINPUT_PRODUCT; break;
             case 3: xinput_str = usb_serial_str; break;
             case 4: xinput_str = XINPUT_SECURITY_STRING; break;
+            case 5: xinput_str = XINPUT_SECURITY_STRING; break;
         }
         uint8_t xinput_len = strlen(xinput_str);
         if (xinput_len > 95) xinput_len = 95;
