@@ -752,8 +752,10 @@ void usbd_task(void)
             const usbd_mode_t* mode = usbd_modes[USB_OUTPUT_MODE_XINPUT];
             if (mode) {
                 if (mode->task) mode->task();
-                if (mode->is_ready && mode->is_ready()) {
-                    usbd_send_report(0);
+                for (uint8_t i = 0; i < USB_OUTPUT_PADS; i++) {
+                    if (mode->is_ready_itf && mode->is_ready_itf(i)) {
+                        usbd_send_report(i);
+                    }
                 }
             }
             break;
@@ -975,7 +977,7 @@ static bool usbd_send_xinput_report(uint8_t player_index)
     }
 
     // Check ready via mode interface
-    if (mode->is_ready && !mode->is_ready()) {
+    if (mode->is_ready_itf && !mode->is_ready_itf(player_index)) {
         return false;
     }
 
