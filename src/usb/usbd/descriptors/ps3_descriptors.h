@@ -332,23 +332,32 @@ static const uint8_t ps3_report_descriptor[] = {
 };
 
 // Configuration descriptor (41 bytes)
-#define PS3_CONFIG_TOTAL_LEN  (TUD_CONFIG_DESC_LEN + TUD_HID_INOUT_DESC_LEN)
+#define PS3_CONFIG_TOTAL_LEN  (TUD_CONFIG_DESC_LEN + (TUD_HID_INOUT_DESC_LEN * USB_OUTPUT_PADS))
+#define PS3_INTERFACE_DESC(ift) \
+    /* Interface Descriptor */ \
+    9, TUSB_DESC_INTERFACE, (ift), 0, 2, TUSB_CLASS_HID, 0, 0, 0, \
+    /* HID Descriptor */ \
+    9, HID_DESC_TYPE_HID, U16_TO_U8S_LE(0x0111), 0, 1, HID_DESC_TYPE_REPORT, U16_TO_U8S_LE(sizeof(ps3_report_descriptor)), \
+    /* Endpoint OUT: 0x02, 0x03, 0x04... */ \
+    7, TUSB_DESC_ENDPOINT, (uint8_t)((ift) + 0x02), TUSB_XFER_INTERRUPT, U16_TO_U8S_LE(64), 0x01, \
+    /* Endpoint IN: 0x81, 0x82, 0x83... */ \
+    7, TUSB_DESC_ENDPOINT, (uint8_t)((ift) + 0x81), TUSB_XFER_INTERRUPT, U16_TO_U8S_LE(64), 0x01
 
 static const uint8_t ps3_config_descriptor[] = {
     // Config descriptor
-    TUD_CONFIG_DESCRIPTOR(1, 1, 0, PS3_CONFIG_TOTAL_LEN, 0x80, 250),  // 500mA
+    TUD_CONFIG_DESCRIPTOR(1, USB_OUTPUT_PADS, 0, PS3_CONFIG_TOTAL_LEN, 0x80, 250),  // 500mA
 
-    // Interface
-    9, TUSB_DESC_INTERFACE, 0, 0, 2, TUSB_CLASS_HID, 0, 0, 0,
+    PS3_INTERFACE_DESC(0),
 
-    // HID descriptor
-    9, HID_DESC_TYPE_HID, U16_TO_U8S_LE(0x0111), 0, 1, HID_DESC_TYPE_REPORT, U16_TO_U8S_LE(sizeof(ps3_report_descriptor)),
-
-    // Endpoint OUT (for rumble/LED)
-    7, TUSB_DESC_ENDPOINT, 0x02, TUSB_XFER_INTERRUPT, U16_TO_U8S_LE(64), 1,
-
-    // Endpoint IN (for reports)
-    7, TUSB_DESC_ENDPOINT, 0x81, TUSB_XFER_INTERRUPT, U16_TO_U8S_LE(64), 1,
+#if (USB_OUTPUT_PADS > 1)
+    PS3_INTERFACE_DESC(1),
+#endif
+#if (USB_OUTPUT_PADS > 2)
+    PS3_INTERFACE_DESC(2),
+#endif
+#if (USB_OUTPUT_PADS > 3)
+    PS3_INTERFACE_DESC(3),
+#endif
 };
 
 // String descriptors

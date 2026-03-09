@@ -54,6 +54,9 @@ typedef struct {
     uint16_t (*get_report)(uint8_t report_id, hid_report_type_t report_type,
                            uint8_t* buffer, uint16_t reqlen);
 
+    uint16_t (*get_report_itf)(uint8_t itf, uint8_t report_id, hid_report_type_t report_type,
+                           uint8_t* buffer, uint16_t reqlen);
+
     // === Custom Class Driver (optional - NULL for built-in HID) ===
     const usbd_class_driver_t* (*get_class_driver)(void);
 
@@ -84,7 +87,7 @@ extern const usbd_mode_t xinput_mode;
 extern const usbd_mode_t switch_mode;
 extern const usbd_mode_t ps3_mode;
 // PS3 auth feature report handler (called from tud_hid_set_report_cb)
-void ps3_mode_set_feature_report(uint8_t report_id, const uint8_t* buffer, uint16_t bufsize);
+void ps3_mode_set_feature_report(uint8_t itf, uint8_t report_id, const uint8_t* buffer, uint16_t bufsize);
 extern const usbd_mode_t psclassic_mode;
 extern const usbd_mode_t ps4_mode;
 // PS4 auth feature report handler (called from tud_hid_set_report_cb)
