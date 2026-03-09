@@ -36,10 +36,12 @@ typedef struct {
 
     // Ready check - returns true if USB is ready to send
     bool (*is_ready)(void);
+    bool (*is_ready_itf)(uint8_t itf);
 
     // === Feedback (optional - NULL if not supported) ===
     // Handle output report from host (rumble, LEDs)
     void (*handle_output)(uint8_t report_id, const uint8_t* data, uint16_t len);
+    void (*handle_output_itf)(uint8_t itf, uint8_t report_id, const uint8_t* data, uint16_t len);
 
     // Get simple rumble value (0-255), legacy interface
     uint8_t (*get_rumble)(void);

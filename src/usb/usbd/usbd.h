@@ -99,8 +99,8 @@ typedef enum {
 // SInput composite: gamepad + keyboard + mouse on separate HID interfaces
 // Non-composite modes only use ITF_NUM_HID_GAMEPAD (= 0)
 #define ITF_NUM_HID_GAMEPAD     0
-#define ITF_NUM_HID_KEYBOARD    1
-#define ITF_NUM_HID_MOUSE       2
+#define ITF_NUM_HID_KEYBOARD    (USB_OUTPUT_PADS)
+#define ITF_NUM_HID_MOUSE       (USB_OUTPUT_PADS + 1)
 
 // ============================================================================
 // PUBLIC API

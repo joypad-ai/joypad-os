@@ -30,6 +30,11 @@
  extern "C" {
 #endif
 
+// 
+#ifndef USB_OUTPUT_PADS
+#define USB_OUTPUT_PADS 1
+#endif
+
 //--------------------------------------------------------------------
 // COMMON CONFIGURATION
 //--------------------------------------------------------------------
@@ -130,7 +135,7 @@
   #define CFG_TUD_ENDPOINT0_SIZE    64
 
   // Standard HID gamepad mode (default)
-  #define CFG_TUD_HID               4   // Up to 4 HID gamepads
+  #define CFG_TUD_HID               3 + USB_OUTPUT_PADS   // Up to 4 HID gamepads
 
   // Xbox Original (XID) mode support
   #define CFG_TUD_XID               1   // Enable XID class driver

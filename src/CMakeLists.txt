@@ -725,6 +725,7 @@ target_compile_definitions(joypad_usb PRIVATE
     PICO_DEFAULT_UART=0
     PICO_DEFAULT_UART_TX_PIN=0
     PICO_DEFAULT_UART_RX_PIN=1
+    USB_OUTPUT_PADS=2
 )
 target_sources(joypad_usb PUBLIC
     ${COMMON_SOURCES}
