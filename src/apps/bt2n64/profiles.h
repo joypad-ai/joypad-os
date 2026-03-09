@@ -28,12 +28,12 @@
 
 static const button_map_entry_t n64_default_map[] = {
     // Face buttons
-    MAP_BUTTON(JP_BUTTON_B1, N64_BUTTON_B),      // Cross/B -> N64 B
-    MAP_BUTTON(JP_BUTTON_B2, N64_BUTTON_A),      // Circle/A -> N64 A
+    MAP_BUTTON(JP_BUTTON_B1, N64_BUTTON_A),      // Cross/A -> N64 A
+    MAP_BUTTON(JP_BUTTON_B3, N64_BUTTON_B),      // Square/X -> N64 B
 
-    // C-buttons from face buttons (for controllers without a good right stick)
-    MAP_BUTTON(JP_BUTTON_B3, N64_BUTTON_CD),     // Square/X -> C-Down
-    MAP_BUTTON(JP_BUTTON_B4, N64_BUTTON_CU),     // Triangle/Y -> C-Up
+    // C-buttons from face buttons
+    MAP_BUTTON(JP_BUTTON_B2, N64_BUTTON_CD),     // Circle/B -> C-Down
+    MAP_BUTTON(JP_BUTTON_B4, N64_BUTTON_CL),     // Triangle/Y -> C-Left
 
     // Shoulders
     MAP_BUTTON(JP_BUTTON_L1, N64_BUTTON_L),      // L1/LB -> L
@@ -42,12 +42,13 @@ static const button_map_entry_t n64_default_map[] = {
     // Z trigger from left trigger
     MAP_BUTTON(JP_BUTTON_L2, N64_BUTTON_Z),      // LT/L2 -> Z
 
-    // Right trigger -> Z as well (both triggers = Z for comfort)
-    MAP_BUTTON(JP_BUTTON_R2, N64_BUTTON_Z),      // RT/R2 -> Z
+    // C-buttons from triggers/system
+    MAP_BUTTON(JP_BUTTON_R2, N64_BUTTON_CR),     // RT/R2 -> C-Right
+    MAP_BUTTON(JP_BUTTON_S1, N64_BUTTON_CU),     // Select -> C-Up
 
     // System
     MAP_BUTTON(JP_BUTTON_S2, N64_BUTTON_START),  // Start -> Start
-    MAP_DISABLED(JP_BUTTON_S1),                   // Select -> nothing (profile switch)
+    MAP_BUTTON(JP_BUTTON_A1, N64_BUTTON_START),  // Guide/Home -> Start
 
     // L3/R3 unused
     MAP_DISABLED(JP_BUTTON_L3),

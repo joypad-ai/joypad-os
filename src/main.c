@@ -113,7 +113,7 @@ int main(void)
 
   printf("\n[joypad] Starting...\n");
 
-  sleep_ms(250);  // Brief pause for stability
+  sleep_ms(50);  // Brief pause for stability
 
   // Launch Core 1 early for flash_safe_execute support
   // Core 1 will init flash safety and wait for task assignment
@@ -121,27 +121,13 @@ int main(void)
   multicore_launch_core1(core1_wrapper);
   sleep_ms(10);  // Brief delay to let Core 1 initialize
 
-  leds_init();
-  storage_init();
-  players_init();
-  app_init();
-
-  // Render one LED frame before input init (which may block for seconds on MAX3421E)
-  leds_task();
-
-  // Get and initialize input interfaces from app
-  inputs = app_get_input_interfaces(&input_count);
-  for (uint8_t i = 0; i < input_count; i++) {
-    if (inputs[i] && inputs[i]->init) {
-      printf("[joypad] Initializing input: %s\n", inputs[i]->name);
-      inputs[i]->init();
-    }
-  }
-
-  // Get and initialize output interfaces from app
+  // Initialize output interfaces and start Core 1 task FIRST.
+  // Timing-critical protocols (joybus, maple bus) must start listening ASAP —
+  // consoles probe for controllers at boot and may stop permanently if missed.
+  // Output init only needs PIO/GPIO — no dependency on app/input/profile init.
   outputs = app_get_output_interfaces(&output_count);
   if (output_count > 0 && outputs[0]) {
-    active_output = outputs[0];  // Set primary output for other modules
+    active_output = outputs[0];
   }
   for (uint8_t i = 0; i < output_count; i++) {
     if (outputs[i] && outputs[i]->init) {
@@ -150,22 +136,37 @@ int main(void)
     }
   }
 
-  // Find core1 task from first output that has one
-  // Note: Only one output can use core1 (RP2040 has 2 cores)
+  // Find and signal core1 task so console detection starts immediately
   for (uint8_t i = 0; i < output_count; i++) {
     if (outputs[i] && outputs[i]->core1_task) {
       printf("[joypad] Core1 task from: %s\n", outputs[i]->name);
       core1_actual_task = outputs[i]->core1_task;
-      break;  // Only one core1 task possible
+      break;
     }
   }
-
-  // Signal Core 1 that task assignment is complete
-  // Core 1 was launched early for flash safety, now it can run its actual task
   printf("[joypad] Signaling core1 (task: %s)\n",
          core1_actual_task ? "yes" : "idle");
   core1_task_ready = true;
-  __sev();  // Send event to wake Core 1 from __wfe()
+  __sev();
+
+  // Now initialize core services and app (slower — BT, USB host, etc.)
+  // Core 1 is already listening for console probes while this runs.
+  leds_init();
+  storage_init();
+  players_init();
+  app_init();
+
+  // Render one LED frame before input init (which may block for seconds on MAX3421E)
+  leds_task();
+
+  // Get and initialize input interfaces
+  inputs = app_get_input_interfaces(&input_count);
+  for (uint8_t i = 0; i < input_count; i++) {
+    if (inputs[i] && inputs[i]->init) {
+      printf("[joypad] Initializing input: %s\n", inputs[i]->name);
+      inputs[i]->init();
+    }
+  }
 
   core0_main();
 

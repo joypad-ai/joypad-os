@@ -20,14 +20,12 @@
 // Defined in N64Console.c
 extern n64_report_t default_n64_report;
 extern n64_status_t default_n64_status;
+extern volatile uint8_t n64_rumble_state;
 
 // Declaration of global variables
 N64Console_t n64;
 n64_report_t n64_report;
 PIO pio = pio0;
-
-// N64-specific state
-static uint8_t n64_rumble = 0;
 
 // Diagnostic: set by Core 1 when N64 console is communicating
 volatile bool n64_console_active = false;
@@ -36,7 +34,7 @@ volatile bool n64_console_active = false;
 volatile bool n64_router_has_data = false;  // router_get_output returned non-NULL at least once
 volatile bool n64_player_assigned = false;  // playersCount > 0 seen in update_output
 
-static uint8_t n64_get_rumble(void) { return n64_rumble; }
+static uint8_t n64_get_rumble(void) { return n64_rumble_state; }
 
 // ============================================================================
 // PROFILE SYSTEM ACCESSORS (for OutputInterface)

@@ -24,8 +24,8 @@
 // The mapping reflects the default/natural position on an N64 controller.
 
 // Face buttons
-#define N64_BUTTON_A         JP_BUTTON_B2  // A (large blue button)
-#define N64_BUTTON_B         JP_BUTTON_B1  // B (small green button)
+#define N64_BUTTON_A         JP_BUTTON_B1  // A → Cross/A (bottom face button)
+#define N64_BUTTON_B         JP_BUTTON_B3  // B → Square/X (left face button)
 
 // Trigger/Shoulder buttons
 #define N64_BUTTON_Z         JP_BUTTON_L2  // Z trigger (under controller grip)
@@ -41,13 +41,10 @@
 #define N64_BUTTON_DL        JP_BUTTON_DL  // D-pad Left
 #define N64_BUTTON_DR        JP_BUTTON_DR  // D-pad Right
 
-// C-buttons (mapped to right stick directions and face buttons)
-// When using modern controllers, C-buttons can be mapped to right stick
-// or to face buttons (B3/B4 for C-Left/C-Up, R2/R1 for C-Down/C-Right)
-#define N64_BUTTON_CU        JP_BUTTON_B4  // C-Up    (Y/Triangle on modern)
-#define N64_BUTTON_CD        JP_BUTTON_B3  // C-Down  (X/Square on modern)
-#define N64_BUTTON_CL        JP_BUTTON_R2  // C-Left  (RT/R2 on modern)
-#define N64_BUTTON_CR        JP_BUTTON_R1  // C-Right (RB/R1 on modern)
-// Note: Alternative profile can map C-buttons to right stick instead
+// C-buttons (mapped to right stick + face/shoulder buttons)
+#define N64_BUTTON_CU        JP_BUTTON_R2  // C-Up    (RT/ZR/R2 on modern)
+#define N64_BUTTON_CD        JP_BUTTON_B2  // C-Down  (Circle/B on modern)
+#define N64_BUTTON_CL        JP_BUTTON_B4  // C-Left  (Triangle/Y on modern)
+#define N64_BUTTON_CR        JP_BUTTON_R3  // C-Right (RS/R3 on modern)
 
 #endif // N64_BUTTONS_H

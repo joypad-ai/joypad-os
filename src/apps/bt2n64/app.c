@@ -211,11 +211,10 @@ void app_init(void)
     const char* active_name = profile_get_name(OUTPUT_TARGET_N64,
                                                 profile_get_active_index(OUTPUT_TARGET_N64));
 
-    // Initialize Bluetooth transport
-    printf("[app:bt2n64] Initializing Bluetooth...\n");
-    bt_init(&bt_transport_cyw43);
-
-    printf("[app:bt2n64] Initialization complete\n");
+    // Defer BT init to app_task — it takes ~1s and blocks console detection.
+    // N64 output + Core 1 joybus listener must start before BT init so the
+    // console sees us during its boot probe window.
+    printf("[app:bt2n64] BT init deferred (will start after joybus ready)\n");
     printf("[app:bt2n64]   Routing: Bluetooth -> N64 (merge)\n");
     printf("[app:bt2n64]   Player slots: %d (single player)\n", MAX_PLAYER_SLOTS);
     printf("[app:bt2n64]   Profiles: %d (active: %s)\n", profile_count, active_name ? active_name : "none");
@@ -227,12 +226,31 @@ void app_init(void)
 // APP TASK (Called from main loop)
 // ============================================================================
 
+// Deferred BT initialization state
+static bool bt_initialized = false;
+
 void app_task(void)
 {
     // Check for bootloader command on CDC serial ('B' = reboot to bootloader)
     int c = getchar_timeout_us(0);
     if (c == 'B') {
         reset_usb_boot(0, 0);
+    }
+
+    // Deferred BT init: runs once after joybus listener is active on Core 1
+    if (!bt_initialized) {
+        bt_initialized = true;
+        printf("[app:bt2n64] Initializing Bluetooth...\n");
+        bt_init(&bt_transport_cyw43);
+        printf("[app:bt2n64] Bluetooth initialized\n");
+    }
+
+    // Forward rumble from N64 console to BT controllers
+    if (n64_output_interface.get_rumble) {
+        uint8_t rumble = n64_output_interface.get_rumble();
+        for (int i = 0; i < playersCount; i++) {
+            feedback_set_rumble(i, rumble, rumble);
+        }
     }
 
     // Process button input
