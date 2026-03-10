@@ -17,8 +17,8 @@ on:
           - major
 
 jobs:
-  # Build apps in parallel using matrix
-  build:
+  # Build RP2040/RP2350 apps in parallel using matrix (Docker + pico-sdk)
+  build-rp2:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -96,9 +96,19 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  # Build ESP32-S3 bt2usb (separate job — needs ESP-IDF toolchain)
-  build-esp32:
+  # Build ESP32 targets (separate job — needs ESP-IDF toolchain)
+  build-esp:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: bt2usb_esp32s3
+            idf_target: esp32s3
+            sdkconfig: sdkconfig.defaults
+            bin_path: esp/build/joypad_bt2usb.bin
+            uf2_family: "0xc47e5767"
+
     steps:
       - name: Checkout code with submodules
         uses: actions/checkout@v4
@@ -111,28 +121,28 @@ jobs:
         id: commit
         run: echo "hash=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
 
-      - name: Build bt2usb_esp32s3
+      - name: Build ${{ matrix.app }}
         run: |
           docker run --rm \
             -v ${{ github.workspace }}:/workspace \
             -w /workspace/esp \
             espressif/idf:v6.0-beta2 \
-            bash -c "SDKCONFIG_DEFAULTS=sdkconfig.defaults idf.py build"
+            bash -c "SDKCONFIG_DEFAULTS=${{ matrix.sdkconfig }} idf.py build"
 
           sudo chown -R $(id -u):$(id -g) esp/build/
 
       - name: Generate UF2
         run: |
           mkdir -p releases
-          python3 esp/tools/uf2conv.py esp/build/joypad_bt2usb.bin \
-            --base 0 --family 0xc47e5767 \
-            --output releases/joypad_${{ steps.commit.outputs.hash }}_bt2usb_esp32s3.uf2 \
+          python3 esp/tools/uf2conv.py ${{ matrix.bin_path }} \
+            --base 0 --family ${{ matrix.uf2_family }} \
+            --output releases/joypad_${{ steps.commit.outputs.hash }}_${{ matrix.app }}.uf2 \
             --convert
 
       - name: Upload firmware
         uses: actions/upload-artifact@v4
         with:
-          name: firmware-bt2usb_esp32s3
+          name: firmware-${{ matrix.app }}
           path: releases/*.uf2
           if-no-files-found: error
           retention-days: 1
@@ -234,7 +244,7 @@ jobs:
 
   # Collect all artifacts and create combined release package
   collect:
-    needs: [build, build-esp32, build-nrf]
+    needs: [build-rp2, build-esp, build-nrf]
     runs-on: ubuntu-latest
     steps:
       - name: Download all firmware artifacts
@@ -355,6 +365,13 @@ jobs:
           path: organized/bt2n64/*.uf2
           if-no-files-found: ignore
 
+      - name: Upload btusb2usb
+        uses: actions/upload-artifact@v4
+        with:
+          name: joypad_${{ steps.commit.outputs.hash }}_btusb2usb
+          path: organized/btusb2usb/*.uf2
+          if-no-files-found: ignore
+
       - name: Upload snes2usb
         uses: actions/upload-artifact@v4
         with:
@@ -374,13 +391,6 @@ jobs:
         with:
           name: joypad_${{ steps.commit.outputs.hash }}_gc2usb
           path: organized/gc2usb/*.uf2
-          if-no-files-found: ignore
-
-      - name: Upload btusb2usb
-        uses: actions/upload-artifact@v4
-        with:
-          name: joypad_${{ steps.commit.outputs.hash }}_btusb2usb
-          path: organized/btusb2usb/*.uf2
           if-no-files-found: ignore
 
       - name: Upload controllers
