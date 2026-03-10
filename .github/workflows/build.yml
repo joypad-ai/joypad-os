@@ -39,7 +39,7 @@ jobs:
           - usb2usb_pico
           - usb2usb_pico_w
           - usb2usb_pico2_w
-          - usb2usb_feather
+          - usb2usb_feather_rp2040
           - usb2usb_rp2040zero
           - usb2usb_rp2350usba
           - bt2usb_pico_w
@@ -159,7 +159,7 @@ jobs:
           mv artifacts/*.uf2 releases/
 
           # Known board suffixes (order matters - check longer suffixes first)
-          BOARDS="esp32s3 pico2_w pico_w rp2040zero rp2350usba kb2040 feather pico macropad"
+          BOARDS="esp32s3 pico2_w pico_w rp2040zero rp2350usba kb2040 feather_rp2040 feather pico macropad"
 
           for file in releases/joypad_*.uf2; do
             if [ -f "$file" ]; then
