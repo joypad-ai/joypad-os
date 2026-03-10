@@ -165,7 +165,7 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
-      - name: Install west and dependencies
+      - name: Install west
         run: |
           pip3 install west
 
@@ -190,6 +190,11 @@ jobs:
         run: |
           west init -m https://github.com/nrfconnect/sdk-nrf.git --mr v3.1.0
           west update --narrow -o=--depth=1
+
+      - name: Install Python dependencies
+        working-directory: nrf
+        run: |
+          pip3 install -r zephyr/scripts/requirements.txt
 
       - name: Install Zephyr SDK
         run: |
