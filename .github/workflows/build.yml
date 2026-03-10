@@ -18,7 +18,7 @@ on:
 
 jobs:
   # Build RP2040/RP2350 apps in parallel using matrix (Docker + pico-sdk)
-  build-rp2:
+  build-rpi:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -244,7 +244,7 @@ jobs:
 
   # Collect all artifacts and create combined release package
   collect:
-    needs: [build-rp2, build-esp, build-nrf]
+    needs: [build-rpi, build-esp, build-nrf]
     runs-on: ubuntu-latest
     steps:
       - name: Download all firmware artifacts
