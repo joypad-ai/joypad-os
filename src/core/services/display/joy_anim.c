@@ -98,7 +98,7 @@ static const uint8_t joy_body[] = {
 #define EYE_R_CY  (JOY_BODY_Y + 27)  // 31
 
 // D-pad cross dimensions (left eye pupil)
-#define DPAD_ARM_LEN  5   // Half-length of each arm
+#define DPAD_ARM_LEN  7   // Half-length of each arm
 #define DPAD_ARM_W    2   // Half-width of each arm (5px wide)
 
 // Button diamond dimensions (right eye pupil)
@@ -153,14 +153,14 @@ static const joy_keyframe_t kf_boot[] = {
     { 1000,  0, 0,  0, 0,  6, 6,   1, 5,  0 },  // Settle to normal
 };
 
-// --- IDLE: blink cycle ---
+// --- IDLE: blink cycle with resting smile ---
 static const joy_keyframe_t kf_idle[] = {
-    {    0,  0, 0,  0, 0,  6, 6,   0, 5,  0 },  // Open
-    { 3000,  0, 0,  0, 0,  6, 6,   0, 5,  0 },  // Hold open
-    { 3050,  0, 0,  0, 0,  0, 0,   0, 5,  0 },  // Blink shut
-    { 3150,  0, 0,  0, 0,  0, 0,   0, 5,  0 },  // Hold shut
-    { 3200,  0, 0,  0, 0,  6, 6,   0, 5,  0 },  // Open
-    { 4000,  0, 0,  0, 0,  6, 6,   0, 5,  0 },  // Pause before loop
+    {    0,  0, 0,  0, 0,  6, 6,   1, 5,  0 },  // Open, slight smile
+    { 3000,  0, 0,  0, 0,  6, 6,   1, 5,  0 },  // Hold open
+    { 3050,  0, 0,  0, 0,  0, 0,   1, 5,  0 },  // Blink shut
+    { 3150,  0, 0,  0, 0,  0, 0,   1, 5,  0 },  // Hold shut
+    { 3200,  0, 0,  0, 0,  6, 6,   1, 5,  0 },  // Open
+    { 4000,  0, 0,  0, 0,  6, 6,   1, 5,  0 },  // Pause before loop
 };
 
 // --- SLEEP: nearly closed slits, slow breathing ---
@@ -187,9 +187,9 @@ static const joy_keyframe_t kf_sad[] = {
     { 1800,  0, 0,  0, 0,  6, 6,   0, 5,  0 },  // Back to normal
 };
 
-// --- ACTIVE: neutral (eyes driven by look direction) ---
+// --- ACTIVE: slight smile (eyes driven by look direction) ---
 static const joy_keyframe_t kf_active[] = {
-    {    0,  0, 0,  0, 0,  6, 6,   0, 5,  0 },  // Open
+    {    0,  0, 0,  0, 0,  6, 6,   1, 5,  0 },  // Open, slight smile
 };
 
 // --- ALERT: flash wide-eyed ---
@@ -462,8 +462,8 @@ void joy_anim_render(void) {
             if (curve != 0 && w2 > 0) {
                 dy_mouth = (int8_t)((curve * (w2 - (int16_t)mx * mx)) / w2);
             }
-            display_pixel(MOUTH_CX + dx + mx, MOUTH_CY + dy - dy_mouth, false);
-            display_pixel(MOUTH_CX + dx + mx, MOUTH_CY + dy - dy_mouth + 1, false);
+            display_pixel(MOUTH_CX + dx + mx, MOUTH_CY + dy + dy_mouth, false);
+            display_pixel(MOUTH_CX + dx + mx, MOUTH_CY + dy + dy_mouth + 1, false);
         }
     }
 }
@@ -492,11 +492,8 @@ void joy_anim_event(joy_event_t event) {
             break;
 
         case JOY_EVENT_BUTTON_PRESS:
-            // Only flash alert if in idle/sleep (not during active play)
-            if (current_state == JOY_STATE_IDLE || current_state == JOY_STATE_SLEEP) {
-                alert_return_state = JOY_STATE_IDLE;
-                set_state(JOY_STATE_ALERT, now);
-            }
+            // Happy bounce on button press
+            set_state(JOY_STATE_HAPPY, now);
             break;
 
         case JOY_EVENT_MODE_SWITCH:
