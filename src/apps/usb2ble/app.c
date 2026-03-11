@@ -75,6 +75,12 @@ static void on_button_event(button_event_t event)
             break;
         }
 
+        case BUTTON_EVENT_TRIPLE_CLICK:
+            // Reset USB output mode to CDC Config (escape hatch if stuck in non-CDC mode)
+            printf("[app:usb2ble] Triple-click - resetting USB mode to CDC Config\n");
+            usbd_set_mode(USB_OUTPUT_MODE_CDC);
+            break;
+
         case BUTTON_EVENT_HOLD:
             printf("[app:usb2ble] Long press - clearing BLE bonds\n");
             gap_delete_all_link_keys();
