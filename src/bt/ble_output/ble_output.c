@@ -39,46 +39,44 @@ static const uint8_t ble_hid_descriptor[] = {
     0x05, 0x01,        // Usage Page (Generic Desktop Ctrls)
     0x09, 0x05,        // Usage (Game Pad)
     0xA1, 0x01,        // Collection (Application)
-    0x85, 0x01,        //   Report ID (1) — must match hids.gatt REPORT_REFERENCE
+    0x85, 0x03,        //   Report ID (3) — matches ESP32-BLE-Gamepad & hids.gatt
 
-    // 14 buttons (B1-R3 + A1 + A2) + 2 padding bits = 2 bytes
-    0x15, 0x00,        //   Logical Minimum (0)
-    0x25, 0x01,        //   Logical Maximum (1)
-    0x35, 0x00,        //   Physical Minimum (0)
-    0x45, 0x01,        //   Physical Maximum (1)
-    0x75, 0x01,        //   Report Size (1)
-    0x95, 0x0E,        //   Report Count (14)
+    // 16 buttons = 2 bytes
     0x05, 0x09,        //   Usage Page (Button)
     0x19, 0x01,        //   Usage Minimum (Button 1)
-    0x29, 0x0E,        //   Usage Maximum (Button 14)
-    0x81, 0x02,        //   Input (Data,Var,Abs)
-    0x95, 0x02,        //   Report Count (2)
-    0x81, 0x01,        //   Input (Const) - 2 bit padding
-
-    // Hat switch (4 bits + 4 bit padding)
-    0x05, 0x01,        //   Usage Page (Generic Desktop Ctrls)
+    0x29, 0x10,        //   Usage Maximum (Button 16)
     0x15, 0x00,        //   Logical Minimum (0)
-    0x25, 0x07,        //   Logical Maximum (7)
-    0x46, 0x3B, 0x01,  //   Physical Maximum (315)
-    0x75, 0x04,        //   Report Size (4)
-    0x95, 0x01,        //   Report Count (1)
-    0x65, 0x14,        //   Unit (Eng Rot:Angular Pos)
+    0x25, 0x01,        //   Logical Maximum (1)
+    0x75, 0x01,        //   Report Size (1)
+    0x95, 0x10,        //   Report Count (16)
+    0x81, 0x02,        //   Input (Data,Var,Abs)
+
+    // Hat switch (8 bits: values 1-8 = directions, 0 = center/null)
+    0x05, 0x01,        //   Usage Page (Generic Desktop Ctrls)
     0x09, 0x39,        //   Usage (Hat switch)
+    0x15, 0x01,        //   Logical Minimum (1)
+    0x25, 0x08,        //   Logical Maximum (8)
+    0x35, 0x00,        //   Physical Minimum (0)
+    0x46, 0x3B, 0x01,  //   Physical Maximum (315)
+    0x65, 0x14,        //   Unit (Eng Rot:Angular Pos)
+    0x75, 0x08,        //   Report Size (8)
+    0x95, 0x01,        //   Report Count (1)
     0x81, 0x42,        //   Input (Data,Var,Abs,Null)
     0x65, 0x00,        //   Unit (None)
-    0x95, 0x01,        //   Report Count (1)
-    0x81, 0x01,        //   Input (Const) - 4 bit padding
 
-    // 6 axes: X, Y, Z, Rz (sticks), Rx, Ry (triggers)
-    0x26, 0xFF, 0x00,  //   Logical Maximum (255)
-    0x46, 0xFF, 0x00,  //   Physical Maximum (255)
+    // 6 axes × 16-bit: X, Y, Z, Rz (sticks), Rx, Ry (triggers)
+    0x05, 0x01,        //   Usage Page (Generic Desktop Ctrls)
+    0x15, 0x00,        //   Logical Minimum (0)
+    0x27, 0xFF, 0x7F, 0x00, 0x00,  // Logical Maximum (0x7FFF = 32767)
+    0x35, 0x00,        //   Physical Minimum (0)
+    0x47, 0xFF, 0x7F, 0x00, 0x00,  // Physical Maximum (0x7FFF = 32767)
     0x09, 0x30,        //   Usage (X)  - Left Stick X
     0x09, 0x31,        //   Usage (Y)  - Left Stick Y
     0x09, 0x32,        //   Usage (Z)  - Right Stick X
     0x09, 0x35,        //   Usage (Rz) - Right Stick Y
     0x09, 0x33,        //   Usage (Rx) - Left Trigger
     0x09, 0x34,        //   Usage (Ry) - Right Trigger
-    0x75, 0x08,        //   Report Size (8)
+    0x75, 0x10,        //   Report Size (16)
     0x95, 0x06,        //   Report Count (6)
     0x81, 0x02,        //   Input (Data,Var,Abs)
 
@@ -86,31 +84,32 @@ static const uint8_t ble_hid_descriptor[] = {
 };
 
 // ============================================================================
-// BLE REPORT STRUCTURE (9 bytes, matches descriptor above)
+// BLE REPORT STRUCTURE (15 bytes, matches descriptor above)
 // ============================================================================
+// 16 buttons (2B) + hat (1B) + 6 axes × 16-bit (12B) = 15 bytes
 
 typedef struct __attribute__((packed)) {
     uint8_t buttons_lo;     // Buttons 1-8
     uint8_t buttons_hi;     // Buttons 9-16
-    uint8_t hat;            // Low 4 bits = hat (0-7, 8=center), high 4 bits = padding
-    uint8_t lx;             // Left stick X
-    uint8_t ly;             // Left stick Y
-    uint8_t rx;             // Right stick X
-    uint8_t ry;             // Right stick Y
-    uint8_t lt;             // Left trigger
-    uint8_t rt;             // Right trigger
+    uint8_t hat;            // Hat switch (1-8 direction, 0=center)
+    int16_t lx;             // Left stick X  (0-32767)
+    int16_t ly;             // Left stick Y  (0-32767)
+    int16_t rx;             // Right stick X (0-32767)
+    int16_t ry;             // Right stick Y (0-32767)
+    int16_t lt;             // Left trigger  (0-32767)
+    int16_t rt;             // Right trigger (0-32767)
 } ble_gamepad_report_t;
 
-// Hat switch values
-#define BLE_HAT_UP          0
-#define BLE_HAT_UP_RIGHT    1
-#define BLE_HAT_RIGHT       2
-#define BLE_HAT_DOWN_RIGHT  3
-#define BLE_HAT_DOWN        4
-#define BLE_HAT_DOWN_LEFT   5
-#define BLE_HAT_LEFT        6
-#define BLE_HAT_UP_LEFT     7
-#define BLE_HAT_CENTER      8
+// Hat switch values (0-7 = directions, 8 = center/null)
+#define BLE_HAT_CENTER      0
+#define BLE_HAT_UP          1
+#define BLE_HAT_UP_RIGHT    2
+#define BLE_HAT_RIGHT       3
+#define BLE_HAT_DOWN_RIGHT  4
+#define BLE_HAT_DOWN        5
+#define BLE_HAT_DOWN_LEFT   6
+#define BLE_HAT_LEFT        7
+#define BLE_HAT_UP_LEFT     8
 
 // ============================================================================
 // STATE
@@ -233,11 +232,6 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                 case HIDS_SUBEVENT_CAN_SEND_NOW:
                     if (report_pending && con_handle != HCI_CON_HANDLE_INVALID) {
                         const uint8_t *rpt = (const uint8_t *)&pending_report;
-                        printf("[ble_output] TX:");
-                        for (uint8_t i = 0; i < sizeof(pending_report); i++) {
-                            printf(" %02x", rpt[i]);
-                        }
-                        printf("\n");
                         hids_device_send_input_report(con_handle,
                             rpt, sizeof(pending_report));
                         last_sent_report = pending_report;
@@ -266,10 +260,10 @@ void ble_output_init(void)
     // Initialize report to neutral state (no BTstack dependency)
     memset(&pending_report, 0, sizeof(pending_report));
     pending_report.hat = BLE_HAT_CENTER;
-    pending_report.lx = 128;
-    pending_report.ly = 128;
-    pending_report.rx = 128;
-    pending_report.ry = 128;
+    pending_report.lx = 16384;  // 0x4000 = center of 0-32767
+    pending_report.ly = 16384;
+    pending_report.rx = 16384;
+    pending_report.ry = 16384;
     last_sent_report = pending_report;
 }
 
@@ -287,8 +281,9 @@ void ble_output_late_init(void)
     device_information_service_server_set_manufacturer_name("Joypad");
     device_information_service_server_set_model_number("USB2BLE");
     device_information_service_server_set_software_revision("1.0.0");
-    // PnP ID: USB IF (0x02), VID 0x2e8a, PID 0x10c6, version 1.0.0
-    device_information_service_server_set_pnp_id(0x02, 0x2e8a, 0x10c6, 0x0100);
+    // PnP ID: Bluetooth SIG (0x01), VID 0xe502, PID 0xbbab, version 1.0.0
+    // Mirrors ESP32-BLE-Gamepad convention for BLE gamepad compatibility
+    device_information_service_server_set_pnp_id(0x01, 0xe502, 0xbbab, 0x0100);
 
     // Setup HID Device service
     hids_device_init(0, ble_hid_descriptor, sizeof(ble_hid_descriptor));
@@ -327,26 +322,19 @@ void ble_output_task(void)
     if (!event) return;
 
     // Build report from input event
+    // Scale 8-bit input (0-255) to 16-bit BLE (0-32767): val * 32767 / 255
+    #define SCALE_8_TO_16(v) ((int16_t)((uint32_t)(v) * 32767 / 255))
     ble_gamepad_report_t report;
     uint16_t buttons = convert_buttons(event->buttons);
     report.buttons_lo = buttons & 0xFF;
     report.buttons_hi = (buttons >> 8) & 0xFF;
     report.hat = convert_dpad_to_hat(event->buttons);
-    report.lx = event->analog[ANALOG_LX];
-    report.ly = event->analog[ANALOG_LY];
-    report.rx = event->analog[ANALOG_RX];
-    report.ry = event->analog[ANALOG_RY];
-    report.lt = event->analog[ANALOG_L2];
-    report.rt = event->analog[ANALOG_R2];
-
-    static uint32_t dbg_count = 0;
-    if (dbg_count++ < 5) {
-        printf("[ble_output] buttons=0x%08lx lx=%d ly=%d rx=%d ry=%d lt=%d rt=%d\n",
-            (unsigned long)event->buttons,
-            event->analog[ANALOG_LX], event->analog[ANALOG_LY],
-            event->analog[ANALOG_RX], event->analog[ANALOG_RY],
-            event->analog[ANALOG_L2], event->analog[ANALOG_R2]);
-    }
+    report.lx = SCALE_8_TO_16(event->analog[ANALOG_LX]);
+    report.ly = SCALE_8_TO_16(event->analog[ANALOG_LY]);
+    report.rx = SCALE_8_TO_16(event->analog[ANALOG_RX]);
+    report.ry = SCALE_8_TO_16(event->analog[ANALOG_RY]);
+    report.lt = SCALE_8_TO_16(event->analog[ANALOG_L2]);
+    report.rt = SCALE_8_TO_16(event->analog[ANALOG_R2]);
 
     // Only send if report changed (avoid flooding BLE link)
     if (memcmp(&report, &last_sent_report, sizeof(report)) == 0) return;
