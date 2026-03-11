@@ -199,8 +199,7 @@ static bool bt_initialized = false;
 
 void app_task(void)
 {
-    // Deferred BT init: wait 10 seconds for polyface handshake to complete,
-    // then initialize CYW43. LED update requires CYW43 to be initialized.
+    // Deferred BT init: wait 10 seconds for polyface handshake to complete
     if (!bt_initialized) {
         static uint32_t boot_time = 0;
         if (boot_time == 0) boot_time = to_ms_since_boot(get_absolute_time());
@@ -219,20 +218,8 @@ void app_task(void)
         reset_usb_boot(0, 0);
     }
 
-    // Process button input
-    button_task();
-
-    // BT poll + LED at 5Hz — limit CYW43 SPI impact on polyface.
-    // NOTE: CYW43 SPI EMI on Pico W disrupts polyface GPIO inputs.
-    // Hardware fix needed: 220-330pF ceramic caps from GPIO 2/3 to GND.
-    {
-        static uint32_t last_poll = 0;
-        uint32_t now = to_ms_since_boot(get_absolute_time());
-        if (now - last_poll >= 200) {
-            last_poll = now;
-            bt_task();
-            leds_set_connected_devices(btstack_classic_get_connection_count());
-            led_status_update();
-        }
-    }
+    // BT poll + LED
+    bt_task();
+    leds_set_connected_devices(btstack_classic_get_connection_count());
+    led_status_update();
 }

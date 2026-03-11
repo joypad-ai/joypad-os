@@ -456,6 +456,32 @@ joypad_target_common(joypad_ngc_rp2040zero)
 joypad_add_btstack(joypad_ngc_rp2040zero)
 pico_generate_pio_header(joypad_ngc_rp2040zero ${CMAKE_CURRENT_LIST_DIR}/lib/joybus-pio/src/joybus.pio)
 
+# --- Nuon Serial Adapter ---
+# Polyface TYPE=0x04 serial device for Nuon homebrew debug logging.
+# No USB host — uses USB device CDC to bridge SDATA register to PC terminal.
+add_executable(joypad_nuonserial)
+target_compile_definitions(joypad_nuonserial PRIVATE
+    CONFIG_NUONSERIAL=1
+    CONFIG_NO_NEOPIXEL=1
+    DISABLE_USB_HOST=1
+)
+target_sources(joypad_nuonserial PUBLIC ${CORE_SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/device/nuon/nuon_serial_device.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/nuonserial/app.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/nuonserial/usb_descriptors.c
+)
+target_include_directories(joypad_nuonserial PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/nuonserial
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/device/nuon
+)
+target_link_libraries(joypad_nuonserial PRIVATE
+    pico_stdlib pico_multicore hardware_pio pico_rand pico_bit_ops
+    tinyusb_device tinyusb_board pico_unique_id
+)
+joypad_target_common(joypad_nuonserial)
+pico_generate_pio_header(joypad_nuonserial ${CMAKE_CURRENT_LIST_DIR}/native/device/nuon/polyface_read.pio)
+pico_generate_pio_header(joypad_nuonserial ${CMAKE_CURRENT_LIST_DIR}/native/device/nuon/polyface_send.pio)
+
 # --- Nuon ---
 add_executable(joypad_nuon)
 target_compile_definitions(joypad_nuon PRIVATE CONFIG_NUON=1 CONFIG_NO_NEOPIXEL=1)
@@ -1070,13 +1096,12 @@ if (PICO_BOARD STREQUAL "pico_w" OR PICO_BOARD STREQUAL "pico2_w")
         DISABLE_USB_DEVICE=1
         CONFIG_NO_NEOPIXEL=1
         CONFIG_NO_FLASH_LOCKOUT=1
-        USE_BOOTSEL_BUTTON=1
+        DISABLE_BUTTON_SERVICE=1
         CYW43_LWIP=0
         BTSTACK_USE_CYW43=1
         ENABLE_BTSTACK=1
         SCAN_INTERVAL=0x0500
         SCAN_WINDOW=0x0030
-        BTSTACK_DEFER_SCAN=1
     )
     target_sources(joypad_bt2nuon PUBLIC
         ${CORE_SOURCES}
