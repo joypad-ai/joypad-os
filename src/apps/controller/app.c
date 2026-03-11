@@ -79,14 +79,14 @@ static const button_name_t button_names[] = {
 // CONTROLLER TYPE CONFIGURATION
 // ============================================================================
 
-#if defined(CONTROLLER_TYPE_FISHERPRICE)
+#if defined(CONTROLLER_TYPE_FISHERPRICE_V1)
     #include "pad/configs/fisherprice.h"
-    #define PAD_CONFIG pad_config_fisherprice
-    #define CONTROLLER_NAME "Fisher Price"
-#elif defined(CONTROLLER_TYPE_FISHERPRICE_ANALOG)
+    #define PAD_CONFIG pad_config_fisherprice_v1
+    #define CONTROLLER_NAME "Fisher Price V1"
+#elif defined(CONTROLLER_TYPE_FISHERPRICE_V2)
     #include "pad/configs/fisherprice.h"
-    #define PAD_CONFIG pad_config_fisherprice_analog
-    #define CONTROLLER_NAME "Fisher Price Analog"
+    #define PAD_CONFIG pad_config_fisherprice_v2
+    #define CONTROLLER_NAME "Fisher Price V2"
 #elif defined(CONTROLLER_TYPE_ALPAKKA)
     #include "pad/configs/alpakka.h"
     #define PAD_CONFIG pad_config_alpakka
@@ -96,7 +96,7 @@ static const button_name_t button_names[] = {
     #define PAD_CONFIG pad_config_macropad
     #define CONTROLLER_NAME "MacroPad"
 #else
-    #error "No controller type defined! Define one of: CONTROLLER_TYPE_FISHERPRICE, CONTROLLER_TYPE_ALPAKKA, etc."
+    #error "No controller type defined! Define one of: CONTROLLER_TYPE_FISHERPRICE_V1, CONTROLLER_TYPE_FISHERPRICE_V2, CONTROLLER_TYPE_ALPAKKA, etc."
 #endif
 
 // ============================================================================
@@ -130,6 +130,11 @@ static void on_button_event(button_event_t event)
             usbd_set_mode(next);  // This will reset the device
             break;
         }
+
+        case BUTTON_EVENT_TRIPLE_CLICK:
+            printf("[app:controller] Button triple-click - resetting to default HID mode\n");
+            usbd_reset_to_hid();
+            break;
 
         default:
             break;

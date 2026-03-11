@@ -265,9 +265,10 @@ set(GC_HOST_SOURCES
 )
 
 # Nuon host sources (polyface master, software bit-bang)
-set(NUON_HOST_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/native/host/nuon/nuon_host.c
-)
+# TODO: uncomment when nuon_host.c is implemented
+# set(NUON_HOST_SOURCES
+#     ${CMAKE_CURRENT_SOURCE_DIR}/native/host/nuon/nuon_host.c
+# )
 
 # I2C peer input sharing sources (STEMMA QT)
 set(I2C_PEER_SOURCES
@@ -1566,22 +1567,23 @@ joypad_target_common(joypad_n642usb)
 pico_generate_pio_header(joypad_n642usb ${CMAKE_CURRENT_LIST_DIR}/lib/joybus-pio/src/joybus.pio)
 
 # --- NUON2USB (Nuon -> USB HID) ---
-add_executable(joypad_nuon2usb)
-target_compile_definitions(joypad_nuon2usb PRIVATE CONFIG_NUON2USB=1 CONFIG_USB=1 DISABLE_USB_HOST=1 NUON_PIN_DATA=2)
-target_sources(joypad_nuon2usb PUBLIC ${CORE_SOURCES} ${USB_DEVICE_SOURCES}
-    ${NUON_HOST_SOURCES}
-    ${CMAKE_CURRENT_SOURCE_DIR}/apps/nuon2usb/app.c
-)
-target_include_directories(joypad_nuon2usb PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/apps/nuon2usb
-    ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd
-    ${CMAKE_CURRENT_SOURCE_DIR}/native/host/nuon
-    ${CMAKE_CURRENT_SOURCE_DIR}/native/device/nuon
-)
-target_link_libraries(joypad_nuon2usb PRIVATE pico_stdlib pico_multicore hardware_pio pico_rand tinyusb_device tinyusb_board)
-joypad_target_common(joypad_nuon2usb)
-pico_generate_pio_header(joypad_nuon2usb ${CMAKE_CURRENT_LIST_DIR}/native/device/nuon/polyface_read.pio)
-pico_generate_pio_header(joypad_nuon2usb ${CMAKE_CURRENT_LIST_DIR}/native/device/nuon/polyface_send.pio)
+# TODO: uncomment when nuon_host.c and apps/nuon2usb/app.c are implemented
+# add_executable(joypad_nuon2usb)
+# target_compile_definitions(joypad_nuon2usb PRIVATE CONFIG_NUON2USB=1 CONFIG_USB=1 DISABLE_USB_HOST=1 NUON_PIN_DATA=2)
+# target_sources(joypad_nuon2usb PUBLIC ${CORE_SOURCES} ${USB_DEVICE_SOURCES}
+#     ${NUON_HOST_SOURCES}
+#     ${CMAKE_CURRENT_SOURCE_DIR}/apps/nuon2usb/app.c
+# )
+# target_include_directories(joypad_nuon2usb PUBLIC
+#     ${CMAKE_CURRENT_SOURCE_DIR}/apps/nuon2usb
+#     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd
+#     ${CMAKE_CURRENT_SOURCE_DIR}/native/host/nuon
+#     ${CMAKE_CURRENT_SOURCE_DIR}/native/device/nuon
+# )
+# target_link_libraries(joypad_nuon2usb PRIVATE pico_stdlib pico_multicore hardware_pio pico_rand tinyusb_device tinyusb_board)
+# joypad_target_common(joypad_nuon2usb)
+# pico_generate_pio_header(joypad_nuon2usb ${CMAKE_CURRENT_LIST_DIR}/native/device/nuon/polyface_read.pio)
+# pico_generate_pio_header(joypad_nuon2usb ${CMAKE_CURRENT_LIST_DIR}/native/device/nuon/polyface_send.pio)
 
 # --- GC2USB (GameCube -> USB HID) ---
 add_executable(joypad_gc2usb)
@@ -1670,29 +1672,29 @@ set(CONTROLLER_INCLUDES
     ${CMAKE_CURRENT_SOURCE_DIR}/native/host
 )
 
-# --- Fisher Price ---
-add_executable(joypad_controller_fisherprice)
-target_compile_definitions(joypad_controller_fisherprice PRIVATE
-    CONFIG_CONTROLLER=1 CONTROLLER_TYPE_FISHERPRICE=1 DISABLE_USB_HOST=1 BUTTON_USER_GPIO=${BOARD_BUTTON_GPIO}
+# --- Fisher Price V1 (button-only mod) ---
+add_executable(joypad_controller_fisherprice_v1)
+target_compile_definitions(joypad_controller_fisherprice_v1 PRIVATE
+    CONFIG_CONTROLLER=1 CONTROLLER_TYPE_FISHERPRICE_V1=1 DISABLE_USB_HOST=1 BUTTON_USER_GPIO=${BOARD_BUTTON_GPIO}
 )
-target_sources(joypad_controller_fisherprice PUBLIC ${CORE_SOURCES} ${USB_DEVICE_SOURCES} ${CONTROLLER_SOURCES}
+target_sources(joypad_controller_fisherprice_v1 PUBLIC ${CORE_SOURCES} ${USB_DEVICE_SOURCES} ${CONTROLLER_SOURCES}
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/controller/app.c
 )
-target_include_directories(joypad_controller_fisherprice PUBLIC ${CONTROLLER_INCLUDES})
-target_link_libraries(joypad_controller_fisherprice PRIVATE ${CONTROLLER_LIBRARIES})
-joypad_target_common(joypad_controller_fisherprice)
+target_include_directories(joypad_controller_fisherprice_v1 PUBLIC ${CONTROLLER_INCLUDES})
+target_link_libraries(joypad_controller_fisherprice_v1 PRIVATE ${CONTROLLER_LIBRARIES})
+joypad_target_common(joypad_controller_fisherprice_v1)
 
-# --- Fisher Price Analog ---
-add_executable(joypad_controller_fisherprice_analog)
-target_compile_definitions(joypad_controller_fisherprice_analog PRIVATE
-    CONFIG_CONTROLLER=1 CONTROLLER_TYPE_FISHERPRICE_ANALOG=1 DISABLE_USB_HOST=1 BUTTON_USER_GPIO=${BOARD_BUTTON_GPIO}
+# --- Fisher Price V2 (analog stick + shoulders mod) ---
+add_executable(joypad_controller_fisherprice_v2)
+target_compile_definitions(joypad_controller_fisherprice_v2 PRIVATE
+    CONFIG_CONTROLLER=1 CONTROLLER_TYPE_FISHERPRICE_V2=1 DISABLE_USB_HOST=1 BUTTON_USER_GPIO=${BOARD_BUTTON_GPIO}
 )
-target_sources(joypad_controller_fisherprice_analog PUBLIC ${CORE_SOURCES} ${USB_DEVICE_SOURCES} ${CONTROLLER_SOURCES}
+target_sources(joypad_controller_fisherprice_v2 PUBLIC ${CORE_SOURCES} ${USB_DEVICE_SOURCES} ${CONTROLLER_SOURCES}
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/controller/app.c
 )
-target_include_directories(joypad_controller_fisherprice_analog PUBLIC ${CONTROLLER_INCLUDES})
-target_link_libraries(joypad_controller_fisherprice_analog PRIVATE ${CONTROLLER_LIBRARIES})
-joypad_target_common(joypad_controller_fisherprice_analog)
+target_include_directories(joypad_controller_fisherprice_v2 PUBLIC ${CONTROLLER_INCLUDES})
+target_link_libraries(joypad_controller_fisherprice_v2 PRIVATE ${CONTROLLER_LIBRARIES})
+joypad_target_common(joypad_controller_fisherprice_v2)
 
 # --- Alpakka ---
 add_executable(joypad_controller_alpakka)

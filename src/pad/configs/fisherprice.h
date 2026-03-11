@@ -11,13 +11,13 @@
 #include "../pad_input.h"
 
 // ============================================================================
-// FISHER PRICE - BUTTON ONLY (Original mod)
+// FISHER PRICE V1 - BUTTON ONLY (Original mod)
 // ============================================================================
 // KB2040 pin mapping for Fisher Price controller button mod.
 // Active high buttons (pressed = GPIO high, button connects to 3.3V)
 
-static const pad_device_config_t pad_config_fisherprice = {
-    .name = "Fisher Price",
+static const pad_device_config_t pad_config_fisherprice_v1 = {
+    .name = "Fisher Price V1",
     .active_high = true,
 
     // No I2C expanders
@@ -79,14 +79,14 @@ static const pad_device_config_t pad_config_fisherprice = {
 };
 
 // ============================================================================
-// FISHER PRICE ANALOG (Advanced mod with analog stick)
+// FISHER PRICE V2 - ANALOG (Advanced mod with analog stick + shoulders)
 // ============================================================================
 // KB2040 pin mapping with analog stick on ADC.
 // D-pad buttons directly wired, analog stick on ADC pins 26-27.
-// Based on GP2040-CE kb2040-fisher-price-analog branch.
+// Based on GP2040-CE kb2040-fisher-price-v2 branch.
 
-static const pad_device_config_t pad_config_fisherprice_analog = {
-    .name = "Fisher Price Analog",
+static const pad_device_config_t pad_config_fisherprice_v2 = {
+    .name = "Fisher Price V2",
     .active_high = true,
 
     // No I2C expanders

@@ -55,7 +55,8 @@ jobs:
           - n642nuon_pico
           - nes2usb_pico_w
           - gc2usb_kb2040
-          - controller_fisherprice_kb2040
+          - controller_fisherprice_v1_kb2040
+          - controller_fisherprice_v2_kb2040
           - controller_alpakka_pico
 
     steps:
@@ -419,7 +420,8 @@ jobs:
         with:
           name: joypad_${{ steps.commit.outputs.hash }}_controllers
           path: |
-            organized/controller_fisherprice/*.uf2
+            organized/controller_fisherprice_v1/*.uf2
+            organized/controller_fisherprice_v2/*.uf2
             organized/controller_alpakka/*.uf2
           if-no-files-found: ignore
 
