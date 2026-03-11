@@ -22,6 +22,13 @@
 #include "bt/ble_output/ble_output.h"
 #include "bt/transport/bt_transport.h"
 
+#ifdef BTSTACK_USE_CYW43
+// Pico W CYW43 BLE transport
+extern const bt_transport_t bt_transport_cyw43;
+typedef void (*bt_cyw43_post_init_fn)(void);
+extern void bt_cyw43_set_post_init(bt_cyw43_post_init_fn fn);
+#endif
+
 #ifdef BTSTACK_USE_ESP32
 // ESP32 BLE transport
 extern const bt_transport_t bt_transport_esp32;
@@ -223,7 +230,10 @@ void app_init(void)
 
     // Initialize BLE transport in peripheral mode.
     // Set post-init callback so ble_output_late_init() runs in the BTstack task context.
-#ifdef BTSTACK_USE_ESP32
+#ifdef BTSTACK_USE_CYW43
+    bt_cyw43_set_post_init(ble_output_late_init);
+    bt_init(&bt_transport_cyw43);
+#elif defined(BTSTACK_USE_ESP32)
     bt_esp32_set_post_init(ble_output_late_init);
     bt_init(&bt_transport_esp32);
 #elif defined(BTSTACK_USE_NRF)

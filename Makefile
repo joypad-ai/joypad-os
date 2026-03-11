@@ -97,6 +97,7 @@ CONSOLE_controller_fisherprice := joypad_controller_fisherprice
 CONSOLE_controller_fisherprice_analog := joypad_controller_fisherprice_analog
 CONSOLE_controller_alpakka := joypad_controller_alpakka
 CONSOLE_controller_macropad := joypad_controller_macropad
+CONSOLE_controller_btusb := joypad_controller_btusb
 CONSOLE_controller_btusb_feather_rp2040 := joypad_controller_btusb_feather_rp2040
 
 
@@ -151,6 +152,8 @@ APP_controller_fisherprice_kb2040 := kb2040 controller_fisherprice controller_fi
 APP_controller_fisherprice_analog_kb2040 := kb2040 controller_fisherprice_analog controller_fisherprice_analog_kb2040 GPIO/ADC USB
 APP_controller_alpakka_pico := pico controller_alpakka controller_alpakka_pico GPIO/I2C USB
 APP_controller_macropad := macropad controller_macropad controller_macropad GPIO USB
+APP_controller_btusb_pico_w := pico_w controller_btusb controller_btusb_pico_w JoyWing BLE/USB
+APP_controller_btusb_pico2_w := pico2_w controller_btusb controller_btusb_pico2_w JoyWing BLE/USB
 APP_controller_btusb_feather_rp2040 := feather controller_btusb_feather_rp2040 controller_btusb_feather_rp2040 JoyWing USB
 
 
@@ -797,6 +800,14 @@ controller_alpakka_pico:
 controller_macropad:
 	$(call build_app,controller_macropad)
 
+.PHONY: controller_btusb_pico_w
+controller_btusb_pico_w:
+	$(call build_app,controller_btusb_pico_w)
+
+.PHONY: controller_btusb_pico2_w
+controller_btusb_pico2_w:
+	$(call build_app,controller_btusb_pico2_w)
+
 .PHONY: controller_btusb_feather_rp2040
 controller_btusb_feather_rp2040:
 	$(call build_app,controller_btusb_feather_rp2040)
@@ -1106,6 +1117,14 @@ flash-controller_alpakka_pico:
 .PHONY: flash-controller_macropad
 flash-controller_macropad:
 	@$(MAKE) --no-print-directory _flash_app APP_NAME=controller_macropad
+
+.PHONY: flash-controller_btusb_pico_w
+flash-controller_btusb_pico_w:
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=controller_btusb_pico_w
+
+.PHONY: flash-controller_btusb_pico2_w
+flash-controller_btusb_pico2_w:
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=controller_btusb_pico2_w
 
 .PHONY: flash-controller_btusb_feather_rp2040
 flash-controller_btusb_feather_rp2040:

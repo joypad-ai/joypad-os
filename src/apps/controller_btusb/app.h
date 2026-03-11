@@ -60,7 +60,12 @@
 // ============================================================================
 // BOARD-SPECIFIC CONFIGURATION
 // ============================================================================
-#if defined(BOARD_FEATHER_RP2040)
+#if defined(BTSTACK_USE_CYW43)
+    // Pico W / Pico 2 W: JoyWing on I2C0 (GP4=SDA, GP5=SCL)
+    #define JOYWING_I2C_BUS 0
+    #define JOYWING_SDA_PIN 4
+    #define JOYWING_SCL_PIN 5
+#elif defined(BOARD_FEATHER_RP2040)
     // Adafruit Feather RP2040: JoyWing on STEMMA QT I2C1 (shared with OLED)
     #define JOYWING_I2C_BUS 1
     #define JOYWING_SDA_PIN 2

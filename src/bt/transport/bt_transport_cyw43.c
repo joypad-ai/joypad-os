@@ -1,17 +1,60 @@
 // bt_transport_cyw43.c - Pico W CYW43 Bluetooth Transport
 // Implements bt_transport_t using BTstack with Pico W's built-in CYW43 Bluetooth
 //
-// This is for the bt2usb app on Pico W - receives BT controllers via built-in BT,
-// outputs as USB HID device.
+// Supports two modes:
+//   - Central (bt2usb): scans/connects BT controllers via btstack_host
+//   - Peripheral (controller_btusb): advertises as BLE gamepad via ble_output
+// Mode is selected via bt_cyw43_set_post_init() callback before bt_init().
 
 #include "bt_transport.h"
-#include "bt/bthid/bthid.h"
-#include "bt/btstack/btstack_host.h"
 #include <string.h>
 #include <stdio.h>
 
+// ============================================================================
+// POST-INIT CALLBACK (set by app before bt_init)
+// ============================================================================
+
+typedef void (*bt_cyw43_post_init_fn)(void);
+static bt_cyw43_post_init_fn post_init_callback = NULL;
+
+void bt_cyw43_set_post_init(bt_cyw43_post_init_fn fn)
+{
+    post_init_callback = fn;
+}
+
+// ============================================================================
+// CENTRAL MODE SUPPORT (bt2usb — btstack_host + bthid)
+// Only linked when btstack_host.c and bthid.c are in the build.
+// ============================================================================
+
+typedef struct {
+    bool active;
+    uint8_t bd_addr[6];
+    char name[48];
+    uint8_t class_of_device[3];
+    uint16_t vendor_id;
+    uint16_t product_id;
+    bool hid_ready;
+    bool is_ble;
+} btstack_classic_conn_info_t;
+
+__attribute__((weak)) void btstack_host_init_hid_handlers(void) {}
+__attribute__((weak)) void btstack_host_process(void) {}
+__attribute__((weak)) void bthid_task(void) {}
+__attribute__((weak)) void btstack_host_power_on(void) {}
+__attribute__((weak)) bool btstack_host_is_powered_on(void) { return false; }
+__attribute__((weak)) void btstack_host_start_scan(void) {}
+__attribute__((weak)) void btstack_host_stop_scan(void) {}
+__attribute__((weak)) bool btstack_host_is_scanning(void) { return false; }
+__attribute__((weak)) uint8_t btstack_classic_get_connection_count(void) { return 0; }
+__attribute__((weak)) bool btstack_classic_get_connection(uint8_t idx, btstack_classic_conn_info_t *info) { (void)idx; (void)info; return false; }
+__attribute__((weak)) bool btstack_classic_send_set_report_type(uint8_t idx, uint8_t type, uint8_t id, const uint8_t *data, uint16_t len) { (void)idx; (void)type; (void)id; (void)data; (void)len; return false; }
+__attribute__((weak)) bool btstack_classic_send_report(uint8_t idx, uint8_t id, const uint8_t *data, uint16_t len) { (void)idx; (void)id; (void)data; (void)len; return false; }
+__attribute__((weak)) void btstack_host_transport_process(void) {}
+
 // BTstack includes (must come before CYW43 includes)
 #include "btstack_run_loop.h"
+#include "hci.h"
 #include "hci_transport.h"
 
 // Pico W CYW43 includes
@@ -26,21 +69,6 @@
 
 static bt_connection_t cyw43_connections[BT_MAX_CONNECTIONS];
 static bool cyw43_initialized = false;
-
-// ============================================================================
-// CYW43 TRANSPORT PROCESS (called by btstack_host_process)
-// ============================================================================
-
-// Override weak function in btstack_host.c to process CYW43 transport
-void btstack_host_transport_process(void)
-{
-    // CYW43 uses async_context for processing
-    // With cyw43_arch_poll mode, we need to poll manually
-#if PICO_CYW43_ARCH_POLL
-    cyw43_arch_poll();
-#endif
-    // With threadsafe_background mode, processing happens automatically
-}
 
 // ============================================================================
 // TRANSPORT IMPLEMENTATION
@@ -71,15 +99,24 @@ static void cyw43_transport_init(void)
     }
     printf("[BT_CYW43] BTstack initialized\n");
 
-    // Now initialize our HID host handlers (callbacks, etc.)
-    // We pass NULL for transport since BTstack is already initialized
-    btstack_host_init_hid_handlers();
+    // Post-init: app-provided callback (peripheral) or default HID host (central)
+    if (post_init_callback) {
+        printf("[BT_CYW43] Running app post-init callback (peripheral mode)\n");
+        post_init_callback();
+    } else {
+        printf("[BT_CYW43] Initializing HID host handlers (central mode)\n");
+        btstack_host_init_hid_handlers();
+    }
 
     cyw43_initialized = true;
     printf("[BT_CYW43] Ready for Bluetooth connections\n");
 
     // Power on Bluetooth
-    btstack_host_power_on();
+    if (post_init_callback) {
+        hci_power_control(HCI_POWER_ON);
+    } else {
+        btstack_host_power_on();
+    }
 }
 
 static uint32_t task_counter = 0;
@@ -93,12 +130,20 @@ static void cyw43_transport_task(void)
         printf("[BT_CYW43] Task started\n");
     }
 
+    // CYW43 uses async_context for processing
+#if PICO_CYW43_ARCH_POLL
+    cyw43_arch_poll();
+#endif
+
     btstack_host_process();
-    bthid_task();  // Run BT HID device driver tasks
+    bthid_task();
 }
 
 static bool cyw43_transport_is_ready(void)
 {
+    if (post_init_callback) {
+        return cyw43_initialized;
+    }
     return cyw43_initialized && btstack_host_is_powered_on();
 }
 
