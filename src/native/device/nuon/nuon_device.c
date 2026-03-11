@@ -321,6 +321,29 @@ void __not_in_flash_func(core1_task)(void)
 
     pf_diag_count++;
 
+    // Stay silent until a BT controller is connected.
+    // Nuon re-probes continuously, so it will detect us when a controller pairs.
+    // This allows a real controller on the same port to work (internal mod).
+    {
+        static bool was_active = false;
+        bool active = (*(volatile int*)&playersCount > 0);
+        if (!active) {
+            was_active = false;
+            continue;
+        }
+        if (!was_active) {
+            // BT controller just connected — reset polyface state for fresh detection
+            was_active = true;
+            alive = false;
+            branded = false;
+            tagged = false;
+            id = 0;
+            state = 0;
+            channel = 0;
+            requestsB = 0;
+        }
+    }
+
     if (dataA == 0xb1 && dataS == 0x00 && dataC == 0x00) // RESET
     {
       id = 0;
