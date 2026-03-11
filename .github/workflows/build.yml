@@ -50,6 +50,8 @@ jobs:
           - btusb2usb_pico2_w
           - snes2usb_kb2040
           - n642usb_kb2040
+          - bt2nuon_pico_w
+          - bt2nuon_pico2_w
           - nes2usb_pico_w
           - gc2usb_kb2040
           - controller_fisherprice_kb2040
@@ -367,6 +369,13 @@ jobs:
         with:
           name: joypad_${{ steps.commit.outputs.hash }}_bt2n64
           path: organized/bt2n64/*.uf2
+          if-no-files-found: ignore
+
+      - name: Upload bt2nuon
+        uses: actions/upload-artifact@v4
+        with:
+          name: joypad_${{ steps.commit.outputs.hash }}_bt2nuon
+          path: organized/bt2nuon/*.uf2
           if-no-files-found: ignore
 
       - name: Upload btusb2usb
