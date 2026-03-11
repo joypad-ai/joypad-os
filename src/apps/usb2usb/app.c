@@ -423,25 +423,9 @@ static void oled_update_display(void) {
     display_clear();
 
     if (oled_current_page == OLED_PAGE_JOY) {
-        // Joy character takes the full screen
+        // Joy character takes the full screen — no text overlays
         joy_anim_tick(now);
         joy_anim_render();
-
-        // Small USB mode text in top-right corner
-        usb_output_mode_t mode = usbd_get_mode();
-        const char* mode_name = usbd_get_mode_name(mode);
-        uint8_t text_w = (uint8_t)(strlen(mode_name) * 6);
-        display_text(DISPLAY_WIDTH - text_w, 0, mode_name);
-
-        // Status text at bottom
-        if (playersCount == 0) {
-            joy_state_t state = joy_anim_get_state();
-            if (state == JOY_STATE_SLEEP) {
-                display_text(40, 56, "zzZ...");
-            } else if (state != JOY_STATE_BOOT) {
-                display_text(24, 56, "Waiting...");
-            }
-        }
     } else {
         // Controller info display (existing layout)
         usb_output_mode_t mode = usbd_get_mode();
