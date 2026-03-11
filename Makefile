@@ -81,6 +81,7 @@ CONSOLE_usb_feather_rp2040_usb_host_max3421 := joypad_usb_feather_rp2040_usb_hos
 CONSOLE_usb_rp2040zero := joypad_usb_rp2040zero
 CONSOLE_usb_rp2350usba := joypad_usb_rp2350usba
 CONSOLE_bt2usb := joypad_bt2usb
+CONSOLE_bt2loopy := joypad_bt2loopy
 CONSOLE_bt2nuon := joypad_bt2nuon
 CONSOLE_bt2n64 := joypad_bt2n64
 CONSOLE_btusb2usb := joypad_btusb2usb
@@ -97,6 +98,7 @@ CONSOLE_controller_fisherprice := joypad_controller_fisherprice
 CONSOLE_controller_fisherprice_analog := joypad_controller_fisherprice_analog
 CONSOLE_controller_alpakka := joypad_controller_alpakka
 CONSOLE_controller_macropad := joypad_controller_macropad
+CONSOLE_bt2gc := joypad_bt2gc
 CONSOLE_controller_btusb := joypad_controller_btusb
 CONSOLE_controller_btusb_feather_rp2040 := joypad_controller_btusb_feather_rp2040
 
@@ -132,10 +134,13 @@ APP_usb2usb_rp2040zero := rp2040zero usb_rp2040zero usb2usb_rp2040zero USB/BT US
 APP_usb2usb_rp2350usba := rp2350usba usb_rp2350usba usb2usb_rp2350usba USB/BT USB
 APP_bt2usb_pico_w := pico_w bt2usb bt2usb_pico_w Bluetooth USB
 APP_bt2usb_pico2_w := pico2_w bt2usb bt2usb_pico2_w Bluetooth USB
+APP_bt2loopy_pico_w := pico_w bt2loopy bt2loopy_pico_w Bluetooth Loopy
 APP_bt2nuon_pico_w := pico_w bt2nuon bt2nuon_pico_w Bluetooth Nuon
 APP_bt2nuon_pico2_w := pico2_w bt2nuon bt2nuon_pico2_w Bluetooth Nuon
 APP_bt2n64_pico_w := pico_w bt2n64 bt2n64_pico_w Bluetooth N64
 APP_bt2n64_pico2_w := pico2_w bt2n64 bt2n64_pico2_w Bluetooth N64
+APP_bt2gc_pico_w := pico_w bt2gc bt2gc_pico_w Bluetooth GameCube
+APP_bt2gc_pico2_w := pico2_w bt2gc bt2gc_pico2_w Bluetooth GameCube
 APP_btusb2usb_pico_w := pico_w btusb2usb btusb2usb_pico_w USB/BT+CYW43 USB
 APP_btusb2usb_pico2_w := pico2_w btusb2usb btusb2usb_pico2_w USB/BT+CYW43 USB
 APP_usb2ble_pico_w := pico_w usb2ble usb2ble_pico_w USB BLE
@@ -244,6 +249,7 @@ help:
 	@echo "  make flash-btusb2usb_feather_nrf52840 - Flash Feather nRF52840 btusb2usb via UF2"
 	@echo "  make controller_btusb_feather_nrf52840 - Sensor/BLE -> USB HID (Feather nRF52840 + JoyWing)"
 	@echo "  make flash-controller_btusb_feather_nrf52840 - Flash Feather nRF52840 controller_btusb via UF2"
+	@echo "  make bt2loopy_pico_w    - Bluetooth -> Loopy (Pico W)"
 	@echo "  make bt2nuon_pico_w     - Bluetooth -> Nuon (Pico W)"
 	@echo "  make bt2n64_pico_w      - Bluetooth -> N64 (Pico W)"
 	@echo "  make wifi2usb_pico_w    - WiFi -> USB HID (Pico W)"
@@ -460,6 +466,10 @@ bt2usb_pico_w:
 bt2usb_pico2_w:
 	$(call build_app,bt2usb_pico2_w)
 
+.PHONY: bt2loopy_pico_w
+bt2loopy_pico_w:
+	$(call build_app,bt2loopy_pico_w)
+
 .PHONY: bt2nuon_pico_w
 bt2nuon_pico_w:
 	$(call build_app,bt2nuon_pico_w)
@@ -475,6 +485,14 @@ bt2n64_pico_w:
 .PHONY: bt2n64_pico2_w
 bt2n64_pico2_w:
 	$(call build_app,bt2n64_pico2_w)
+
+.PHONY: bt2gc_pico_w
+bt2gc_pico_w:
+	$(call build_app,bt2gc_pico_w)
+
+.PHONY: bt2gc_pico2_w
+bt2gc_pico2_w:
+	$(call build_app,bt2gc_pico2_w)
 
 .PHONY: btusb2usb_pico_w
 btusb2usb_pico_w:
@@ -1038,6 +1056,10 @@ flash-bt2usb_pico_w:
 flash-bt2usb_pico2_w:
 	@$(MAKE) --no-print-directory _flash_app APP_NAME=bt2usb_pico2_w
 
+.PHONY: flash-bt2loopy_pico_w
+flash-bt2loopy_pico_w:
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=bt2loopy_pico_w
+
 .PHONY: flash-bt2nuon_pico_w
 flash-bt2nuon_pico_w:
 	@$(MAKE) --no-print-directory _flash_app APP_NAME=bt2nuon_pico_w
@@ -1053,6 +1075,14 @@ flash-bt2n64_pico_w:
 .PHONY: flash-bt2n64_pico2_w
 flash-bt2n64_pico2_w:
 	@$(MAKE) --no-print-directory _flash_app APP_NAME=bt2n64_pico2_w
+
+.PHONY: flash-bt2gc_pico_w
+flash-bt2gc_pico_w:
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=bt2gc_pico_w
+
+.PHONY: flash-bt2gc_pico2_w
+flash-bt2gc_pico2_w:
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=bt2gc_pico2_w
 
 .PHONY: flash-btusb2usb_pico_w
 flash-btusb2usb_pico_w:

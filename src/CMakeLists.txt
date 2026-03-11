@@ -1077,6 +1077,55 @@ if (PICO_BOARD STREQUAL "pico_w" OR PICO_BOARD STREQUAL "pico2_w")
     pico_generate_pio_header(joypad_bt2nuon ${CMAKE_CURRENT_LIST_DIR}/native/device/nuon/polyface_read.pio)
     pico_generate_pio_header(joypad_bt2nuon ${CMAKE_CURRENT_LIST_DIR}/native/device/nuon/polyface_send.pio)
 
+    # --- BT to Loopy (Pico W / Pico 2 W built-in Bluetooth -> Casio Loopy) ---
+    add_executable(joypad_bt2loopy)
+    target_compile_definitions(joypad_bt2loopy PRIVATE
+        CONFIG_BT2LOOPY=1
+        DISABLE_USB_HOST=1
+        USE_BOOTSEL_BUTTON=1
+        CYW43_LWIP=0
+        BTSTACK_USE_CYW43=1
+        ENABLE_BTSTACK=1
+    )
+    target_sources(joypad_bt2loopy PUBLIC
+        ${CORE_SOURCES}
+        ${USB_DEVICE_SOURCES}
+        ${BTHID_DEVICE_SOURCES}
+        ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/hid/devices/generic/hid_parser.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/bt/btstack/btstack_host.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/bt/btstack/bt_device_db.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/bt/transport/bt_transport.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/bt/transport/bt_transport_cyw43.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/native/device/loopy/loopy_device.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/apps/bt2loopy/app.c
+    )
+    target_include_directories(joypad_bt2loopy PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/apps/bt2loopy
+        ${CMAKE_CURRENT_SOURCE_DIR}/native/device/loopy
+        ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd
+        ${CMAKE_CURRENT_SOURCE_DIR}/bt
+        ${CMAKE_CURRENT_SOURCE_DIR}/bt/btstack
+        ${CMAKE_CURRENT_SOURCE_DIR}/bt/bthid
+        ${BTSTACK_INCLUDES}
+    )
+    target_link_libraries(joypad_bt2loopy PRIVATE
+        pico_stdlib
+        pico_multicore
+        pico_rand
+        pico_bit_ops
+        hardware_pio
+        pico_cyw43_arch_poll
+        pico_btstack_ble
+        pico_btstack_classic
+        pico_btstack_cyw43
+        tinyusb_device
+        tinyusb_board
+    )
+    joypad_target_common(joypad_bt2loopy)
+    pico_enable_stdio_usb(joypad_bt2loopy 0)
+    pico_enable_stdio_uart(joypad_bt2loopy 1)
+    pico_generate_pio_header(joypad_bt2loopy ${CMAKE_CURRENT_LIST_DIR}/native/device/loopy/loopy.pio)
+
     # --- BT to N64 (Pico W / Pico 2 W built-in Bluetooth -> N64 Console) ---
     add_executable(joypad_bt2n64)
     target_compile_definitions(joypad_bt2n64 PRIVATE
@@ -1127,6 +1176,59 @@ if (PICO_BOARD STREQUAL "pico_w" OR PICO_BOARD STREQUAL "pico2_w")
     pico_enable_stdio_usb(joypad_bt2n64 1)
     pico_enable_stdio_uart(joypad_bt2n64 1)
     pico_generate_pio_header(joypad_bt2n64 ${CMAKE_CURRENT_LIST_DIR}/lib/joybus-pio/src/joybus.pio)
+
+    # --- BT to GameCube (Pico W / Pico 2 W built-in Bluetooth -> GameCube) ---
+    add_executable(joypad_bt2gc)
+    target_compile_definitions(joypad_bt2gc PRIVATE
+        CONFIG_BT2GC=1
+        DISABLE_USB_HOST=1
+        CONFIG_NO_NEOPIXEL=1
+        USE_BOOTSEL_BUTTON=1
+        CYW43_LWIP=0
+        BTSTACK_USE_CYW43=1
+        ENABLE_BTSTACK=1
+    )
+    target_sources(joypad_bt2gc PUBLIC
+        ${CORE_SOURCES}
+        ${USB_DEVICE_SOURCES}
+        ${BTHID_DEVICE_SOURCES}
+        ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/hid/devices/generic/hid_parser.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/bt/btstack/btstack_host.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/bt/btstack/bt_device_db.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/bt/transport/bt_transport.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/bt/transport/bt_transport_cyw43.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/native/device/gamecube/gamecube_device.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/lib/joybus-pio/src/joybus.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/lib/joybus-pio/src/GamecubeConsole.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/apps/bt2gc/app.c
+    )
+    target_include_directories(joypad_bt2gc PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/apps/bt2gc
+        ${CMAKE_CURRENT_SOURCE_DIR}/native/device/gamecube
+        ${CMAKE_CURRENT_SOURCE_DIR}/lib/joybus-pio/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd
+        ${CMAKE_CURRENT_SOURCE_DIR}/bt
+        ${CMAKE_CURRENT_SOURCE_DIR}/bt/btstack
+        ${CMAKE_CURRENT_SOURCE_DIR}/bt/bthid
+        ${BTSTACK_INCLUDES}
+    )
+    target_link_libraries(joypad_bt2gc PRIVATE
+        pico_stdlib
+        pico_multicore
+        pico_rand
+        hardware_pio
+        hardware_flash
+        pico_cyw43_arch_poll
+        pico_btstack_ble
+        pico_btstack_classic
+        pico_btstack_cyw43
+        tinyusb_device
+        tinyusb_board
+    )
+    joypad_target_common(joypad_bt2gc)
+    pico_enable_stdio_usb(joypad_bt2gc 0)
+    pico_enable_stdio_uart(joypad_bt2gc 1)
+    pico_generate_pio_header(joypad_bt2gc ${CMAKE_CURRENT_LIST_DIR}/lib/joybus-pio/src/joybus.pio)
 
     # --- BT+USB to USB (Pico W / Pico 2 W: PIO-USB host + CYW43 Bluetooth + USB device) ---
     # Combines USB host (PIO-USB on GP16/17) with built-in CYW43 Bluetooth.
