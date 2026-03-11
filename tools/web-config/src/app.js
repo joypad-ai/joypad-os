@@ -1,4 +1,4 @@
-import { CDCProtocol } from './cdc-protocol.js';
+import { CDCProtocol, WebSerialTransport, WebBluetoothTransport } from './cdc-protocol.js';
 
 /**
  * Joypad Config Web App
@@ -64,7 +64,8 @@ class JoypadConfigApp {
         this.statusDot = document.getElementById('statusDot');
         this.statusText = document.getElementById('statusText');
         this.connectBtn = document.getElementById('connectBtn');
-        this.connectBtn2 = document.getElementById('connectBtn2');
+        this.connectSerialBtn = document.getElementById('connectSerialBtn');
+        this.connectBleBtn = document.getElementById('connectBleBtn');
         this.connectPrompt = document.getElementById('connectPrompt');
         this.mainContent = document.getElementById('mainContent');
         this.modeSelect = document.getElementById('modeSelect');
@@ -96,7 +97,8 @@ class JoypadConfigApp {
 
         // Bind events
         this.connectBtn.addEventListener('click', () => this.toggleConnection());
-        this.connectBtn2.addEventListener('click', () => this.connect());
+        this.connectSerialBtn.addEventListener('click', () => this.connectSerial());
+        this.connectBleBtn.addEventListener('click', () => this.connectBluetooth());
         this.modeSelect.addEventListener('change', (e) => this.setMode(e.target.value));
         this.bleModeSelect.addEventListener('change', (e) => this.setBleMode(e.target.value));
         this.wiimoteOrientSelect.addEventListener('change', (e) => this.setWiimoteOrient(e.target.value));
@@ -124,17 +126,30 @@ class JoypadConfigApp {
             document.getElementById('rightStickSensValue').textContent = e.target.value + '%';
         });
 
-        // Register event handler
+        // Register event and disconnect handlers
         this.protocol.onEvent((event) => this.handleEvent(event));
+        this.protocol.onDisconnect(() => {
+            this.log('Device disconnected');
+            this.streaming = false;
+            this.debugStreaming = false;
+            this.updateConnectionUI(false);
+        });
 
         // Initialize button mapping UI
         this.initButtonMapUI();
 
-        // Check Web Serial support
+        // Check transport support
+        if (!WebSerialTransport.isSupported()) {
+            this.connectSerialBtn.disabled = true;
+            this.connectSerialBtn.title = 'Web Serial not supported in this browser';
+        }
+        if (!WebBluetoothTransport.isSupported()) {
+            this.connectBleBtn.disabled = true;
+            this.connectBleBtn.title = 'Web Bluetooth not supported in this browser';
+        }
         if (!CDCProtocol.isSupported()) {
-            this.log('Web Serial not supported in this browser', 'error');
+            this.log('Neither Web Serial nor Web Bluetooth supported in this browser', 'error');
             this.connectBtn.disabled = true;
-            this.connectBtn2.disabled = true;
         }
     }
 
@@ -175,8 +190,9 @@ class JoypadConfigApp {
     }
 
     updateConnectionUI(connected) {
+        const transport = this.protocol.transportName;
         this.statusDot.className = 'status-dot' + (connected ? ' connected' : '');
-        this.statusText.textContent = connected ? 'Connected' : 'Disconnected';
+        this.statusText.textContent = connected ? `Connected (${transport})` : 'Disconnected';
         this.connectBtn.textContent = connected ? 'Disconnect' : 'Connect';
         this.connectPrompt.classList.toggle('hidden', connected);
         this.mainContent.classList.toggle('hidden', !connected);
@@ -186,28 +202,48 @@ class JoypadConfigApp {
         if (this.protocol.connected) {
             await this.disconnect();
         } else {
-            await this.connect();
+            // Default: try serial first, fall back to bluetooth
+            if (WebSerialTransport.isSupported()) {
+                await this.connectSerial();
+            } else if (WebBluetoothTransport.isSupported()) {
+                await this.connectBluetooth();
+            }
         }
     }
 
-    async connect() {
+    async connectSerial() {
         try {
-            this.log('Connecting...');
-            await this.protocol.connect();
-            this.log('Connected!', 'success');
+            this.log('Connecting via USB...');
+            await this.protocol.connectSerial();
+            this.log('Connected via USB!', 'success');
             this.updateConnectionUI(true);
-
-            // Load device info
-            await this.loadDeviceInfo();
-            await this.loadModes();
-            await this.loadBleModes();
-            await this.loadProfiles();
-            await this.loadWiimoteOrient();
-
+            await this._onConnected();
         } catch (e) {
-            this.log(`Connection failed: ${e.message}`, 'error');
+            this.log(`USB connection failed: ${e.message}`, 'error');
             this.updateConnectionUI(false);
         }
+    }
+
+    async connectBluetooth() {
+        try {
+            this.log('Connecting via BLE...');
+            await this.protocol.connectBluetooth();
+            this.log('Connected via BLE!', 'success');
+            this.updateConnectionUI(true);
+            await this._onConnected();
+        } catch (e) {
+            this.log(`BLE connection failed: ${e.message}`, 'error');
+            this.updateConnectionUI(false);
+        }
+    }
+
+    async _onConnected() {
+        // Load device info
+        await this.loadDeviceInfo();
+        await this.loadModes();
+        await this.loadBleModes();
+        await this.loadProfiles();
+        await this.loadWiimoteOrient();
     }
 
     async disconnect() {

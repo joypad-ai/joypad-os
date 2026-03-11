@@ -37,6 +37,7 @@
 
 static cdc_protocol_t protocol_ctx;
 static cdc_protocol_t *active_ctx = &protocol_ctx;  // Swappable for NUS bridge
+static cdc_protocol_t *stream_ctx = NULL;            // Context with input/log streaming enabled
 static char response_buf[CDC_MAX_PAYLOAD];
 
 // Deferred reboot flags — set by command handlers, executed in cdc_commands_task()
@@ -59,7 +60,7 @@ static volatile uint16_t log_tail = 0;  // Read position
 static void log_stdio_out_chars(const char *buf, int len)
 {
     // Skip ring buffer writes when not streaming — zero overhead on normal path
-    if (!protocol_ctx.log_streaming) return;
+    if (!stream_ctx || !stream_ctx->log_streaming) return;
 
     for (int i = 0; i < len; i++) {
         uint16_t next = (log_head + 1) % LOG_BUF_SIZE;
@@ -637,7 +638,12 @@ static void cmd_input_stream(const char* json)
         return;
     }
 
-    protocol_ctx.input_streaming = enable;
+    active_ctx->input_streaming = enable;
+    if (enable) {
+        stream_ctx = active_ctx;
+    } else if (stream_ctx == active_ctx) {
+        stream_ctx = NULL;
+    }
     send_ok();
 }
 
@@ -957,7 +963,12 @@ static void cmd_debug_stream(const char* json)
         return;
     }
 
-    protocol_ctx.log_streaming = enable;
+    active_ctx->log_streaming = enable;
+    if (enable) {
+        stream_ctx = active_ctx;
+    } else if (stream_ctx == active_ctx) {
+        stream_ctx = NULL;
+    }
 
     if (!enable) {
         // Drain any stale data when disabling
@@ -1286,7 +1297,7 @@ void cdc_commands_task(void)
     }
 
     // Drain log ring buffer and send as events
-    if (protocol_ctx.log_streaming && log_head != log_tail) {
+    if (stream_ctx && stream_ctx->log_streaming && log_head != log_tail) {
         // Collect up to 256 raw bytes from ring buffer
         char raw[256];
         int raw_len = 0;
@@ -1329,7 +1340,9 @@ void cdc_commands_task(void)
             log_event_buf[pos++] = '}';
             log_event_buf[pos] = '\0';
 
-            cdc_protocol_send_event(&protocol_ctx, log_event_buf);
+            if (stream_ctx) {
+                cdc_protocol_send_event(stream_ctx, log_event_buf);
+            }
         }
     }
 }
@@ -1473,7 +1486,7 @@ void cdc_commands_set_active_protocol(cdc_protocol_t* ctx)
 
 void cdc_commands_send_input_event(uint32_t buttons, const uint8_t* axes)
 {
-    if (!protocol_ctx.input_streaming) return;
+    if (!stream_ctx || !stream_ctx->input_streaming) return;
 
     // Input axes from input_event_t (now contiguous):
     // [0]=LX, [1]=LY, [2]=RX, [3]=RY, [4]=L2, [5]=R2, [6]=RZ
@@ -1481,32 +1494,34 @@ void cdc_commands_send_input_event(uint32_t buttons, const uint8_t* axes)
              "{\"type\":\"input\",\"buttons\":%lu,\"axes\":[%d,%d,%d,%d,%d,%d,%d]}",
              (unsigned long)buttons,
              axes[0], axes[1], axes[2], axes[3], axes[4], axes[5], axes[6]);
-    cdc_protocol_send_event(&protocol_ctx, response_buf);
+    cdc_protocol_send_event(stream_ctx, response_buf);
 }
 
 void cdc_commands_send_output_event(uint32_t buttons, const uint8_t* axes)
 {
-    if (!protocol_ctx.input_streaming) return;
+    if (!stream_ctx || !stream_ctx->input_streaming) return;
 
     snprintf(response_buf, sizeof(response_buf),
              "{\"type\":\"output\",\"buttons\":%lu,\"axes\":[%d,%d,%d,%d,%d,%d,%d]}",
              (unsigned long)buttons,
              axes[0], axes[1], axes[2], axes[3], axes[4], axes[5], axes[6]);
-    cdc_protocol_send_event(&protocol_ctx, response_buf);
+    cdc_protocol_send_event(stream_ctx, response_buf);
 }
 
 void cdc_commands_send_connect_event(uint8_t port, const char* name,
                                      uint16_t vid, uint16_t pid)
 {
+    if (!stream_ctx) return;
     snprintf(response_buf, sizeof(response_buf),
              "{\"type\":\"connect\",\"port\":%d,\"name\":\"%s\",\"vid\":%d,\"pid\":%d}",
              port, name, vid, pid);
-    cdc_protocol_send_event(&protocol_ctx, response_buf);
+    cdc_protocol_send_event(stream_ctx, response_buf);
 }
 
 void cdc_commands_send_disconnect_event(uint8_t port)
 {
+    if (!stream_ctx) return;
     snprintf(response_buf, sizeof(response_buf),
              "{\"type\":\"disconnect\",\"port\":%d}", port);
-    cdc_protocol_send_event(&protocol_ctx, response_buf);
+    cdc_protocol_send_event(stream_ctx, response_buf);
 }

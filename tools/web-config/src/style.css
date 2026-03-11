@@ -230,6 +230,17 @@
             margin-bottom: 20px;
         }
 
+        .connect-buttons {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            margin-bottom: 10px;
+        }
+
+        .connect-buttons button {
+            min-width: 160px;
+        }
+
         .log {
             background: var(--bg-input);
             border-radius: 8px;

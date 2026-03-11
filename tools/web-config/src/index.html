@@ -19,9 +19,13 @@
         <!-- Connect Prompt -->
         <div id="connectPrompt" class="connect-prompt">
             <p>Connect your Joypad device to configure it.</p>
-            <button id="connectBtn2">Connect Device</button>
+            <div class="connect-buttons">
+                <button id="connectSerialBtn">USB (Serial)</button>
+                <button id="connectBleBtn" class="secondary">Bluetooth (BLE)</button>
+            </div>
             <p style="margin-top: 20px; font-size: 12px;">
-                Requires Chrome, Edge, or Opera with Web Serial API support.
+                USB requires Chrome, Edge, or Opera with Web Serial support.<br>
+                BLE requires Chrome with Web Bluetooth support.
             </p>
         </div>
 

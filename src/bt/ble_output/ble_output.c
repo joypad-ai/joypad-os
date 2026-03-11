@@ -22,6 +22,7 @@ extern const uint8_t *ble_xbox_profile_data;
 #include "core/router/router.h"
 #include "core/services/players/feedback.h"
 #include "core/services/storage/flash.h"
+#include "usb/usbd/cdc/cdc_commands.h"
 #include "platform/platform.h"
 
 // Forward declare to avoid pulling in manager.h (TinyUSB type conflicts)
@@ -397,6 +398,9 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                     con_handle = hids_subevent_input_report_enable_get_con_handle(packet);
                     ble_connected = true;
                     printf("[ble_output] BLE connected (handle=0x%04x)\n", con_handle);
+                    // Keep advertising while connected so web config can
+                    // discover the device via Web Bluetooth for NUS access
+                    gap_advertisements_enable(1);
                     break;
 
                 case HIDS_SUBEVENT_CAN_SEND_NOW:
@@ -625,6 +629,9 @@ static void ble_output_task_standard(void)
     const input_event_t *event = router_get_output(OUTPUT_TARGET_BLE_PERIPHERAL, 0);
     if (!event) return;
 
+    // Stream output event to CDC/NUS for web config (if enabled)
+    cdc_commands_send_output_event(event->buttons, event->analog);
+
     switch (event->type) {
         case INPUT_TYPE_KEYBOARD: {
             ble_keyboard_report_t report;
@@ -676,6 +683,9 @@ static void ble_output_task_xbox(void)
 {
     const input_event_t *event = router_get_output(OUTPUT_TARGET_BLE_PERIPHERAL, 0);
     if (!event) return;
+
+    // Stream output event to CDC/NUS for web config (if enabled)
+    cdc_commands_send_output_event(event->buttons, event->analog);
 
     ble_xbox_report_t report;
     ble_xbox_report_from_event(event, &report);
