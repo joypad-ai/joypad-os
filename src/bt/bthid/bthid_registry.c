@@ -15,6 +15,7 @@
 #include "devices/vendors/nintendo/wiimote_bt.h"
 // xbox_bt.h and xbox_ble.h no longer registered — generic driver handles all Xbox
 #include "devices/vendors/google/stadia_bt.h"
+#include "devices/vendors/8bitdo/bthid_8bitdo_ultimate.h"
 
 void bthid_registry_init(void)
 {
@@ -37,6 +38,9 @@ void bthid_registry_init(void)
 
     // Microsoft controllers — handled by generic gamepad driver via HID descriptor
     // parsing (like BlueRetro). Covers all Xbox variants without layout assumptions.
+
+    // 8BitDo controllers
+    bthid_8bitdo_ultimate_register();
 
     // Google controllers
     stadia_bt_register();
