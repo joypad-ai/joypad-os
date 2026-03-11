@@ -12,6 +12,7 @@
 #include "core/output_interface.h"
 #include "usb/usbh/usbh.h"
 #include "bt/ble_output/ble_output.h"
+#include "usb/usbd/usbd.h"
 #include "bt/transport/bt_transport.h"
 #include "bt/btstack/btstack_host.h"
 #include "core/services/leds/leds.h"
@@ -109,6 +110,7 @@ const InputInterface** app_get_input_interfaces(uint8_t* count)
 
 static const OutputInterface* output_interfaces[] = {
     &ble_output_interface,
+    &usbd_output_interface,
 };
 
 const OutputInterface** app_get_output_interfaces(uint8_t* count)
@@ -135,6 +137,7 @@ void app_init(void)
         .merge_mode = MERGE_MODE,
         .max_players_per_output = {
             [OUTPUT_TARGET_BLE_PERIPHERAL] = 1,
+            [OUTPUT_TARGET_USB_DEVICE] = 1,
         },
         .merge_all_inputs = true,
         .transform_flags = TRANSFORM_FLAGS,
@@ -143,6 +146,9 @@ void app_init(void)
 
     // Route: USB Host → BLE Peripheral
     router_add_route(INPUT_SOURCE_USB_HOST, OUTPUT_TARGET_BLE_PERIPHERAL, 0);
+
+    // Route: USB Host → USB Device (CDC config - streams events to web config tool)
+    router_add_route(INPUT_SOURCE_USB_HOST, OUTPUT_TARGET_USB_DEVICE, 0);
 
     // Configure player management
     player_config_t player_cfg = {
@@ -162,7 +168,7 @@ void app_init(void)
     ble_output_late_init();
 
     printf("[app:usb2ble] Initialization complete\n");
-    printf("[app:usb2ble]   Routing: USB Host → BLE Peripheral (Gamepad)\n");
+    printf("[app:usb2ble]   Routing: USB Host → BLE Peripheral (Gamepad) + USB Device (CDC)\n");
     printf("[app:usb2ble]   Player slots: %d\n", MAX_PLAYER_SLOTS);
 }
 

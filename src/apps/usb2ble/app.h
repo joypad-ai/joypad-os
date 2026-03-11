@@ -25,6 +25,7 @@
 
 // Output drivers
 #define REQUIRE_BLE_OUTPUT 1
+#define REQUIRE_USB_DEVICE 1
 
 // Services
 #define REQUIRE_FLASH_SETTINGS 1

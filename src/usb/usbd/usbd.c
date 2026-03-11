@@ -86,7 +86,11 @@ static bool pending_flags[USB_MAX_PLAYERS] = {false};
 static char usb_serial_str[USB_SERIAL_LEN + 1];
 
 // Current output mode (persisted to flash)
+#ifdef CONFIG_USB2BLE
+static usb_output_mode_t output_mode = USB_OUTPUT_MODE_CDC;
+#else
 static usb_output_mode_t output_mode = USB_OUTPUT_MODE_SINPUT;
+#endif
 
 // Forward declaration (defined in CONFIGURATION DESCRIPTOR section)
 static void build_config_descriptors(void);
@@ -106,6 +110,7 @@ static const char* mode_names[] = {
     [USB_OUTPUT_MODE_KEYBOARD_MOUSE] = "KB/Mouse",
     [USB_OUTPUT_MODE_GC_ADAPTER] = "GC Adapter",
     [USB_OUTPUT_MODE_PCEMINI] = "PCE Mini",
+    [USB_OUTPUT_MODE_CDC] = "CDC Config",
 };
 
 // ============================================================================
@@ -390,7 +395,8 @@ bool usbd_set_mode(usb_output_mode_t mode)
         mode != USB_OUTPUT_MODE_XAC &&
         mode != USB_OUTPUT_MODE_KEYBOARD_MOUSE &&
         mode != USB_OUTPUT_MODE_GC_ADAPTER &&
-        mode != USB_OUTPUT_MODE_PCEMINI) {
+        mode != USB_OUTPUT_MODE_PCEMINI &&
+        mode != USB_OUTPUT_MODE_CDC) {
         printf("[usbd] Mode %d not yet supported\n", mode);
         return false;
     }
@@ -481,6 +487,8 @@ void usbd_get_mode_color(usb_output_mode_t mode, uint8_t *r, uint8_t *g, uint8_t
             *r = 0; *g = 0; *b = 64; break;      // blue
         case USB_OUTPUT_MODE_SINPUT:
             *r = 80; *g = 80; *b = 80; break;    // white
+        case USB_OUTPUT_MODE_CDC:
+            *r = 0; *g = 64; *b = 64; break;     // cyan
         default: // HID, GC_ADAPTER
             *r = 6; *g = 0; *b = 64; break;      // purple
     }
@@ -573,13 +581,14 @@ void usbd_init(void)
                 settings->usb_output_mode == USB_OUTPUT_MODE_XAC ||
                 settings->usb_output_mode == USB_OUTPUT_MODE_KEYBOARD_MOUSE ||
                 settings->usb_output_mode == USB_OUTPUT_MODE_GC_ADAPTER ||
-                settings->usb_output_mode == USB_OUTPUT_MODE_PCEMINI) {
+                settings->usb_output_mode == USB_OUTPUT_MODE_PCEMINI ||
+                settings->usb_output_mode == USB_OUTPUT_MODE_CDC) {
                 output_mode = (usb_output_mode_t)settings->usb_output_mode;
                 printf("[usbd] Loaded mode from flash: %s\n", mode_names[output_mode]);
             } else if (settings->usb_output_mode == USB_OUTPUT_MODE_HID) {
-                // Migrate DInput to SInput (DInput is deprecated)
-                output_mode = USB_OUTPUT_MODE_SINPUT;
-                printf("[usbd] Migrating DInput to SInput\n");
+                // DInput (mode 0) is deprecated / uninitialized flash default.
+                // Keep compile-time default (SInput for usb2usb, CDC for usb2ble).
+                printf("[usbd] Flash has DInput (0), keeping default: %s\n", mode_names[output_mode]);
             } else {
                 printf("[usbd] Unsupported mode %d in flash, using default\n",
                        settings->usb_output_mode);
@@ -691,6 +700,10 @@ void usbd_init(void)
             }
             break;
 
+        case USB_OUTPUT_MODE_CDC:
+            // CDC-only mode: no HID init needed
+            break;
+
         case USB_OUTPUT_MODE_HID:
             // Initialize HID mode via mode interface
             if (usbd_modes[USB_OUTPUT_MODE_HID] && usbd_modes[USB_OUTPUT_MODE_HID]->init) {
@@ -710,9 +723,10 @@ void usbd_init(void)
     // Set current mode pointer for dispatch
     current_mode = usbd_modes[output_mode];
 
-    // Initialize CDC subsystem (for SInput, HID, Switch, and KB/Mouse modes)
+    // Initialize CDC subsystem (for SInput, HID, Switch, KB/Mouse, and CDC-only modes)
     if (output_mode == USB_OUTPUT_MODE_SINPUT || output_mode == USB_OUTPUT_MODE_HID ||
-        output_mode == USB_OUTPUT_MODE_SWITCH || output_mode == USB_OUTPUT_MODE_KEYBOARD_MOUSE) {
+        output_mode == USB_OUTPUT_MODE_SWITCH || output_mode == USB_OUTPUT_MODE_KEYBOARD_MOUSE ||
+        output_mode == USB_OUTPUT_MODE_CDC) {
         cdc_init();
     }
 
@@ -852,6 +866,11 @@ void usbd_task(void)
             break;
         }
 #endif
+
+        case USB_OUTPUT_MODE_CDC:
+            // CDC-only mode: just process CDC tasks (no HID reports)
+            cdc_task();
+            break;
 
         case USB_OUTPUT_MODE_HID:
             // HID mode: process CDC tasks
@@ -1220,6 +1239,8 @@ static bool usbd_send_gc_adapter_report(uint8_t player_index)
 bool usbd_send_report(uint8_t player_index)
 {
     switch (output_mode) {
+        case USB_OUTPUT_MODE_CDC:
+            return false;  // CDC-only mode: no HID reports to send
         case USB_OUTPUT_MODE_XBOX_ORIGINAL:
             return usbd_send_xid_report(player_index);
 #if CFG_TUD_XINPUT
@@ -1476,6 +1497,24 @@ enum {
 // DEVICE DESCRIPTOR
 // ============================================================================
 
+// CDC-only device descriptor (serial configuration, no HID)
+static const tusb_desc_device_t desc_device_cdc = {
+    .bLength            = sizeof(tusb_desc_device_t),
+    .bDescriptorType    = TUSB_DESC_DEVICE,
+    .bcdUSB             = 0x0200,  // USB 2.0
+    .bDeviceClass       = TUSB_CLASS_MISC,
+    .bDeviceSubClass    = MISC_SUBCLASS_COMMON,
+    .bDeviceProtocol    = MISC_PROTOCOL_IAD,
+    .bMaxPacketSize0    = CFG_TUD_ENDPOINT0_SIZE,
+    .idVendor           = USB_CDC_VID,
+    .idProduct          = USB_CDC_PID,
+    .bcdDevice          = USB_CDC_BCD,
+    .iManufacturer      = 0x01,
+    .iProduct           = 0x02,
+    .iSerialNumber      = 0x03,
+    .bNumConfigurations = 0x01
+};
+
 // HID mode device descriptor (PS3-compatible DInput)
 static const tusb_desc_device_t desc_device_hid = {
     .bLength            = sizeof(tusb_desc_device_t),
@@ -1504,6 +1543,8 @@ static const tusb_desc_device_t desc_device_hid = {
 uint8_t const *tud_descriptor_device_cb(void)
 {
     switch (output_mode) {
+        case USB_OUTPUT_MODE_CDC:
+            return (uint8_t const *)&desc_device_cdc;
         case USB_OUTPUT_MODE_SINPUT:
             return (uint8_t const *)&sinput_device_descriptor;
         case USB_OUTPUT_MODE_XBOX_ORIGINAL:
@@ -1564,13 +1605,23 @@ static const uint8_t desc_frag_cdc0[] = {
     TUD_CDC_DESCRIPTOR(ITF_NUM_CDC_0, 4, EPNUM_CDC_0_NOTIF, 8, EPNUM_CDC_0_OUT, EPNUM_CDC_0_IN, 64),
 };
 
+// CDC-only fragment (no HID interfaces — CDC starts at interface 0)
+#define EPNUM_CDC_ONLY_NOTIF  0x81
+#define EPNUM_CDC_ONLY_OUT    0x01
+#define EPNUM_CDC_ONLY_IN     0x82
+static const uint8_t desc_frag_cdc_only[] = {
+    TUD_CDC_DESCRIPTOR(0, 4, EPNUM_CDC_ONLY_NOTIF, 8, EPNUM_CDC_ONLY_OUT, EPNUM_CDC_ONLY_IN, 64),
+};
+
 // Max possible config descriptor sizes
 #define MAX_CONFIG_LEN_HID    (TUD_CONFIG_DESC_LEN + TUD_HID_DESC_LEN + TUD_CDC_DESC_LEN)
 #define MAX_CONFIG_LEN_SINPUT (TUD_CONFIG_DESC_LEN + TUD_HID_INOUT_DESC_LEN + 2 * TUD_HID_DESC_LEN + TUD_CDC_DESC_LEN)
+#define MAX_CONFIG_LEN_CDC    (TUD_CONFIG_DESC_LEN + TUD_CDC_DESC_LEN)
 
 // Runtime-built config descriptor buffers
 static uint8_t runtime_desc_hid[MAX_CONFIG_LEN_HID];
 static uint8_t runtime_desc_sinput[MAX_CONFIG_LEN_SINPUT];
+static uint8_t runtime_desc_cdc[MAX_CONFIG_LEN_CDC];
 
 // Helper: append fragment to buffer, return new offset
 static uint16_t append_fragment(uint8_t* buf, uint16_t offset, const uint8_t* frag, uint16_t frag_len)
@@ -1620,12 +1671,26 @@ static void build_config_descriptors(void)
         TUD_CONFIG_DESCRIPTOR(1, sinput_itf_count, 0, off, TUSB_DESC_CONFIG_ATT_REMOTE_WAKEUP, 500)
     };
     memcpy(runtime_desc_sinput, sinput_header, TUD_CONFIG_DESC_LEN);
+
+    // --- CDC-only mode descriptor ---
+    // Interfaces: CDC control + CDC data (no HID)
+    uint8_t cdc_itf_count = 2;
+    off = TUD_CONFIG_DESC_LEN;
+    off = append_fragment(runtime_desc_cdc, off, desc_frag_cdc_only, sizeof(desc_frag_cdc_only));
+
+    // Write config header (9 bytes)
+    uint8_t cdc_header[] = {
+        TUD_CONFIG_DESCRIPTOR(1, cdc_itf_count, 0, off, 0, 100)
+    };
+    memcpy(runtime_desc_cdc, cdc_header, TUD_CONFIG_DESC_LEN);
 }
 
 uint8_t const *tud_descriptor_configuration_cb(uint8_t index)
 {
     (void)index;
     switch (output_mode) {
+        case USB_OUTPUT_MODE_CDC:
+            return runtime_desc_cdc;
         case USB_OUTPUT_MODE_SINPUT:
             return runtime_desc_sinput;
         case USB_OUTPUT_MODE_XBOX_ORIGINAL:
@@ -1768,6 +1833,8 @@ uint16_t const *tud_descriptor_string_cb(uint8_t index, uint16_t langid)
                 str = XAC_MANUFACTURER;
             } else if (output_mode == USB_OUTPUT_MODE_GC_ADAPTER) {
                 str = GC_ADAPTER_MANUFACTURER;
+            } else if (output_mode == USB_OUTPUT_MODE_CDC) {
+                str = USB_CDC_MANUFACTURER;
             } else {
                 str = USB_HID_MANUFACTURER;
             }
@@ -1793,6 +1860,8 @@ uint16_t const *tud_descriptor_string_cb(uint8_t index, uint16_t langid)
                 str = XAC_PRODUCT;
             } else if (output_mode == USB_OUTPUT_MODE_GC_ADAPTER) {
                 str = GC_ADAPTER_PRODUCT;
+            } else if (output_mode == USB_OUTPUT_MODE_CDC) {
+                str = USB_CDC_PRODUCT;
             } else {
                 str = USB_HID_PRODUCT;
             }
