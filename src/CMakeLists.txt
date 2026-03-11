@@ -1675,7 +1675,7 @@ set(CONTROLLER_INCLUDES
 # --- Fisher Price V1 (button-only mod) ---
 add_executable(joypad_controller_fisherprice_v1)
 target_compile_definitions(joypad_controller_fisherprice_v1 PRIVATE
-    CONFIG_CONTROLLER=1 CONTROLLER_TYPE_FISHERPRICE_V1=1 DISABLE_USB_HOST=1 BUTTON_USER_GPIO=${BOARD_BUTTON_GPIO}
+    CONFIG_CONTROLLER=1 CONFIG_USB=1 CONTROLLER_TYPE_FISHERPRICE_V1=1 DISABLE_USB_HOST=1 BUTTON_USER_GPIO=${BOARD_BUTTON_GPIO}
 )
 target_sources(joypad_controller_fisherprice_v1 PUBLIC ${CORE_SOURCES} ${USB_DEVICE_SOURCES} ${CONTROLLER_SOURCES}
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/controller/app.c
@@ -1687,7 +1687,7 @@ joypad_target_common(joypad_controller_fisherprice_v1)
 # --- Fisher Price V2 (analog stick + shoulders mod) ---
 add_executable(joypad_controller_fisherprice_v2)
 target_compile_definitions(joypad_controller_fisherprice_v2 PRIVATE
-    CONFIG_CONTROLLER=1 CONTROLLER_TYPE_FISHERPRICE_V2=1 DISABLE_USB_HOST=1 BUTTON_USER_GPIO=${BOARD_BUTTON_GPIO}
+    CONFIG_CONTROLLER=1 CONFIG_USB=1 CONTROLLER_TYPE_FISHERPRICE_V2=1 DISABLE_USB_HOST=1 BUTTON_USER_GPIO=${BOARD_BUTTON_GPIO}
 )
 target_sources(joypad_controller_fisherprice_v2 PUBLIC ${CORE_SOURCES} ${USB_DEVICE_SOURCES} ${CONTROLLER_SOURCES}
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/controller/app.c
@@ -1699,7 +1699,7 @@ joypad_target_common(joypad_controller_fisherprice_v2)
 # --- Alpakka ---
 add_executable(joypad_controller_alpakka)
 target_compile_definitions(joypad_controller_alpakka PRIVATE
-    CONFIG_CONTROLLER=1 CONTROLLER_TYPE_ALPAKKA=1 DISABLE_USB_HOST=1 BUTTON_USER_GPIO=${BOARD_BUTTON_GPIO}
+    CONFIG_CONTROLLER=1 CONFIG_USB=1 CONTROLLER_TYPE_ALPAKKA=1 DISABLE_USB_HOST=1 BUTTON_USER_GPIO=${BOARD_BUTTON_GPIO}
 )
 target_sources(joypad_controller_alpakka PUBLIC ${CORE_SOURCES} ${USB_DEVICE_SOURCES} ${CONTROLLER_SOURCES}
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/controller/app.c
@@ -1711,7 +1711,7 @@ joypad_target_common(joypad_controller_alpakka)
 # --- MacroPad ---
 add_executable(joypad_controller_macropad)
 target_compile_definitions(joypad_controller_macropad PRIVATE
-    CONFIG_CONTROLLER=1 CONTROLLER_TYPE_MACROPAD=1 DISABLE_USB_HOST=1 BUTTON_USER_GPIO=${BOARD_BUTTON_GPIO}
+    CONFIG_CONTROLLER=1 CONFIG_USB=1 CONTROLLER_TYPE_MACROPAD=1 DISABLE_USB_HOST=1 BUTTON_USER_GPIO=${BOARD_BUTTON_GPIO}
     ADAFRUIT_MACROPAD_RP2040=1 WS2812_NUM_PIXELS=12
     I2C_PEER_ENABLED=1
 )

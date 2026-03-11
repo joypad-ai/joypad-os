@@ -324,10 +324,8 @@ void app_init(void)
     // Add route: Pad → USB Device
     router_add_route(INPUT_SOURCE_GPIO, OUTPUT_TARGET_USB_DEVICE, 0);
 
-    // Set up router tap for UART linking (I2C peer uses direct path in app_task)
-    if (uart_link_enabled) {
-        router_set_tap(OUTPUT_TARGET_USB_DEVICE, uart_link_tap);
-    }
+    // UART link forwarding is handled in app_task() via router_get_output()
+    // (not via tap, since usbd already owns the USB_DEVICE tap)
 
     printf("[app:controller] Initialization complete\n");
     printf("[app:controller]   Routing: Pad → USB Device (HID Gamepad)\n");
@@ -485,6 +483,11 @@ void app_task(void)
     const input_event_t* event = router_get_output(OUTPUT_TARGET_USB_DEVICE, 0);
     if (event) {
         buttons = event->buttons;
+
+        // Forward to linked controller via UART (if enabled)
+        if (uart_link_enabled && event->dev_addr < 0xD0) {
+            uart_device_queue_input(event, 0);
+        }
     }
     if (buttons != prev_buttons) {
         printf("[app:controller] buttons=0x%08lx\n", (unsigned long)buttons);

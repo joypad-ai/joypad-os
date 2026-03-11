@@ -390,10 +390,15 @@ static void pad_poll_device(uint8_t device_index) {
     // =================================================================
     dpad_mode_t effective_mode = dpad_mode;
 
-    // Physical toggle switch: when HIGH, force right stick mode
+    // Physical toggle switch: when HIGH, remap d-pad to analog stick
+    // If config has a left analog stick → right stick (V2: left stick is physical)
+    // If config has no analog sticks   → left stick  (V1: d-pad doubles as stick)
     if (config->dpad_toggle >= 0 && config->dpad_toggle <= 29) {
-        if (gpio_get(config->dpad_toggle)) {
-            effective_mode = DPAD_MODE_RIGHT_STICK;
+        bool toggle_state = gpio_get(config->dpad_toggle);
+        if (config->dpad_toggle_invert) toggle_state = !toggle_state;
+        if (toggle_state) {
+            bool has_left_stick = (config->adc_lx >= 0 || config->adc_ly >= 0);
+            effective_mode = has_left_stick ? DPAD_MODE_RIGHT_STICK : DPAD_MODE_LEFT_STICK;
         }
     }
 

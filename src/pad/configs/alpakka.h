@@ -83,6 +83,11 @@ static const pad_device_config_t pad_config_alpakka = {
     // No NeoPixel on standard Alpakka (uses OLED + LEDs on GPIO 2-5)
     .led_pin = PAD_PIN_DISABLED,
     .led_count = 0,
+
+    // No QWIIC/UART link
+    .qwiic_tx = PAD_PIN_DISABLED,
+    .qwiic_rx = PAD_PIN_DISABLED,
+    .qwiic_i2c_inst = PAD_PIN_DISABLED,
 };
 
 #endif // PAD_CONFIG_ALPAKKA_H
