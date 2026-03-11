@@ -87,14 +87,15 @@ static const uint8_t xbox_hid_descriptor[] = {
 
     0xC0,              // End Collection
 
-    // ---- Rumble Output (Report ID 4) ----
+    // ---- Rumble Output (Report ID 3) ----
+    // Same Report ID as input — real Xbox BLE uses ID 3 for both
     0x05, 0x01,        // Usage Page (Generic Desktop)
     0x09, 0x05,        // Usage (Game Pad)
     0xA1, 0x01,        // Collection (Application)
-    0x85, 0x04,        //   Report ID (4)
+    0x85, 0x03,        //   Report ID (3)
 
-    // 8-byte rumble output
-    // [0]=enable, [1]=lt_force, [2]=rt_force, [3]=strong, [4]=weak,
+    // 8-byte rumble output (after Report ID)
+    // [0]=enable, [1]=rt_trigger, [2]=lt_trigger, [3]=right_motor, [4]=left_motor,
     // [5]=duration, [6]=delay, [7]=repeat
     0x05, 0x0F,        //   Usage Page (Physical Interface)
     0x09, 0x21,        //   Usage (Set Effect Report)
@@ -192,13 +193,15 @@ bool ble_xbox_parse_rumble(const uint8_t *data, uint16_t len,
 {
     if (len < 5) return false;
 
-    // [0]=enable, [3]=strong_motor (left), [4]=weak_motor (right)
-    // Xbox range is 0-100, scale to 0-255
-    uint8_t strong = data[3];
-    uint8_t weak = data[4];
+    // Xbox BLE rumble format:
+    // [0]=enable_mask, [1]=rt_trigger, [2]=lt_trigger,
+    // [3]=right_motor, [4]=left_motor, [5]=duration, [6]=delay, [7]=repeat
+    // Motor values are 0-100, scale to 0-255
+    uint8_t right = data[3];
+    uint8_t left = data[4];
 
-    *rumble_left = (uint8_t)(((uint16_t)strong * 255) / 100);
-    *rumble_right = (uint8_t)(((uint16_t)weak * 255) / 100);
+    *rumble_left = (uint8_t)(((uint16_t)left * 255) / 100);
+    *rumble_right = (uint8_t)(((uint16_t)right * 255) / 100);
 
     return true;
 }

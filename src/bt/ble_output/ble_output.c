@@ -433,11 +433,15 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                     uint16_t report_len = hids_subevent_set_report_get_report_length(packet);
                     const uint8_t *report_data = hids_subevent_set_report_get_report_data(packet);
 
-                    if (current_mode == BLE_MODE_XBOX && report_id == 4) {
+                    printf("[ble_output] SET_REPORT: id=%d len=%d mode=%d\n",
+                           report_id, report_len, current_mode);
+                    if (current_mode == BLE_MODE_XBOX && report_id == 3) {
                         // Xbox rumble output report
                         uint8_t rumble_left, rumble_right;
                         if (ble_xbox_parse_rumble(report_data, report_len,
                                                   &rumble_left, &rumble_right)) {
+                            printf("[ble_output] Rumble: left=%d right=%d\n",
+                                   rumble_left, rumble_right);
                             // Forward rumble to connected input controller
                             feedback_set_rumble(0, rumble_left, rumble_right);
                         }
@@ -492,6 +496,20 @@ void ble_output_init(void)
     last_sent_xbox = pending_xbox;
 }
 
+// ATT write callback — debug logging for all GATT writes
+static int att_write_callback(hci_con_handle_t con_handle, uint16_t att_handle,
+                               uint16_t transaction_mode, uint16_t offset,
+                               uint8_t *buffer, uint16_t buffer_size)
+{
+    printf("[ble_output] ATT_WRITE: handle=0x%04x size=%d", att_handle, buffer_size);
+    if (buffer_size > 0 && buffer_size <= 8) {
+        printf(" data=");
+        for (int i = 0; i < buffer_size; i++) printf("%02x", buffer[i]);
+    }
+    printf("\n");
+    return 0;  // Let hids_device handle it
+}
+
 // Called after bt_init() — BTstack must be running before GATT/GAP setup
 void ble_output_late_init(void)
 {
@@ -503,7 +521,7 @@ void ble_output_late_init(void)
         ? ble_xbox_profile_data : profile_data;
     printf("[ble_output] Using %s GATT database (ptr=%p)\n",
            (current_mode == BLE_MODE_XBOX) ? "Xbox" : "Standard", gatt_db);
-    att_server_init(gatt_db, NULL, NULL);
+    att_server_init(gatt_db, NULL, att_write_callback);
 
     // Setup GATT services
     battery_service_server_init(100);
