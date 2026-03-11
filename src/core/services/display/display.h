@@ -72,6 +72,15 @@ void display_fill_rect(uint8_t x, uint8_t y, uint8_t w, uint8_t h, bool on);
 // Draw progress bar (for rumble visualization)
 void display_progress_bar(uint8_t x, uint8_t y, uint8_t w, uint8_t h, uint8_t percent);
 
+// Draw circle outline (Bresenham midpoint algorithm)
+void display_circle(uint8_t cx, uint8_t cy, uint8_t r, bool on);
+
+// Draw filled circle
+void display_fill_circle(uint8_t cx, uint8_t cy, uint8_t r, bool on);
+
+// Blit a 1-bit bitmap (column-major, LSB=top, like framebuffer page format)
+void display_bitmap(uint8_t x, uint8_t y, const uint8_t* bitmap, uint8_t w, uint8_t h);
+
 // Check if display is initialized
 bool display_is_initialized(void);
 

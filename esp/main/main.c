@@ -28,6 +28,13 @@ extern void app_task(void);
 extern const OutputInterface** app_get_output_interfaces(uint8_t* count);
 extern const InputInterface** app_get_input_interfaces(uint8_t* count);
 
+#ifdef CONFIG_MAX3421
+extern bool max3421_host_init(void);
+extern void max3421_host_enable_int(void);
+extern bool max3421_is_detected(void);
+extern void max3421_poll(void);
+#endif
+
 static const OutputInterface** outputs = NULL;
 static uint8_t output_count = 0;
 static const InputInterface** inputs = NULL;
@@ -75,6 +82,16 @@ void app_main(void)
     uart1_console_init();
 #endif
 
+    // Print reset reason to help diagnose silent reboots
+    esp_reset_reason_t reason = esp_reset_reason();
+    const char* reason_str[] = {
+        "UNKNOWN", "POWERON", "EXT", "SW", "PANIC", "INT_WDT",
+        "TASK_WDT", "WDT", "DEEPSLEEP", "BROWNOUT", "SDIO",
+        "USB", "JTAG", "EFUSE", "PWR_GLITCH", "CPU_LOCKUP"
+    };
+    printf("[reset] reason: %d (%s)\n", reason,
+           (reason < 16) ? reason_str[reason] : "?");
+
     // Initialize NVS first (needed for double-tap detection and flash settings)
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
@@ -95,6 +112,13 @@ void app_main(void)
     storage_init();
     players_init();
     app_init();
+
+#ifdef CONFIG_MAX3421
+    // Initialize MAX3421E SPI host (must be before tusb_init/input init)
+    if (!max3421_host_init()) {
+        ESP_LOGW(TAG, "MAX3421E not detected - USB host disabled");
+    }
+#endif
 
     // Get and initialize input interfaces
     inputs = app_get_input_interfaces(&input_count);
@@ -132,6 +156,13 @@ void app_main(void)
         }
     }
 
+#ifdef CONFIG_MAX3421
+    // Enable MAX3421E interrupt now that TinyUSB host is initialized
+    if (max3421_is_detected()) {
+        max3421_host_enable_int();
+    }
+#endif
+
     ESP_LOGI(TAG, "Entering main loop");
 
     // Main loop
@@ -155,6 +186,12 @@ void app_main(void)
         }
 
         app_task();
+
+#ifdef CONFIG_MAX3421
+        // Process deferred MAX3421E interrupts from main loop context.
+        // Cannot call hcd_int_handler from ISR — TinyUSB code is in flash, not IRAM.
+        max3421_poll();
+#endif
 
         // Yield to other FreeRTOS tasks (BTstack runs in its own task)
         vTaskDelay(1);

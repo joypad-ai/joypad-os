@@ -66,7 +66,7 @@ static void cyw43_led_update(int devices)
 #endif
 #include "core/buttons.h"
 #include "tusb.h"
-#ifndef PLATFORM_NRF
+#if !defined(PLATFORM_NRF) && !defined(PLATFORM_ESP32)
 #include "pico/stdlib.h"
 #endif
 #include "platform/platform.h"
@@ -75,6 +75,7 @@ static void cyw43_led_update(int devices)
 
 #if defined(OLED_I2C_INST) || defined(OLED_I2C_DISPLAY)
 #include "core/services/display/display.h"
+#include "core/services/display/joy_anim.h"
 #ifdef OLED_I2C_INST
 #include "hardware/gpio.h"
 #endif
@@ -136,13 +137,24 @@ static void on_button_event(button_event_t event)
         case BUTTON_EVENT_DOUBLE_CLICK: {
             // Double-click to cycle USB output mode
             printf("[app:usb2usb] Double-click - switching USB output mode...\n");
+#ifdef PLATFORM_ESP32
+            tud_task_ext(1, false);
+#else
             tud_task();
+#endif
             platform_sleep_ms(50);
+#ifdef PLATFORM_ESP32
+            tud_task_ext(1, false);
+#else
             tud_task();
+#endif
 
             usb_output_mode_t next = usbd_get_next_mode();
             printf("[app:usb2usb] Switching to %s\n", usbd_get_mode_name(next));
             usbd_set_mode(next);
+#if defined(OLED_I2C_INST) || defined(OLED_I2C_DISPLAY)
+            joy_anim_event(JOY_EVENT_MODE_SWITCH);
+#endif
             break;
         }
 
@@ -240,6 +252,9 @@ static void oled_init(void) {
     gpio_set_dir(OLED_BUTTON_C_PIN, GPIO_IN);
     gpio_pull_up(OLED_BUTTON_C_PIN);
 
+    joy_anim_init();
+    joy_anim_event(JOY_EVENT_BOOT);
+
     printf("[app:usb2usb] OLED FeatherWing initialized (I2C%d, buttons B=%d C=%d)\n",
            OLED_I2C_INST, OLED_BUTTON_B_PIN, OLED_BUTTON_C_PIN);
 }
@@ -284,12 +299,17 @@ static void oled_init(void) {
         .addr     = 0x3C,
     };
     display_init_i2c(&cfg);  // SH1107 FeatherWing OLED
+    joy_anim_init();
+    joy_anim_event(JOY_EVENT_BOOT);
     printf("[app:usb2usb] OLED display initialized (SH1107 I2C)\n");
 }
 #endif
 
 static input_event_t oled_cached_event;
 static bool oled_has_event = false;
+static bool joy_display_mode = true;  // Start in Joy mode (shows character)
+static int oled_last_player_count = 0;
+static uint32_t oled_last_activity_ms = 0;
 
 static void oled_update_display(void) {
     static uint32_t last_update = 0;
@@ -305,14 +325,60 @@ static void oled_update_display(void) {
         }
     }
 
-    // Feed button presses to marquee (edge detection)
+    // Detect connect/disconnect transitions for Joy
+    if (playersCount > 0 && oled_last_player_count == 0) {
+        joy_anim_event(JOY_EVENT_CONNECT);
+        oled_last_activity_ms = now;
+    }
+    if (playersCount == 0 && oled_last_player_count > 0) {
+        joy_anim_event(JOY_EVENT_DISCONNECT);
+        joy_display_mode = true;
+        oled_has_event = false;
+    }
+    oled_last_player_count = playersCount;
+
+    // Feed analog stick to Joy's look direction
+    if (oled_has_event && playersCount > 0) {
+        float lx = (float)oled_cached_event.analog[ANALOG_LX] / 255.0f;
+        float ly = (float)oled_cached_event.analog[ANALOG_LY] / 255.0f;
+        joy_anim_set_look(lx, ly);
+    }
+
+    // Feed button presses to marquee and Joy (edge detection)
     uint32_t buttons = oled_has_event ? oled_cached_event.buttons : 0;
     uint32_t newly_pressed = ~last_buttons & buttons;
     last_buttons = buttons;
     for (int i = 0; button_names[i].name != NULL; i++) {
         if (newly_pressed & button_names[i].mask) {
             display_marquee_add(button_names[i].name);
+            joy_anim_event(JOY_EVENT_BUTTON_PRESS);
+            oled_last_activity_ms = now;
         }
+    }
+
+    // Track activity for idle timeout
+    if (oled_has_event && playersCount > 0) {
+        uint8_t lx = oled_cached_event.analog[ANALOG_LX];
+        uint8_t ly = oled_cached_event.analog[ANALOG_LY];
+        // Analog stick moved away from center
+        if (lx < 108 || lx > 148 || ly < 108 || ly > 148) {
+            oled_last_activity_ms = now;
+        }
+    }
+
+    // Idle timeout → sleep
+    if (now - oled_last_activity_ms > 30000 &&
+        joy_anim_get_state() == JOY_STATE_IDLE) {
+        joy_anim_event(JOY_EVENT_IDLE_TIMEOUT);
+    }
+
+    // Transition from HAPPY animation to info display when done
+    if (joy_anim_get_state() == JOY_STATE_ACTIVE && playersCount > 0) {
+        joy_display_mode = false;
+    }
+    // Go back to Joy mode when no controllers
+    if (playersCount == 0) {
+        joy_display_mode = true;
     }
 
     if (now - last_update < 50) return;  // 20fps max
@@ -320,45 +386,63 @@ static void oled_update_display(void) {
 
     display_clear();
 
-    // Line 1 (large, y=0): USB output mode
-    usb_output_mode_t mode = usbd_get_mode();
-    display_text_large(0, 0, usbd_get_mode_name(mode));
+    if (joy_display_mode) {
+        // Joy character takes the full screen
+        joy_anim_tick(now);
+        joy_anim_render();
 
-    // Separator
-    display_hline(0, 17, DISPLAY_WIDTH);
+        // Small USB mode text in top-right corner
+        usb_output_mode_t mode = usbd_get_mode();
+        const char* mode_name = usbd_get_mode_name(mode);
+        uint8_t text_w = (uint8_t)(strlen(mode_name) * 6);
+        display_text(DISPLAY_WIDTH - text_w, 0, mode_name);
 
-    // Lines 2-4: Controller info
-    if (playersCount > 0 && players[0].dev_addr >= 0) {
-        // Line 2 (y=20): Controller name
-        const char* name = get_player_name(0);
-        if (name) {
-            display_text(0, 20, name);
-        }
-
-        // Line 3 (y=30): Transport + device address + player
-        char info[22];
-        snprintf(info, sizeof(info), "%s dev:%d P%d/%d",
-                 transport_str(players[0].transport),
-                 players[0].dev_addr,
-                 players[0].player_number, playersCount);
-        display_text(0, 30, info);
-
-        // Line 4 (y=40): Analog sticks + triggers
-        if (oled_has_event) {
-            char line[22];
-            snprintf(line, sizeof(line), "L:%02X,%02X R:%02X,%02X T:%02X,%02X",
-                     oled_cached_event.analog[ANALOG_LX], oled_cached_event.analog[ANALOG_LY],
-                     oled_cached_event.analog[ANALOG_RX], oled_cached_event.analog[ANALOG_RY],
-                     oled_cached_event.analog[ANALOG_L2], oled_cached_event.analog[ANALOG_R2]);
-            display_text(0, 40, line);
+        // Status text at bottom
+        if (playersCount == 0) {
+            joy_state_t state = joy_anim_get_state();
+            if (state == JOY_STATE_SLEEP) {
+                display_text(40, 56, "zzZ...");
+            } else if (state != JOY_STATE_BOOT) {
+                display_text(24, 56, "Waiting...");
+            }
         }
     } else {
-        display_text(0, 28, "No controller");
-    }
+        // Controller info display (existing layout)
+        usb_output_mode_t mode = usbd_get_mode();
+        display_text_large(0, 0, usbd_get_mode_name(mode));
 
-    // Bottom (y=52): Button marquee
-    display_marquee_tick();
-    display_marquee_render(52);
+        display_hline(0, 17, DISPLAY_WIDTH);
+
+        if (playersCount > 0 && players[0].dev_addr >= 0) {
+            const char* name = get_player_name(0);
+            if (name) {
+                display_text(0, 20, name);
+            }
+
+            char info[22];
+            snprintf(info, sizeof(info), "%s dev:%d P%d/%d",
+                     transport_str(players[0].transport),
+                     players[0].dev_addr,
+                     players[0].player_number, playersCount);
+            display_text(0, 30, info);
+
+            if (oled_has_event) {
+                char line[22];
+                snprintf(line, sizeof(line), "L:%02X,%02X R:%02X,%02X T:%02X,%02X",
+                         oled_cached_event.analog[ANALOG_LX], oled_cached_event.analog[ANALOG_LY],
+                         oled_cached_event.analog[ANALOG_RX], oled_cached_event.analog[ANALOG_RY],
+                         oled_cached_event.analog[ANALOG_L2], oled_cached_event.analog[ANALOG_R2]);
+                display_text(0, 40, line);
+            }
+        }
+
+        // Button marquee at bottom
+        display_marquee_tick();
+        display_marquee_render(52);
+
+        // Tick Joy even when not displayed (keeps state machine running)
+        joy_anim_tick(now);
+    }
 
     display_update();
 }

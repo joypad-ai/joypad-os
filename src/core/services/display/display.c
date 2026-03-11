@@ -450,6 +450,78 @@ void display_progress_bar(uint8_t x, uint8_t y, uint8_t w, uint8_t h, uint8_t pe
 }
 
 // ============================================================================
+// CIRCLE + BITMAP
+// ============================================================================
+
+void display_circle(uint8_t cx, uint8_t cy, uint8_t r, bool on) {
+    if (r == 0) { display_pixel(cx, cy, on); return; }
+    int x = 0, y = r, d = 1 - r;
+    while (x <= y) {
+        display_pixel(cx + x, cy + y, on);
+        display_pixel(cx - x, cy + y, on);
+        display_pixel(cx + x, cy - y, on);
+        display_pixel(cx - x, cy - y, on);
+        display_pixel(cx + y, cy + x, on);
+        display_pixel(cx - y, cy + x, on);
+        display_pixel(cx + y, cy - x, on);
+        display_pixel(cx - y, cy - x, on);
+        if (d < 0) {
+            d += 2 * x + 3;
+        } else {
+            d += 2 * (x - y) + 5;
+            y--;
+        }
+        x++;
+    }
+}
+
+void display_fill_circle(uint8_t cx, uint8_t cy, uint8_t r, bool on) {
+    if (r == 0) { display_pixel(cx, cy, on); return; }
+    int x = 0, y = r, d = 1 - r;
+    int last_y = -1, last_x = -1;
+    while (x <= y) {
+        if (y != last_y) {
+            // Horizontal spans at cy +/- y
+            for (int i = cx - x; i <= cx + x; i++)
+                display_pixel(i, cy + y, on);
+            for (int i = cx - x; i <= cx + x; i++)
+                display_pixel(i, cy - y, on);
+            last_y = y;
+        }
+        if (x != last_x) {
+            // Horizontal spans at cy +/- x
+            for (int i = cx - y; i <= cx + y; i++)
+                display_pixel(i, cy + x, on);
+            for (int i = cx - y; i <= cx + y; i++)
+                display_pixel(i, cy - x, on);
+            last_x = x;
+        }
+        if (d < 0) {
+            d += 2 * x + 3;
+        } else {
+            d += 2 * (x - y) + 5;
+            y--;
+        }
+        x++;
+    }
+}
+
+void display_bitmap(uint8_t x, uint8_t y, const uint8_t* bitmap, uint8_t w, uint8_t h) {
+    // Bitmap format: row-major, 1 bit per pixel, MSB = leftmost pixel
+    // Each row is ceil(w/8) bytes
+    uint8_t row_bytes = (w + 7) / 8;
+    for (uint8_t row = 0; row < h; row++) {
+        for (uint8_t col = 0; col < w; col++) {
+            uint8_t byte_idx = col / 8;
+            uint8_t bit_idx = 7 - (col % 8);
+            if (bitmap[row * row_bytes + byte_idx] & (1 << bit_idx)) {
+                display_pixel(x + col, y + row, true);
+            }
+        }
+    }
+}
+
+// ============================================================================
 // TEXT RENDERING
 // ============================================================================
 

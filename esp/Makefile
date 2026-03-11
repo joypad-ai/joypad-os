@@ -42,8 +42,8 @@ build:
 UF2CONV := tools/uf2conv.py
 UF2_FAMILY := 0xc47e5767
 UF2_VOLUME := /Volumes/FTHRS3BOOT
-# ESP-IDF project name is always joypad_bt2usb (from CMakeLists.txt)
-BUILD_APP := build/joypad_bt2usb.bin
+# ESP-IDF project name matches CONFIG_APP (from CMakeLists.txt)
+BUILD_APP := build/joypad_$(CONFIG_APP).bin
 BUILD_UF2 := build/joypad_$(CONFIG_APP).uf2
 
 # Generate .uf2 from built app binary.

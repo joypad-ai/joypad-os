@@ -149,7 +149,12 @@ void usbh_task(void)
 {
 
     // TinyUSB host polling
+    // On FreeRTOS, tuh_task() = tuh_task_ext(UINT32_MAX, false) which blocks forever.
+#ifdef PLATFORM_ESP32
+    tuh_task_ext(0, false);
+#else
     tuh_task();
+#endif
 
 #if CFG_TUH_XINPUT
     xinput_task();

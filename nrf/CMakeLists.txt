@@ -45,6 +45,7 @@ set(SRCS
     # --- Display (SSD1306 I2C on XIAO Expansion Board / FeatherWing OLED) ---
     "src/display_i2c_nrf.c"
     "${SHARED_SRC}/core/services/display/display.c"
+    "${SHARED_SRC}/core/services/display/joy_anim.c"
 
     # --- Core services ---
     "${SHARED_SRC}/core/router/router.c"

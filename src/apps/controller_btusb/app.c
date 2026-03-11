@@ -10,15 +10,17 @@
 #include "core/services/button/button.h"
 #include "core/input_interface.h"
 #include "core/output_interface.h"
-#include "bt/ble_output/ble_output.h"
 #include "usb/usbd/usbd.h"
-#include "bt/transport/bt_transport.h"
 #include "core/services/leds/leds.h"
 #include "core/buttons.h"
 #include "platform/platform.h"
 
 #include "tusb.h"
 #include <stdio.h>
+
+#if REQUIRE_BLE_OUTPUT
+#include "bt/ble_output/ble_output.h"
+#include "bt/transport/bt_transport.h"
 
 // ESP32 BLE transport
 extern const bt_transport_t bt_transport_esp32;
@@ -32,10 +34,17 @@ extern void gap_delete_all_link_keys(void);
 extern void gap_advertisements_enable(int enabled);
 extern int le_device_db_max_count(void);
 extern void le_device_db_remove(int index);
+#endif
 
 // Sensor inputs (conditional)
 #ifdef SENSOR_JOYWING
 #include "drivers/joywing/joywing_input.h"
+#endif
+
+// OLED display + Joy animation (conditional)
+#ifdef OLED_I2C_INST
+#include "core/services/display/display.h"
+#include "core/services/display/joy_anim.h"
 #endif
 
 // ============================================================================
@@ -52,28 +61,38 @@ static void on_button_event(button_event_t event)
 {
     switch (event) {
         case BUTTON_EVENT_CLICK:
+#if REQUIRE_BLE_OUTPUT
             printf("[app:controller_btusb] BLE: %s (%s), USB: %s (%s)\n",
                    ble_output_get_mode_name(ble_output_get_mode()),
                    ble_output_is_connected() ? "connected" : "advertising",
                    usbd_get_mode_name(usbd_get_mode()),
                    tud_mounted() ? "mounted" : "disconnected");
+#else
+            printf("[app:controller_btusb] USB: %s (%s)\n",
+                   usbd_get_mode_name(usbd_get_mode()),
+                   tud_mounted() ? "mounted" : "disconnected");
+#endif
             break;
 
-        case BUTTON_EVENT_DOUBLE_CLICK:
+        case BUTTON_EVENT_DOUBLE_CLICK: {
+#if REQUIRE_BLE_OUTPUT
             if (ble_output_is_connected() || !usb_gamepad_active()) {
                 // BLE connected or no active USB gamepad → cycle BLE mode
                 ble_output_mode_t next = ble_output_get_next_mode();
                 printf("[app:controller_btusb] Double-click - BLE mode → %s\n",
                        ble_output_get_mode_name(next));
                 ble_output_set_mode(next);  // Saves to flash + reboots
-            } else {
-                // USB gamepad active, no BLE → cycle USB output mode
+            } else
+#endif
+            {
+                // USB gamepad active → cycle USB output mode
                 usb_output_mode_t next = usbd_get_next_mode();
                 printf("[app:controller_btusb] Double-click - USB mode → %s\n",
                        usbd_get_mode_name(next));
                 usbd_set_mode(next);
             }
             break;
+        }
 
         case BUTTON_EVENT_TRIPLE_CLICK:
             // Reset USB output mode to SInput (default gamepad mode)
@@ -82,6 +101,7 @@ static void on_button_event(button_event_t event)
             break;
 
         case BUTTON_EVENT_HOLD:
+#if REQUIRE_BLE_OUTPUT
             printf("[app:controller_btusb] Long press - clearing BLE bonds\n");
             gap_delete_all_link_keys();
             for (int i = 0; i < le_device_db_max_count(); i++) {
@@ -89,6 +109,9 @@ static void on_button_event(button_event_t event)
             }
             printf("[app:controller_btusb] Bonds cleared, restarting advertising\n");
             gap_advertisements_enable(1);
+#else
+            printf("[app:controller_btusb] Long press (no BLE on this board)\n");
+#endif
             break;
 
         default:
@@ -117,7 +140,9 @@ const InputInterface** app_get_input_interfaces(uint8_t* count)
 // ============================================================================
 
 static const OutputInterface* output_interfaces[] = {
+#if REQUIRE_BLE_OUTPUT
     &ble_output_interface,
+#endif
     &usbd_output_interface,
 };
 
@@ -151,12 +176,14 @@ void app_init(void)
            JOYWING_I2C_BUS, JOYWING_SDA_PIN, JOYWING_SCL_PIN);
 #endif
 
-    // Configure router: merge all sensor inputs to both BLE + USB outputs
+    // Configure router: merge all sensor inputs to outputs
     router_config_t router_cfg = {
         .mode = ROUTING_MODE,
         .merge_mode = MERGE_MODE,
         .max_players_per_output = {
+#if REQUIRE_BLE_OUTPUT
             [OUTPUT_TARGET_BLE_PERIPHERAL] = 1,
+#endif
             [OUTPUT_TARGET_USB_DEVICE] = 1,
         },
         .merge_all_inputs = true,
@@ -164,8 +191,10 @@ void app_init(void)
     };
     router_init(&router_cfg);
 
+#if REQUIRE_BLE_OUTPUT
     // Route: GPIO (sensors) → BLE Peripheral
     router_add_route(INPUT_SOURCE_GPIO, OUTPUT_TARGET_BLE_PERIPHERAL, 0);
+#endif
 
     // Route: GPIO (sensors) → USB Device (CDC config + wired gamepad)
     router_add_route(INPUT_SOURCE_GPIO, OUTPUT_TARGET_USB_DEVICE, 0);
@@ -178,6 +207,7 @@ void app_init(void)
     };
     players_init_with_config(&player_cfg);
 
+#if REQUIRE_BLE_OUTPUT
     // Load BLE output mode from flash BEFORE starting BTstack task.
     // The BTstack FreeRTOS task calls ble_output_late_init() asynchronously,
     // which needs current_mode to already be set from flash settings.
@@ -188,9 +218,25 @@ void app_init(void)
     // Set post-init callback so ble_output_late_init() runs in the BTstack task context.
     bt_esp32_set_post_init(ble_output_late_init);
     bt_init(&bt_transport_esp32);
+#endif
+
+#ifdef OLED_I2C_INST
+    // Initialize OLED display
+    display_i2c_config_t oled_cfg = {
+        .i2c_inst = OLED_I2C_INST,
+        .pin_sda = OLED_I2C_SDA_PIN,
+        .pin_scl = OLED_I2C_SCL_PIN,
+        .addr = OLED_I2C_ADDR,
+    };
+    display_init_i2c(&oled_cfg);
+    joy_anim_init();
+    joy_anim_event(JOY_EVENT_BOOT);
+    printf("[app:controller_btusb] OLED + Joy animation initialized\n");
+#endif
 
     printf("[app:controller_btusb] Initialization complete\n");
-    printf("[app:controller_btusb]   Routing: Sensors → BLE Peripheral + USB Device\n");
+    printf("[app:controller_btusb]   Routing: Sensors → %sUSB Device\n",
+           REQUIRE_BLE_OUTPUT ? "BLE Peripheral + " : "");
     printf("[app:controller_btusb]   Player slots: %d\n", MAX_PLAYER_SLOTS);
 }
 
@@ -203,13 +249,11 @@ void app_task(void)
     // Process button input
     button_task();
 
+#if REQUIRE_BLE_OUTPUT
     // Process BLE transport
     bt_task();
 
     // NeoPixel: show connection state and active output mode color
-    //  - BLE connected → solid with BLE mode color
-    //  - USB gamepad active (no BLE) → solid with USB mode color
-    //  - Neither → breathing with BLE mode color (advertising)
     bool ble_conn = ble_output_is_connected();
     bool usb_active = usb_gamepad_active();
     leds_set_connected_devices((ble_conn || usb_active) ? 1 : 0);
@@ -240,4 +284,76 @@ void app_task(void)
         }
         leds_set_color(r, g, b);
     }
+#else
+    // USB-only: show USB mode color
+    bool usb_active = usb_gamepad_active();
+    leds_set_connected_devices(usb_active ? 1 : 0);
+
+    static bool last_usb_active = false;
+    static usb_output_mode_t last_usb_mode = USB_OUTPUT_MODE_COUNT;
+    usb_output_mode_t usb_mode = usbd_get_mode();
+
+    if (usb_active != last_usb_active || usb_mode != last_usb_mode) {
+        last_usb_active = usb_active;
+        last_usb_mode = usb_mode;
+
+        uint8_t r, g, b;
+        usbd_get_mode_color(usb_mode, &r, &g, &b);
+        leds_set_color(r, g, b);
+    }
+#endif
+
+#ifdef OLED_I2C_INST
+    // Joy animation: feed input events from JoyWing → Joy
+    {
+        static uint32_t last_buttons = 0;
+        static bool last_connected = false;
+        static uint32_t last_activity_ms = 0;
+
+        uint32_t now = platform_time_ms();
+        const input_event_t* ev = router_get_output(OUTPUT_TARGET_USB_DEVICE, 0);
+
+        // Detect JoyWing connect/disconnect
+        bool connected = (ev && ev->buttons != 0) ||
+                         (ev && (ev->analog[ANALOG_LX] < 100 || ev->analog[ANALOG_LX] > 156 ||
+                                 ev->analog[ANALOG_LY] < 100 || ev->analog[ANALOG_LY] > 156));
+        // Latch connected once any input arrives
+        static bool ever_connected = false;
+        if (connected) ever_connected = true;
+
+        if (ever_connected && !last_connected) {
+            joy_anim_event(JOY_EVENT_CONNECT);
+            last_connected = true;
+        }
+
+        if (ev && ever_connected) {
+            // Analog stick → look direction (0-255 → 0.0-1.0)
+            float lx = ev->analog[ANALOG_LX] / 255.0f;
+            float ly = ev->analog[ANALOG_LY] / 255.0f;
+            if (lx < 0.45f || lx > 0.55f || ly < 0.45f || ly > 0.55f) {
+                joy_anim_set_look(lx, ly);
+                last_activity_ms = now;
+            }
+
+            // Button press edge detection
+            if (ev->buttons && ev->buttons != last_buttons) {
+                joy_anim_event(JOY_EVENT_BUTTON_PRESS);
+                last_activity_ms = now;
+            }
+            last_buttons = ev->buttons;
+
+            // Idle timeout → sleep after 30s
+            if (now - last_activity_ms > 30000 &&
+                joy_anim_get_state() == JOY_STATE_IDLE) {
+                joy_anim_event(JOY_EVENT_IDLE_TIMEOUT);
+            }
+        }
+
+        // Tick + render
+        if (joy_anim_tick(now)) {
+            joy_anim_render();
+            display_flush();
+        }
+    }
+#endif
 }

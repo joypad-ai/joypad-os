@@ -65,6 +65,26 @@
 #define CFG_TUD_CDC_TX_BUFSIZE      1024
 #define CFG_TUD_CDC_EP_BUFSIZE      64
 
+//--------------------------------------------------------------------
+// USB HOST CONFIGURATION (MAX3421E FeatherWing on SPI)
+//--------------------------------------------------------------------
+
+#ifdef CONFIG_MAX3421
+#define CFG_TUH_MAX3421             1
+#define CFG_TUSB_RHPORT1_MODE       (OPT_MODE_HOST | OPT_MODE_FULL_SPEED)
+#define CFG_TUH_ENUMERATION_BUFSIZE 256
+#define CFG_TUH_HUB                 0
+#define CFG_TUH_HID                 4
+#define CFG_TUH_XINPUT              4
+#define CFG_TUH_DEVICE_MAX          (CFG_TUH_HUB ? 5 : 1)
+
+#define CFG_TUH_HID_EPIN_BUFSIZE    64
+#define CFG_TUH_HID_EPOUT_BUFSIZE   64
+#define CFG_TUH_XINPUT_EPIN_BUFSIZE  64
+
+#define CFG_TUH_API_EDPT_XFER       1
+#endif // CONFIG_MAX3421
+
 #ifdef __cplusplus
  }
 #endif

@@ -14,7 +14,12 @@ CONFIG_PARTITION_TABLE_FILENAME="partitions_uf2.csv"
 # Flash tool: don't reset before flash (device enters bootloader via CDC command)
 CONFIG_ESPTOOLPY_BEFORE_NORESET=y
 
-# Console: stdout redirected to UART1 on GPIO39/38 in app code (uart1_console_init).
-# ESP-IDF's UART0 custom pin remapping doesn't work when USB OTG is active.
-# Disable secondary USB Serial/JTAG console to prevent stdout stalling.
+# Console: use UART1 on GPIO39/38 (header TX/RX pins) so panic handler
+# output is visible on the serial monitor. App code also redirects stdout
+# to UART1 via uart1_console_init() as backup.
+CONFIG_ESP_CONSOLE_UART_CUSTOM=y
+CONFIG_ESP_CONSOLE_UART_NUM=1
+CONFIG_ESP_CONSOLE_UART_TX_GPIO=39
+CONFIG_ESP_CONSOLE_UART_RX_GPIO=38
+CONFIG_ESP_CONSOLE_UART_BAUDRATE=115200
 CONFIG_ESP_CONSOLE_SECONDARY_NONE=y

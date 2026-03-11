@@ -24,7 +24,9 @@
 #define REQUIRE_GPIO_INPUT 0
 
 // Output drivers
+#ifndef REQUIRE_BLE_OUTPUT
 #define REQUIRE_BLE_OUTPUT 1
+#endif
 #define REQUIRE_USB_DEVICE 1
 
 // Services
@@ -58,7 +60,12 @@
 // ============================================================================
 // BOARD-SPECIFIC CONFIGURATION
 // ============================================================================
-#if defined(BOARD_FEATHER_ESP32S3)
+#if defined(BOARD_FEATHER_RP2040)
+    // Adafruit Feather RP2040: JoyWing on STEMMA QT I2C1 (shared with OLED)
+    #define JOYWING_I2C_BUS 1
+    #define JOYWING_SDA_PIN 2
+    #define JOYWING_SCL_PIN 3
+#elif defined(BOARD_FEATHER_ESP32S3)
     // Adafruit Feather ESP32-S3: I2C on SDA=3, SCL=4
     #define JOYWING_I2C_BUS 0
     #define JOYWING_SDA_PIN 3
