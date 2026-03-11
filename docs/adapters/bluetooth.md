@@ -64,17 +64,18 @@ Classic BT controllers (DS3, DS4, DS5, Switch Pro, Wii U Pro) are not supported 
 
 ## USB Output Modes
 
-BT2USB supports the same USB output modes as USB2USB. Double-click the button to cycle through modes:
+BT2USB supports the same USB output modes as USB2USB. Double-click the button to cycle through modes. Triple-click to reset to default.
 
-- **Default** — XInput (Xbox 360 compatible)
-- **Mode 2** — DInput (generic USB gamepad)
-- **Mode 3** — Nintendo Switch (Pokken)
-- **Mode 4** — PS3
-- **Mode 5** — PS4/PS5
+- **SInput** — SDL/Steam compatible (default)
+- **XInput** — Xbox 360 compatible
+- **PS3** — PlayStation 3
+- **PS4** — PlayStation 4
+- **Switch** — Nintendo Switch
+- **Keyboard/Mouse** — Keyboard + Mouse composite HID
 
-## Web Config
+## Web Configuration
 
-Web config is accessible in default mode only. Triple-click the button to return to default mode if you've switched to a console-specific output.
+Connect the adapter to a computer and open **[config.joypad.ai](https://config.joypad.ai)** in a WebSerial-capable browser (Chrome, Edge) for mode switching, input monitoring, and firmware updates.
 
 ## Multiple Controllers
 
