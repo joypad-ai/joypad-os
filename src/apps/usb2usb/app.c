@@ -34,6 +34,10 @@
 extern const bt_transport_t bt_transport_nrf;
 #endif
 
+#ifdef BTSTACK_USE_ESP32
+extern const bt_transport_t bt_transport_esp32;
+#endif
+
 #ifdef BTSTACK_USE_CYW43
 #include "pico/cyw43_arch.h"
 extern const bt_transport_t bt_transport_cyw43;
@@ -112,6 +116,28 @@ static const button_name_t button_names[] = {
     { JP_BUTTON_A2, "A2" },
     { 0, NULL }
 };
+// Display pages (paged with FeatherWing buttons A/C)
+typedef enum {
+    OLED_PAGE_JOY = 0,      // Joy animated character
+    OLED_PAGE_INFO,         // Controller info display
+    OLED_PAGE_COUNT
+} oled_page_t;
+
+static oled_page_t oled_current_page = OLED_PAGE_JOY;
+
+// Page navigation helpers
+static void oled_page_up(void) {
+    if (oled_current_page == 0)
+        oled_current_page = OLED_PAGE_COUNT - 1;
+    else
+        oled_current_page--;
+    printf("[app] OLED page → %d\n", oled_current_page);
+}
+static void oled_page_down(void) {
+    oled_current_page = (oled_current_page + 1) % OLED_PAGE_COUNT;
+    printf("[app] OLED page → %d\n", oled_current_page);
+}
+
 #endif // OLED_I2C_INST || OLED_I2C_DISPLAY
 
 // ============================================================================
@@ -242,8 +268,13 @@ static void oled_init(void) {
     };
     display_init_i2c(&cfg);
 
-    // FeatherWing buttons B (GPIO 6) and C (GPIO 5)
-    // Button A (GPIO 9) conflicts with MAX3421E INT — skip
+    // FeatherWing buttons: A (GPIO 9), B (GPIO 6), C (GPIO 5)
+    // Button A conflicts with MAX3421E INT on USB host builds — only init if available
+#ifdef OLED_BUTTON_A_PIN
+    gpio_init(OLED_BUTTON_A_PIN);
+    gpio_set_dir(OLED_BUTTON_A_PIN, GPIO_IN);
+    gpio_pull_up(OLED_BUTTON_A_PIN);
+#endif
     gpio_init(OLED_BUTTON_B_PIN);
     gpio_set_dir(OLED_BUTTON_B_PIN, GPIO_IN);
     gpio_pull_up(OLED_BUTTON_B_PIN);
@@ -255,17 +286,35 @@ static void oled_init(void) {
     joy_anim_init();
     joy_anim_event(JOY_EVENT_BOOT);
 
-    printf("[app:usb2usb] OLED FeatherWing initialized (I2C%d, buttons B=%d C=%d)\n",
-           OLED_I2C_INST, OLED_BUTTON_B_PIN, OLED_BUTTON_C_PIN);
+    printf("[app:usb2usb] OLED FeatherWing initialized (I2C%d, buttons"
+#ifdef OLED_BUTTON_A_PIN
+           " A=%d"
+#endif
+           " B=%d C=%d)\n",
+           OLED_I2C_INST,
+#ifdef OLED_BUTTON_A_PIN
+           OLED_BUTTON_A_PIN,
+#endif
+           OLED_BUTTON_B_PIN, OLED_BUTTON_C_PIN);
 }
 
 static void oled_handle_buttons(void) {
-    static bool last_b = true, last_c = true;  // Active-low (pull-up)
-    static uint32_t debounce_b = 0, debounce_c = 0;
+    static bool last_a = true, last_b = true, last_c = true;  // Active-low (pull-up)
+    static uint32_t debounce_a = 0, debounce_b = 0, debounce_c = 0;
     uint32_t now = platform_time_ms();
 
     bool b = gpio_get(OLED_BUTTON_B_PIN);
     bool c = gpio_get(OLED_BUTTON_C_PIN);
+
+    // Button A: page up (when available — conflicts with MAX3421E INT on USB host builds)
+#ifdef OLED_BUTTON_A_PIN
+    bool a = gpio_get(OLED_BUTTON_A_PIN);
+    if (!a && last_a && (now - debounce_a > 200)) {
+        debounce_a = now;
+        oled_page_up();
+    }
+    last_a = a;
+#endif
 
     // Button B: cycle USB output mode
     if (!b && last_b && (now - debounce_b > 200)) {
@@ -280,13 +329,10 @@ static void oled_handle_buttons(void) {
     }
     last_b = b;
 
-    // Button C: start BT scan
+    // Button C: page down
     if (!c && last_c && (now - debounce_c > 200)) {
         debounce_c = now;
-        if (bt_is_ready()) {
-            printf("[app:usb2usb] OLED Button C - Starting BT scan (60s)...\n");
-            btstack_host_start_timed_scan(60000);
-        }
+        oled_page_down();
     }
     last_c = c;
 }
@@ -307,7 +353,7 @@ static void oled_init(void) {
 
 static input_event_t oled_cached_event;
 static bool oled_has_event = false;
-static bool joy_display_mode = true;  // Start in Joy mode (shows character)
+// joy_display_mode removed — replaced by oled_current_page (paged with A/C buttons)
 static int oled_last_player_count = 0;
 static uint32_t oled_last_activity_ms = 0;
 
@@ -332,7 +378,6 @@ static void oled_update_display(void) {
     }
     if (playersCount == 0 && oled_last_player_count > 0) {
         joy_anim_event(JOY_EVENT_DISCONNECT);
-        joy_display_mode = true;
         oled_has_event = false;
     }
     oled_last_player_count = playersCount;
@@ -372,21 +417,12 @@ static void oled_update_display(void) {
         joy_anim_event(JOY_EVENT_IDLE_TIMEOUT);
     }
 
-    // Transition from HAPPY animation to info display when done
-    if (joy_anim_get_state() == JOY_STATE_ACTIVE && playersCount > 0) {
-        joy_display_mode = false;
-    }
-    // Go back to Joy mode when no controllers
-    if (playersCount == 0) {
-        joy_display_mode = true;
-    }
-
     if (now - last_update < 50) return;  // 20fps max
     last_update = now;
 
     display_clear();
 
-    if (joy_display_mode) {
+    if (oled_current_page == OLED_PAGE_JOY) {
         // Joy character takes the full screen
         joy_anim_tick(now);
         joy_anim_render();
@@ -527,6 +563,13 @@ void app_init(void)
     router_add_route(INPUT_SOURCE_BLE_CENTRAL, OUTPUT_TARGET_USB_DEVICE, 0);
 #endif
 
+#ifdef BTSTACK_USE_ESP32
+    // Initialize ESP32-S3 BLE (BTstack runs in its own FreeRTOS task)
+    printf("[app:usb2usb] Initializing ESP32 BLE...\n");
+    bt_init(&bt_transport_esp32);
+    router_add_route(INPUT_SOURCE_BLE_CENTRAL, OUTPUT_TARGET_USB_DEVICE, 0);
+#endif
+
     printf("[app:usb2usb] Initialization complete\n");
     printf("[app:usb2usb]   Routing: USB Host → USB Device (HID Gamepad)\n");
     printf("[app:usb2usb]   Player slots: %d\n", MAX_PLAYER_SLOTS);
@@ -552,7 +595,7 @@ void app_task(void)
         last_led_mode = mode;
     }
 
-#if defined(BTSTACK_USE_CYW43) || defined(BTSTACK_USE_NRF)
+#if defined(BTSTACK_USE_CYW43) || defined(BTSTACK_USE_NRF) || defined(BTSTACK_USE_ESP32)
     // Process Bluetooth transport
     bt_task();
 #endif

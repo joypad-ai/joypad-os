@@ -227,6 +227,7 @@ help:
 	@echo "  make usb2ble_pico_w    - USB -> BLE Gamepad (Pico W, USB host + BLE peripheral)"
 	@echo "  make usb2ble_pico2_w   - USB -> BLE Gamepad (Pico 2 W, USB host + BLE peripheral)"
 	@echo "  make usb2usb_feather_esp32s3 - USB -> USB HID (Feather ESP32-S3 + MAX3421E FeatherWing)"
+	@echo "  make btusb2usb_feather_esp32s3 - USB/BLE -> USB HID (Feather ESP32-S3 + MAX3421E + BLE)"
 	@echo "  make bt2usb_xiao_esp32s3     - Bluetooth -> USB HID (ESP32-S3, requires ESP-IDF)"
 	@echo "  make uf2-bt2usb_xiao_esp32s3       - Build + generate .uf2 for drag-and-drop update"
 	@echo "  make flash-uf2-bt2usb_xiao_esp32s3 - Build + flash .uf2 via TinyUF2 drive"
@@ -590,6 +591,35 @@ flash-usb2usb_feather_esp32s3:
 
 .PHONY: monitor-usb2usb_feather_esp32s3
 monitor-usb2usb_feather_esp32s3:
+	@cd esp && $(MAKE) monitor
+
+# --- ESP32-S3 btusb2usb on Feather ESP32-S3 (MAX3421E + BLE, requires ESP-IDF) ---
+.PHONY: btusb2usb_feather_esp32s3
+btusb2usb_feather_esp32s3:
+	@echo "$(YELLOW)Building btusb2usb for Feather ESP32-S3...$(NC)"
+	@cd esp && $(MAKE) build CONFIG_APP=btusb2usb BOARD=feather_esp32s3
+	@echo "$(GREEN)✓ btusb2usb_feather_esp32s3 built successfully$(NC)"
+	@echo ""
+
+.PHONY: uf2-btusb2usb_feather_esp32s3
+uf2-btusb2usb_feather_esp32s3:
+	@echo "$(YELLOW)Building btusb2usb UF2 for Feather ESP32-S3...$(NC)"
+	@cd esp && $(MAKE) uf2 CONFIG_APP=btusb2usb BOARD=feather_esp32s3
+	@mkdir -p $(RELEASE_DIR)
+	@cp esp/build/joypad_btusb2usb.uf2 \
+	    $(RELEASE_DIR)/joypad_$(VERSION_ID)_btusb2usb_feather_esp32s3.uf2
+	@echo "$(GREEN)✓ UF2 built: $(RELEASE_DIR)/joypad_$(VERSION_ID)_btusb2usb_feather_esp32s3.uf2$(NC)"
+	@echo ""
+
+.PHONY: flash-btusb2usb_feather_esp32s3
+flash-btusb2usb_feather_esp32s3:
+	@echo "$(YELLOW)Flashing btusb2usb to Feather ESP32-S3...$(NC)"
+	@cd esp && $(MAKE) flash CONFIG_APP=btusb2usb BOARD=feather_esp32s3
+	@echo "$(GREEN)✓ btusb2usb_feather_esp32s3 flashed successfully$(NC)"
+	@echo ""
+
+.PHONY: monitor-btusb2usb_feather_esp32s3
+monitor-btusb2usb_feather_esp32s3:
 	@cd esp && $(MAKE) monitor
 
 # --- ESP32-S3 UF2 / Combined targets ---

@@ -1477,6 +1477,7 @@ target_compile_definitions(joypad_controller_btusb_feather_rp2040 PRIVATE
     OLED_I2C_SDA_PIN=2
     OLED_I2C_SCL_PIN=3
     OLED_I2C_ADDR=0x3C
+    OLED_BUTTON_A_PIN=9
     OLED_BUTTON_B_PIN=6
     OLED_BUTTON_C_PIN=5
 )

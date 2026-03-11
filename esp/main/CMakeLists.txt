@@ -121,6 +121,75 @@ elseif(CONFIG_APP STREQUAL "usb2usb")
     set(APP_NEEDS_BTSTACK OFF)
     set(APP_NEEDS_USB_HOST ON)
 
+elseif(CONFIG_APP STREQUAL "btusb2usb")
+    # btusb2usb: USB Host (MAX3421E) + BLE → USB Device (ESP32 native OTG)
+    # Combines usb2usb (USB host + display) with BTstack central mode (BLE input)
+    set(APP_SRCS
+        "btstack_hal_esp32.c"
+        "stubs_peripheral.c"
+        "${SHARED_SRC}/apps/usb2usb/app.c"
+
+        # --- MAX3421E host (ESP32-S3 port) ---
+        "max3421_host_esp32.c"
+
+        # --- Display (I2C, SH1107 FeatherWing) ---
+        "display_i2c_esp32.c"
+        "${SHARED_SRC}/core/services/display/display.c"
+        "${SHARED_SRC}/core/services/display/joy_anim.c"
+        "${SHARED_SRC}/platform/esp32/platform_i2c_esp32.c"
+
+        # --- USB Host layer ---
+        "${SHARED_SRC}/usb/usbh/usbh.c"
+        "${SHARED_SRC}/usb/usbh/hid/hid.c"
+        "${SHARED_SRC}/usb/usbh/hid/hid_registry.c"
+        "${SHARED_SRC}/usb/usbh/hid/hid_utils.c"
+        "${SHARED_SRC}/usb/usbh/xinput/xinput.c"
+        "${SHARED_SRC}/usb/usbh/xbone_auth/xbone_auth.c"
+
+        # --- USB HID device drivers ---
+        "${SHARED_SRC}/usb/usbh/hid/devices/generic/hid_parser.c"
+        "${SHARED_SRC}/usb/usbh/hid/devices/generic/hid_gamepad.c"
+        "${SHARED_SRC}/usb/usbh/hid/devices/generic/hid_keyboard.c"
+        "${SHARED_SRC}/usb/usbh/hid/devices/generic/hid_mouse.c"
+        "${SHARED_SRC}/usb/usbh/hid/devices/generic/sinput_host.c"
+        "${SHARED_SRC}/usb/usbh/hid/devices/vendors/8bitdo/8bitdo_bta.c"
+        "${SHARED_SRC}/usb/usbh/hid/devices/vendors/8bitdo/8bitdo_m30.c"
+        "${SHARED_SRC}/usb/usbh/hid/devices/vendors/8bitdo/8bitdo_neo.c"
+        "${SHARED_SRC}/usb/usbh/hid/devices/vendors/8bitdo/8bitdo_pce.c"
+        "${SHARED_SRC}/usb/usbh/hid/devices/vendors/dragonrise/dragonrise.c"
+        "${SHARED_SRC}/usb/usbh/hid/devices/vendors/google/google_stadia.c"
+        "${SHARED_SRC}/usb/usbh/hid/devices/vendors/hori/hori_horipad.c"
+        "${SHARED_SRC}/usb/usbh/hid/devices/vendors/hori/hori_pokken.c"
+        "${SHARED_SRC}/usb/usbh/hid/devices/vendors/logitech/logitech_wingman.c"
+        "${SHARED_SRC}/usb/usbh/hid/devices/vendors/microsoft/ms_sidewinder_commander.c"
+        "${SHARED_SRC}/usb/usbh/hid/devices/vendors/microsoft/ms_sidewinder_dualstrike.c"
+        "${SHARED_SRC}/usb/usbh/hid/devices/vendors/misc/triple_adapter_v1.c"
+        "${SHARED_SRC}/usb/usbh/hid/devices/vendors/misc/triple_adapter_v2.c"
+        "${SHARED_SRC}/usb/usbh/hid/devices/vendors/nintendo/gamecube_adapter.c"
+        "${SHARED_SRC}/usb/usbh/hid/devices/vendors/nintendo/switch2_pro.c"
+        "${SHARED_SRC}/usb/usbh/hid/devices/vendors/nintendo/switch_pro.c"
+        "${SHARED_SRC}/usb/usbh/hid/devices/vendors/raphnet/raphnet_pce.c"
+        "${SHARED_SRC}/usb/usbh/hid/devices/vendors/sega/sega_astrocity.c"
+        "${SHARED_SRC}/usb/usbh/hid/devices/vendors/sony/sony_ds3.c"
+        "${SHARED_SRC}/usb/usbh/hid/devices/vendors/sony/sony_ds4.c"
+        "${SHARED_SRC}/usb/usbh/hid/devices/vendors/sony/sony_ds5.c"
+        "${SHARED_SRC}/usb/usbh/hid/devices/vendors/sony/sony_psc.c"
+
+        # --- XInput host driver (tusb_xinput library) ---
+        "${SHARED_SRC}/lib/tusb_xinput/xinput_host.c"
+
+        # --- TinyUSB host stack ---
+        "${TINYUSB_PATH}/src/host/usbh.c"
+        "${TINYUSB_PATH}/src/host/hub.c"
+        "${TINYUSB_PATH}/src/class/hid/hid_host.c"
+        "${TINYUSB_PATH}/src/class/vendor/vendor_host.c"
+        "${TINYUSB_PATH}/src/portable/analog/max3421/hcd_max3421.c"
+    )
+    set(APP_INCLUDE_DIR "${SHARED_SRC}/apps/usb2usb")
+    set(APP_NEEDS_BTSTACK ON)
+    set(APP_BTSTACK_MODE "central")
+    set(APP_NEEDS_USB_HOST ON)
+
 else()
     # Default: bt2usb
     set(APP_SRCS
@@ -431,6 +500,15 @@ elseif(CONFIG_APP STREQUAL "usb2usb")
     target_compile_definitions(${COMPONENT_LIB} PUBLIC
         CONFIG_USB2USB=1
         CONFIG_MAX3421=1
+        OLED_I2C_DISPLAY=1
+        DISABLE_DISPLAY_SPI=1
+    )
+elseif(CONFIG_APP STREQUAL "btusb2usb")
+    target_compile_definitions(${COMPONENT_LIB} PUBLIC
+        CONFIG_BTUSB2USB=1
+        CONFIG_MAX3421=1
+        BTSTACK_USE_ESP32=1
+        ENABLE_BTSTACK=1
         OLED_I2C_DISPLAY=1
         DISABLE_DISPLAY_SPI=1
     )
