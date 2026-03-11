@@ -1067,12 +1067,16 @@ if (PICO_BOARD STREQUAL "pico_w" OR PICO_BOARD STREQUAL "pico2_w")
     target_compile_definitions(joypad_bt2nuon PRIVATE
         CONFIG_BT2NUON=1
         DISABLE_USB_HOST=1
+        DISABLE_USB_DEVICE=1
         CONFIG_NO_NEOPIXEL=1
         CONFIG_NO_FLASH_LOCKOUT=1
         USE_BOOTSEL_BUTTON=1
         CYW43_LWIP=0
         BTSTACK_USE_CYW43=1
         ENABLE_BTSTACK=1
+        SCAN_INTERVAL=0x0500
+        SCAN_WINDOW=0x0030
+        BTSTACK_DEFER_SCAN=1
     )
     target_sources(joypad_bt2nuon PUBLIC
         ${CORE_SOURCES}
@@ -1095,12 +1099,15 @@ if (PICO_BOARD STREQUAL "pico_w" OR PICO_BOARD STREQUAL "pico2_w")
         ${CMAKE_CURRENT_SOURCE_DIR}/bt/bthid
         ${BTSTACK_INCLUDES}
     )
+    # Link tinyusb for headers but disable USB device initialization.
+    # USB device DMA/interrupts interfere with Core 1's polyface timing.
     target_link_libraries(joypad_bt2nuon PRIVATE
         pico_stdlib
         pico_multicore
         pico_rand
         pico_bit_ops
         hardware_pio
+        hardware_flash
         pico_cyw43_arch_poll
         pico_btstack_ble
         pico_btstack_classic

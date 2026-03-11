@@ -1,80 +1,47 @@
 ;
+; Polyface send — 18 instructions
+; Start bits hardcoded (start=1, control=0). Core 1 pushes ONE data word.
+; Uses custom wrap (set in C init) to loop back to pull — no jmp needed.
 
 .program polyface_send
 
+.wrap_target
 packet:
-    pull  block     ; wait and pull data bits word (bits 2-33)
-    mov   x, osr    ; hold data bits until osr is empty
+    pull  block
+    mov   x, osr
+    set   pindirs, 1
 
-    set   y, 1      ; sets data pin to output mode
-    mov   osr, y
-    out   PINDIRS 1
-
-    out   pins, 1   ; sets output low during delay
-
-    pull  block     ; pull start bits word (bits 0-1)
-    set   y, 29     ; delay a few clock cycles (avoids collisions)
-delay:
     wait  1 gpio 3
     wait  0 gpio 3
-    jmp   y--, delay
-
-    set   y, 1      ; loop out start and control (2 bits)
-start_bits:
+    set   pins, 1         ; start bit = 1
     wait  1 gpio 3
     wait  0 gpio 3
-    out   pins, 1
-    jmp   y--, start_bits
+    set   pins, 0         ; control bit = 0
 
-    mov   osr, x    ; move data bits back into osr
-    set   x, 3      ; loop out data bytes (32 bits + 16 zeros)
-data_bits_0:
-    set   y, 7 
-data_bits_1:
+    mov   osr, x
+    set   x, 4
+data_outer:
+    set   y, 6
+data_inner:
     wait  1 gpio 3
     wait  0 gpio 3
     out   pins, 1
+    jmp   y--, data_inner
+    jmp   x--, data_outer
 
-    jmp   y--, data_bits_1
-    jmp   x--, data_bits_0
-
-    set   y, 2     ; delay a few clock cycles (avoids collisions)
-tail_zero:
-    wait  1 gpio 3
-    wait  0 gpio 3
-    out   pins, 1
-    jmp   y--, tail_zero
-
-    out   PINDIRS 1 ; sets data pin back to input
-
-    jmp   packet    ; send next packet
+    out   PINDIRS, 1      ; pin → input
+.wrap
 
 % c-sdk {
 static inline void polyface_send_program_init(PIO pio, uint sm, uint offset, uint pin) {
     pio_sm_config c = polyface_send_program_get_default_config(offset);
-
-    // Set the pin directions to output at the PIO
     pio_sm_set_consecutive_pindirs(pio, sm, pin, 1, false);
-
-    // Connect these GPIOs to this PIO block
-    pio_gpio_init(pio, pin); // data out
-
-    // Set the OUT pin to the provided `outpin` parameter. This is where the data is sent out
+    pio_gpio_init(pio, pin);
     sm_config_set_out_pins(&c, pin, 1);
-
-    // Set the IN pin to sync with clock signal.
+    sm_config_set_set_pins(&c, pin, 1);
     sm_config_set_in_pins(&c, pin);
-
-    sm_config_set_out_shift(
-        &c,
-        true,  // Shift-to-right
-        false, // Autopull disabled
-        32     // Autopull threshold = 32
-    );
-
-    sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_TX); // Not using RX FIFO so double TX FIFO length
-
-    // Load our configuration, and start the program from the beginning
+    sm_config_set_out_shift(&c, true, false, 32);
+    sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_TX);
     pio_sm_init(pio, sm, offset, &c);
     pio_sm_set_enabled(pio, sm, true);
 }

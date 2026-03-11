@@ -19,10 +19,12 @@
 #include "core/services/leds/leds.h"
 
 #include "pico/cyw43_arch.h"
+#include "pico/bootrom.h"
 #include "platform/platform.h"
 #include <stdio.h>
 
 extern const bt_transport_t bt_transport_cyw43;
+extern int playersCount;
 
 // ============================================================================
 // LED STATUS
@@ -67,9 +69,14 @@ static void on_button_event(button_event_t event)
 {
     switch (event) {
         case BUTTON_EVENT_CLICK:
-            // Start/extend 60-second BT scan for additional devices
-            printf("[app:bt2nuon] Starting BT scan (60s)...\n");
+            // Enable scanning (deferred on bt2nuon to avoid SPI burst disrupting polyface)
+            printf("[app:bt2nuon] Enabling BT scan...\n");
+#ifdef BTSTACK_DEFER_SCAN
+            extern void btstack_host_enable_scan(void);
+            btstack_host_enable_scan();
+#else
             btstack_host_start_timed_scan(60000);
+#endif
             break;
 
         case BUTTON_EVENT_HOLD:
@@ -168,11 +175,10 @@ void app_init(void)
     const char* active_name = profile_get_name(OUTPUT_TARGET_NUON,
                                                 profile_get_active_index(OUTPUT_TARGET_NUON));
 
-    // Initialize Bluetooth transport
-    // TODO: CYW43 SPI on PIO0 disrupts polyface_read on Core 1.
-    // Needs polyface_send optimization (≤25 instr) so CYW43 fits on PIO1.
-    printf("[app:bt2nuon] Initializing Bluetooth...\n");
-    bt_init(&bt_transport_cyw43);
+    // Defer BT init to app_task — it takes ~1s and blocks console detection.
+    // Nuon output + Core 1 polyface listener must start before BT init so the
+    // console sees us during its boot probe window.
+    printf("[app:bt2nuon] BT init deferred (will start after polyface ready)\n");
 
     printf("[app:bt2nuon] Initialization complete\n");
     printf("[app:bt2nuon]   Routing: Bluetooth -> Nuon (merge)\n");
@@ -188,15 +194,45 @@ void app_init(void)
 // APP TASK (Called from main loop)
 // ============================================================================
 
+// Deferred BT initialization state
+static bool bt_initialized = false;
+
 void app_task(void)
 {
+    // Deferred BT init: wait 10 seconds for polyface handshake to complete,
+    // then initialize CYW43. LED update requires CYW43 to be initialized.
+    if (!bt_initialized) {
+        static uint32_t boot_time = 0;
+        if (boot_time == 0) boot_time = to_ms_since_boot(get_absolute_time());
+        if (to_ms_since_boot(get_absolute_time()) - boot_time > 10000) {
+            bt_initialized = true;
+            printf("[app:bt2nuon] Initializing Bluetooth...\n");
+            bt_init(&bt_transport_cyw43);
+            printf("[app:bt2nuon] Bluetooth initialized\n");
+        }
+        return;
+    }
+
+    // Check for bootloader command on UART ('B' = reboot to bootloader)
+    int c = getchar_timeout_us(0);
+    if (c == 'B') {
+        reset_usb_boot(0, 0);
+    }
+
     // Process button input
     button_task();
 
-    // Process Bluetooth transport
-    bt_task();
-
-    // Update LED status
-    leds_set_connected_devices(btstack_classic_get_connection_count());
-    led_status_update();
+    // BT poll + LED at 5Hz — limit CYW43 SPI impact on polyface.
+    // NOTE: CYW43 SPI EMI on Pico W disrupts polyface GPIO inputs.
+    // Hardware fix needed: 220-330pF ceramic caps from GPIO 2/3 to GND.
+    {
+        static uint32_t last_poll = 0;
+        uint32_t now = to_ms_since_boot(get_absolute_time());
+        if (now - last_poll >= 200) {
+            last_poll = now;
+            bt_task();
+            leds_set_connected_devices(btstack_classic_get_connection_count());
+            led_status_update();
+        }
+    }
 }

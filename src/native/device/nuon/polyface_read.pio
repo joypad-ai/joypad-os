@@ -1,57 +1,47 @@
 ;
+; Polyface read — 14 instructions
+; Same logic as original 16-instruction reader but optimized:
+;   - mov isr, null replaces set y,0 + mov isr,y (save 1)
+;   - .wrap replaces final jmp packet (save 1)
+; Uses ISR value check for start detection (not jmp pin — avoids
+; race between sample time and pin state at jmp time).
 
 .program polyface_read
 
+.wrap_target
 packet:
-    set   y, 0
-    mov   isr, y
-    in    y, 30           ; fill unused fifo bits
+    mov   isr, null       ; Clear ISR
+    in    null, 30        ; Fill 30 zeros (autopush alignment)
 
-    wait  0 pin 1   
-    wait  1 pin 1
-    in    pins, 1
+    wait  0 pin 1         ; Clock low
+    wait  1 pin 1         ; Clock high
+    in    pins, 1         ; Sample data bit
 
-    mov   y, isr
-    jmp   !y, packet      ; wait for start bit
+    mov   y, isr          ; Copy ISR (30 zeros + sampled bit) to Y
+    jmp   !y, packet      ; If all zeros (bit was 0), not a start — restart
 
-    set   x, 2 ;(3)       ; read control bit and 32 data bits (33)
+    set   x, 2            ; 3 groups of 11 = 33 bits
 data_byte:
-    set   y, 10;(11)
+    set   y, 10
 data_bit:
     wait  0 pin 1
     wait  1 pin 1
     in    pins, 1
 
     jmp   y--, data_bit
-    jmp   x--, data_byte
-    jmp   packet
+    jmp   x--, data_byte  ; Falls through → wrap back to packet
+.wrap
 
 % c-sdk {
 static inline void polyface_read_program_init(PIO pio, uint sm, uint offset, uint pin) {
     pio_sm_config c = polyface_read_program_get_default_config(offset);
-
-    // Connect these GPIOs to this PIO block
     pio_gpio_init(pio, pin);
     pio_gpio_init(pio, pin + 1);
-
-    // Set the IN base pin to the provided `pin` parameter. This is the data
-    // pin, and the next-numbered GPIO is used as the clock pin.
+    gpio_set_input_hysteresis_enabled(pin, true);
+    gpio_set_input_hysteresis_enabled(pin + 1, true);
     sm_config_set_in_pins(&c, pin);
-    // Set the pin directions to input at the PIO
-    // pio_sm_set_consecutive_pindirs(pio, sm, pin, 2, false);
-
-    // Shifting to left matches the customary MSB-first ordering of SPI.
-    sm_config_set_in_shift(
-        &c,
-        false, // Shift-to-right = false (i.e. shift to left)
-        true,  // Autopush enabled
-        32     // Autopush threshold = 32
-    );
-
-    // We only receive, so disable the TX FIFO to make the RX FIFO deeper.
+    sm_config_set_in_shift(&c, false, true, 32);
     sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX);
-
-    // Load our configuration, and start the program from the beginning
     pio_sm_init(pio, sm, offset, &c);
     pio_sm_set_enabled(pio, sm, true);
 }

@@ -1,6 +1,9 @@
 // nuon.c
 
 #include "nuon_device.h"
+#ifdef BTSTACK_USE_CYW43
+#include "pico/cyw43_arch.h"
+#endif
 #include "nuon_buttons.h"
 #include "core/services/codes/codes.h"
 #include "core/services/hotkeys/hotkeys.h"
@@ -27,7 +30,25 @@ uint32_t device_switch = 0b10000000100000110000001100000000;
 #include "core/router/router.h"
 
 // Core 1 → Core 0 diagnostic
-static volatile uint32_t pf_diag_count = 0;
+volatile uint32_t pf_diag_count = 0;
+
+// Send a polyface response: wait for turnaround gap, then push data to send SM.
+// Uses gpio_get() for clock edge counting — reads via SIO (single-cycle, per-core)
+// instead of pio_sm_exec which goes through APB and contends with CYW43 DMA.
+static void __no_inline_not_in_flash_func(polyface_respond)(uint32_t word1, uint32_t word0) {
+    (void)word0;
+
+    // Wait 30 clock edges via SIO gpio_get (zero APB contention).
+    // This turnaround delay prevents our response from colliding with
+    // the console's command tail on the shared data line.
+    for (int d = 0; d < 30; d++) {
+        while (!gpio_get(CLKIN_PIN)) tight_loop_contents();
+        while (gpio_get(CLKIN_PIN)) tight_loop_contents();
+    }
+
+    // Single APB access to push data — PIO send SM handles all bit timing
+    pio_sm_put_blocking(pio, sm1, word1);
+}
 
 // Stick-to-spinner configuration
 bool analog_stick_to_spinner = true;  // Enable right stick to spinner conversion
@@ -100,18 +121,20 @@ void nuon_init(void)
 
   pio = pio0;
 
-  // Load the read and write programs, and configure a free state machines
+  // Both polyface programs on PIO0 (13 + 18 = 31 ≤ 32).
+  // PIO1 is left ENTIRELY for CYW43 SPI — no sharing, no interference.
   uint offset2 = pio_add_program(pio, &polyface_read_program);
   sm2 = pio_claim_unused_sm(pio, true);
   polyface_read_program_init(pio, sm2, offset2, DATAIO_PIN);
 
-  uint offset1 = pio_add_program(pio1, &polyface_send_program);
-  sm1 = pio_claim_unused_sm(pio1, true);
-  polyface_send_program_init(pio1, sm1, offset1, DATAIO_PIN);
+  uint offset1 = pio_add_program(pio, &polyface_send_program);
+  sm1 = pio_claim_unused_sm(pio, true);
+  polyface_send_program_init(pio, sm1, offset1, DATAIO_PIN);
 
-  // NOTE: On Pico W, CYW43 must be kept off PIO0 to avoid disrupting
-  // polyface_read. This is handled by ensuring polyface_send fits on PIO1
-  // alongside CYW43's SPI program.
+  // Claim remaining PIO0 SMs (CYW43 can't fit on PIO0 — 32/32 instructions)
+  for (int i = 0; i < 4; i++) {
+    if (!pio_sm_is_claimed(pio, i)) pio_sm_claim(pio, i);
+  }
 
   // queue_init(&packet_queue, sizeof(int64_t), 1000);
 
@@ -138,7 +161,7 @@ void nuon_init(void)
 }
 
 // maps default joypad button bit order to nuon's button packet data structure
-uint32_t __not_in_flash_func(map_nuon_buttons)(uint32_t buttons)
+uint32_t __no_inline_not_in_flash_func(map_nuon_buttons)(uint32_t buttons)
 {
   uint32_t nuon_buttons = 0x0080;
 
@@ -162,7 +185,7 @@ uint32_t __not_in_flash_func(map_nuon_buttons)(uint32_t buttons)
   return nuon_buttons;
 }
 
-uint8_t __not_in_flash_func(eparity)(uint32_t data)
+uint8_t __no_inline_not_in_flash_func(eparity)(uint32_t data)
 {
   uint32_t eparity;
   eparity = (data>>16)^data;
@@ -174,7 +197,7 @@ uint8_t __not_in_flash_func(eparity)(uint32_t data)
 }
 
 // generates data response packet with crc check bytes
-uint32_t __not_in_flash_func(crc_data_packet)(int32_t value, int8_t size)
+uint32_t __no_inline_not_in_flash_func(crc_data_packet)(int32_t value, int8_t size)
 {
   uint32_t packet = 0;
   uint16_t crc = 0;
@@ -206,7 +229,7 @@ int crc_build_lut()
 	return(0);
 }
 
-int __not_in_flash_func(crc_calc)(unsigned char data, int crc)
+int __no_inline_not_in_flash_func(crc_calc)(unsigned char data, int crc)
 {
 	if (crc_lut[1]==0) crc_build_lut();
 	return(((crc_lut[((crc>>8)^data)&0xff])^(crc<<8))&0xffff);
@@ -235,11 +258,19 @@ void nuon_task()
   uint32_t now = to_ms_since_boot(get_absolute_time());
   if (now - diag_last >= 2000) {
     diag_last = now;
-    printf("[nuon] pf=%lu pl=%d\n",
-           (unsigned long)pf_diag_count, playersCount);
+    // Quick clock edge count (5ms sample)
+    int edges = 0;
+    bool last = gpio_get(CLKIN_PIN);
+    absolute_time_t t_end = make_timeout_time_ms(5);
+    while (!time_reached(t_end)) {
+      bool c = gpio_get(CLKIN_PIN);
+      if (c != last) { edges++; last = c; }
+    }
+    // Check PIO0 and PIO1 instruction usage + SM claims
+    printf("[nuon] pf=%lu clk=%d pl=%d\n",
+           (unsigned long)pf_diag_count, edges, playersCount);
   }
 
-  // Update polyface output data from router
   update_output();
 
   // Get input from router for hotkey checking
@@ -254,6 +285,12 @@ void nuon_task()
 // core1_task - inner-loop for the second core
 void __not_in_flash_func(core1_task)(void)
 {
+  // Give Core 1 high bus priority so CYW43's DMA wait tight-loop
+  // on Core 0 doesn't starve Core 1's PIO register access.
+  // BUSCTRL base = 0x40030000, BUS_PRIORITY at offset 0x00
+  // bit 4 = PROC1 high priority
+  *(volatile uint32_t *)0x40030000 = (1u << 4);
+
   uint64_t packet = 0;
   uint16_t state = 0;
   uint8_t channel = 0;
@@ -268,11 +305,12 @@ void __not_in_flash_func(core1_task)(void)
     packet = 0;
     for (int i = 0; i < 2; ++i)
     {
-      uint32_t rxdata = pio_sm_get_blocking(pio, sm2);
+      while (pio_sm_is_rx_fifo_empty(pio, sm2)) {
+        tight_loop_contents();
+      }
+      uint32_t rxdata = pio_sm_get(pio, sm2);
       packet = ((packet) << 32) | (rxdata & 0xFFFFFFFF);
     }
-
-    // queue_try_add(&packet_queue, &packet);
 
     uint8_t dataA = ((packet>>17) & 0b11111111);
     uint8_t dataS = ((packet>>9) & 0b01111111);
@@ -300,22 +338,19 @@ void __not_in_flash_func(core1_task)(void)
       if (alive) word1 = __rev(((id & 0b01111111) << 1));
       else alive = true;
 
-      pio_sm_put_blocking(pio1, sm1, word1);
-      pio_sm_put_blocking(pio1, sm1, word0);
+      polyface_respond(word1, word0);
     }
     else if (dataA == 0x88 && dataS == 0x04 && dataC == 0x40) // ERROR
     {
       word0 = 1;
       word1 = 0;
-      pio_sm_put_blocking(pio1, sm1, word1);
-      pio_sm_put_blocking(pio1, sm1, word0);
+      polyface_respond(word1, word0);
     }
     else if (dataA == 0x90 && !branded) // MAGIC
     {
       word0 = 1;
       word1 = __rev(MAGIC);
-      pio_sm_put_blocking(pio1, sm1, word1);
-      pio_sm_put_blocking(pio1, sm1, word0);
+      polyface_respond(word1, word0);
     }
     else if (dataA == 0x94) // PROBE
     {
@@ -333,8 +368,7 @@ void __not_in_flash_func(core1_task)(void)
               ((id      & 0b00011111)<<1);
       word1 = __rev(word1 | eparity(word1));
 
-      pio_sm_put_blocking(pio1, sm1, word1);
-      pio_sm_put_blocking(pio1, sm1, word0);
+      polyface_respond(word1, word0);
     }
     else if (dataA == 0x27 && dataS == 0x01 && dataC == 0x00) // REQUEST (ADDRESS)
     {
@@ -350,8 +384,7 @@ void __not_in_flash_func(core1_task)(void)
         word1 = __rev(crc_data_packet(0b11110110, 1)); // send & recv?
       }
 
-      pio_sm_put_blocking(pio1, sm1, word1);
-      pio_sm_put_blocking(pio1, sm1, word0);
+      polyface_respond(word1, word0);
     }
     else if (dataA == 0x84 && dataS == 0x04 && dataC == 0x40) // REQUEST (B)
     {
@@ -364,8 +397,7 @@ void __not_in_flash_func(core1_task)(void)
         word1 = __rev(0b10);
       }
 
-      pio_sm_put_blocking(pio1, sm1, word1);
-      pio_sm_put_blocking(pio1, sm1, word0);
+      polyface_respond(word1, word0);
 
       requestsB++;
       if (requestsB == 12) requestsB = 7;
@@ -382,8 +414,7 @@ void __not_in_flash_func(core1_task)(void)
       word1 = __rev(output_quad_x);
       // TODO: solve how to set unique values to first two bytes plus checksum
 
-      pio_sm_put_blocking(pio1, sm1, word1);
-      pio_sm_put_blocking(pio1, sm1, word0);
+      polyface_respond(word1, word0);
     }
     else if (dataA == 0x35 && dataS == 0x01 && dataC == 0x00) // ANALOG
     {
@@ -421,32 +452,28 @@ void __not_in_flash_func(core1_task)(void)
         break;
       }
 
-      pio_sm_put_blocking(pio1, sm1, word1);
-      pio_sm_put_blocking(pio1, sm1, word0);
+      polyface_respond(word1, word0);
     }
     else if (dataA == 0x25 && dataS == 0x01 && dataC == 0x00) // CONFIG
     {
       word0 = 1;
       word1 = __rev(device_config); // device config packet?
 
-      pio_sm_put_blocking(pio1, sm1, word1);
-      pio_sm_put_blocking(pio1, sm1, word0);
+      polyface_respond(word1, word0);
     }
     else if (dataA == 0x31 && dataS == 0x01 && dataC == 0x00) // {SWITCH[16:9]}
     {
       word0 = 1;
       word1 = __rev(device_switch); // extra device config?
 
-      pio_sm_put_blocking(pio1, sm1, word1);
-      pio_sm_put_blocking(pio1, sm1, word0);
+      polyface_respond(word1, word0);
     }
     else if (dataA == 0x30 && dataS == 0x02 && dataC == 0x00) // {SWITCH[8:1]}
     {
       word0 = 1;
       word1 = __rev(output_buttons_0);
 
-      pio_sm_put_blocking(pio1, sm1, word1);
-      pio_sm_put_blocking(pio1, sm1, word0);
+      polyface_respond(word1, word0);
     }
     else if (dataA == 0x99 && dataS == 0x01) // STATE
     {
@@ -460,8 +487,7 @@ void __not_in_flash_func(core1_task)(void)
         {
           word1 = __rev(0b11010001000000101110011000000000);
         }
-        pio_sm_put_blocking(pio1, sm1, word1);
-        pio_sm_put_blocking(pio1, sm1, word0);
+        polyface_respond(word1, word0);
         break;
       // case PACKET_TYPE_WRITE:
       default:

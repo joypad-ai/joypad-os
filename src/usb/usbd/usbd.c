@@ -575,6 +575,10 @@ static void usbd_on_input(output_target_t output, uint8_t player_index, const in
 
 void usbd_init(void)
 {
+#ifdef DISABLE_USB_DEVICE
+    printf("[usbd] USB device DISABLED\n");
+    return;
+#endif
     printf("[usbd] Initializing USB device output\n");
 
     // Register all mode implementations

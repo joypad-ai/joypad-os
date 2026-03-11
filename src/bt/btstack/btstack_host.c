@@ -6,6 +6,14 @@
 // HID Host for Classic BT HID devices.
 
 #include "btstack_host.h"
+
+#ifdef BTSTACK_DEFER_SCAN
+static bool btstack_host_scan_enabled = false;
+void btstack_host_enable_scan(void) {
+    btstack_host_scan_enabled = true;
+    btstack_host_start_scan();
+}
+#endif
 #include "btstack_config.h"
 #include "bt_device_db.h"
 // Include specific BTstack headers instead of umbrella btstack.h
@@ -124,8 +132,12 @@ static void switch2_handle_feedback(void);
 // ============================================================================
 
 #define MAX_BLE_CONNECTIONS 2
-#define SCAN_INTERVAL 0x00A0  // 100ms
-#define SCAN_WINDOW   0x0050  // 50ms
+#ifndef SCAN_INTERVAL
+#define SCAN_INTERVAL 0x00A0  // 100ms (default)
+#endif
+#ifndef SCAN_WINDOW
+#define SCAN_WINDOW   0x0050  // 50ms (default)
+#endif
 
 // ============================================================================
 // STATE
@@ -723,7 +735,9 @@ void btstack_host_start_scan(void)
 #ifdef CONFIG_USB2BLE
     return;  // USB2BLE is BLE peripheral only — no scanning for input devices
 #endif
-
+#ifdef BTSTACK_DEFER_SCAN
+    if (!btstack_host_scan_enabled) return;
+#endif
     if (!hid_state.powered_on) {
         printf("[BTSTACK_HOST] Not powered on yet\n");
         return;
