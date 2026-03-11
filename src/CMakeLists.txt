@@ -1576,9 +1576,12 @@ target_include_directories(joypad_nuon2usb PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/nuon2usb
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd
     ${CMAKE_CURRENT_SOURCE_DIR}/native/host/nuon
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/device/nuon
 )
 target_link_libraries(joypad_nuon2usb PRIVATE pico_stdlib pico_multicore hardware_pio pico_rand tinyusb_device tinyusb_board)
 joypad_target_common(joypad_nuon2usb)
+pico_generate_pio_header(joypad_nuon2usb ${CMAKE_CURRENT_LIST_DIR}/native/device/nuon/polyface_read.pio)
+pico_generate_pio_header(joypad_nuon2usb ${CMAKE_CURRENT_LIST_DIR}/native/device/nuon/polyface_send.pio)
 
 # --- GC2USB (GameCube -> USB HID) ---
 add_executable(joypad_gc2usb)

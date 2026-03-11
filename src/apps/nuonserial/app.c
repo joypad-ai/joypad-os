@@ -76,18 +76,18 @@ void app_task(void)
     // Process TinyUSB device events
     tud_task();
 
-    if (!tud_cdc_connected()) return;
+    // Nuon → PC: drain tx_fifo to USB CDC (always, even if host hasn't set DTR)
+    if (tud_ready()) {
+        int byte;
+        while ((byte = nuonser_tx_read()) >= 0) {
+            tud_cdc_write_char((char)byte);
+        }
+        tud_cdc_write_flush();
 
-    // Nuon → PC: drain tx_fifo to USB CDC
-    int byte;
-    while ((byte = nuonser_tx_read()) >= 0) {
-        tud_cdc_write_char((char)byte);
-    }
-    tud_cdc_write_flush();
-
-    // PC → Nuon: drain USB CDC to rx_fifo
-    while (tud_cdc_available()) {
-        uint8_t c = tud_cdc_read_char();
-        nuonser_rx_write(c);
+        // PC → Nuon: drain USB CDC to rx_fifo
+        while (tud_cdc_available()) {
+            uint8_t c = tud_cdc_read_char();
+            nuonser_rx_write(c);
+        }
     }
 }

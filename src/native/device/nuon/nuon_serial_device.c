@@ -211,8 +211,20 @@ void __not_in_flash_func(nuonser_core1_task)(void)
     // For mode=7 (CONFIG): need ((val-12)*11)/255 >= 7
     // val=175: ((175-12)*11)/255 = 1793/255 = 7 ✓
     #define ATOD_MODE_CONFIG_VALUE 0xAF
-    // CONFIG_SERIAL = 0x04 (from polyface.h)
-    #define CONFIG_SERIAL 0x04
+    // Modem/serial uses CONFIG_PARALLEL_MEMORY (0x20) per Polyface V11 spec.
+    // The UART48 sits on the parallel memory bus. BIOS maps /dev/tty0 to this.
+    #define CONFIG_PARALLEL_MEMORY 0x20
+
+    // ATOD latch — real Polyface latches value on CHANNEL write, not on ANALOG read
+    uint8_t atod_latched = 0x80;
+    bool atod_ready = false;
+
+    // Emulated UART48 (ST16C650A) register state
+    uint32_t mem_addr = 0;       // Current memory address (set by A0/A1/A2 writes)
+    uint8_t uart_ier = 0;        // Interrupt Enable Register
+    uint8_t uart_lcr = 0;        // Line Control Register
+    uint8_t uart_mcr = 0;        // Modem Control Register
+    uint8_t uart_spr = 0;        // Scratchpad Register
 
     while (1) {
         // Non-blocking PIO read (matching nuon_device.c)
@@ -232,8 +244,18 @@ void __not_in_flash_func(nuonser_core1_task)(void)
         uint32_t word0 = 1;
         uint32_t word1 = 0;
 
-        // Log every packet (including echoes) to see full bus activity
-        debug_log_packet(type0, dataA, dataS, dataC);
+        // Log only NON-POLLING commands to CDC
+        // Skip the normal polling cycle (84,88,27,35,34,30,31,80,B2,B0,90,94,99,A0,00)
+        // so the tx_fifo stays empty for actual test data
+        if (dataA != 0x84 && dataA != 0x88 && dataA != 0x27 &&
+            dataA != 0x35 && dataA != 0x34 && dataA != 0x30 &&
+            dataA != 0x31 && dataA != 0x80 && dataA != 0xB2 &&
+            dataA != 0xB0 && dataA != 0x90 && dataA != 0x94 &&
+            dataA != 0x99 && dataA != 0xA0 && dataA != 0x00 &&
+            dataA != 0xB1 && dataA != 0xB4 && dataA != 0x25 &&
+            dataA != 0x20 && dataA != 0x24 && dataA != 0x32) {
+            debug_log_packet(type0, dataA, dataS, dataC);
+        }
 
         // =================================================================
         // CONFIGURATION COMMANDS
@@ -308,31 +330,45 @@ void __not_in_flash_func(nuonser_core1_task)(void)
         // =================================================================
 
         else if (dataA == 0x34 && dataS == 0x01) {
-            // CHANNEL (JS_CHANNEL) — store for next ANALOG/REQUEST read
+            // CHANNEL (JS_CHANNEL) — store channel and latch ATOD if MODE
             channel = dataC;
+            if (channel == 0x01) {
+                // ATOD_CHANNEL_MODE: latch the mode value now
+                // Real Polyface hardware latches on channel write, not on read
+                atod_latched = ATOD_MODE_CONFIG_VALUE;
+                atod_ready = true;
+            }
         }
         else if (dataA == 0x27 && dataS == 0x01 && dataC == 0x00) {
-            // ADD_REQUEST — report ATOD ready (bit 2)
-            // BIOS polls this waiting for ATOD conversion to complete
-            word1 = __rev(crc_data_packet(0x04, 1));  // ADD_REQUEST_ATOD = (1<<2)
+            // ADD_REQUEST — report device status bits
+            // BIOS serial driver checks these to know when to read/write SDATA
+            uint8_t req = 0x04;  // ADD_REQUEST_ATOD (always ready)
+            // Signal serial recv data available when rx_fifo has data from PC
+            if (ringbuf_count(&rx_fifo) >= 4)
+                req |= (1 << 4);  // ADD_REQUEST_SER_RECV_FOUR
+            if (ringbuf_count(&rx_fifo) > 0)
+                req |= (1 << 5);  // ADD_REQUEST_SER_RECV_ANY
+            // Signal serial send space available when tx_fifo has room
+            if (ringbuf_free(&tx_fifo) >= 4)
+                req |= (1 << 6);  // ADD_REQUEST_SER_SEND_FOUR
+            if (ringbuf_free(&tx_fifo) > 0)
+                req |= (1 << 7);  // ADD_REQUEST_SER_SEND_ANY
+            word1 = __rev(crc_data_packet(req, 1));
             polyface_respond(word1, word0);
         }
         else if (dataA == 0x35 && dataS == 0x01 && dataC == 0x00) {
-            // ANALOG (JS_ATOD) — return mode value based on channel
-            if (channel == 0x01) {
-                // ATOD_CHANNEL_MODE: return value that maps to MODE_CONFIG (7)
-                word1 = __rev(crc_data_packet(ATOD_MODE_CONFIG_VALUE, 1));
-            } else {
-                // Other channels: return neutral
-                word1 = __rev(crc_data_packet(0x80, 1));
-            }
+            // ANALOG (JS_ATOD) — always return MODE_CONFIG value
+            // Real Polyface latches ATOD on CHANNEL write. The BIOS reads
+            // ANALOG after resetting CHANNEL to 0, expecting the latched value.
+            // Simplest: always return MODE_CONFIG for all ANALOG reads.
+            word1 = __rev(crc_data_packet(ATOD_MODE_CONFIG_VALUE, 1));
             polyface_respond(word1, word0);
         }
         else if (dataA == 0x25 && dataS == 0x01 && dataC == 0x00) {
-            // ADD_CONFIG — return CONFIG_SERIAL (0x04)
-            word1 = __rev(crc_data_packet(CONFIG_SERIAL, 1));
+            // ADD_CONFIG — return CONFIG_PARALLEL_MEMORY (0x20)
+            // This is what real Polyface modem/serial hardware uses
+            word1 = __rev(crc_data_packet(CONFIG_PARALLEL_MEMORY, 1));
             polyface_respond(word1, word0);
-            configured = true;  // BIOS has read our config, stop asserting REQUEST
         }
         else if (dataA == 0x31 && dataS == 0x01 && dataC == 0x00) {
             // SW1 (SWITCH[16:9]) — BIOS polls this for ALL device types
@@ -349,71 +385,155 @@ void __not_in_flash_func(nuonser_core1_task)(void)
             word1 = __rev(crc_data_packet(0, 1));
             polyface_respond(word1, word0);
         }
-        else if (dataA == 0x24 && type0 == PACKET_TYPE_WRITE) {
-            // ADD_PINOUT — accept pin configuration write
+        // =================================================================
+        // ADDRESS REGISTERS (0x20-0x28) — Polyface parallel memory bus
+        // The BIOS uses these to address UART48 registers on the HS Modem
+        // =================================================================
+
+        else if (dataA == 0x20 && type0 == PACKET_TYPE_WRITE) {
+            // ADD_A0 — low byte of address (UART register select)
+            mem_addr = (mem_addr & 0xFFFF80) | (dataC & 0x7F);
+        }
+        else if (dataA == 0x21 && type0 == PACKET_TYPE_WRITE) {
+            // ADD_A1 — mid byte
+            mem_addr = (mem_addr & 0xFF007F) | ((dataC & 0x7F) << 7);
+        }
+        else if (dataA == 0x22 && type0 == PACKET_TYPE_WRITE) {
+            // ADD_A2 — high byte
+            mem_addr = (mem_addr & 0x003FFF) | ((dataC & 0x7F) << 14);
         }
         else if (dataA == 0x23 && type0 == PACKET_TYPE_WRITE) {
-            // ADD_STROBE — accept strobe configuration write
+            // ADD_STROBE — accept
         }
-        else if ((dataA >= 0x20 && dataA <= 0x22) && type0 == PACKET_TYPE_WRITE) {
-            // ADD_A0/A1/A2 — accept address register writes
+        else if (dataA == 0x24 && type0 == PACKET_TYPE_WRITE) {
+            // ADD_PINOUT — accept
         }
 
         // =================================================================
-        // SERIAL REGISTERS (0x40-0x46)
+        // MEMORY DATA (0x10-0x11) — Emulates ST16C650A UART registers
+        // The BIOS /dev/tty0 driver reads/writes UART via this interface:
+        //   1. Write UART register address to ADD_A0 (0x20)
+        //   2. Read/write DATA (0x10) to access that UART register
+        //
+        // ST16C650A registers (3-bit address, selected by A0-A2):
+        //   0x00 RBR/THR  — Receive/Transmit data (our FIFO bridge)
+        //   0x01 IER      — Interrupt Enable
+        //   0x02 IIR/FCR  — Interrupt ID / FIFO Control
+        //   0x03 LCR      — Line Control
+        //   0x04 MCR      — Modem Control
+        //   0x05 LSR      — Line Status
+        //   0x06 MSR      — Modem Status
+        //   0x07 SPR      — Scratchpad
         // =================================================================
 
-        else if (dataA == NUONSER_REG_BAUD && type0 == PACKET_TYPE_WRITE) {
-            // BAUD — accepted (virtual, no real UART)
+        else if (dataA == 0x10 || dataA == 0x11) {
+            uint8_t uart_reg = mem_addr & 0x07;
+            bool auto_inc = (dataA == 0x11);
+            // Log memory access to CDC for debugging
+            debug_log_packet(type0, dataA, uart_reg, dataC);
+
+            if (type0 == PACKET_TYPE_WRITE) {
+                // Write to UART register
+                switch (uart_reg) {
+                case 0x00:  // THR — Transmit data → tx_fifo
+                    ringbuf_push(&tx_fifo, dataC & 0x7F);
+                    break;
+                case 0x01:  // IER — accept
+                    uart_ier = dataC & 0x7F;
+                    break;
+                case 0x02:  // FCR — accept (FIFO control)
+                    break;
+                case 0x03:  // LCR — accept
+                    uart_lcr = dataC & 0x7F;
+                    break;
+                case 0x04:  // MCR — accept
+                    uart_mcr = dataC & 0x7F;
+                    break;
+                default:
+                    break;
+                }
+                if (auto_inc) mem_addr++;
+            } else {
+                // Read from UART register
+                uint8_t val = 0;
+                switch (uart_reg) {
+                case 0x00:  // RBR — Receive data ← rx_fifo
+                    {
+                        int byte = ringbuf_pop(&rx_fifo);
+                        val = (byte >= 0) ? (uint8_t)byte : 0;
+                    }
+                    break;
+                case 0x01:  // IER
+                    val = uart_ier;
+                    break;
+                case 0x02:  // IIR — no interrupts pending
+                    val = 0x01;  // Bit 0 = no interrupt pending
+                    break;
+                case 0x03:  // LCR
+                    val = uart_lcr;
+                    break;
+                case 0x04:  // MCR
+                    val = uart_mcr;
+                    break;
+                case 0x05:  // LSR — Line Status
+                    val = 0x60;  // Bit 5 = THR empty, Bit 6 = TX empty
+                    if (ringbuf_count(&rx_fifo) > 0)
+                        val |= 0x01;  // Bit 0 = Data Ready
+                    break;
+                case 0x06:  // MSR — Modem Status
+                    val = 0x30;  // CTS + DSR asserted
+                    break;
+                case 0x07:  // SPR — Scratchpad
+                    val = uart_spr;
+                    break;
+                }
+                word1 = __rev(crc_data_packet(val, 1));
+                polyface_respond(word1, word0);
+                if (auto_inc) mem_addr++;
+            }
         }
-        else if (dataA == NUONSER_REG_FLAGS0 && type0 == PACKET_TYPE_WRITE) {
+
+        // =================================================================
+        // POLYFACE SERIAL REGISTERS (0x40-0x46) — kept for compatibility
+        // =================================================================
+
+        else if (dataA == 0x40 && type0 == PACKET_TYPE_WRITE) {
+            // BAUD — accepted
+        }
+        else if (dataA == 0x41 && type0 == PACKET_TYPE_WRITE) {
             // FLAGS0 — accepted
         }
-        else if (dataA == NUONSER_REG_FLAGS1 && type0 == PACKET_TYPE_WRITE) {
+        else if (dataA == 0x42 && type0 == PACKET_TYPE_WRITE) {
             // FLAGS1 — store RUN bit
             ser_flags1 = dataC & 0x7F;
         }
-        else if (dataA == NUONSER_REG_SDATA) {
+        else if (dataA == 0x43) {
             if (type0 == PACKET_TYPE_WRITE) {
-                // Nuon writes a byte → tx_fifo (Nuon→PC)
-                if (!ringbuf_push(&tx_fifo, dataC & 0xFF)) {
-                    ser_sstatus_err |= NUONSER_SOF_ERROR;
-                }
+                ringbuf_push(&tx_fifo, dataC & 0x7F);
             } else {
-                // Nuon reads a byte ← rx_fifo (PC→Nuon)
                 int byte = ringbuf_pop(&rx_fifo);
-                if (byte < 0) {
-                    ser_rstatus_err |= NUONSER_RUF_ERROR;
-                    word1 = __rev(crc_data_packet(0x00, 1));
-                } else {
-                    word1 = __rev(crc_data_packet(byte, 1));
-                }
+                word1 = __rev(crc_data_packet(byte >= 0 ? byte : 0, 1));
                 polyface_respond(word1, word0);
             }
         }
-        else if (dataA == NUONSER_REG_SSTATUS && type0 == PACKET_TYPE_READ) {
+        else if (dataA == 0x44 && type0 == PACKET_TYPE_READ) {
             uint16_t free = ringbuf_free(&tx_fifo);
             if (free > 31) free = 31;
-            uint8_t status = (uint8_t)free | ser_sstatus_err;
-            word1 = __rev(crc_data_packet(status, 1));
+            word1 = __rev(crc_data_packet((uint8_t)free | ser_sstatus_err, 1));
             polyface_respond(word1, word0);
         }
-        else if (dataA == NUONSER_REG_RSTATUS && type0 == PACKET_TYPE_READ) {
+        else if (dataA == 0x45 && type0 == PACKET_TYPE_READ) {
             uint16_t avail = ringbuf_count(&rx_fifo);
             if (avail > 31) avail = 31;
-            uint8_t status = (uint8_t)avail | ser_rstatus_err;
-            word1 = __rev(crc_data_packet(status, 1));
+            word1 = __rev(crc_data_packet((uint8_t)avail | ser_rstatus_err, 1));
             polyface_respond(word1, word0);
         }
-        else if (dataA == NUONSER_REG_ERROR_CLR && type0 == PACKET_TYPE_WRITE) {
+        else if (dataA == 0x46 && type0 == PACKET_TYPE_WRITE) {
             ser_sstatus_err = 0;
             ser_rstatus_err = 0;
         }
 
-        // Log unhandled commands (includes echo data from our own responses)
-        else {
-            debug_log_packet(type0, dataA, dataS, dataC);
-        }
+        // Unhandled commands silently ignored
     }
 }
 
