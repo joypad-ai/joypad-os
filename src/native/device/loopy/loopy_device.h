@@ -24,11 +24,15 @@
 // 1                                    8
 //
 
-// ADAFRUIT_KB2040                  // build for Adafruit KB2040 board
+// Pin definitions - ROW3 must differ per board (GPIO 29 is CYW43 on Pico W)
 #define ROW0_PIN    26
 #define ROW1_PIN    ROW0_PIN + 1    // 27
 #define ROW2_PIN    ROW0_PIN + 2    // 28
+#if defined(BTSTACK_USE_CYW43)
+#define ROW3_PIN    20              // Pico W: GPIO 29 used by CYW43
+#else
 #define ROW3_PIN    ROW0_PIN + 3    // 29
+#endif
 #define ROW4_PIN    18
 #define ROW5_PIN    19
 #define BIT0_PIN    2               // Note - out pins must be a consecutive 'out' group
