@@ -1201,6 +1201,8 @@ if (PICO_BOARD STREQUAL "pico_w" OR PICO_BOARD STREQUAL "pico2_w")
         ${CMAKE_CURRENT_SOURCE_DIR}/bt/transport/bt_transport.c
         ${CMAKE_CURRENT_SOURCE_DIR}/bt/transport/bt_transport_cyw43.c
         ${CMAKE_CURRENT_SOURCE_DIR}/bt/ble_output/ble_output.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/bt/ble_output/ble_output_keyboard.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/bt/ble_output/ble_output_mouse.c
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2ble/app.c
     )
     target_include_directories(joypad_usb2ble PUBLIC

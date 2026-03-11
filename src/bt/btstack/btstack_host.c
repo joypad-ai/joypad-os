@@ -1121,7 +1121,10 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                 }
 
                 // Set local name (for devices that want to see us)
+                // Skip when acting as BLE peripheral — ble_output sets its own name
+#ifndef CONFIG_USB2BLE
                 gap_set_local_name("Joypad Adapter");
+#endif
 
                 // Enable bonding (needed for both Classic and BLE)
                 gap_set_bondable_mode(1);
@@ -1130,8 +1133,11 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
 
 #if !defined(BTSTACK_USE_ESP32) && !defined(BTSTACK_USE_NRF)
                 // Classic BT setup (not available on ESP32-S3 BLE-only)
+#ifndef CONFIG_USB2BLE
                 // Set class of device to Computer (Desktop Workstation)
+                // Skip when acting as BLE peripheral — appearance is set in adv data
                 gap_set_class_of_device(0x000104);  // Major: Computer, Minor: Desktop
+#endif
 
                 // Enable SSP (Secure Simple Pairing) on the controller
                 extern const hci_cmd_t hci_write_simple_pairing_mode;

@@ -60,8 +60,19 @@ static void on_button_event(button_event_t event)
 {
     switch (event) {
         case BUTTON_EVENT_CLICK:
-            printf("[app:usb2ble] Button click\n");
+            printf("[app:usb2ble] Button click - current mode: %s\n",
+                   ble_output_get_mode_name(ble_output_get_mode()));
             break;
+
+        case BUTTON_EVENT_DOUBLE_CLICK: {
+            ble_output_mode_t next = ble_output_get_next_mode();
+            printf("[app:usb2ble] Double-click - switching BLE mode to %s\n",
+                   ble_output_get_mode_name(next));
+            ble_output_set_mode(next);
+            // Mode change requires different HID descriptor — reboot needed
+            // (Phase 2: persist to flash and reboot here)
+            break;
+        }
 
         case BUTTON_EVENT_HOLD:
             printf("[app:usb2ble] Long press - clearing BLE bonds\n");

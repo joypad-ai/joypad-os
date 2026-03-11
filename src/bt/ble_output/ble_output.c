@@ -1,11 +1,13 @@
-// ble_output.c - BLE Gamepad Output Interface (HOGP Peripheral)
+// ble_output.c - BLE Composite HID Output Interface (HOGP Peripheral)
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2024 Robert Dale Smith
 //
-// Implements OutputInterface for BLE HID gamepad output using BTstack's
-// hids_device GATT service. Appears as a wireless gamepad via HOGP.
+// Implements OutputInterface for BLE HID composite output (gamepad + keyboard + mouse)
+// using BTstack's hids_device GATT service. Appears as a wireless HID device via HOGP.
 
 #include "ble_output.h"
+#include "ble_output_keyboard.h"
+#include "ble_output_mouse.h"
 #include "ble_gamepad.h"  // Generated from ble_gamepad.gatt by compile_gatt.py
 
 #include "core/buttons.h"
@@ -30,16 +32,103 @@
 #include <string.h>
 
 // ============================================================================
-// HID REPORT DESCRIPTOR — Clean BLE gamepad
+// HID REPORT DESCRIPTOR — Composite: Keyboard + Mouse + Gamepad
 // ============================================================================
-// 16 buttons (2 bytes) + hat switch (4 bits + 4 padding) + 4 stick axes + 2 triggers
-// Total report: 9 bytes
 
 static const uint8_t ble_hid_descriptor[] = {
+    // ---- Keyboard (Report ID 1) ----
+    0x05, 0x01,        // Usage Page (Generic Desktop)
+    0x09, 0x06,        // Usage (Keyboard)
+    0xA1, 0x01,        // Collection (Application)
+    0x85, 0x01,        //   Report ID (1)
+
+    // Modifier keys (8 bits)
+    0x05, 0x07,        //   Usage Page (Key Codes)
+    0x19, 0xE0,        //   Usage Minimum (224 - Left Control)
+    0x29, 0xE7,        //   Usage Maximum (231 - Right GUI)
+    0x15, 0x00,        //   Logical Minimum (0)
+    0x25, 0x01,        //   Logical Maximum (1)
+    0x75, 0x01,        //   Report Size (1)
+    0x95, 0x08,        //   Report Count (8)
+    0x81, 0x02,        //   Input (Data, Variable, Absolute)
+
+    // Reserved byte
+    0x95, 0x01,        //   Report Count (1)
+    0x75, 0x08,        //   Report Size (8)
+    0x81, 0x01,        //   Input (Constant)
+
+    // LED output report (Caps/Num/Scroll Lock)
+    0x95, 0x05,        //   Report Count (5)
+    0x75, 0x01,        //   Report Size (1)
+    0x05, 0x08,        //   Usage Page (LEDs)
+    0x19, 0x01,        //   Usage Minimum (1 - Num Lock)
+    0x29, 0x05,        //   Usage Maximum (5 - Kana)
+    0x91, 0x02,        //   Output (Data, Variable, Absolute)
+    0x95, 0x01,        //   Report Count (1)
+    0x75, 0x03,        //   Report Size (3)
+    0x91, 0x01,        //   Output (Constant) - padding
+
+    // Keycodes (6 keys)
+    0x95, 0x06,        //   Report Count (6)
+    0x75, 0x08,        //   Report Size (8)
+    0x15, 0x00,        //   Logical Minimum (0)
+    0x25, 0x65,        //   Logical Maximum (101)
+    0x05, 0x07,        //   Usage Page (Key Codes)
+    0x19, 0x00,        //   Usage Minimum (0)
+    0x29, 0x65,        //   Usage Maximum (101)
+    0x81, 0x00,        //   Input (Data, Array)
+
+    0xC0,              // End Collection
+
+    // ---- Mouse (Report ID 2) ----
+    0x05, 0x01,        // Usage Page (Generic Desktop)
+    0x09, 0x02,        // Usage (Mouse)
+    0xA1, 0x01,        // Collection (Application)
+    0x85, 0x02,        //   Report ID (2)
+    0x09, 0x01,        //   Usage (Pointer)
+    0xA1, 0x00,        //   Collection (Physical)
+
+    // 5 Buttons
+    0x05, 0x09,        //     Usage Page (Button)
+    0x19, 0x01,        //     Usage Minimum (1)
+    0x29, 0x05,        //     Usage Maximum (5)
+    0x15, 0x00,        //     Logical Minimum (0)
+    0x25, 0x01,        //     Logical Maximum (1)
+    0x95, 0x05,        //     Report Count (5)
+    0x75, 0x01,        //     Report Size (1)
+    0x81, 0x02,        //     Input (Data, Variable, Absolute)
+
+    // 3 bits padding
+    0x95, 0x01,        //     Report Count (1)
+    0x75, 0x03,        //     Report Size (3)
+    0x81, 0x01,        //     Input (Constant)
+
+    // X, Y movement (-127 to 127)
+    0x05, 0x01,        //     Usage Page (Generic Desktop)
+    0x09, 0x30,        //     Usage (X)
+    0x09, 0x31,        //     Usage (Y)
+    0x15, 0x81,        //     Logical Minimum (-127)
+    0x25, 0x7F,        //     Logical Maximum (127)
+    0x75, 0x08,        //     Report Size (8)
+    0x95, 0x02,        //     Report Count (2)
+    0x81, 0x06,        //     Input (Data, Variable, Relative)
+
+    // Vertical wheel (-127 to 127)
+    0x09, 0x38,        //     Usage (Wheel)
+    0x15, 0x81,        //     Logical Minimum (-127)
+    0x25, 0x7F,        //     Logical Maximum (127)
+    0x75, 0x08,        //     Report Size (8)
+    0x95, 0x01,        //     Report Count (1)
+    0x81, 0x06,        //     Input (Data, Variable, Relative)
+
+    0xC0,              //   End Collection (Physical)
+    0xC0,              // End Collection (Mouse)
+
+    // ---- Gamepad (Report ID 3) ----
     0x05, 0x01,        // Usage Page (Generic Desktop Ctrls)
     0x09, 0x05,        // Usage (Game Pad)
     0xA1, 0x01,        // Collection (Application)
-    0x85, 0x03,        //   Report ID (3) — matches ESP32-BLE-Gamepad & hids.gatt
+    0x85, 0x03,        //   Report ID (3)
 
     // 16 buttons = 2 bytes
     0x05, 0x09,        //   Usage Page (Button)
@@ -64,7 +153,7 @@ static const uint8_t ble_hid_descriptor[] = {
     0x81, 0x42,        //   Input (Data,Var,Abs,Null)
     0x65, 0x00,        //   Unit (None)
 
-    // 6 axes × 16-bit: X, Y, Z, Rz (sticks), Rx, Ry (triggers)
+    // 6 axes x 16-bit: X, Y, Z, Rz (sticks), Rx, Ry (triggers)
     0x05, 0x01,        //   Usage Page (Generic Desktop Ctrls)
     0x15, 0x00,        //   Logical Minimum (0)
     0x27, 0xFF, 0x7F, 0x00, 0x00,  // Logical Maximum (0x7FFF = 32767)
@@ -81,13 +170,41 @@ static const uint8_t ble_hid_descriptor[] = {
     0x81, 0x02,        //   Input (Data,Var,Abs)
 
     0xC0,              // End Collection
+
+    // ---- Player Indicator Output (Report ID 4) ----
+    0x05, 0x01,        // Usage Page (Generic Desktop Ctrls)
+    0x09, 0x05,        // Usage (Game Pad)
+    0xA1, 0x01,        // Collection (Application)
+    0x85, 0x04,        //   Report ID (4)
+    0x05, 0x08,        //   Usage Page (LEDs)
+    0x09, 0x4B,        //   Usage (Player Indicator)
+    0x15, 0x00,        //   Logical Minimum (0)
+    0x25, 0xFF,        //   Logical Maximum (255)
+    0x75, 0x08,        //   Report Size (8)
+    0x95, 0x01,        //   Report Count (1)
+    0x91, 0x02,        //   Output (Data, Variable, Absolute)
+    0xC0,              // End Collection
+
+    // ---- Feature Report (Report ID 5) ----
+    0x05, 0x01,        // Usage Page (Generic Desktop Ctrls)
+    0x09, 0x05,        // Usage (Game Pad)
+    0xA1, 0x01,        // Collection (Application)
+    0x85, 0x05,        //   Report ID (5)
+    0x05, 0x06,        //   Usage Page (Generic Device Controls)
+    0x09, 0x20,        //   Usage (Battery Strength)
+    0x15, 0x00,        //   Logical Minimum (0)
+    0x26, 0xFF, 0x00,  //   Logical Maximum (255)
+    0x75, 0x08,        //   Report Size (8)
+    0x95, 0x01,        //   Report Count (1)
+    0xB1, 0x02,        //   Feature (Data, Variable, Absolute)
+    0xC0,              // End Collection
 };
 
 // ============================================================================
-// BLE REPORT STRUCTURE (15 bytes, matches descriptor above)
+// BLE REPORT STRUCTURES
 // ============================================================================
-// 16 buttons (2B) + hat (1B) + 6 axes × 16-bit (12B) = 15 bytes
 
+// Gamepad report (15 bytes, Report ID 3)
 typedef struct __attribute__((packed)) {
     uint8_t buttons_lo;     // Buttons 1-8
     uint8_t buttons_hi;     // Buttons 9-16
@@ -112,14 +229,41 @@ typedef struct __attribute__((packed)) {
 #define BLE_HAT_UP_LEFT     8
 
 // ============================================================================
+// PENDING REPORT — type-tagged union for flow-controlled sending
+// ============================================================================
+
+typedef enum {
+    PENDING_NONE = 0,
+    PENDING_GAMEPAD,
+    PENDING_KEYBOARD,
+    PENDING_MOUSE,
+} pending_report_type_t;
+
+// ============================================================================
 // STATE
 // ============================================================================
 
 static hci_con_handle_t con_handle = HCI_CON_HANDLE_INVALID;
 static bool ble_connected = false;
-static bool report_pending = false;
-static ble_gamepad_report_t pending_report;
-static ble_gamepad_report_t last_sent_report;
+
+// Pending report (flow-controlled — only one at a time)
+static pending_report_type_t pending_type = PENDING_NONE;
+static ble_gamepad_report_t pending_gamepad;
+static ble_keyboard_report_t pending_keyboard;
+static ble_mouse_report_t pending_mouse;
+
+// Last sent reports (for change detection)
+static ble_gamepad_report_t last_sent_gamepad;
+static ble_keyboard_report_t last_sent_keyboard;
+static ble_mouse_report_t last_sent_mouse;
+
+// Report storage for hids_device_init_with_storage()
+// 6 reports: keyboard input, keyboard output, mouse input, gamepad input, player output, feature
+static hids_device_report_t hid_report_storage[6];
+#define HID_REPORT_STORAGE_COUNT (sizeof(hid_report_storage) / sizeof(hid_report_storage[0]))
+
+// Mode
+static ble_output_mode_t current_mode = BLE_MODE_STANDARD;
 
 static btstack_packet_callback_registration_t hci_event_callback_registration;
 static btstack_packet_callback_registration_t sm_event_callback_registration;
@@ -148,27 +292,24 @@ static const uint8_t adv_data[] = {
 // ============================================================================
 
 // Convert Joypad buttons to BLE gamepad 16-bit button field
-// Maps directly: bit 0 = B1 (Cross/A), bit 1 = B2 (Circle/B), etc.
-// 14 buttons: B1-B4, L1-R2, S1-S2, L3-R3, A1, A2
-// D-pad is hat switch only (not duplicated in button bits)
 static uint16_t convert_buttons(uint32_t buttons)
 {
     uint16_t ble_buttons = 0;
 
-    if (buttons & JP_BUTTON_B1) ble_buttons |= (1 << 0);   // Button 1: Cross/A
-    if (buttons & JP_BUTTON_B2) ble_buttons |= (1 << 1);   // Button 2: Circle/B
-    if (buttons & JP_BUTTON_B3) ble_buttons |= (1 << 2);   // Button 3: Square/X
-    if (buttons & JP_BUTTON_B4) ble_buttons |= (1 << 3);   // Button 4: Triangle/Y
-    if (buttons & JP_BUTTON_L1) ble_buttons |= (1 << 4);   // Button 5: L1/LB
-    if (buttons & JP_BUTTON_R1) ble_buttons |= (1 << 5);   // Button 6: R1/RB
-    if (buttons & JP_BUTTON_L2) ble_buttons |= (1 << 6);   // Button 7: L2/LT
-    if (buttons & JP_BUTTON_R2) ble_buttons |= (1 << 7);   // Button 8: R2/RT
-    if (buttons & JP_BUTTON_S1) ble_buttons |= (1 << 8);   // Button 9: Select/Back
-    if (buttons & JP_BUTTON_S2) ble_buttons |= (1 << 9);   // Button 10: Start
-    if (buttons & JP_BUTTON_L3) ble_buttons |= (1 << 10);  // Button 11: L3
-    if (buttons & JP_BUTTON_R3) ble_buttons |= (1 << 11);  // Button 12: R3
-    if (buttons & JP_BUTTON_A1) ble_buttons |= (1 << 12);  // Button 13: Guide/Home
-    if (buttons & JP_BUTTON_A2) ble_buttons |= (1 << 13);  // Button 14: Misc
+    if (buttons & JP_BUTTON_B1) ble_buttons |= (1 << 0);
+    if (buttons & JP_BUTTON_B2) ble_buttons |= (1 << 1);
+    if (buttons & JP_BUTTON_B3) ble_buttons |= (1 << 2);
+    if (buttons & JP_BUTTON_B4) ble_buttons |= (1 << 3);
+    if (buttons & JP_BUTTON_L1) ble_buttons |= (1 << 4);
+    if (buttons & JP_BUTTON_R1) ble_buttons |= (1 << 5);
+    if (buttons & JP_BUTTON_L2) ble_buttons |= (1 << 6);
+    if (buttons & JP_BUTTON_R2) ble_buttons |= (1 << 7);
+    if (buttons & JP_BUTTON_S1) ble_buttons |= (1 << 8);
+    if (buttons & JP_BUTTON_S2) ble_buttons |= (1 << 9);
+    if (buttons & JP_BUTTON_L3) ble_buttons |= (1 << 10);
+    if (buttons & JP_BUTTON_R3) ble_buttons |= (1 << 11);
+    if (buttons & JP_BUTTON_A1) ble_buttons |= (1 << 12);
+    if (buttons & JP_BUTTON_A2) ble_buttons |= (1 << 13);
 
     return ble_buttons;
 }
@@ -208,7 +349,7 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
         case HCI_EVENT_DISCONNECTION_COMPLETE:
             con_handle = HCI_CON_HANDLE_INVALID;
             ble_connected = false;
-            report_pending = false;
+            pending_type = PENDING_NONE;
             printf("[ble_output] Disconnected, restarting advertising\n");
             gap_advertisements_enable(1);
             break;
@@ -230,14 +371,41 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                     break;
 
                 case HIDS_SUBEVENT_CAN_SEND_NOW:
-                    if (report_pending && con_handle != HCI_CON_HANDLE_INVALID) {
-                        const uint8_t *rpt = (const uint8_t *)&pending_report;
-                        hids_device_send_input_report(con_handle,
-                            rpt, sizeof(pending_report));
-                        last_sent_report = pending_report;
-                        report_pending = false;
+                    if (pending_type != PENDING_NONE && con_handle != HCI_CON_HANDLE_INVALID) {
+                        switch (pending_type) {
+                            case PENDING_GAMEPAD:
+                                hids_device_send_input_report_for_id(con_handle, 3,
+                                    (const uint8_t *)&pending_gamepad, sizeof(pending_gamepad));
+                                last_sent_gamepad = pending_gamepad;
+                                break;
+                            case PENDING_KEYBOARD:
+                                hids_device_send_input_report_for_id(con_handle, 1,
+                                    (const uint8_t *)&pending_keyboard, sizeof(pending_keyboard));
+                                last_sent_keyboard = pending_keyboard;
+                                break;
+                            case PENDING_MOUSE:
+                                hids_device_send_input_report_for_id(con_handle, 2,
+                                    (const uint8_t *)&pending_mouse, sizeof(pending_mouse));
+                                last_sent_mouse = pending_mouse;
+                                break;
+                            default:
+                                break;
+                        }
+                        pending_type = PENDING_NONE;
                     }
                     break;
+
+                case HIDS_SUBEVENT_SET_REPORT: {
+                    uint8_t report_id = hids_subevent_set_report_get_report_id(packet);
+                    uint8_t report_type = hids_subevent_set_report_get_report_type(packet);
+                    (void)report_type;
+                    if (report_id == 1) {
+                        // Keyboard LED output report — ignore for now
+                    } else if (report_id == 4) {
+                        // Player indicator output report — ignore for now
+                    }
+                    break;
+                }
 
                 default:
                     break;
@@ -255,16 +423,19 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
 
 void ble_output_init(void)
 {
-    printf("[ble_output] Initializing BLE Gamepad output (early)\n");
+    printf("[ble_output] Initializing BLE Composite HID output (early)\n");
 
-    // Initialize report to neutral state (no BTstack dependency)
-    memset(&pending_report, 0, sizeof(pending_report));
-    pending_report.hat = BLE_HAT_CENTER;
-    pending_report.lx = 16384;  // 0x4000 = center of 0-32767
-    pending_report.ly = 16384;
-    pending_report.rx = 16384;
-    pending_report.ry = 16384;
-    last_sent_report = pending_report;
+    // Initialize gamepad report to neutral state
+    memset(&pending_gamepad, 0, sizeof(pending_gamepad));
+    pending_gamepad.hat = BLE_HAT_CENTER;
+    pending_gamepad.lx = 16384;  // 0x4000 = center of 0-32767
+    pending_gamepad.ly = 16384;
+    pending_gamepad.rx = 16384;
+    pending_gamepad.ry = 16384;
+    last_sent_gamepad = pending_gamepad;
+
+    memset(&last_sent_keyboard, 0, sizeof(last_sent_keyboard));
+    memset(&last_sent_mouse, 0, sizeof(last_sent_mouse));
 }
 
 // Called after bt_init() — BTstack must be running before GATT/GAP setup
@@ -282,15 +453,18 @@ void ble_output_late_init(void)
     device_information_service_server_set_model_number("USB2BLE");
     device_information_service_server_set_software_revision("1.0.0");
     // PnP ID: Bluetooth SIG (0x01), VID 0xe502, PID 0xbbab, version 1.0.0
-    // Mirrors ESP32-BLE-Gamepad convention for BLE gamepad compatibility
     device_information_service_server_set_pnp_id(0x01, 0xe502, 0xbbab, 0x0100);
 
-    // Setup HID Device service
-    hids_device_init(0, ble_hid_descriptor, sizeof(ble_hid_descriptor));
+    // Setup HID Device service (6 reports need custom storage)
+    hids_device_init_with_storage(0, ble_hid_descriptor, sizeof(ble_hid_descriptor),
+        HID_REPORT_STORAGE_COUNT, hid_report_storage);
 
     // Setup Security Manager: No Input No Output, bonding enabled
     sm_set_io_capabilities(IO_CAPABILITY_NO_INPUT_NO_OUTPUT);
     sm_set_authentication_requirements(SM_AUTHREQ_SECURE_CONNECTION | SM_AUTHREQ_BONDING);
+
+    // Override GAP local name (btstack_host sets "Joypad Adapter" for host mode)
+    gap_set_local_name("Joypad Gamepad");
 
     // Setup advertisements
     uint16_t adv_int_min = 0x0030;  // 30ms
@@ -310,7 +484,7 @@ void ble_output_late_init(void)
 
     hids_device_register_packet_handler(packet_handler);
 
-    printf("[ble_output] BLE Gamepad advertising as 'Joypad Gamepad'\n");
+    printf("[ble_output] BLE Composite HID advertising as 'Joypad Gamepad'\n");
 }
 
 void ble_output_task(void)
@@ -321,28 +495,94 @@ void ble_output_task(void)
     const input_event_t *event = router_get_output(OUTPUT_TARGET_BLE_PERIPHERAL, 0);
     if (!event) return;
 
-    // Build report from input event
-    // Scale 8-bit input (0-255) to 16-bit BLE (0-32767): val * 32767 / 255
-    #define SCALE_8_TO_16(v) ((int16_t)((uint32_t)(v) * 32767 / 255))
-    ble_gamepad_report_t report;
-    uint16_t buttons = convert_buttons(event->buttons);
-    report.buttons_lo = buttons & 0xFF;
-    report.buttons_hi = (buttons >> 8) & 0xFF;
-    report.hat = convert_dpad_to_hat(event->buttons);
-    report.lx = SCALE_8_TO_16(event->analog[ANALOG_LX]);
-    report.ly = SCALE_8_TO_16(event->analog[ANALOG_LY]);
-    report.rx = SCALE_8_TO_16(event->analog[ANALOG_RX]);
-    report.ry = SCALE_8_TO_16(event->analog[ANALOG_RY]);
-    report.lt = SCALE_8_TO_16(event->analog[ANALOG_L2]);
-    report.rt = SCALE_8_TO_16(event->analog[ANALOG_R2]);
+    // Route by input device type
+    switch (event->type) {
+        case INPUT_TYPE_KEYBOARD: {
+            ble_keyboard_report_t report;
+            ble_keyboard_report_from_event(event, &report);
 
-    // Only send if report changed (avoid flooding BLE link)
-    if (memcmp(&report, &last_sent_report, sizeof(report)) == 0) return;
+            if (memcmp(&report, &last_sent_keyboard, sizeof(report)) == 0) return;
 
-    // Queue report and request send slot (flow-controlled)
-    pending_report = report;
-    report_pending = true;
-    hids_device_request_can_send_now_event(con_handle);
+            pending_keyboard = report;
+            pending_type = PENDING_KEYBOARD;
+            hids_device_request_can_send_now_event(con_handle);
+            break;
+        }
+
+        case INPUT_TYPE_MOUSE: {
+            ble_mouse_report_t report;
+            ble_mouse_report_from_event(event, &report);
+
+            // Always send mouse reports (relative motion resets to 0, so "no change" is still meaningful)
+            if (memcmp(&report, &last_sent_mouse, sizeof(report)) == 0) return;
+
+            pending_mouse = report;
+            pending_type = PENDING_MOUSE;
+            hids_device_request_can_send_now_event(con_handle);
+            break;
+        }
+
+        default: {
+            // Gamepad (default for all controller types)
+            #define SCALE_8_TO_16(v) ((int16_t)((uint32_t)(v) * 32767 / 255))
+            ble_gamepad_report_t report;
+            uint16_t buttons = convert_buttons(event->buttons);
+            report.buttons_lo = buttons & 0xFF;
+            report.buttons_hi = (buttons >> 8) & 0xFF;
+            report.hat = convert_dpad_to_hat(event->buttons);
+            report.lx = SCALE_8_TO_16(event->analog[ANALOG_LX]);
+            report.ly = SCALE_8_TO_16(event->analog[ANALOG_LY]);
+            report.rx = SCALE_8_TO_16(event->analog[ANALOG_RX]);
+            report.ry = SCALE_8_TO_16(event->analog[ANALOG_RY]);
+            report.lt = SCALE_8_TO_16(event->analog[ANALOG_L2]);
+            report.rt = SCALE_8_TO_16(event->analog[ANALOG_R2]);
+
+            if (memcmp(&report, &last_sent_gamepad, sizeof(report)) == 0) return;
+
+            pending_gamepad = report;
+            pending_type = PENDING_GAMEPAD;
+            hids_device_request_can_send_now_event(con_handle);
+            break;
+        }
+    }
+}
+
+// ============================================================================
+// MODE SELECTION
+// ============================================================================
+
+ble_output_mode_t ble_output_get_mode(void)
+{
+    return current_mode;
+}
+
+void ble_output_set_mode(ble_output_mode_t mode)
+{
+    if (mode >= BLE_MODE_COUNT) return;
+    current_mode = mode;
+}
+
+ble_output_mode_t ble_output_get_next_mode(void)
+{
+    return (ble_output_mode_t)((current_mode + 1) % BLE_MODE_COUNT);
+}
+
+const char* ble_output_get_mode_name(ble_output_mode_t mode)
+{
+    switch (mode) {
+        case BLE_MODE_STANDARD: return "Standard (Composite)";
+        case BLE_MODE_XBOX:     return "Xbox BLE";
+        default:                return "Unknown";
+    }
+}
+
+void ble_output_get_mode_color(ble_output_mode_t mode, uint8_t *r, uint8_t *g, uint8_t *b)
+{
+    switch (mode) {
+        case BLE_MODE_STANDARD: *r = 0; *g = 0; *b = 64; break;   // Blue
+        case BLE_MODE_XBOX:     *r = 0; *g = 64; *b = 0; break;   // Green
+        default:                *r = 64; *g = 64; *b = 64; break;  // White
+    }
 }
 
 // ============================================================================
@@ -350,7 +590,7 @@ void ble_output_task(void)
 // ============================================================================
 
 const OutputInterface ble_output_interface = {
-    .name = "BLE Gamepad",
+    .name = "BLE Composite HID",
     .target = OUTPUT_TARGET_BLE_PERIPHERAL,
     .init = ble_output_init,
     .task = ble_output_task,
