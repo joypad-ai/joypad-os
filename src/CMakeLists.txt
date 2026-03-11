@@ -264,6 +264,11 @@ set(GC_HOST_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/lib/joybus-pio/src/GamecubeController.c
 )
 
+# Nuon host sources (polyface master, software bit-bang)
+set(NUON_HOST_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/host/nuon/nuon_host.c
+)
+
 # I2C peer input sharing sources (STEMMA QT)
 set(I2C_PEER_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/i2c_peer/i2c_peer.c
@@ -463,6 +468,7 @@ add_executable(joypad_nuonserial)
 target_compile_definitions(joypad_nuonserial PRIVATE
     CONFIG_NUONSERIAL=1
     CONFIG_NO_NEOPIXEL=1
+    CONFIG_NO_FLASH_LOCKOUT=1
     DISABLE_USB_HOST=1
 )
 target_sources(joypad_nuonserial PUBLIC ${CORE_SOURCES}
@@ -1558,6 +1564,21 @@ target_include_directories(joypad_n642usb PUBLIC
 target_link_libraries(joypad_n642usb PRIVATE pico_stdlib pico_multicore hardware_pio pico_rand tinyusb_device tinyusb_board)
 joypad_target_common(joypad_n642usb)
 pico_generate_pio_header(joypad_n642usb ${CMAKE_CURRENT_LIST_DIR}/lib/joybus-pio/src/joybus.pio)
+
+# --- NUON2USB (Nuon -> USB HID) ---
+add_executable(joypad_nuon2usb)
+target_compile_definitions(joypad_nuon2usb PRIVATE CONFIG_NUON2USB=1 CONFIG_USB=1 DISABLE_USB_HOST=1 NUON_PIN_DATA=2)
+target_sources(joypad_nuon2usb PUBLIC ${CORE_SOURCES} ${USB_DEVICE_SOURCES}
+    ${NUON_HOST_SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/nuon2usb/app.c
+)
+target_include_directories(joypad_nuon2usb PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/nuon2usb
+    ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/host/nuon
+)
+target_link_libraries(joypad_nuon2usb PRIVATE pico_stdlib pico_multicore hardware_pio pico_rand tinyusb_device tinyusb_board)
+joypad_target_common(joypad_nuon2usb)
 
 # --- GC2USB (GameCube -> USB HID) ---
 add_executable(joypad_gc2usb)
