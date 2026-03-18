@@ -131,6 +131,11 @@ static void on_button_event(button_event_t event)
             break;
         }
 
+        case BUTTON_EVENT_TRIPLE_CLICK:
+            printf("[app:controller] Button triple-click - resetting to default HID mode\n");
+            usbd_reset_to_hid();
+            break;
+
         default:
             break;
     }
