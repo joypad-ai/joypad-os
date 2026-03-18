@@ -1580,6 +1580,8 @@ target_include_directories(joypad_nuon2usb PUBLIC
 )
 target_link_libraries(joypad_nuon2usb PRIVATE pico_stdlib pico_multicore hardware_pio pico_rand tinyusb_device tinyusb_board)
 joypad_target_common(joypad_nuon2usb)
+pico_enable_stdio_usb(joypad_nuon2usb 0)
+pico_enable_stdio_uart(joypad_nuon2usb 1)
 pico_generate_pio_header(joypad_nuon2usb ${CMAKE_CURRENT_LIST_DIR}/native/device/nuon/polyface_read.pio)
 pico_generate_pio_header(joypad_nuon2usb ${CMAKE_CURRENT_LIST_DIR}/native/device/nuon/polyface_send.pio)
 

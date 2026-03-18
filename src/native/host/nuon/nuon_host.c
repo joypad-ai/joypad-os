@@ -42,6 +42,9 @@ volatile uint8_t nuon_analog_y1 = 128;
 volatile uint8_t nuon_analog_x2 = 128;
 volatile uint8_t nuon_analog_y2 = 128;
 volatile uint32_t nuon_poll_count = 0;
+volatile uint32_t nuon_diag_alive = 0;
+volatile uint32_t nuon_diag_fifo = 0;
+volatile uint32_t nuon_diag_cmd = 0;  // Last command sent
 
 // ============================================================================
 // INTERNAL STATE
@@ -50,6 +53,7 @@ volatile uint32_t nuon_poll_count = 0;
 static bool initialized = false;
 static PIO pio_read;
 static uint sm_read;
+static uint pio_read_offset;  // Store program offset for SM reset
 static int crc_lut[256];  // CRC lookup table
 
 // ============================================================================
@@ -172,9 +176,14 @@ static void __no_inline_not_in_flash_func(clock_cycles)(int n)
 
 // Send a 33-bit packet: start bit (1) + 32 data bits
 // We drive data on falling edge of clock, controller samples on rising edge
+// IMPORTANT: Disable PIO read SM during send to prevent capturing our own bits
 static void __no_inline_not_in_flash_func(send_command)(uint32_t word)
 {
-    // Set data pin as output
+    // Disable PIO read SM to prevent it from capturing our command
+    pio_sm_set_enabled(pio_read, sm_read, false);
+
+    // Switch data pin to SIO function for bit-bang output
+    gpio_set_function(NUON_PIN_DATA, GPIO_FUNC_SIO);
     gpio_set_dir(NUON_PIN_DATA, GPIO_OUT);
 
     // Send start bit = 1
@@ -187,9 +196,18 @@ static void __no_inline_not_in_flash_func(send_command)(uint32_t word)
         clock_cycle();
     }
 
-    // Release data line (set as input for response)
+    // Release data line — switch back to PIO function for reading
     gpio_put(NUON_PIN_DATA, 0);  // Drive low briefly
     gpio_set_dir(NUON_PIN_DATA, GPIO_IN);
+    // Restore PIO function so PIO read SM can capture response
+    pio_gpio_init(pio_read, NUON_PIN_DATA);
+
+    // Flush any stale PIO FIFO data and re-enable read SM
+    // IMPORTANT: jump to program start so SM begins fresh looking for start bit
+    pio_sm_clear_fifos(pio_read, sm_read);
+    pio_sm_restart(pio_read, sm_read);
+    pio_sm_exec(pio_read, sm_read, pio_encode_jmp(pio_read_offset));
+    pio_sm_set_enabled(pio_read, sm_read, true);
 }
 
 // ============================================================================
@@ -209,47 +227,33 @@ static void __no_inline_not_in_flash_func(flush_pio_fifo)(void)
 // Returns true if response received within timeout
 static bool __no_inline_not_in_flash_func(read_response)(uint32_t* word1_out)
 {
-    // Flush any stale data
-    flush_pio_fifo();
+    // send_command() already re-enabled PIO read SM with clean FIFOs.
+    // Now generate turnaround clock cycles (controller prepares response)
+    clock_cycles(40);
 
-    // Turnaround: generate 35 clock cycles for controller to prepare response
-    clock_cycles(35);
-
-    // Generate clock for response bits (33 bits = start + 32 data)
-    // Plus some extra for safety
-    for (int i = 0; i < 40; i++) {
-        clock_cycle();
-
-        // Check if PIO has data
-        if (!pio_sm_is_rx_fifo_empty(pio_read, sm_read)) {
-            break;
-        }
-    }
-
-    // Try to read two 32-bit words from PIO (polyface_read outputs two words per packet)
-    // First word is upper bits, second is lower bits of 64-bit capture
-    // But we only need 32 bits of response data
-
-    // Wait a bit more with clocking
-    for (int i = 0; i < 50; i++) {
+    // Generate clock for response capture (33 bits = start + 32 data, need ~130 clocks for 2 words)
+    for (int i = 0; i < 150; i++) {
         clock_cycle();
     }
 
-    // Check FIFO level - we need at least 2 words
-    if (pio_sm_get_rx_fifo_level(pio_read, sm_read) >= 2) {
+    // The polyface_read PIO program outputs TWO 32-bit words per packet
+    // (autopush at 32 bits, packet is 1 start + 3*11 = 34 bits captured as 64)
+    uint8_t fifo_level = pio_sm_get_rx_fifo_level(pio_read, sm_read);
+
+    if (fifo_level >= 2) {
         uint32_t word0 = pio_sm_get(pio_read, sm_read);
         uint32_t word1 = pio_sm_get(pio_read, sm_read);
-        // The response is in word1 (second 32 bits), bit-reversed
-        *word1_out = __builtin_bswap32(word1);
-        *word1_out = bit_reverse_32(*word1_out);
+        // The PIO captures bits MSB-first into ISR with left shift
+        // word0 has the first 32 captured bits, word1 has the next 32
+        // The actual response data is in word1 (the 33-bit packet minus the start bit
+        // aligns such that data bits end up in word1)
+        *word1_out = word1;
         return true;
     }
 
-    // Single word available - try that
-    if (!pio_sm_is_rx_fifo_empty(pio_read, sm_read)) {
+    if (fifo_level == 1) {
         uint32_t word = pio_sm_get(pio_read, sm_read);
-        *word1_out = __builtin_bswap32(word);
-        *word1_out = bit_reverse_32(*word1_out);
+        *word1_out = word;
         return true;
     }
 
@@ -316,11 +320,18 @@ void __not_in_flash_func(nuon_host_core1_task)(void)
     // Response storage
     uint32_t response;
 
+    // Diagnostic counters (shared with Core 0 via volatiles)
+    volatile uint32_t* diag_alive_raw = &nuon_diag_alive;
+    volatile uint32_t* diag_fifo_lvl = &nuon_diag_fifo;
+
+    // Run some initial clock cycles to let controller wake up
+    clock_cycles(5000);
+
     while (1) {
         loop_count++;
 
         // Keep clock running continuously (controller needs this)
-        clock_cycles(100);
+        clock_cycles(200);
 
         // ================================================================
         // ENUMERATION SEQUENCE
@@ -329,14 +340,53 @@ void __not_in_flash_func(nuon_host_core1_task)(void)
         if (!alive) {
             // Send RESET
             send_command(build_command(PF_TYPE_WRITE, PF_CMD_RESET, 0x00, 0x00));
-            clock_cycles(50);
+            clock_cycles(100);
 
-            // Send ALIVE
-            send_command(build_command(PF_TYPE_READ, PF_CMD_ALIVE, 0x04, 0x40));
-            if (read_response(&response)) {
-                // Controller responds with 0b01 on first ALIVE
+            // Send ALIVE and capture raw response for debug
+            uint32_t alive_cmd = build_command(PF_TYPE_READ, PF_CMD_ALIVE, 0x04, 0x40);
+            nuon_diag_cmd = alive_cmd;
+            send_command(alive_cmd);
+
+            // After send_command, PIO read SM is freshly enabled.
+            // Generate turnaround clocks
+            clock_cycles(40);
+
+            // Now generate clocks for response capture
+            for (int i = 0; i < 150; i++) {
+                clock_cycle();
+            }
+
+            // Try software sampling first to verify controller is responding at ALL
+            // Sample data pin on each clock rising edge for 100 cycles
+            uint32_t sw_bits = 0;
+            uint8_t ones_count = 0;
+            for (int i = 0; i < 100; i++) {
+                gpio_put(NUON_PIN_CLK, 1);
+                busy_wait_us_32(1);
+                bool d = gpio_get(NUON_PIN_DATA);
+                if (d) ones_count++;
+                if (i < 32) sw_bits = (sw_bits << 1) | (d ? 1 : 0);
+                gpio_put(NUON_PIN_CLK, 0);
+                busy_wait_us_32(1);
+            }
+
+            // Also check PIO FIFO
+            uint8_t fifo_lvl = pio_sm_get_rx_fifo_level(pio_read, sm_read);
+            *diag_fifo_lvl = (fifo_lvl << 8) | ones_count;  // Pack both diagnostics
+
+            if (ones_count > 0) {
+                // Controller IS sending data!
+                *diag_alive_raw = sw_bits;
+                // If PIO also captured, use that
+                if (fifo_lvl >= 2) {
+                    uint32_t w0 = pio_sm_get(pio_read, sm_read);
+                    uint32_t w1 = pio_sm_get(pio_read, sm_read);
+                    *diag_alive_raw = w1;
+                }
                 alive = true;
                 nuon_controller_connected = true;
+            } else {
+                *diag_alive_raw = 0xDEAD0000 | fifo_lvl;
             }
             continue;
         }
@@ -481,10 +531,13 @@ void nuon_host_init(void)
     printf("[nuon_host]   DATA=GPIO%d, CLK=GPIO%d\n", NUON_PIN_DATA, NUON_PIN_CLK);
 
     // Initialize GPIO pins
-    // Data pin: bidirectional, start as input with pull-down (bus idles low)
+    // Data pin: bidirectional, start as input
+    // NO pull-down — the controller needs to drive this line HIGH for responses.
+    // The bus idles LOW naturally (controller holds it low when connected).
+    // A pull-down from our side would fight the controller's output.
     gpio_init(NUON_PIN_DATA);
     gpio_set_dir(NUON_PIN_DATA, GPIO_IN);
-    gpio_pull_down(NUON_PIN_DATA);
+    gpio_disable_pulls(NUON_PIN_DATA);
     gpio_set_input_hysteresis_enabled(NUON_PIN_DATA, true);
 
     // Clock pin: output, we generate the clock
@@ -493,12 +546,29 @@ void nuon_host_init(void)
     gpio_put(NUON_PIN_CLK, 0);  // Start low
 
     // Initialize PIO for reading responses
+    // NOTE: polyface_read_program_init calls pio_gpio_init on BOTH pin (data)
+    // and pin+1 (clock), setting them to PIO function. We need to reclaim
+    // GPIO3 (clock) for SIO output afterwards, since WE drive the clock.
+    // GPIO2 (data) stays PIO-muxed — that's fine because:
+    //   - PIO 'in pins' reads from GPIO input register (works regardless of mux)
+    //   - For sending, we'll switch GPIO2 to SIO temporarily
     pio_read = pio0;
-    uint offset = pio_add_program(pio_read, &polyface_read_program);
+    pio_read_offset = pio_add_program(pio_read, &polyface_read_program);
     sm_read = pio_claim_unused_sm(pio_read, true);
-    polyface_read_program_init(pio_read, sm_read, offset, NUON_PIN_DATA);
+    polyface_read_program_init(pio_read, sm_read, pio_read_offset, NUON_PIN_DATA);
 
-    printf("[nuon_host]   PIO read SM%d at offset %d\n", sm_read, offset);
+    // Reclaim clock pin for SIO output (PIO init stole it via pio_gpio_init)
+    // Use gpio_init which does a full reset: SIO function + clear output + input direction
+    gpio_init(NUON_PIN_CLK);
+    gpio_set_dir(NUON_PIN_CLK, GPIO_OUT);
+    gpio_put(NUON_PIN_CLK, 0);
+    // Verify: toggle clock once to confirm it works
+    gpio_put(NUON_PIN_CLK, 1);
+    busy_wait_us_32(10);
+    gpio_put(NUON_PIN_CLK, 0);
+    printf("[nuon_host]   CLK test: GPIO%d toggled, state=%d\n", NUON_PIN_CLK, gpio_get(NUON_PIN_CLK));
+
+    printf("[nuon_host]   PIO read SM%d at offset %d\n", sm_read, pio_read_offset);
 
     // Build CRC lookup table
     crc_build_lut();
@@ -516,10 +586,16 @@ void nuon_host_task(void)
     uint32_t now = to_ms_since_boot(get_absolute_time());
     if (now - last_poll >= 2000) {
         last_poll = now;
-        printf("[nuon_host] polls=%lu btn=0x%04X conn=%d\n",
+        // Read GPIO states for diagnostic
+        bool clk_state = gpio_get(NUON_PIN_CLK);
+        bool dat_state = gpio_get(NUON_PIN_DATA);
+        printf("[nuon_host] polls=%lu conn=%d alive=0x%08lX fifo=%lu clk=%d dat=%d cmd=0x%08lX\n",
                (unsigned long)nuon_poll_count,
-               nuon_buttons,
-               nuon_controller_connected ? 1 : 0);
+               nuon_controller_connected ? 1 : 0,
+               (unsigned long)nuon_diag_alive,
+               (unsigned long)nuon_diag_fifo,
+               clk_state, dat_state,
+               (unsigned long)nuon_diag_cmd);
     }
 
     // Only submit if connected

@@ -14,6 +14,9 @@
 #include "usb/usbd/usbd.h"
 #include "native/host/nuon/nuon_host.h"
 #include "core/services/leds/leds.h"
+#include "pico/bootrom.h"
+#include "pico/stdlib.h"
+#include "pico/multicore.h"
 #include <stdio.h>
 
 // ============================================================================
@@ -87,6 +90,16 @@ void app_init(void)
     printf("[app:nuon2usb]   Routing: Nuon -> USB HID Gamepad\n");
     printf("[app:nuon2usb]   Nuon data pin: GPIO%d\n", NUON_DATA_PIN);
     printf("[app:nuon2usb]   Profiles: %d (Select+DPad to cycle)\n", nuon2usb_profile_set.profile_count);
+
+    // Launch Nuon host protocol handler on Core 1.
+    // main.c only checks output interfaces for core1_task, but our
+    // timing-critical protocol handler is on the INPUT side.
+    // Reset Core 1 (which is idling in __wfi) and relaunch with our task.
+    printf("[app:nuon2usb] Launching Nuon host on Core 1...\n");
+    multicore_reset_core1();
+    sleep_ms(10);
+    multicore_launch_core1(nuon_host_core1_task);
+    printf("[app:nuon2usb] Core 1 launched\n");
 }
 
 // ============================================================================
@@ -95,6 +108,12 @@ void app_init(void)
 
 void app_task(void)
 {
+    // Check for bootloader command on UART ('B' = reboot to bootloader)
+    int c = getchar_timeout_us(0);
+    if (c == 'B') {
+        reset_usb_boot(0, 0);
+    }
+
     // Update LED color when USB output mode changes
     static usb_output_mode_t last_led_mode = USB_OUTPUT_MODE_COUNT;
     usb_output_mode_t mode = usbd_get_mode();
