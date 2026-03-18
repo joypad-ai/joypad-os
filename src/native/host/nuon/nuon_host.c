@@ -1,0 +1,571 @@
+// nuon_host.c - Native Nuon Controller Host Driver
+//
+// Reads native Nuon controllers (Polyface peripherals) via software bit-bang
+// clock generation + command sending, and PIO for response capture.
+//
+// Architecture:
+// - Core 1: Continuous clock on GPIO3, sends commands, reads responses via PIO
+// - Core 0: Reads shared volatile state, submits to router
+
+#include "nuon_host.h"
+#include "core/router/router.h"
+#include "core/input_event.h"
+#include "core/buttons.h"
+#include "pico/stdlib.h"
+#include "pico/multicore.h"
+#include "hardware/pio.h"
+#include "hardware/gpio.h"
+#include "polyface_read.pio.h"
+#include <stdio.h>
+
+// ============================================================================
+// ARM INTRINSIC HELPERS
+// ============================================================================
+
+// Bit-reverse a 32-bit word (equivalent to ARM __rev instruction)
+static inline uint32_t bit_reverse_32(uint32_t x) {
+    x = ((x & 0x55555555) << 1) | ((x >> 1) & 0x55555555);
+    x = ((x & 0x33333333) << 2) | ((x >> 2) & 0x33333333);
+    x = ((x & 0x0F0F0F0F) << 4) | ((x >> 4) & 0x0F0F0F0F);
+    x = (x << 24) | ((x & 0xFF00) << 8) | ((x >> 8) & 0xFF00) | (x >> 24);
+    return x;
+}
+
+// ============================================================================
+// SHARED STATE (Core 1 -> Core 0)
+// ============================================================================
+
+volatile bool nuon_controller_connected = false;
+volatile uint16_t nuon_buttons = 0;
+volatile uint8_t nuon_analog_x1 = 128;
+volatile uint8_t nuon_analog_y1 = 128;
+volatile uint8_t nuon_analog_x2 = 128;
+volatile uint8_t nuon_analog_y2 = 128;
+volatile uint32_t nuon_poll_count = 0;
+
+// ============================================================================
+// INTERNAL STATE
+// ============================================================================
+
+static bool initialized = false;
+static PIO pio_read;
+static uint sm_read;
+static int crc_lut[256];  // CRC lookup table
+
+// ============================================================================
+// CRC FUNCTIONS (from nuon_device.c)
+// ============================================================================
+
+static int crc_build_lut(void)
+{
+    int i, j, k;
+    for (i = 0; i < 256; i++) {
+        for (j = i << 8, k = 0; k < 8; k++) {
+            j = (j & 0x8000) ? (j << 1) ^ PF_CRC16 : (j << 1);
+            crc_lut[i] = j;
+        }
+    }
+    return 0;
+}
+
+static int __no_inline_not_in_flash_func(crc_calc)(unsigned char data, int crc)
+{
+    if (crc_lut[1] == 0) crc_build_lut();
+    return ((crc_lut[((crc >> 8) ^ data) & 0xff]) ^ (crc << 8)) & 0xffff;
+}
+
+// Verify CRC for a 1-byte response: [data][crc_hi][crc_lo][0x00]
+static bool __no_inline_not_in_flash_func(verify_crc_1byte)(uint32_t response, uint8_t* data_out)
+{
+    uint8_t data = (response >> 24) & 0xFF;
+    uint8_t crc_hi = (response >> 16) & 0xFF;
+    uint8_t crc_lo = (response >> 8) & 0xFF;
+
+    // Calculate expected CRC
+    uint16_t calc_crc = crc_calc(data, 0);
+    uint16_t recv_crc = (crc_hi << 8) | crc_lo;
+
+    if (calc_crc == recv_crc) {
+        *data_out = data;
+        return true;
+    }
+    return false;
+}
+
+// Verify CRC for a 2-byte response: [data_hi][data_lo][crc_hi][crc_lo]
+static bool __no_inline_not_in_flash_func(verify_crc_2byte)(uint32_t response, uint16_t* data_out)
+{
+    uint8_t data_hi = (response >> 24) & 0xFF;
+    uint8_t data_lo = (response >> 16) & 0xFF;
+    uint8_t crc_hi = (response >> 8) & 0xFF;
+    uint8_t crc_lo = response & 0xFF;
+
+    // Calculate expected CRC
+    uint16_t calc_crc = crc_calc(data_hi, 0);
+    calc_crc = crc_calc(data_lo, calc_crc);
+    uint16_t recv_crc = (crc_hi << 8) | crc_lo;
+
+    if (calc_crc == recv_crc) {
+        *data_out = (data_hi << 8) | data_lo;
+        return true;
+    }
+    return false;
+}
+
+// ============================================================================
+// EVEN PARITY
+// ============================================================================
+
+static uint8_t __no_inline_not_in_flash_func(eparity)(uint32_t data)
+{
+    uint32_t p;
+    p = (data >> 16) ^ data;
+    p ^= (p >> 8);
+    p ^= (p >> 4);
+    p ^= (p >> 2);
+    p ^= (p >> 1);
+    return (p & 0x1);
+}
+
+// ============================================================================
+// POLYFACE COMMAND BUILDING
+// ============================================================================
+
+// Build a 32-bit Polyface command word
+// type0: 1=READ, 0=WRITE
+// dataA: address/command (8 bits at 24:17)
+// dataS: size field (7 bits at 15:9)
+// dataC: control/data field (7 bits at 7:1)
+// bit 0: even parity
+static uint32_t __no_inline_not_in_flash_func(build_command)(uint8_t type0, uint8_t dataA, uint8_t dataS, uint8_t dataC)
+{
+    uint32_t word = 0;
+    word |= ((type0 & 0x01) << 25);     // bit 25: READ/WRITE
+    word |= ((dataA & 0xFF) << 17);     // bits 24:17: address
+    word |= ((dataS & 0x7F) << 9);      // bits 15:9: size
+    word |= ((dataC & 0x7F) << 1);      // bits 7:1: control
+    word |= eparity(word);              // bit 0: even parity
+    return word;
+}
+
+// ============================================================================
+// SOFTWARE BIT-BANG CLOCK + COMMAND SENDING
+// ============================================================================
+
+// Generate a single clock cycle (toggle GPIO3)
+// Clock period ~2us (500kHz) using busy_wait_us_32(1) per half-cycle
+static void __no_inline_not_in_flash_func(clock_cycle)(void)
+{
+    gpio_put(NUON_PIN_CLK, 1);
+    busy_wait_us_32(1);
+    gpio_put(NUON_PIN_CLK, 0);
+    busy_wait_us_32(1);
+}
+
+// Generate N clock cycles (for keeping controller alive)
+static void __no_inline_not_in_flash_func(clock_cycles)(int n)
+{
+    for (int i = 0; i < n; i++) {
+        clock_cycle();
+    }
+}
+
+// Send a 33-bit packet: start bit (1) + 32 data bits
+// We drive data on falling edge of clock, controller samples on rising edge
+static void __no_inline_not_in_flash_func(send_command)(uint32_t word)
+{
+    // Set data pin as output
+    gpio_set_dir(NUON_PIN_DATA, GPIO_OUT);
+
+    // Send start bit = 1
+    gpio_put(NUON_PIN_DATA, 1);
+    clock_cycle();
+
+    // Send 32 data bits MSB first
+    for (int i = 31; i >= 0; i--) {
+        gpio_put(NUON_PIN_DATA, (word >> i) & 1);
+        clock_cycle();
+    }
+
+    // Release data line (set as input for response)
+    gpio_put(NUON_PIN_DATA, 0);  // Drive low briefly
+    gpio_set_dir(NUON_PIN_DATA, GPIO_IN);
+}
+
+// ============================================================================
+// PIO RESPONSE READING
+// ============================================================================
+
+// Flush the PIO read FIFO (discard stale data)
+static void __no_inline_not_in_flash_func(flush_pio_fifo)(void)
+{
+    while (!pio_sm_is_rx_fifo_empty(pio_read, sm_read)) {
+        (void)pio_sm_get(pio_read, sm_read);
+    }
+}
+
+// Wait for turnaround gap (controller needs 30+ clock edges before responding)
+// and then read response from PIO
+// Returns true if response received within timeout
+static bool __no_inline_not_in_flash_func(read_response)(uint32_t* word1_out)
+{
+    // Flush any stale data
+    flush_pio_fifo();
+
+    // Turnaround: generate 35 clock cycles for controller to prepare response
+    clock_cycles(35);
+
+    // Generate clock for response bits (33 bits = start + 32 data)
+    // Plus some extra for safety
+    for (int i = 0; i < 40; i++) {
+        clock_cycle();
+
+        // Check if PIO has data
+        if (!pio_sm_is_rx_fifo_empty(pio_read, sm_read)) {
+            break;
+        }
+    }
+
+    // Try to read two 32-bit words from PIO (polyface_read outputs two words per packet)
+    // First word is upper bits, second is lower bits of 64-bit capture
+    // But we only need 32 bits of response data
+
+    // Wait a bit more with clocking
+    for (int i = 0; i < 50; i++) {
+        clock_cycle();
+    }
+
+    // Check FIFO level - we need at least 2 words
+    if (pio_sm_get_rx_fifo_level(pio_read, sm_read) >= 2) {
+        uint32_t word0 = pio_sm_get(pio_read, sm_read);
+        uint32_t word1 = pio_sm_get(pio_read, sm_read);
+        // The response is in word1 (second 32 bits), bit-reversed
+        *word1_out = __builtin_bswap32(word1);
+        *word1_out = bit_reverse_32(*word1_out);
+        return true;
+    }
+
+    // Single word available - try that
+    if (!pio_sm_is_rx_fifo_empty(pio_read, sm_read)) {
+        uint32_t word = pio_sm_get(pio_read, sm_read);
+        *word1_out = __builtin_bswap32(word);
+        *word1_out = bit_reverse_32(*word1_out);
+        return true;
+    }
+
+    return false;
+}
+
+// ============================================================================
+// BUTTON MAPPING: NUON -> JP
+// ============================================================================
+
+static uint32_t __no_inline_not_in_flash_func(map_nuon_to_jp)(uint16_t nuon)
+{
+    uint32_t buttons = 0;
+
+    // Face buttons
+    if (nuon & NUON_BTN_A)       buttons |= JP_BUTTON_B1;  // Nuon A -> Cross/A
+    if (nuon & NUON_BTN_B)       buttons |= JP_BUTTON_B3;  // Nuon B -> Square/X
+    if (nuon & NUON_BTN_C_DOWN)  buttons |= JP_BUTTON_B2;  // Nuon C-Down -> Circle/B
+    if (nuon & NUON_BTN_C_LEFT)  buttons |= JP_BUTTON_B4;  // Nuon C-Left -> Triangle/Y
+    if (nuon & NUON_BTN_C_UP)    buttons |= JP_BUTTON_L2;  // Nuon C-Up -> L2
+    if (nuon & NUON_BTN_C_RIGHT) buttons |= JP_BUTTON_R2;  // Nuon C-Right -> R2
+
+    // Shoulders
+    if (nuon & NUON_BTN_L)       buttons |= JP_BUTTON_L1;
+    if (nuon & NUON_BTN_R)       buttons |= JP_BUTTON_R1;
+
+    // System buttons
+    if (nuon & NUON_BTN_START)   buttons |= JP_BUTTON_S2;  // Start
+    if (nuon & NUON_BTN_NUON)    buttons |= JP_BUTTON_S1;  // Nuon/Z -> Select
+
+    // D-pad
+    if (nuon & NUON_BTN_UP)      buttons |= JP_BUTTON_DU;
+    if (nuon & NUON_BTN_DOWN)    buttons |= JP_BUTTON_DD;
+    if (nuon & NUON_BTN_LEFT)    buttons |= JP_BUTTON_DL;
+    if (nuon & NUON_BTN_RIGHT)   buttons |= JP_BUTTON_DR;
+
+    return buttons;
+}
+
+// ============================================================================
+// CORE 1 PROTOCOL HANDLER
+// ============================================================================
+
+void __not_in_flash_func(nuon_host_core1_task)(void)
+{
+    // Give Core 1 high bus priority
+    *(volatile uint32_t *)0x40030000 = (1u << 4);
+
+    // Build CRC lookup table
+    crc_build_lut();
+
+    // Enumeration state
+    bool alive = false;
+    bool magic_ok = false;
+    bool branded = false;
+    bool enabled = false;
+    uint8_t device_id = 1;
+
+    // Polling state
+    uint8_t current_channel = 0;
+    uint32_t loop_count = 0;
+    uint32_t success_count = 0;
+
+    // Response storage
+    uint32_t response;
+
+    while (1) {
+        loop_count++;
+
+        // Keep clock running continuously (controller needs this)
+        clock_cycles(100);
+
+        // ================================================================
+        // ENUMERATION SEQUENCE
+        // ================================================================
+
+        if (!alive) {
+            // Send RESET
+            send_command(build_command(PF_TYPE_WRITE, PF_CMD_RESET, 0x00, 0x00));
+            clock_cycles(50);
+
+            // Send ALIVE
+            send_command(build_command(PF_TYPE_READ, PF_CMD_ALIVE, 0x04, 0x40));
+            if (read_response(&response)) {
+                // Controller responds with 0b01 on first ALIVE
+                alive = true;
+                nuon_controller_connected = true;
+            }
+            continue;
+        }
+
+        if (!magic_ok) {
+            // Send MAGIC request
+            send_command(build_command(PF_TYPE_READ, PF_CMD_MAGIC, 0x04, 0x00));
+            if (read_response(&response)) {
+                // Should return "JUDE" = 0x4A554445
+                // Accept any response for now, we'll verify buttons work
+                magic_ok = true;
+            }
+            continue;
+        }
+
+        if (!branded) {
+            // Send PROBE to get device info
+            send_command(build_command(PF_TYPE_READ, PF_CMD_PROBE, 0x04, 0x00));
+            if (read_response(&response)) {
+                // Response contains device info, we don't need to parse it
+            }
+            clock_cycles(50);
+
+            // Send BRAND to assign ID
+            send_command(build_command(PF_TYPE_WRITE, PF_CMD_BRAND, 0x00, device_id));
+            clock_cycles(50);
+            branded = true;
+            continue;
+        }
+
+        if (!enabled) {
+            // Send STATE write with ENABLE + ROOT
+            send_command(build_command(PF_TYPE_WRITE, PF_CMD_STATE, 0x01, PF_STATE_ENABLE | PF_STATE_ROOT));
+            clock_cycles(50);
+            enabled = true;
+            continue;
+        }
+
+        // ================================================================
+        // POLLING LOOP
+        // ================================================================
+
+        // Select analog channel and read
+        switch (current_channel) {
+            case 0:
+                // Read X1
+                send_command(build_command(PF_TYPE_WRITE, PF_CMD_CHANNEL, 0x01, PF_CHANNEL_X1));
+                clock_cycles(30);
+                send_command(build_command(PF_TYPE_READ, PF_CMD_ANALOG, 0x01, 0x00));
+                if (read_response(&response)) {
+                    uint8_t data;
+                    if (verify_crc_1byte(response, &data)) {
+                        nuon_analog_x1 = data;
+                    }
+                }
+                current_channel = 1;
+                break;
+
+            case 1:
+                // Read Y1
+                send_command(build_command(PF_TYPE_WRITE, PF_CMD_CHANNEL, 0x01, PF_CHANNEL_Y1));
+                clock_cycles(30);
+                send_command(build_command(PF_TYPE_READ, PF_CMD_ANALOG, 0x01, 0x00));
+                if (read_response(&response)) {
+                    uint8_t data;
+                    if (verify_crc_1byte(response, &data)) {
+                        nuon_analog_y1 = data;
+                    }
+                }
+                current_channel = 2;
+                break;
+
+            case 2:
+                // Read X2
+                send_command(build_command(PF_TYPE_WRITE, PF_CMD_CHANNEL, 0x01, PF_CHANNEL_X2));
+                clock_cycles(30);
+                send_command(build_command(PF_TYPE_READ, PF_CMD_ANALOG, 0x01, 0x00));
+                if (read_response(&response)) {
+                    uint8_t data;
+                    if (verify_crc_1byte(response, &data)) {
+                        nuon_analog_x2 = data;
+                    }
+                }
+                current_channel = 3;
+                break;
+
+            case 3:
+                // Read Y2
+                send_command(build_command(PF_TYPE_WRITE, PF_CMD_CHANNEL, 0x01, PF_CHANNEL_Y2));
+                clock_cycles(30);
+                send_command(build_command(PF_TYPE_READ, PF_CMD_ANALOG, 0x01, 0x00));
+                if (read_response(&response)) {
+                    uint8_t data;
+                    if (verify_crc_1byte(response, &data)) {
+                        nuon_analog_y2 = data;
+                    }
+                }
+                current_channel = 4;
+                break;
+
+            case 4:
+                // Read SWITCH (buttons) - 2 byte response
+                send_command(build_command(PF_TYPE_READ, PF_CMD_SWITCH, 0x02, 0x00));
+                if (read_response(&response)) {
+                    uint16_t data;
+                    if (verify_crc_2byte(response, &data)) {
+                        nuon_buttons = data;
+                        success_count++;
+                    }
+                }
+                current_channel = 0;  // Restart cycle
+                nuon_poll_count++;
+                break;
+        }
+
+        // Check for connection loss (no successful reads in a while)
+        if (loop_count > 1000 && success_count == 0) {
+            // Reset enumeration
+            alive = false;
+            magic_ok = false;
+            branded = false;
+            enabled = false;
+            nuon_controller_connected = false;
+            loop_count = 0;
+        }
+        if (loop_count > 1000) {
+            loop_count = 1;
+            success_count = 0;
+        }
+    }
+}
+
+// ============================================================================
+// PUBLIC API
+// ============================================================================
+
+void nuon_host_init(void)
+{
+    if (initialized) return;
+
+    printf("[nuon_host] Initializing Nuon host driver\n");
+    printf("[nuon_host]   DATA=GPIO%d, CLK=GPIO%d\n", NUON_PIN_DATA, NUON_PIN_CLK);
+
+    // Initialize GPIO pins
+    // Data pin: bidirectional, start as input with pull-down (bus idles low)
+    gpio_init(NUON_PIN_DATA);
+    gpio_set_dir(NUON_PIN_DATA, GPIO_IN);
+    gpio_pull_down(NUON_PIN_DATA);
+    gpio_set_input_hysteresis_enabled(NUON_PIN_DATA, true);
+
+    // Clock pin: output, we generate the clock
+    gpio_init(NUON_PIN_CLK);
+    gpio_set_dir(NUON_PIN_CLK, GPIO_OUT);
+    gpio_put(NUON_PIN_CLK, 0);  // Start low
+
+    // Initialize PIO for reading responses
+    pio_read = pio0;
+    uint offset = pio_add_program(pio_read, &polyface_read_program);
+    sm_read = pio_claim_unused_sm(pio_read, true);
+    polyface_read_program_init(pio_read, sm_read, offset, NUON_PIN_DATA);
+
+    printf("[nuon_host]   PIO read SM%d at offset %d\n", sm_read, offset);
+
+    // Build CRC lookup table
+    crc_build_lut();
+
+    initialized = true;
+    printf("[nuon_host] Initialization complete\n");
+}
+
+void nuon_host_task(void)
+{
+    if (!initialized) return;
+
+    // Debug output periodically
+    static uint32_t last_poll = 0;
+    uint32_t now = to_ms_since_boot(get_absolute_time());
+    if (now - last_poll >= 2000) {
+        last_poll = now;
+        printf("[nuon_host] polls=%lu btn=0x%04X conn=%d\n",
+               (unsigned long)nuon_poll_count,
+               nuon_buttons,
+               nuon_controller_connected ? 1 : 0);
+    }
+
+    // Only submit if connected
+    if (!nuon_controller_connected) return;
+
+    // Build input event from shared state
+    input_event_t event;
+    init_input_event(&event);
+
+    event.dev_addr = 0xC0;  // Use 0xC0 range for Nuon native inputs
+    event.instance = 0;
+    event.type = INPUT_TYPE_GAMEPAD;
+    event.transport = INPUT_TRANSPORT_NATIVE;
+
+    // Map buttons
+    event.buttons = map_nuon_to_jp(nuon_buttons);
+
+    // Map analog sticks (Nuon uses 0-255 with 128 center, same as HID)
+    event.analog[ANALOG_LX] = nuon_analog_x1;
+    event.analog[ANALOG_LY] = nuon_analog_y1;
+    event.analog[ANALOG_RX] = nuon_analog_x2;
+    event.analog[ANALOG_RY] = nuon_analog_y2;
+
+    // Submit to router
+    router_submit_input(&event);
+}
+
+bool nuon_host_is_connected(void)
+{
+    return nuon_controller_connected;
+}
+
+uint8_t nuon_host_get_device_count(void)
+{
+    return nuon_controller_connected ? 1 : 0;
+}
+
+// ============================================================================
+// INPUT INTERFACE
+// ============================================================================
+
+const InputInterface nuon_input_interface = {
+    .name = "Nuon",
+    .source = INPUT_SOURCE_NATIVE_NUON,
+    .init = nuon_host_init,
+    .task = nuon_host_task,
+    .is_connected = nuon_host_is_connected,
+    .get_device_count = nuon_host_get_device_count,
+};
