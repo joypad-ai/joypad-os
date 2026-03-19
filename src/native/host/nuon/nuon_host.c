@@ -16,6 +16,7 @@
 #include "hardware/pio.h"
 #include "hardware/gpio.h"
 #include "polyface_read.pio.h"
+#include "polyface_send.pio.h"
 #include <stdio.h>
 
 // ============================================================================
@@ -52,9 +53,9 @@ volatile uint32_t nuon_diag_step = 0; // Enumeration step (1=alive,2=magic,3=pro
 // ============================================================================
 
 static bool initialized = false;
-static PIO pio_read;
-static uint sm_read;
-static uint pio_read_offset;  // Store program offset for SM reset
+static PIO pio_inst;
+static uint sm_read, sm_send;
+static uint pio_inst_offset, pio_send_offset;
 static int crc_lut[256];  // CRC lookup table
 
 // ============================================================================
@@ -175,45 +176,36 @@ static void __no_inline_not_in_flash_func(clock_cycles)(int n)
     }
 }
 
-// Send a 33-bit packet: start bit (1) + 32 data bits
-// We drive data on falling edge of clock, controller samples on rising edge
-// IMPORTANT: Disable PIO read SM during send to prevent capturing our own bits
-// Wire format: start(1) + control(1=cmd,0=data) + 32 data bits = 34 bits total
+// Send a command using polyface_send PIO.
+// The PIO sends: start(1) + control(0) + 35 data bits on clock edges.
+// Control=0 (device response format) but the Polyface ASIC receiver
+// doesn't filter on the control bit — it's captured as data.
+// PIO waits on GPIO3 clock edges that we generate from software.
 static void __no_inline_not_in_flash_func(send_command)(uint32_t word)
 {
-    // Disable PIO read SM to prevent it from capturing our command
-    pio_sm_set_enabled(pio_read, sm_read, false);
+    // Disable read SM during send
+    pio_sm_set_enabled(pio_inst, sm_read, false);
 
-    // Switch data pin to SIO function for bit-bang output
-    gpio_set_function(NUON_PIN_DATA, GPIO_FUNC_SIO);
-    gpio_set_dir(NUON_PIN_DATA, GPIO_OUT);
+    // Reset and start send SM
+    pio_sm_clear_fifos(pio_inst, sm_send);
+    pio_sm_restart(pio_inst, sm_send);
+    pio_sm_exec(pio_inst, sm_send, pio_encode_jmp(pio_send_offset));
+    pio_sm_set_enabled(pio_inst, sm_send, true);
 
-    // Send start bit = 1
-    gpio_put(NUON_PIN_DATA, 1);
-    clock_cycle();
+    // Push data — byte-reverse so PIO right-shift outputs MSB first
+    pio_sm_put_blocking(pio_inst, sm_send, __builtin_bswap32(word));
 
-    // Send control bit = 1 (command)
-    gpio_put(NUON_PIN_DATA, 1);
-    clock_cycle();
+    // Generate clock cycles for PIO to shift out (start + ctrl + 35 bits = 37 edges + margin)
+    clock_cycles(42);
 
-    // Send 32 data bits MSB first
-    for (int i = 31; i >= 0; i--) {
-        gpio_put(NUON_PIN_DATA, (word >> i) & 1);
-        clock_cycle();
-    }
+    // Disable send SM (it's waiting on pull for next packet)
+    pio_sm_set_enabled(pio_inst, sm_send, false);
 
-    // Release data line — switch back to PIO function for reading
-    gpio_put(NUON_PIN_DATA, 0);  // Drive low briefly
-    gpio_set_dir(NUON_PIN_DATA, GPIO_IN);
-    // Restore PIO function so PIO read SM can capture response
-    pio_gpio_init(pio_read, NUON_PIN_DATA);
-
-    // Flush any stale PIO FIFO data and re-enable read SM
-    // IMPORTANT: jump to program start so SM begins fresh looking for start bit
-    pio_sm_clear_fifos(pio_read, sm_read);
-    pio_sm_restart(pio_read, sm_read);
-    pio_sm_exec(pio_read, sm_read, pio_encode_jmp(pio_read_offset));
-    pio_sm_set_enabled(pio_read, sm_read, true);
+    // Re-enable read SM fresh for response capture
+    pio_sm_clear_fifos(pio_inst, sm_read);
+    pio_sm_restart(pio_inst, sm_read);
+    pio_sm_exec(pio_inst, sm_read, pio_encode_jmp(pio_inst_offset));
+    pio_sm_set_enabled(pio_inst, sm_read, true);
 }
 
 // ============================================================================
@@ -223,8 +215,8 @@ static void __no_inline_not_in_flash_func(send_command)(uint32_t word)
 // Flush the PIO read FIFO (discard stale data)
 static void __no_inline_not_in_flash_func(flush_pio_fifo)(void)
 {
-    while (!pio_sm_is_rx_fifo_empty(pio_read, sm_read)) {
-        (void)pio_sm_get(pio_read, sm_read);
+    while (!pio_sm_is_rx_fifo_empty(pio_inst, sm_read)) {
+        (void)pio_sm_get(pio_inst, sm_read);
     }
 }
 
@@ -244,11 +236,11 @@ static bool __no_inline_not_in_flash_func(read_response)(uint32_t* word1_out)
 
     // The polyface_read PIO program outputs TWO 32-bit words per packet
     // (autopush at 32 bits, packet is 1 start + 3*11 = 34 bits captured as 64)
-    uint8_t fifo_level = pio_sm_get_rx_fifo_level(pio_read, sm_read);
+    uint8_t fifo_level = pio_sm_get_rx_fifo_level(pio_inst, sm_read);
 
     if (fifo_level >= 2) {
-        uint32_t word0 = pio_sm_get(pio_read, sm_read);
-        uint32_t word1 = pio_sm_get(pio_read, sm_read);
+        uint32_t word0 = pio_sm_get(pio_inst, sm_read);
+        uint32_t word1 = pio_sm_get(pio_inst, sm_read);
         // The PIO captures bits MSB-first into ISR with left shift
         // word0 has the first 32 captured bits, word1 has the next 32
         // The actual response data is in word1 (the 33-bit packet minus the start bit
@@ -258,7 +250,7 @@ static bool __no_inline_not_in_flash_func(read_response)(uint32_t* word1_out)
     }
 
     if (fifo_level == 1) {
-        uint32_t word = pio_sm_get(pio_read, sm_read);
+        uint32_t word = pio_sm_get(pio_inst, sm_read);
         *word1_out = word;
         return true;
     }
@@ -356,128 +348,102 @@ void __not_in_flash_func(nuon_host_core1_task)(void)
 
     // Release data line
     gpio_set_dir(NUON_PIN_DATA, GPIO_IN);
-    pio_gpio_init(pio_read, NUON_PIN_DATA);
+    pio_gpio_init(pio_inst, NUON_PIN_DATA);
 
     // More idle clocks before first command
     clock_cycles(1000);
 
-    // PURE SOFTWARE approach — no PIO for reading
-    // Disable PIO read SM entirely
-    pio_sm_set_enabled(pio_read, sm_read, false);
-
-    // Software send+receive: send command, then sample data on rising edges
-    // Returns number of 1-bits seen in first 100 post-command clocks
-    // and captures 64 raw bits
-    #define SW_SEND_CMD(cmd) do { \
-        gpio_set_function(NUON_PIN_DATA, GPIO_FUNC_SIO); \
-        gpio_set_dir(NUON_PIN_DATA, GPIO_OUT); \
-        gpio_put(NUON_PIN_DATA, 1); clock_cycle(); /* start */ \
-        gpio_put(NUON_PIN_DATA, 1); clock_cycle(); /* control=1 (cmd) */ \
-        for (int _b = 31; _b >= 0; _b--) { \
-            gpio_put(NUON_PIN_DATA, ((cmd) >> _b) & 1); clock_cycle(); \
-        } \
-        gpio_put(NUON_PIN_DATA, 0); \
-        gpio_set_dir(NUON_PIN_DATA, GPIO_IN); \
-    } while(0)
-
-    #define SW_SEND_WRITE(cmd) do { \
-        SW_SEND_CMD(cmd); \
-        clock_cycles(100); \
-    } while(0)
-
-    // Send read command and sample response via software
-    // Captures bits sampled on rising edge for 100 clocks after turnaround
-    uint32_t sw_raw_hi = 0, sw_raw_lo = 0;
-    uint8_t sw_ones = 0;
-
-    #define SW_SEND_READ(cmd) do { \
-        SW_SEND_CMD(cmd); \
-        /* turnaround */ \
-        clock_cycles(40); \
-        /* sample 64 bits on rising edges */ \
-        sw_raw_hi = 0; sw_raw_lo = 0; sw_ones = 0; \
-        for (int _s = 0; _s < 64; _s++) { \
-            gpio_put(NUON_PIN_CLK, 1); /* rising edge - controller data set on prev falling */ \
-            busy_wait_us_32(1); /* wait for data to settle */ \
-            bool _d = gpio_get(NUON_PIN_DATA); /* sample mid-HIGH */ \
-            if (_d) sw_ones++; \
-            if (_s < 32) sw_raw_hi = (sw_raw_hi << 1) | (_d ? 1 : 0); \
-            else sw_raw_lo = (sw_raw_lo << 1) | (_d ? 1 : 0); \
-            gpio_put(NUON_PIN_CLK, 0); \
-            busy_wait_us_32(1); \
-        } \
-        clock_cycles(50); \
-    } while(0)
-
+    // Use PIO for both send and read (matching device-side approach)
     nuon_diag_step = 0;
 
     while (1) {
         nuon_diag_step = 1;
         clock_cycles(500);
 
-        // First: sample 64 clocks WITHOUT sending anything (noise test)
-        gpio_set_function(NUON_PIN_DATA, GPIO_FUNC_SIO);
-        gpio_set_dir(NUON_PIN_DATA, GPIO_IN);
-        sw_raw_hi = 0; sw_raw_lo = 0; sw_ones = 0;
-        for (int _s = 0; _s < 64; _s++) {
-            gpio_put(NUON_PIN_CLK, 1);
-            busy_wait_us_32(1);
-            bool _d = gpio_get(NUON_PIN_DATA);
-            if (_d) sw_ones++;
-            gpio_put(NUON_PIN_CLK, 0);
-            busy_wait_us_32(1);
-        }
-        nuon_diag_cmd = sw_ones;  // Store noise count in cmd field
+        // RESET (write command, no response expected)
+        send_command(build_command(PF_TYPE_WRITE, PF_CMD_RESET, 0x00, 0x00));
+        clock_cycles(200);
 
-        // RESET
-        SW_SEND_WRITE(build_command(PF_TYPE_WRITE, PF_CMD_RESET, 0x00, 0x00));
-
-        // ALIVE
+        // ALIVE (read command, expect response)
         nuon_diag_step = 2;
-        SW_SEND_READ(build_command(PF_TYPE_READ, PF_CMD_ALIVE, 0x04, 0x40));
-        nuon_diag_alive = sw_raw_hi;
-        nuon_diag_cmd = sw_raw_lo;
-        nuon_diag_fifo = sw_ones;
+        send_command(build_command(PF_TYPE_READ, PF_CMD_ALIVE, 0x04, 0x40));
+        // Generate turnaround + response clocks
+        clock_cycles(50);
+        for (int i = 0; i < 150; i++) clock_cycle();
 
-        if (sw_ones > 0) {
-            // Controller responded to ALIVE! Do full enumeration
-            nuon_controller_connected = true;
+        // Check PIO read FIFO
+        uint8_t fifo = pio_sm_get_rx_fifo_level(pio_inst, sm_read);
+        nuon_diag_fifo = fifo;
 
-            // FOCUS (make unbranded device FOCUSED)
-            nuon_diag_step = 3;
-            SW_SEND_WRITE(build_command(PF_TYPE_WRITE, 0xB0, 0x00, 0x01));
+        uint32_t w0 = 0, w1 = 0;
+        if (fifo >= 2) { w0 = pio_sm_get(pio_inst, sm_read); w1 = pio_sm_get(pio_inst, sm_read); }
+        else if (fifo == 1) { w0 = pio_sm_get(pio_inst, sm_read); }
+        while (!pio_sm_is_rx_fifo_empty(pio_inst, sm_read)) (void)pio_sm_get(pio_inst, sm_read);
 
-            // PROBE
-            nuon_diag_step = 4;
-            SW_SEND_READ(build_command(PF_TYPE_READ, PF_CMD_PROBE, 0x04, 0x00));
+        nuon_diag_alive = w1 ? w1 : w0;
 
-            // MAGIC
-            nuon_diag_step = 5;
-            SW_SEND_READ(build_command(PF_TYPE_READ, PF_CMD_MAGIC, 0x04, 0x00));
-
-            // BRAND ID=1
-            nuon_diag_step = 6;
-            SW_SEND_WRITE(build_command(PF_TYPE_WRITE, PF_CMD_BRAND, 0x00, 0x01));
-
-            // STATE: ENABLE + ROOT
-            nuon_diag_step = 7;
-            SW_SEND_WRITE(build_command(PF_TYPE_WRITE, PF_CMD_STATE, 0x01, PF_STATE_ENABLE | PF_STATE_ROOT));
-
-            nuon_diag_step = 10;
-
-            // Poll SWITCH in a tight loop
-            while (1) {
-                clock_cycles(50);
-                SW_SEND_READ(build_command(PF_TYPE_READ, PF_CMD_SWITCH, 0x02, 0x00));
-                nuon_diag_alive = sw_raw_hi;
-                nuon_diag_cmd = sw_raw_lo;
-                nuon_diag_fifo = sw_ones;
-                nuon_buttons = (uint16_t)((sw_raw_hi >> 16) & 0xFFFF);
-                nuon_poll_count++;
-            }
+        if (fifo == 0) {
+            clock_cycles(2000);
+            continue;  // No response, retry
         }
 
-        clock_cycles(2000);
+        // Controller responded! Full enumeration
+        nuon_controller_connected = true;
+
+        // FOCUS
+        nuon_diag_step = 3;
+        send_command(build_command(PF_TYPE_WRITE, 0xB0, 0x00, 0x01));
+        clock_cycles(100);
+
+        // PROBE
+        nuon_diag_step = 4;
+        send_command(build_command(PF_TYPE_READ, PF_CMD_PROBE, 0x04, 0x00));
+        clock_cycles(50);
+        for (int i = 0; i < 150; i++) clock_cycle();
+        while (!pio_sm_is_rx_fifo_empty(pio_inst, sm_read)) {
+            nuon_diag_cmd = pio_sm_get(pio_inst, sm_read);
+        }
+
+        // MAGIC
+        nuon_diag_step = 5;
+        send_command(build_command(PF_TYPE_READ, PF_CMD_MAGIC, 0x04, 0x00));
+        clock_cycles(50);
+        for (int i = 0; i < 150; i++) clock_cycle();
+        while (!pio_sm_is_rx_fifo_empty(pio_inst, sm_read)) (void)pio_sm_get(pio_inst, sm_read);
+
+        // BRAND ID=1
+        nuon_diag_step = 6;
+        send_command(build_command(PF_TYPE_WRITE, PF_CMD_BRAND, 0x00, 0x01));
+        clock_cycles(100);
+
+        // STATE: ENABLE + ROOT
+        nuon_diag_step = 7;
+        send_command(build_command(PF_TYPE_WRITE, PF_CMD_STATE, 0x01, PF_STATE_ENABLE | PF_STATE_ROOT));
+        clock_cycles(100);
+
+        nuon_diag_step = 10;
+
+        // POLLING LOOP
+        while (1) {
+            clock_cycles(50);
+
+            // SWITCH (buttons)
+            send_command(build_command(PF_TYPE_READ, PF_CMD_SWITCH, 0x02, 0x00));
+            clock_cycles(50);
+            for (int i = 0; i < 150; i++) clock_cycle();
+
+            fifo = pio_sm_get_rx_fifo_level(pio_inst, sm_read);
+            nuon_diag_fifo = fifo;
+            if (fifo >= 2) {
+                w0 = pio_sm_get(pio_inst, sm_read);
+                w1 = pio_sm_get(pio_inst, sm_read);
+                nuon_diag_cmd = w1;
+                nuon_buttons = (uint16_t)(w1 >> 16);
+            }
+            while (!pio_sm_is_rx_fifo_empty(pio_inst, sm_read)) (void)pio_sm_get(pio_inst, sm_read);
+
+            nuon_poll_count++;
+        }
     }
 }
 
@@ -514,23 +480,26 @@ void nuon_host_init(void)
     // GPIO2 (data) stays PIO-muxed — that's fine because:
     //   - PIO 'in pins' reads from GPIO input register (works regardless of mux)
     //   - For sending, we'll switch GPIO2 to SIO temporarily
-    pio_read = pio0;
-    pio_read_offset = pio_add_program(pio_read, &polyface_read_program);
-    sm_read = pio_claim_unused_sm(pio_read, true);
-    polyface_read_program_init(pio_read, sm_read, pio_read_offset, NUON_PIN_DATA);
+    // Both polyface programs on PIO0 (same as device-side nuon_device.c)
+    pio_inst = pio0;
 
-    // Reclaim clock pin for SIO output (PIO init stole it via pio_gpio_init)
-    // Use gpio_init which does a full reset: SIO function + clear output + input direction
+    // Load read program
+    pio_inst_offset = pio_add_program(pio_inst, &polyface_read_program);
+    sm_read = pio_claim_unused_sm(pio_inst, true);
+    polyface_read_program_init(pio_inst, sm_read, pio_inst_offset, NUON_PIN_DATA);
+
+    // Load send program
+    pio_send_offset = pio_add_program(pio_inst, &polyface_send_program);
+    sm_send = pio_claim_unused_sm(pio_inst, true);
+    polyface_send_program_init(pio_inst, sm_send, pio_send_offset, NUON_PIN_DATA);
+
+    // Reclaim clock pin for SIO output (both PIO inits stole it)
     gpio_init(NUON_PIN_CLK);
     gpio_set_dir(NUON_PIN_CLK, GPIO_OUT);
     gpio_put(NUON_PIN_CLK, 0);
-    // Verify: toggle clock once to confirm it works
-    gpio_put(NUON_PIN_CLK, 1);
-    busy_wait_us_32(10);
-    gpio_put(NUON_PIN_CLK, 0);
-    printf("[nuon_host]   CLK test: GPIO%d toggled, state=%d\n", NUON_PIN_CLK, gpio_get(NUON_PIN_CLK));
 
-    printf("[nuon_host]   PIO read SM%d at offset %d\n", sm_read, pio_read_offset);
+    printf("[nuon_host]   PIO0: read=SM%d@%d, send=SM%d@%d\n",
+           sm_read, pio_inst_offset, sm_send, pio_send_offset);
 
     // Build CRC lookup table
     crc_build_lut();
