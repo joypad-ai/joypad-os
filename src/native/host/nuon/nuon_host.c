@@ -361,94 +361,123 @@ void __not_in_flash_func(nuon_host_core1_task)(void)
     // More idle clocks before first command
     clock_cycles(1000);
 
-    // Retry enumeration continuously until ALIVE responds
-    nuon_diag_step = 0;
+    // PURE SOFTWARE approach — no PIO for reading
+    // Disable PIO read SM entirely
+    pio_sm_set_enabled(pio_read, sm_read, false);
 
-    // Helper macros
-    #define SEND_AND_READ(cmd, w0, w1, fl) do { \
-        send_command(cmd); \
-        clock_cycles(50); \
-        for (int _i = 0; _i < 150; _i++) clock_cycle(); \
-        w0 = 0; w1 = 0; fl = pio_sm_get_rx_fifo_level(pio_read, sm_read); \
-        if (fl >= 2) { w0 = pio_sm_get(pio_read, sm_read); w1 = pio_sm_get(pio_read, sm_read); } \
-        else if (fl == 1) { w0 = pio_sm_get(pio_read, sm_read); } \
-        while (!pio_sm_is_rx_fifo_empty(pio_read, sm_read)) (void)pio_sm_get(pio_read, sm_read); \
+    // Software send+receive: send command, then sample data on rising edges
+    // Returns number of 1-bits seen in first 100 post-command clocks
+    // and captures 64 raw bits
+    #define SW_SEND_CMD(cmd) do { \
+        gpio_set_function(NUON_PIN_DATA, GPIO_FUNC_SIO); \
+        gpio_set_dir(NUON_PIN_DATA, GPIO_OUT); \
+        gpio_put(NUON_PIN_DATA, 1); clock_cycle(); /* start */ \
+        gpio_put(NUON_PIN_DATA, 1); clock_cycle(); /* control=1 (cmd) */ \
+        for (int _b = 31; _b >= 0; _b--) { \
+            gpio_put(NUON_PIN_DATA, ((cmd) >> _b) & 1); clock_cycle(); \
+        } \
+        gpio_put(NUON_PIN_DATA, 0); \
+        gpio_set_dir(NUON_PIN_DATA, GPIO_IN); \
     } while(0)
 
-    #define SEND_WRITE(cmd) do { \
-        send_command(cmd); \
+    #define SW_SEND_WRITE(cmd) do { \
+        SW_SEND_CMD(cmd); \
         clock_cycles(100); \
     } while(0)
 
-    // Retry enumeration until controller responds to ALIVE
+    // Send read command and sample response via software
+    // Captures bits sampled on rising edge for 100 clocks after turnaround
+    uint32_t sw_raw_hi = 0, sw_raw_lo = 0;
+    uint8_t sw_ones = 0;
+
+    #define SW_SEND_READ(cmd) do { \
+        SW_SEND_CMD(cmd); \
+        /* turnaround */ \
+        clock_cycles(40); \
+        /* sample 64 bits on rising edges */ \
+        sw_raw_hi = 0; sw_raw_lo = 0; sw_ones = 0; \
+        for (int _s = 0; _s < 64; _s++) { \
+            gpio_put(NUON_PIN_CLK, 1); /* rising edge - controller data set on prev falling */ \
+            busy_wait_us_32(1); /* wait for data to settle */ \
+            bool _d = gpio_get(NUON_PIN_DATA); /* sample mid-HIGH */ \
+            if (_d) sw_ones++; \
+            if (_s < 32) sw_raw_hi = (sw_raw_hi << 1) | (_d ? 1 : 0); \
+            else sw_raw_lo = (sw_raw_lo << 1) | (_d ? 1 : 0); \
+            gpio_put(NUON_PIN_CLK, 0); \
+            busy_wait_us_32(1); \
+        } \
+        clock_cycles(50); \
+    } while(0)
+
+    nuon_diag_step = 0;
+
     while (1) {
         nuon_diag_step = 1;
         clock_cycles(500);
 
+        // First: sample 64 clocks WITHOUT sending anything (noise test)
+        gpio_set_function(NUON_PIN_DATA, GPIO_FUNC_SIO);
+        gpio_set_dir(NUON_PIN_DATA, GPIO_IN);
+        sw_raw_hi = 0; sw_raw_lo = 0; sw_ones = 0;
+        for (int _s = 0; _s < 64; _s++) {
+            gpio_put(NUON_PIN_CLK, 1);
+            busy_wait_us_32(1);
+            bool _d = gpio_get(NUON_PIN_DATA);
+            if (_d) sw_ones++;
+            gpio_put(NUON_PIN_CLK, 0);
+            busy_wait_us_32(1);
+        }
+        nuon_diag_cmd = sw_ones;  // Store noise count in cmd field
+
         // RESET
-        SEND_WRITE(build_command(PF_TYPE_WRITE, PF_CMD_RESET, 0x00, 0x00));
+        SW_SEND_WRITE(build_command(PF_TYPE_WRITE, PF_CMD_RESET, 0x00, 0x00));
 
         // ALIVE
         nuon_diag_step = 2;
-        uint32_t w0, w1; uint8_t fl;
-        SEND_AND_READ(build_command(PF_TYPE_READ, PF_CMD_ALIVE, 0x04, 0x40), w0, w1, fl);
-        nuon_diag_alive = w1 ? w1 : w0;
-        nuon_diag_fifo = fl;
+        SW_SEND_READ(build_command(PF_TYPE_READ, PF_CMD_ALIVE, 0x04, 0x40));
+        nuon_diag_alive = sw_raw_hi;
+        nuon_diag_cmd = sw_raw_lo;
+        nuon_diag_fifo = sw_ones;
 
-        if (fl > 0) break;  // Controller responded!
+        if (sw_ones > 0) {
+            // Controller responded to ALIVE! Do full enumeration
+            nuon_controller_connected = true;
 
-        // Wait before retry
-        clock_cycles(2000);
-    }
+            // FOCUS (make unbranded device FOCUSED)
+            nuon_diag_step = 3;
+            SW_SEND_WRITE(build_command(PF_TYPE_WRITE, 0xB0, 0x00, 0x01));
 
-    // FOCUS
-    nuon_diag_step = 3;
-    SEND_WRITE(build_command(PF_TYPE_WRITE, 0xB0, 0x00, 0x01));
+            // PROBE
+            nuon_diag_step = 4;
+            SW_SEND_READ(build_command(PF_TYPE_READ, PF_CMD_PROBE, 0x04, 0x00));
 
-    // PROBE
-    nuon_diag_step = 4;
-    { uint32_t w0, w1; uint8_t fl;
-      SEND_AND_READ(build_command(PF_TYPE_READ, PF_CMD_PROBE, 0x04, 0x00), w0, w1, fl);
-      nuon_diag_cmd = w1 ? w1 : w0;
-    }
+            // MAGIC
+            nuon_diag_step = 5;
+            SW_SEND_READ(build_command(PF_TYPE_READ, PF_CMD_MAGIC, 0x04, 0x00));
 
-    // MAGIC
-    nuon_diag_step = 5;
-    { uint32_t w0, w1; uint8_t fl;
-      SEND_AND_READ(build_command(PF_TYPE_READ, PF_CMD_MAGIC, 0x04, 0x00), w0, w1, fl);
-    }
+            // BRAND ID=1
+            nuon_diag_step = 6;
+            SW_SEND_WRITE(build_command(PF_TYPE_WRITE, PF_CMD_BRAND, 0x00, 0x01));
 
-    // BRAND ID=1
-    nuon_diag_step = 6;
-    SEND_WRITE(build_command(PF_TYPE_WRITE, PF_CMD_BRAND, 0x00, 0x01));
+            // STATE: ENABLE + ROOT
+            nuon_diag_step = 7;
+            SW_SEND_WRITE(build_command(PF_TYPE_WRITE, PF_CMD_STATE, 0x01, PF_STATE_ENABLE | PF_STATE_ROOT));
 
-    // STATE: ENABLE + ROOT
-    nuon_diag_step = 7;
-    SEND_WRITE(build_command(PF_TYPE_WRITE, PF_CMD_STATE, 0x01, PF_STATE_ENABLE | PF_STATE_ROOT));
+            nuon_diag_step = 10;
 
-    nuon_controller_connected = true;
-    nuon_diag_step = 10;
-
-    // POLLING LOOP
-    while (1) {
-        clock_cycles(100);
-
-        // Poll SWITCH (buttons)
-        send_command(build_command(PF_TYPE_READ, PF_CMD_SWITCH, 0x02, 0x00));
-        clock_cycles(40);
-        for (int i = 0; i < 150; i++) clock_cycle();
-
-        uint8_t sw_fifo = pio_sm_get_rx_fifo_level(pio_read, sm_read);
-        if (sw_fifo >= 2) {
-            uint32_t sw0 = pio_sm_get(pio_read, sm_read);
-            uint32_t sw1 = pio_sm_get(pio_read, sm_read);
-            nuon_buttons = (uint16_t)(sw1 >> 16);  // Try upper 16 bits
-            nuon_diag_cmd = sw1;  // Raw switch response for debug
+            // Poll SWITCH in a tight loop
+            while (1) {
+                clock_cycles(50);
+                SW_SEND_READ(build_command(PF_TYPE_READ, PF_CMD_SWITCH, 0x02, 0x00));
+                nuon_diag_alive = sw_raw_hi;
+                nuon_diag_cmd = sw_raw_lo;
+                nuon_diag_fifo = sw_ones;
+                nuon_buttons = (uint16_t)((sw_raw_hi >> 16) & 0xFFFF);
+                nuon_poll_count++;
+            }
         }
-        // Drain
-        while (!pio_sm_is_rx_fifo_empty(pio_read, sm_read)) (void)pio_sm_get(pio_read, sm_read);
 
-        nuon_poll_count++;
+        clock_cycles(2000);
     }
 }
 
@@ -522,14 +551,15 @@ void nuon_host_task(void)
         // Read GPIO states for diagnostic
         bool clk_state = gpio_get(NUON_PIN_CLK);
         bool dat_state = gpio_get(NUON_PIN_DATA);
-        printf("[nuon_host] s=%lu p=%lu c=%d alive=0x%08lX sw=0x%08lX btn=0x%04X fifo=%lu\n",
+        printf("[nh] s=%lu p=%lu c=%d a=0x%08lX sw=0x%08lX b=0x%04X f=%lu n=%lu\n",
                (unsigned long)nuon_diag_step,
                (unsigned long)nuon_poll_count,
                nuon_controller_connected ? 1 : 0,
                (unsigned long)nuon_diag_alive,
-               (unsigned long)nuon_diag_cmd,
+               (unsigned long)nuon_diag_cmd,  // sw_raw_lo during poll, noise_count during enum
                nuon_buttons,
-               (unsigned long)nuon_diag_fifo);
+               (unsigned long)nuon_diag_fifo,  // sw_ones
+               (unsigned long)nuon_diag_cmd);  // noise count (overwritten during poll)
     }
 
     // Only submit if connected
