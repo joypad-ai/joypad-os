@@ -361,185 +361,94 @@ void __not_in_flash_func(nuon_host_core1_task)(void)
     // More idle clocks before first command
     clock_cycles(1000);
 
+    // Retry enumeration continuously until ALIVE responds
+    nuon_diag_step = 0;
+
+    // Helper macros
+    #define SEND_AND_READ(cmd, w0, w1, fl) do { \
+        send_command(cmd); \
+        clock_cycles(50); \
+        for (int _i = 0; _i < 150; _i++) clock_cycle(); \
+        w0 = 0; w1 = 0; fl = pio_sm_get_rx_fifo_level(pio_read, sm_read); \
+        if (fl >= 2) { w0 = pio_sm_get(pio_read, sm_read); w1 = pio_sm_get(pio_read, sm_read); } \
+        else if (fl == 1) { w0 = pio_sm_get(pio_read, sm_read); } \
+        while (!pio_sm_is_rx_fifo_empty(pio_read, sm_read)) (void)pio_sm_get(pio_read, sm_read); \
+    } while(0)
+
+    #define SEND_WRITE(cmd) do { \
+        send_command(cmd); \
+        clock_cycles(100); \
+    } while(0)
+
+    // Retry enumeration until controller responds to ALIVE
     while (1) {
-        loop_count++;
+        nuon_diag_step = 1;
+        clock_cycles(500);
 
-        // Keep clock running continuously (controller needs this)
-        clock_cycles(200);
+        // RESET
+        SEND_WRITE(build_command(PF_TYPE_WRITE, PF_CMD_RESET, 0x00, 0x00));
 
-        // ================================================================
-        // ENUMERATION SEQUENCE
-        // ================================================================
+        // ALIVE
+        nuon_diag_step = 2;
+        uint32_t w0, w1; uint8_t fl;
+        SEND_AND_READ(build_command(PF_TYPE_READ, PF_CMD_ALIVE, 0x04, 0x40), w0, w1, fl);
+        nuon_diag_alive = w1 ? w1 : w0;
+        nuon_diag_fifo = fl;
 
-        if (!alive) {
-            nuon_diag_step = 1;
-            // Send RESET
-            send_command(build_command(PF_TYPE_WRITE, PF_CMD_RESET, 0x00, 0x00));
-            clock_cycles(100);
+        if (fl > 0) break;  // Controller responded!
 
-            // Send ALIVE and capture raw response for debug
-            uint32_t alive_cmd = build_command(PF_TYPE_READ, PF_CMD_ALIVE, 0x04, 0x40);
-            nuon_diag_cmd = alive_cmd;
-            send_command(alive_cmd);
+        // Wait before retry
+        clock_cycles(2000);
+    }
 
-            // After send_command, PIO read SM is freshly enabled.
-            // Generate turnaround clocks
-            clock_cycles(40);
+    // FOCUS
+    nuon_diag_step = 3;
+    SEND_WRITE(build_command(PF_TYPE_WRITE, 0xB0, 0x00, 0x01));
 
-            // Now generate clocks for response capture
-            for (int i = 0; i < 150; i++) {
-                clock_cycle();
-            }
+    // PROBE
+    nuon_diag_step = 4;
+    { uint32_t w0, w1; uint8_t fl;
+      SEND_AND_READ(build_command(PF_TYPE_READ, PF_CMD_PROBE, 0x04, 0x00), w0, w1, fl);
+      nuon_diag_cmd = w1 ? w1 : w0;
+    }
 
-            // Generate turnaround clocks (controller prepares response)
-            clock_cycles(40);
+    // MAGIC
+    nuon_diag_step = 5;
+    { uint32_t w0, w1; uint8_t fl;
+      SEND_AND_READ(build_command(PF_TYPE_READ, PF_CMD_MAGIC, 0x04, 0x00), w0, w1, fl);
+    }
 
-            // Generate clocks for response capture
-            for (int i = 0; i < 150; i++) {
-                clock_cycle();
-            }
+    // BRAND ID=1
+    nuon_diag_step = 6;
+    SEND_WRITE(build_command(PF_TYPE_WRITE, PF_CMD_BRAND, 0x00, 0x01));
 
-            // Check PIO FIFO — accept ANY response
-            uint8_t fifo_lvl = pio_sm_get_rx_fifo_level(pio_read, sm_read);
-            *diag_fifo_lvl = fifo_lvl;
+    // STATE: ENABLE + ROOT
+    nuon_diag_step = 7;
+    SEND_WRITE(build_command(PF_TYPE_WRITE, PF_CMD_STATE, 0x01, PF_STATE_ENABLE | PF_STATE_ROOT));
 
-            // Drain FIFO and capture last word
-            uint32_t last_word = 0;
-            while (!pio_sm_is_rx_fifo_empty(pio_read, sm_read)) {
-                last_word = pio_sm_get(pio_read, sm_read);
-            }
-            *diag_alive_raw = last_word;
+    nuon_controller_connected = true;
+    nuon_diag_step = 10;
 
-            if (fifo_lvl > 0) {
-                // Got a response! Controller is alive.
-                alive = true;
-                nuon_controller_connected = true;
-                // Skip MAGIC/PROBE/BRAND for now — go straight to polling
-                magic_ok = true;
-                branded = true;
-                enabled = true;
-            } else {
-                *diag_alive_raw = 0xDEAD0000;
-            }
-            continue;
+    // POLLING LOOP
+    while (1) {
+        clock_cycles(100);
+
+        // Poll SWITCH (buttons)
+        send_command(build_command(PF_TYPE_READ, PF_CMD_SWITCH, 0x02, 0x00));
+        clock_cycles(40);
+        for (int i = 0; i < 150; i++) clock_cycle();
+
+        uint8_t sw_fifo = pio_sm_get_rx_fifo_level(pio_read, sm_read);
+        if (sw_fifo >= 2) {
+            uint32_t sw0 = pio_sm_get(pio_read, sm_read);
+            uint32_t sw1 = pio_sm_get(pio_read, sm_read);
+            nuon_buttons = (uint16_t)(sw1 >> 16);  // Try upper 16 bits
+            nuon_diag_cmd = sw1;  // Raw switch response for debug
         }
+        // Drain
+        while (!pio_sm_is_rx_fifo_empty(pio_read, sm_read)) (void)pio_sm_get(pio_read, sm_read);
 
-        if (!magic_ok) {
-            nuon_diag_step = 2;
-            // Send MAGIC request
-            send_command(build_command(PF_TYPE_READ, PF_CMD_MAGIC, 0x04, 0x00));
-            if (read_response(&response)) {
-                // Should return "JUDE" = 0x4A554445
-                // Accept any response for now, we'll verify buttons work
-                magic_ok = true;
-            }
-            continue;
-        }
-
-        if (!branded) {
-            nuon_diag_step = 3;
-            // Send PROBE to get device info
-            send_command(build_command(PF_TYPE_READ, PF_CMD_PROBE, 0x04, 0x00));
-            if (read_response(&response)) {
-                // Response contains device info, we don't need to parse it
-            }
-            clock_cycles(50);
-
-            // Send BRAND to assign ID
-            send_command(build_command(PF_TYPE_WRITE, PF_CMD_BRAND, 0x00, device_id));
-            clock_cycles(50);
-            branded = true;
-            continue;
-        }
-
-        if (!enabled) {
-            nuon_diag_step = 5;
-            // Send STATE write with ENABLE + ROOT
-            send_command(build_command(PF_TYPE_WRITE, PF_CMD_STATE, 0x01, PF_STATE_ENABLE | PF_STATE_ROOT));
-            clock_cycles(50);
-            enabled = true;
-            continue;
-        }
-
-        // ================================================================
-        // POLLING LOOP
-        // ================================================================
-
-        // Select analog channel and read
-        switch (current_channel) {
-            case 0:
-                // Read X1
-                send_command(build_command(PF_TYPE_WRITE, PF_CMD_CHANNEL, 0x01, PF_CHANNEL_X1));
-                clock_cycles(30);
-                send_command(build_command(PF_TYPE_READ, PF_CMD_ANALOG, 0x01, 0x00));
-                if (read_response(&response)) {
-                    uint8_t data;
-                    if (verify_crc_1byte(response, &data)) {
-                        nuon_analog_x1 = data;
-                    }
-                }
-                current_channel = 1;
-                break;
-
-            case 1:
-                // Read Y1
-                send_command(build_command(PF_TYPE_WRITE, PF_CMD_CHANNEL, 0x01, PF_CHANNEL_Y1));
-                clock_cycles(30);
-                send_command(build_command(PF_TYPE_READ, PF_CMD_ANALOG, 0x01, 0x00));
-                if (read_response(&response)) {
-                    uint8_t data;
-                    if (verify_crc_1byte(response, &data)) {
-                        nuon_analog_y1 = data;
-                    }
-                }
-                current_channel = 2;
-                break;
-
-            case 2:
-                // Read X2
-                send_command(build_command(PF_TYPE_WRITE, PF_CMD_CHANNEL, 0x01, PF_CHANNEL_X2));
-                clock_cycles(30);
-                send_command(build_command(PF_TYPE_READ, PF_CMD_ANALOG, 0x01, 0x00));
-                if (read_response(&response)) {
-                    uint8_t data;
-                    if (verify_crc_1byte(response, &data)) {
-                        nuon_analog_x2 = data;
-                    }
-                }
-                current_channel = 3;
-                break;
-
-            case 3:
-                // Read Y2
-                send_command(build_command(PF_TYPE_WRITE, PF_CMD_CHANNEL, 0x01, PF_CHANNEL_Y2));
-                clock_cycles(30);
-                send_command(build_command(PF_TYPE_READ, PF_CMD_ANALOG, 0x01, 0x00));
-                if (read_response(&response)) {
-                    uint8_t data;
-                    if (verify_crc_1byte(response, &data)) {
-                        nuon_analog_y2 = data;
-                    }
-                }
-                current_channel = 4;
-                break;
-
-            case 4:
-                // Read SWITCH (buttons) - 2 byte response
-                send_command(build_command(PF_TYPE_READ, PF_CMD_SWITCH, 0x02, 0x00));
-                if (read_response(&response)) {
-                    uint16_t data;
-                    if (verify_crc_2byte(response, &data)) {
-                        nuon_buttons = data;
-                        success_count++;
-                    }
-                }
-                current_channel = 0;  // Restart cycle
-                nuon_poll_count++;
-                break;
-        }
-
-        // Connection loss check disabled for debugging
-        // TODO: re-enable after enumeration is working
+        nuon_poll_count++;
     }
 }
 
@@ -613,13 +522,14 @@ void nuon_host_task(void)
         // Read GPIO states for diagnostic
         bool clk_state = gpio_get(NUON_PIN_CLK);
         bool dat_state = gpio_get(NUON_PIN_DATA);
-        printf("[nuon_host] step=%lu polls=%lu conn=%d raw=0x%08lX fifo=%lu dat=%d\n",
+        printf("[nuon_host] s=%lu p=%lu c=%d alive=0x%08lX sw=0x%08lX btn=0x%04X fifo=%lu\n",
                (unsigned long)nuon_diag_step,
                (unsigned long)nuon_poll_count,
                nuon_controller_connected ? 1 : 0,
                (unsigned long)nuon_diag_alive,
-               (unsigned long)nuon_diag_fifo,
-               dat_state);
+               (unsigned long)nuon_diag_cmd,
+               nuon_buttons,
+               (unsigned long)nuon_diag_fifo);
     }
 
     // Only submit if connected
