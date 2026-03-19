@@ -45,6 +45,7 @@ volatile uint32_t nuon_poll_count = 0;
 volatile uint32_t nuon_diag_alive = 0;
 volatile uint32_t nuon_diag_fifo = 0;
 volatile uint32_t nuon_diag_cmd = 0;  // Last command sent
+volatile uint32_t nuon_diag_step = 0; // Enumeration step (1=alive,2=magic,3=probe,4=brand,5=enable,6=poll)
 
 // ============================================================================
 // INTERNAL STATE
@@ -177,6 +178,7 @@ static void __no_inline_not_in_flash_func(clock_cycles)(int n)
 // Send a 33-bit packet: start bit (1) + 32 data bits
 // We drive data on falling edge of clock, controller samples on rising edge
 // IMPORTANT: Disable PIO read SM during send to prevent capturing our own bits
+// Wire format: start(1) + control(1=cmd,0=data) + 32 data bits = 34 bits total
 static void __no_inline_not_in_flash_func(send_command)(uint32_t word)
 {
     // Disable PIO read SM to prevent it from capturing our command
@@ -187,6 +189,10 @@ static void __no_inline_not_in_flash_func(send_command)(uint32_t word)
     gpio_set_dir(NUON_PIN_DATA, GPIO_OUT);
 
     // Send start bit = 1
+    gpio_put(NUON_PIN_DATA, 1);
+    clock_cycle();
+
+    // Send control bit = 1 (command)
     gpio_put(NUON_PIN_DATA, 1);
     clock_cycle();
 
@@ -324,8 +330,36 @@ void __not_in_flash_func(nuon_host_core1_task)(void)
     volatile uint32_t* diag_alive_raw = &nuon_diag_alive;
     volatile uint32_t* diag_fifo_lvl = &nuon_diag_fifo;
 
-    // Run some initial clock cycles to let controller wake up
-    clock_cycles(5000);
+    // Run some initial clock cycles to let controller power up
+    clock_cycles(1000);
+
+    // ================================================================
+    // BUS-LEVEL RESET (from Polyface Verilog SDB module)
+    // The real console transmits 34 ones followed by 34 zeros on the
+    // data line before sending any commands. This initializes the
+    // controller's serial data bus receiver.
+    // ================================================================
+
+    // Send 34 ones (bus reset signal)
+    gpio_set_function(NUON_PIN_DATA, GPIO_FUNC_SIO);
+    gpio_set_dir(NUON_PIN_DATA, GPIO_OUT);
+    gpio_put(NUON_PIN_DATA, 1);
+    for (int i = 0; i < 36; i++) {
+        clock_cycle();
+    }
+
+    // Send 34 zeros (reframe signal)
+    gpio_put(NUON_PIN_DATA, 0);
+    for (int i = 0; i < 36; i++) {
+        clock_cycle();
+    }
+
+    // Release data line
+    gpio_set_dir(NUON_PIN_DATA, GPIO_IN);
+    pio_gpio_init(pio_read, NUON_PIN_DATA);
+
+    // More idle clocks before first command
+    clock_cycles(1000);
 
     while (1) {
         loop_count++;
@@ -338,6 +372,7 @@ void __not_in_flash_func(nuon_host_core1_task)(void)
         // ================================================================
 
         if (!alive) {
+            nuon_diag_step = 1;
             // Send RESET
             send_command(build_command(PF_TYPE_WRITE, PF_CMD_RESET, 0x00, 0x00));
             clock_cycles(100);
@@ -356,42 +391,41 @@ void __not_in_flash_func(nuon_host_core1_task)(void)
                 clock_cycle();
             }
 
-            // Try software sampling first to verify controller is responding at ALL
-            // Sample data pin on each clock rising edge for 100 cycles
-            uint32_t sw_bits = 0;
-            uint8_t ones_count = 0;
-            for (int i = 0; i < 100; i++) {
-                gpio_put(NUON_PIN_CLK, 1);
-                busy_wait_us_32(1);
-                bool d = gpio_get(NUON_PIN_DATA);
-                if (d) ones_count++;
-                if (i < 32) sw_bits = (sw_bits << 1) | (d ? 1 : 0);
-                gpio_put(NUON_PIN_CLK, 0);
-                busy_wait_us_32(1);
+            // Generate turnaround clocks (controller prepares response)
+            clock_cycles(40);
+
+            // Generate clocks for response capture
+            for (int i = 0; i < 150; i++) {
+                clock_cycle();
             }
 
-            // Also check PIO FIFO
+            // Check PIO FIFO — accept ANY response
             uint8_t fifo_lvl = pio_sm_get_rx_fifo_level(pio_read, sm_read);
-            *diag_fifo_lvl = (fifo_lvl << 8) | ones_count;  // Pack both diagnostics
+            *diag_fifo_lvl = fifo_lvl;
 
-            if (ones_count > 0) {
-                // Controller IS sending data!
-                *diag_alive_raw = sw_bits;
-                // If PIO also captured, use that
-                if (fifo_lvl >= 2) {
-                    uint32_t w0 = pio_sm_get(pio_read, sm_read);
-                    uint32_t w1 = pio_sm_get(pio_read, sm_read);
-                    *diag_alive_raw = w1;
-                }
+            // Drain FIFO and capture last word
+            uint32_t last_word = 0;
+            while (!pio_sm_is_rx_fifo_empty(pio_read, sm_read)) {
+                last_word = pio_sm_get(pio_read, sm_read);
+            }
+            *diag_alive_raw = last_word;
+
+            if (fifo_lvl > 0) {
+                // Got a response! Controller is alive.
                 alive = true;
                 nuon_controller_connected = true;
+                // Skip MAGIC/PROBE/BRAND for now — go straight to polling
+                magic_ok = true;
+                branded = true;
+                enabled = true;
             } else {
-                *diag_alive_raw = 0xDEAD0000 | fifo_lvl;
+                *diag_alive_raw = 0xDEAD0000;
             }
             continue;
         }
 
         if (!magic_ok) {
+            nuon_diag_step = 2;
             // Send MAGIC request
             send_command(build_command(PF_TYPE_READ, PF_CMD_MAGIC, 0x04, 0x00));
             if (read_response(&response)) {
@@ -403,6 +437,7 @@ void __not_in_flash_func(nuon_host_core1_task)(void)
         }
 
         if (!branded) {
+            nuon_diag_step = 3;
             // Send PROBE to get device info
             send_command(build_command(PF_TYPE_READ, PF_CMD_PROBE, 0x04, 0x00));
             if (read_response(&response)) {
@@ -418,6 +453,7 @@ void __not_in_flash_func(nuon_host_core1_task)(void)
         }
 
         if (!enabled) {
+            nuon_diag_step = 5;
             // Send STATE write with ENABLE + ROOT
             send_command(build_command(PF_TYPE_WRITE, PF_CMD_STATE, 0x01, PF_STATE_ENABLE | PF_STATE_ROOT));
             clock_cycles(50);
@@ -502,20 +538,8 @@ void __not_in_flash_func(nuon_host_core1_task)(void)
                 break;
         }
 
-        // Check for connection loss (no successful reads in a while)
-        if (loop_count > 1000 && success_count == 0) {
-            // Reset enumeration
-            alive = false;
-            magic_ok = false;
-            branded = false;
-            enabled = false;
-            nuon_controller_connected = false;
-            loop_count = 0;
-        }
-        if (loop_count > 1000) {
-            loop_count = 1;
-            success_count = 0;
-        }
+        // Connection loss check disabled for debugging
+        // TODO: re-enable after enumeration is working
     }
 }
 
@@ -589,13 +613,13 @@ void nuon_host_task(void)
         // Read GPIO states for diagnostic
         bool clk_state = gpio_get(NUON_PIN_CLK);
         bool dat_state = gpio_get(NUON_PIN_DATA);
-        printf("[nuon_host] polls=%lu conn=%d alive=0x%08lX fifo=%lu clk=%d dat=%d cmd=0x%08lX\n",
+        printf("[nuon_host] step=%lu polls=%lu conn=%d raw=0x%08lX fifo=%lu dat=%d\n",
+               (unsigned long)nuon_diag_step,
                (unsigned long)nuon_poll_count,
                nuon_controller_connected ? 1 : 0,
                (unsigned long)nuon_diag_alive,
                (unsigned long)nuon_diag_fifo,
-               clk_state, dat_state,
-               (unsigned long)nuon_diag_cmd);
+               dat_state);
     }
 
     // Only submit if connected
