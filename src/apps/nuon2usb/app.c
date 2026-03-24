@@ -87,6 +87,30 @@ static uint32_t __no_inline_not_in_flash_func(pf_transact)(
     return 0;
 }
 
+// Read an analog axis: sends CHANNEL + ANALOG, handles all echoes.
+// Returns the CRC-encoded value. Extract with (resp >> 24) & 0xFF.
+static uint32_t __no_inline_not_in_flash_func(pf_read_analog)(uint8_t channel)
+{
+    // Send CHANNEL (no response) then ANALOG (has response).
+    // Both get queued in send PIO TX FIFO and sent sequentially.
+    pf_put(0x34, 0x01, channel);  // CHANNEL
+    pf_put(0x35, 0x01, 0x00);     // ANALOG
+
+    // Read packets: expect CHANNEL echo, ANALOG echo, ANALOG response.
+    // Skip all ctrl=1 (echoes), return first ctrl=0 (response).
+    absolute_time_t timeout = make_timeout_time_ms(50);
+    while (!time_reached(timeout)) {
+        if (pio_sm_get_rx_fifo_level(pio, sm2) < 2) {
+            tight_loop_contents();
+            continue;
+        }
+        uint32_t w0 = pio_sm_get(pio, sm2);
+        uint32_t w1 = pio_sm_get(pio, sm2);
+        if ((w0 & 1) == 0) return w1;
+    }
+    return 0;
+}
+
 // Send command, drain echo, no response expected
 static void __no_inline_not_in_flash_func(pf_send)(
     uint8_t dataA, uint8_t dataS, uint8_t dataC)
@@ -128,6 +152,12 @@ static void __not_in_flash_func(host_core1)(void)
                    (int)((resp >> 16) & 0xFF), (int)((resp >> 24) & 0x7F));
 
             pf_send(0xB4, 0x00, 0x00);  // BRAND id=0
+
+            // Read device MODE to learn capabilities
+            uint32_t mode_resp = pf_read_analog(0x00);  // CHANNEL=NONE → MODE
+            uint8_t device_mode = (mode_resp >> 24) & 0xFF;
+            printf("[nuon2usb] MODE=0x%02X\n", device_mode);
+
             enumerated = true;
             printf("[nuon2usb] Enumerated\n");
         }
@@ -151,8 +181,16 @@ static void __not_in_flash_func(host_core1)(void)
             // Analog axes (CRC-encoded, value in upper byte)
             uint8_t lx = 128, ly = 128, rx = 128, ry = 128;
 
-            // TODO: fix analog reads (FIFO alignment issue)
-            // For now, skip analog — just buttons
+            // Read analog axes using atomic CHANNEL+ANALOG function
+            uint32_t a;
+            a = pf_read_analog(0x02);  // X1
+            if (a) lx = (a >> 24) & 0xFF;
+            a = pf_read_analog(0x03);  // Y1
+            if (a) ly = (a >> 24) & 0xFF;
+            a = pf_read_analog(0x04);  // X2
+            if (a) rx = (a >> 24) & 0xFF;
+            a = pf_read_analog(0x05);  // Y2
+            if (a) ry = (a >> 24) & 0xFF;
 
             // Map and submit to router
             uint32_t jp_buttons = map_nuon_to_jp(nuon_buttons);
