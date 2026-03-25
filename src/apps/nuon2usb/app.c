@@ -189,20 +189,22 @@ static void __not_in_flash_func(host_core1)(void)
             // Read each axis: send CHANNEL (no response expected), then ANALOG.
             // pf_transact for ANALOG skips all ctrl=1 echoes (including CHANNEL echo).
 
-            // Read one axis per poll, rotating through all 4 (15Hz each).
-            static uint8_t axis_sel = 0;
-            pf_send(0, 0x34, 0x01, 0x02 + axis_sel);
+            // Read all 4 axes every poll (~8ms total with 500µs delays)
+            pf_send(0, 0x34, 0x01, 0x02);
             raw = pf_transact(0x35, 0x01, 0x00);
-            if (raw) {
-                uint8_t val = (raw >> 24) & 0xFF;
-                switch (axis_sel) {
-                    case 0: lx = val; break;
-                    case 1: ly = val; break;
-                    case 2: rx = val; break;
-                    case 3: ry = val; break;
-                }
-            }
-            axis_sel = (axis_sel + 1) & 3;
+            if (raw) lx = (raw >> 24) & 0xFF;
+
+            pf_send(0, 0x34, 0x01, 0x03);
+            raw = pf_transact(0x35, 0x01, 0x00);
+            if (raw) ly = (raw >> 24) & 0xFF;
+
+            pf_send(0, 0x34, 0x01, 0x04);
+            raw = pf_transact(0x35, 0x01, 0x00);
+            if (raw) rx = (raw >> 24) & 0xFF;
+
+            pf_send(0, 0x34, 0x01, 0x05);
+            raw = pf_transact(0x35, 0x01, 0x00);
+            if (raw) ry = (raw >> 24) & 0xFF;
 
             // Map and submit to router
             uint32_t jp_buttons = map_nuon_to_jp(nuon_buttons);
@@ -228,7 +230,7 @@ static void __not_in_flash_func(host_core1)(void)
                        nuon_buttons, (unsigned long)jp_buttons, lx, ly, rx, ry);
             }
 
-            busy_wait_us(16000);  // ~60Hz
+            // No throttle needed — analog read delays pace the loop naturally
         }
 
         printf("[nuon2usb] Disconnected, re-enumerating\n");
