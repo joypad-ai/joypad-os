@@ -50,9 +50,9 @@ static uint32_t map_nuon_to_jp(uint16_t nuon)
 
 // Build and send a polyface command
 static inline void __no_inline_not_in_flash_func(pf_put)(
-    uint8_t dataA, uint8_t dataS, uint8_t dataC)
+    uint8_t type, uint8_t dataA, uint8_t dataS, uint8_t dataC)
 {
-    uint32_t desired = ((uint32_t)1 << 25) |
+    uint32_t desired = ((uint32_t)(type & 1) << 25) |
                        ((uint32_t)(dataA & 0xFF) << 17) |
                        ((uint32_t)(dataS & 0x7F) << 9) |
                        ((uint32_t)(dataC & 0x7F) << 1);
@@ -72,7 +72,7 @@ static inline void __no_inline_not_in_flash_func(pf_read)(uint32_t *w0, uint32_t
 static uint32_t __no_inline_not_in_flash_func(pf_transact)(
     uint8_t dataA, uint8_t dataS, uint8_t dataC)
 {
-    pf_put(dataA, dataS, dataC);
+    pf_put(1, dataA, dataS, dataC);
 
     absolute_time_t timeout = make_timeout_time_ms(50);
     while (!time_reached(timeout)) {
@@ -82,7 +82,7 @@ static uint32_t __no_inline_not_in_flash_func(pf_transact)(
         }
         uint32_t w0 = pio_sm_get(pio, sm2);
         uint32_t w1 = pio_sm_get(pio, sm2);
-        if ((w0 & 1) == 0) return w1;  // ctrl=0 = device response
+        if ((w0 & 1) == 0) return w1;
     }
     return 0;
 }
@@ -93,8 +93,8 @@ static uint32_t __no_inline_not_in_flash_func(pf_read_analog)(uint8_t channel)
 {
     // Send CHANNEL (no response) then ANALOG (has response).
     // Both get queued in send PIO TX FIFO and sent sequentially.
-    pf_put(0x34, 0x01, channel);  // CHANNEL
-    pf_put(0x35, 0x01, 0x00);     // ANALOG
+    pf_put(0, 0x34, 0x01, channel);  // CHANNEL
+    pf_put(1, 0x35, 0x01, 0x00);     // ANALOG
 
     // Read packets: expect CHANNEL echo, ANALOG echo, ANALOG response.
     // Skip all ctrl=1 (echoes), return first ctrl=0 (response).
@@ -113,13 +113,14 @@ static uint32_t __no_inline_not_in_flash_func(pf_read_analog)(uint8_t channel)
 
 // Send command, drain echo, no response expected
 static void __no_inline_not_in_flash_func(pf_send)(
-    uint8_t dataA, uint8_t dataS, uint8_t dataC)
+    uint8_t type, uint8_t dataA, uint8_t dataS, uint8_t dataC)
 {
-    pf_put(dataA, dataS, dataC);
-    busy_wait_us(100);
-    while (pio_sm_get_rx_fifo_level(pio, sm2) >= 2) {
-        (void)pio_sm_get(pio, sm2);
-        (void)pio_sm_get(pio, sm2);
+    pf_put(type, dataA, dataS, dataC);
+    // Continuously drain for 500µs — catches echo + any late-arriving stale data
+    absolute_time_t drain_end = make_timeout_time_us(500);
+    while (!time_reached(drain_end)) {
+        while (!pio_sm_is_rx_fifo_empty(pio, sm2))
+            (void)pio_sm_get(pio, sm2);
     }
 }
 
@@ -132,7 +133,7 @@ static void __not_in_flash_func(host_core1)(void)
         // ---- ENUMERATION ----
         bool enumerated = false;
         while (!enumerated) {
-            pf_send(0xB1, 0x00, 0x00);  // RESET
+            pf_send(0, 0xB1, 0x00, 0x00);  // RESET
             busy_wait_us(1000);
 
             uint32_t resp = pf_transact(0x80, 0x00, 0x00);  // ALIVE
@@ -151,7 +152,7 @@ static void __not_in_flash_func(host_core1)(void)
             printf("[nuon2usb] PROBE: type=%d ver=%d\n",
                    (int)((resp >> 16) & 0xFF), (int)((resp >> 24) & 0x7F));
 
-            pf_send(0xB4, 0x00, 0x00);  // BRAND id=0
+            pf_send(0, 0xB4, 0x00, 0x00);  // BRAND id=0
 
             // Read device MODE to learn capabilities
             uint32_t mode_resp = pf_read_analog(0x00);  // CHANNEL=NONE → MODE
@@ -165,7 +166,7 @@ static void __not_in_flash_func(host_core1)(void)
         // ---- POLLING LOOP ----
         uint8_t disconnect_count = 0;
         while (disconnect_count < 30) {
-            // Drain any stale data from FIFO before polling
+            // Drain any stale data (read all complete packets)
             while (pio_sm_get_rx_fifo_level(pio, sm2) >= 2) {
                 (void)pio_sm_get(pio, sm2);
                 (void)pio_sm_get(pio, sm2);
@@ -179,18 +180,23 @@ static void __not_in_flash_func(host_core1)(void)
             uint16_t nuon_buttons = (btn_resp >> 16) & 0xFFFF;
 
             // Analog axes (CRC-encoded, value in upper byte)
-            uint8_t lx = 128, ly = 128, rx = 128, ry = 128;
+            static uint8_t lx = 128, ly = 128, rx = 128, ry = 128;
 
-            // Read analog axes using atomic CHANNEL+ANALOG function
-            uint32_t a;
-            a = pf_read_analog(0x02);  // X1
-            if (a) lx = (a >> 24) & 0xFF;
-            a = pf_read_analog(0x03);  // Y1
-            if (a) ly = (a >> 24) & 0xFF;
-            a = pf_read_analog(0x04);  // X2
-            if (a) rx = (a >> 24) & 0xFF;
-            a = pf_read_analog(0x05);  // Y2
-            if (a) ry = (a >> 24) & 0xFF;
+            // Read analog axes one at a time: request, read, drain, next.
+            uint32_t raw;
+
+            // Read each axis: send CHANNEL (no response expected), then ANALOG.
+            // pf_transact for ANALOG skips all ctrl=1 echoes (including CHANNEL echo).
+
+            // Read one axis per poll, alternating LX/LY (30Hz each).
+            static uint8_t axis_sel = 0;
+            pf_send(0, 0x34, 0x01, 0x02 + axis_sel);  // CHANNEL X1 or Y1
+            raw = pf_transact(0x35, 0x01, 0x00);       // ANALOG
+            if (raw) {
+                if (axis_sel == 0) lx = (raw >> 24) & 0xFF;
+                else               ly = (raw >> 24) & 0xFF;
+            }
+            axis_sel = !axis_sel;
 
             // Map and submit to router
             uint32_t jp_buttons = map_nuon_to_jp(nuon_buttons);
@@ -299,7 +305,9 @@ void app_init(void)
     };
     profile_init(&profile_cfg);
 
-    // NO pull-up on data pin — line stays LOW between packets for clean PIO sync
+    // Pull-DOWN on data pin — keeps line solidly LOW between packets.
+    // Prevents floating pin from generating spurious start bits on the device side.
+    gpio_pull_down(DATAIO_PIN);
 
     // Replace device send PIO (control=0) with host send PIO (control=1)
     pio_sm_set_enabled(pio, sm1, false);
