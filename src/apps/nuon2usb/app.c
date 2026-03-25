@@ -82,6 +82,7 @@ static uint32_t __no_inline_not_in_flash_func(pf_transact)(
         }
         uint32_t w0 = pio_sm_get(pio, sm2);
         uint32_t w1 = pio_sm_get(pio, sm2);
+        busy_wait_us(500);
         if ((w0 & 1) == 0) return w1;
     }
     return 0;
@@ -116,12 +117,12 @@ static void __no_inline_not_in_flash_func(pf_send)(
     uint8_t type, uint8_t dataA, uint8_t dataS, uint8_t dataC)
 {
     pf_put(type, dataA, dataS, dataC);
-    // Continuously drain for 500µs — catches echo + any late-arriving stale data
-    absolute_time_t drain_end = make_timeout_time_us(500);
-    while (!time_reached(drain_end)) {
-        while (!pio_sm_is_rx_fifo_empty(pio, sm2))
-            (void)pio_sm_get(pio, sm2);
-    }
+    // Wait for transmission to complete, then give device time to process
+    while (pio->sm[sm1].addr != 0) tight_loop_contents();
+    busy_wait_us(500);
+    // Drain echo
+    while (!pio_sm_is_rx_fifo_empty(pio, sm2))
+        (void)pio_sm_get(pio, sm2);
 }
 
 static void __not_in_flash_func(host_core1)(void)
@@ -188,15 +189,20 @@ static void __not_in_flash_func(host_core1)(void)
             // Read each axis: send CHANNEL (no response expected), then ANALOG.
             // pf_transact for ANALOG skips all ctrl=1 echoes (including CHANNEL echo).
 
-            // Read one axis per poll, alternating LX/LY (30Hz each).
+            // Read one axis per poll, rotating through all 4 (15Hz each).
             static uint8_t axis_sel = 0;
-            pf_send(0, 0x34, 0x01, 0x02 + axis_sel);  // CHANNEL X1 or Y1
-            raw = pf_transact(0x35, 0x01, 0x00);       // ANALOG
+            pf_send(0, 0x34, 0x01, 0x02 + axis_sel);
+            raw = pf_transact(0x35, 0x01, 0x00);
             if (raw) {
-                if (axis_sel == 0) lx = (raw >> 24) & 0xFF;
-                else               ly = (raw >> 24) & 0xFF;
+                uint8_t val = (raw >> 24) & 0xFF;
+                switch (axis_sel) {
+                    case 0: lx = val; break;
+                    case 1: ly = val; break;
+                    case 2: rx = val; break;
+                    case 3: ry = val; break;
+                }
             }
-            axis_sel = !axis_sel;
+            axis_sel = (axis_sel + 1) & 3;
 
             // Map and submit to router
             uint32_t jp_buttons = map_nuon_to_jp(nuon_buttons);
