@@ -219,6 +219,10 @@ static void __not_in_flash_func(host_core1)(void)
             event.analog[ANALOG_LY] = ly;
             event.analog[ANALOG_RX] = rx;
             event.analog[ANALOG_RY] = ry;
+            // Nuon has digital L2/R2 (C-UP/C-RIGHT) — set analog trigger values
+            // so USB HID reports full press (255) or release (0)
+            event.analog[ANALOG_L2] = (jp_buttons & JP_BUTTON_L2) ? 255 : 0;
+            event.analog[ANALOG_R2] = (jp_buttons & JP_BUTTON_R2) ? 255 : 0;
             router_submit_input(&event);
 
             // Debug print (throttled)
