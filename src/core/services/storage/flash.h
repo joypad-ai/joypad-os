@@ -40,13 +40,20 @@ typedef struct {
     uint8_t right_stick_sens;  // 0-200
     uint8_t flags;             // Bit 0: swap sticks, Bit 1: invert LY, Bit 2: invert RY
     uint8_t socd_mode;         // SOCD cleaning mode (0=passthrough, 1=neutral, 2=up-priority, 3=last-win)
-    uint8_t reserved[22];      // Future use
+    uint8_t left_deadzone;     // 0-127, deadzone radius for left stick (0 = off, 0xFF = legacy off)
+    uint8_t right_deadzone;    // 0-127, deadzone radius for right stick (0 = off, 0xFF = legacy off)
+    uint8_t reserved[20];      // Future use
 } custom_profile_t;
 
 // Profile flags
 #define PROFILE_FLAG_SWAP_STICKS  (1 << 0)
 #define PROFILE_FLAG_INVERT_LY    (1 << 1)
 #define PROFILE_FLAG_INVERT_RY    (1 << 2)
+
+// Deadzone helper: unprogrammed flash reads as 0xFF, treat as 0 (off)
+static inline uint8_t get_effective_deadzone(uint8_t stored_value) {
+    return (stored_value == 0xFF) ? 0 : stored_value;
+}
 
 // ============================================================================
 // Flash Settings Structure

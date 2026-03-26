@@ -404,6 +404,10 @@ void custom_profile_init(custom_profile_t* profile, const char* name)
 
     // No flags set
     profile->flags = 0;
+
+    // No deadzone by default
+    profile->left_deadzone = 0;
+    profile->right_deadzone = 0;
 }
 
 // Apply button mapping from custom profile

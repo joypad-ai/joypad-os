@@ -345,6 +345,40 @@ static void transform_merge_instances(input_event_t* event, output_target_t outp
     (void)output;
 }
 
+// Apply per-profile deadzone to analog stick axes (modifies event in-place)
+// Reads from active custom profile's deadzone settings
+static void apply_profile_deadzone(input_event_t* event) {
+    const custom_profile_t* profile = flash_get_active_custom_profile();
+    if (!profile) return;
+
+    uint8_t left_dz = get_effective_deadzone(profile->left_deadzone);
+    uint8_t right_dz = get_effective_deadzone(profile->right_deadzone);
+
+    if (left_dz > 0) {
+        int centered;
+
+        centered = (int)event->analog[ANALOG_LX] - 128;
+        if (centered > -(int)left_dz && centered < (int)left_dz)
+            event->analog[ANALOG_LX] = 128;
+
+        centered = (int)event->analog[ANALOG_LY] - 128;
+        if (centered > -(int)left_dz && centered < (int)left_dz)
+            event->analog[ANALOG_LY] = 128;
+    }
+
+    if (right_dz > 0) {
+        int centered;
+
+        centered = (int)event->analog[ANALOG_RX] - 128;
+        if (centered > -(int)right_dz && centered < (int)right_dz)
+            event->analog[ANALOG_RX] = 128;
+
+        centered = (int)event->analog[ANALOG_RY] - 128;
+        if (centered > -(int)right_dz && centered < (int)right_dz)
+            event->analog[ANALOG_RY] = 128;
+    }
+}
+
 // Apply transformations to input event (modifies event in-place)
 static void apply_transformations(input_event_t* event, output_target_t output, int player_index) {
     if (!router_config.transform_flags) return;  // No transformations enabled
@@ -719,6 +753,12 @@ void router_submit_input(const input_event_t* event) {
 #ifdef CONFIG_USB
     cdc_commands_send_input_event(event->buttons, event->analog);
 #endif
+
+    // Apply per-profile deadzone to a mutable copy
+    // (deadzone is profile-level, applies to all input sources)
+    input_event_t dz_event = *event;
+    apply_profile_deadzone(&dz_event);
+    event = &dz_event;
 
     // Find first active route to determine output target
     output_target_t output = OUTPUT_TARGET_USB_DEVICE;
