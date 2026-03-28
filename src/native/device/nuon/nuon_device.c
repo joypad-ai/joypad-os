@@ -312,12 +312,60 @@ void __not_in_flash_func(core1_task)(void)
       packet = ((packet) << 32) | (rxdata & 0xFFFFFFFF);
     }
 
+    uint32_t pf_w0 = (uint32_t)(packet >> 32);
+    uint32_t pf_w1 = (uint32_t)(packet & 0xFFFFFFFF);
+
+    // Check if this is a DEVICE response (from physical controller) or HOST command
+    static uint8_t sniff_last_cmd = 0;
+    static uint8_t sniff_last_channel = 0;
+    static bool sniff_detected = false;
+
+    if ((pf_w0 & 1) == 0) {
+        // Device response — physical controller responding to console.
+
+        if (sniff_last_cmd == 0x80 && pf_w1 != 0 && !sniff_detected) {
+            sniff_detected = true;
+            // printf("[sniff] controller detected\n");
+        }
+
+        // Store sniffed data (no printf here — Core 1 can't block on UART)
+        static uint16_t sniff_buttons = 0;
+        static uint8_t sniff_analog[6] = {128,128,128,128,128,128};
+
+        if (sniff_last_cmd == 0x30) {
+            sniff_buttons = (pf_w1 >> 16) & 0xFFFF;
+        } else if (sniff_last_cmd == 0x35) {
+            uint8_t val = (pf_w1 >> 24) & 0xFF;
+            if (sniff_last_channel >= 2 && sniff_last_channel <= 5)
+                sniff_analog[sniff_last_channel] = val;
+        }
+
+        // // Throttled debug print — max once per 500ms
+        // {
+        //     static uint32_t last_print_ms = 0;
+        //     uint32_t now = to_ms_since_boot(get_absolute_time());
+        //     if (sniff_detected && now - last_print_ms >= 500) {
+        //         last_print_ms = now;
+        //         printf("[sniff] btn=%04X lx=%d ly=%d rx=%d ry=%d\n",
+        //                sniff_buttons,
+        //                sniff_analog[2], sniff_analog[3],
+        //                sniff_analog[4], sniff_analog[5]);
+        //     }
+        // }
+        continue;  // don't process device responses as commands
+    }
+
+    // HOST command from console — extract fields as before
     uint8_t dataA = ((packet>>17) & 0b11111111);
     uint8_t dataS = ((packet>>9) & 0b01111111);
     uint8_t dataC = ((packet>>1) & 0b01111111);
     uint8_t type0 = ((packet>>25) & 0b00000001);
     uint32_t word0 = 1;
     uint32_t word1 = 0;
+
+    // Track console command for sniffing
+    sniff_last_cmd = dataA;
+    if (dataA == 0x34) sniff_last_channel = dataC;  // CHANNEL sets axis
 
     pf_diag_count++;
 
