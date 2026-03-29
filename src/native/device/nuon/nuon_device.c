@@ -29,6 +29,24 @@ uint32_t device_switch = 0b10000000100000110000001100000000;
 // Console-local state (not input data)
 #include "core/router/router.h"
 
+// Per-device polyface state for multi-device support
+#define MAX_POLYFACE_DEVICES 4
+typedef struct {
+    uint8_t bit_slot;    // ALIVE bit slot (0-30)
+    uint8_t id;          // assigned by console via BRAND (0 = unbranded)
+    uint8_t channel;     // current ATOD channel
+    uint16_t state;      // STATE register
+    bool active;         // has a paired BT controller
+    bool alive;          // responded to ALIVE
+    bool tagged;         // TAG'd by console
+    bool branded;        // BRAND'd by console
+    bool focused;        // currently has FOCUS
+    int requestsB;
+} polyface_device_t;
+
+static polyface_device_t pf_devices[MAX_POLYFACE_DEVICES];
+static int pf_focused_idx = -1;  // which device currently has focus (-1 = none)
+
 // Core 1 → Core 0 diagnostic
 volatile uint32_t pf_diag_count = 0;
 
@@ -46,7 +64,6 @@ static void __no_inline_not_in_flash_func(polyface_respond)(uint32_t word1, uint
         while (gpio_get(CLKIN_PIN)) tight_loop_contents();
     }
 
-    // Single APB access to push data — PIO send SM handles all bit timing
     pio_sm_put_blocking(pio, sm1, word1);
 }
 
@@ -292,13 +309,15 @@ void __not_in_flash_func(core1_task)(void)
   *(volatile uint32_t *)0x40030000 = (1u << 4);
 
   uint64_t packet = 0;
-  uint16_t state = 0;
-  uint8_t channel = 0;
-  uint8_t id = 0;
-  bool alive = false;
-  bool tagged = false;
-  bool branded = false;
-  int requestsB = 0;
+
+  // Initialize device slots
+  for (int d = 0; d < MAX_POLYFACE_DEVICES; d++) {
+    pf_devices[d] = (polyface_device_t){
+      .bit_slot = d, .id = 0, .channel = 0, .state = 0,
+      .active = false, .alive = false, .tagged = false,
+      .branded = false, .focused = false, .requestsB = 0
+    };
+  }
 
   while (1)
   {
@@ -369,84 +388,168 @@ void __not_in_flash_func(core1_task)(void)
 
     pf_diag_count++;
 
-    // Stay silent until a BT controller is connected.
-    // Nuon re-probes continuously, so it will detect us when a controller pairs.
-    // This allows a real controller on the same port to work (internal mod).
+    // Update active device count based on paired BT controllers
     {
-        static bool was_active = false;
-        bool active = (*(volatile int*)&playersCount > 0);
-        if (!active) {
-            was_active = false;
-            continue;
+        int count = *(volatile int*)&playersCount;
+        static int prev_count = 0;
+
+        // Activate new device slots when BT controllers pair
+        if (count > prev_count) {
+            for (int d = prev_count; d < count && d < MAX_POLYFACE_DEVICES; d++) {
+                // Reset device state for fresh detection
+                int slot = sniff_detected ? d + 1 : d;  // offset if physical controller uses slot 0
+                if (slot >= MAX_POLYFACE_DEVICES) break;
+                pf_devices[slot].bit_slot = slot;
+                pf_devices[slot].active = true;
+                pf_devices[slot].alive = false;
+                pf_devices[slot].tagged = false;
+                pf_devices[slot].branded = false;
+                pf_devices[slot].focused = false;
+                pf_devices[slot].id = 0;
+                pf_devices[slot].channel = 0;
+                pf_devices[slot].state = 0;
+                pf_devices[slot].requestsB = 0;
+            }
         }
-        if (!was_active) {
-            // BT controller just connected — reset polyface state for fresh detection
-            was_active = true;
-            alive = false;
-            branded = false;
-            tagged = false;
-            id = 0;
-            state = 0;
-            channel = 0;
-            requestsB = 0;
+        // Deactivate slots when BT controllers disconnect
+        if (count < prev_count) {
+            for (int d = count; d < prev_count && d < MAX_POLYFACE_DEVICES; d++) {
+                int slot = sniff_detected ? d + 1 : d;
+                if (slot < MAX_POLYFACE_DEVICES)
+                    pf_devices[slot].active = false;
+            }
         }
+        prev_count = count;
+
+        // If no active devices, skip command processing (stay transparent)
+        bool any_active = false;
+        for (int d = 0; d < MAX_POLYFACE_DEVICES; d++)
+            if (pf_devices[d].active) { any_active = true; break; }
+        if (!any_active) continue;
     }
 
     if (dataA == 0xb1 && dataS == 0x00 && dataC == 0x00) // RESET
     {
-      id = 0;
-      alive = false;
-      tagged = false;
-      branded = false;
-      state = 0;
-      channel = 0;
+      for (int d = 0; d < MAX_POLYFACE_DEVICES; d++) {
+        pf_devices[d].id = 0;
+        pf_devices[d].alive = false;
+        pf_devices[d].tagged = false;
+        pf_devices[d].branded = false;
+        pf_devices[d].focused = false;
+        pf_devices[d].state = 0;
+        pf_devices[d].channel = 0;
+      }
+      pf_focused_idx = -1;
     }
 
-    if (dataA == 0x80) // ALIVE
+    // FOCUS/BLUR (A=0xB0)
+    if (dataA == 0xb0 && dataS == 0x00) {
+      if (dataC == 0x01) {        // FOCUS
+        // Unfocus all, then focus the tagged or first active device
+        for (int d = 0; d < MAX_POLYFACE_DEVICES; d++)
+          pf_devices[d].focused = false;
+        pf_focused_idx = -1;
+        for (int d = 0; d < MAX_POLYFACE_DEVICES; d++) {
+          if (!pf_devices[d].active) continue;
+          // Tagged device gets priority, otherwise first active
+          if (pf_devices[d].tagged) {
+            pf_devices[d].focused = true;
+            pf_devices[d].tagged = false;
+            pf_focused_idx = d;
+            break;
+          }
+        }
+        // If no tagged device, focus first active
+        if (pf_focused_idx < 0) {
+          for (int d = 0; d < MAX_POLYFACE_DEVICES; d++) {
+            if (pf_devices[d].active) {
+              pf_devices[d].focused = true;
+              pf_focused_idx = d;
+              break;
+            }
+          }
+        }
+      } else if (dataC == 0x02) { // BLUR
+        for (int d = 0; d < MAX_POLYFACE_DEVICES; d++) {
+          if (pf_devices[d].tagged) {
+            // Tagged device converts BLUR→FOCUS
+            for (int j = 0; j < MAX_POLYFACE_DEVICES; j++)
+              pf_devices[j].focused = false;
+            pf_devices[d].focused = true;
+            pf_devices[d].tagged = false;
+            pf_focused_idx = d;
+            break;
+          } else if (pf_devices[d].focused) {
+            pf_devices[d].focused = false;
+            pf_focused_idx = -1;
+          }
+        }
+      }
+    }
+
+    // TAG (A=0xB2) — tag first unbranded active device
+    if (dataA == 0xb2 && dataS == 0x00 && dataC == 0x00) {
+      for (int d = 0; d < MAX_POLYFACE_DEVICES; d++) {
+        if (pf_devices[d].active && !pf_devices[d].branded && !pf_devices[d].tagged) {
+          pf_devices[d].tagged = true;
+          break;
+        }
+      }
+    }
+
+    // Use focused device, or first active as fallback (ungated mode)
+    polyface_device_t *fdev = (pf_focused_idx >= 0) ? &pf_devices[pf_focused_idx] : &pf_devices[0];
+
+    if (dataA == 0x80) // ALIVE — BROADCAST, all active devices respond via bit slots
     {
       word0 = 1;
-      word1 = __rev(0b01);
-      if (alive) word1 = __rev(((id & 0b01111111) << 1));
-      else alive = true;
-
+      uint32_t alive_bits = 0;
+      for (int d = 0; d < MAX_POLYFACE_DEVICES; d++) {
+        if (!pf_devices[d].active) continue;
+        if (pf_devices[d].alive) {
+          // Branded: respond in assigned ID's bit slot
+          if (pf_devices[d].branded)
+            alive_bits |= ((pf_devices[d].id & 0x7F) << 1);
+        } else {
+          // First ALIVE: respond in our bit slot
+          alive_bits |= (1 << pf_devices[d].bit_slot);  // bit slot N → bit position N
+          pf_devices[d].alive = true;
+        }
+      }
+      word1 = __rev(alive_bits);
       polyface_respond(word1, word0);
     }
-    else if (dataA == 0x88 && dataS == 0x04 && dataC == 0x40) // ERROR
+    else if (dataA == 0x88 && dataS == 0x04 && dataC == 0x40) // ERROR — BROADCAST
     {
       word0 = 1;
       word1 = 0;
       polyface_respond(word1, word0);
     }
-    else if (dataA == 0x90 && !branded) // MAGIC
+    else if (dataA == 0x90 && !fdev->branded) // MAGIC
     {
       word0 = 1;
       word1 = __rev(MAGIC);
       polyface_respond(word1, word0);
     }
-    else if (dataA == 0x94) // PROBE
+    else if (dataA == 0x94 ) // PROBE — FOCUS addressed
     {
-      word0 = 1; // default res from HPI controller
-      word1 = __rev(0b10001011000000110000000000000000);
-
-      //DEFCFG VERSION     TYPE      MFG TAGGED BRANDED    ID P
-      //   0b1 0001011 00000011 00000000      0       0 00000 0
+      word0 = 1;
       word1 = ((DEFCFG  & 1)<<31) |
               ((VERSION & 0b01111111)<<24) |
               ((TYPE    & 0b11111111)<<16) |
               ((MFG     & 0b11111111)<<8) |
-              (((tagged ? 1:0) & 1)<<7) |
-              (((branded? 1:0) & 1)<<6) |
-              ((id      & 0b00011111)<<1);
+              (((fdev->tagged ? 1:0) & 1)<<7) |
+              (((fdev->branded? 1:0) & 1)<<6) |
+              ((fdev->id      & 0b00011111)<<1);
       word1 = __rev(word1 | eparity(word1));
-
       polyface_respond(word1, word0);
     }
-    else if (dataA == 0x27 && dataS == 0x01 && dataC == 0x00) // REQUEST (ADDRESS)
+    else if (dataA == 0x27 && dataS == 0x01 && dataC == 0x00 ) // REQUEST (ADDRESS)
     {
       word0 = 1;
       word1 = 0;
 
-      if (channel == ATOD_CHANNEL_MODE)
+      if (fdev->channel == ATOD_CHANNEL_MODE)
       {
         // word1 = __rev(0b11000100100000101001101100000000); // 68
         word1 = __rev(crc_data_packet(0b11110100, 1)); // send & recv?
@@ -457,27 +560,34 @@ void __not_in_flash_func(core1_task)(void)
 
       polyface_respond(word1, word0);
     }
-    else if (dataA == 0x84 && dataS == 0x04 && dataC == 0x40) // REQUEST (B)
+    else if (dataA == 0x84 && dataS == 0x04 && dataC == 0x40) // REQUEST — BROADCAST
     {
+      // Use focused device if available, otherwise first active
+      polyface_device_t *rdev = fdev;
+      if (!rdev) {
+        for (int d = 0; d < MAX_POLYFACE_DEVICES; d++)
+          if (pf_devices[d].active) { rdev = &pf_devices[d]; break; }
+      }
       word0 = 1;
       word1 = 0;
 
-      // 
-      if ((0b101001001100 >> requestsB) & 0b01)
+      if (rdev && (0b101001001100 >> rdev->requestsB) & 0b01)
       {
         word1 = __rev(0b10);
       }
 
       polyface_respond(word1, word0);
 
-      requestsB++;
-      if (requestsB == 12) requestsB = 7;
+      if (rdev) {
+        rdev->requestsB++;
+        if (rdev->requestsB == 12) rdev->requestsB = 7;
+      }
     }
-    else if (dataA == 0x34 && dataS == 0x01) // CHANNEL
+    else if (dataA == 0x34 && dataS == 0x01 ) // CHANNEL
     {
-      channel = dataC;
+      fdev->channel = dataC;
     }
-    else if (dataA == 0x32 && dataS == 0x02 && dataC == 0x00) // QUADX
+    else if (dataA == 0x32 && dataS == 0x02 && dataC == 0x00 ) // QUADX
     {
       word0 = 1;
       word1 = __rev(0b10000000100000110000001100000000); //0
@@ -487,19 +597,12 @@ void __not_in_flash_func(core1_task)(void)
 
       polyface_respond(word1, word0);
     }
-    else if (dataA == 0x35 && dataS == 0x01 && dataC == 0x00) // ANALOG
+    else if (dataA == 0x35 && dataS == 0x01 && dataC == 0x00 ) // ANALOG
     {
       word0 = 1;
       word1 = __rev(0b10000000100000110000001100000000); //0
 
-      // ALL_BUTTONS: CTRLR_STDBUTTONS & CTRLR_DPAD & CTRLR_SHOULDER & CTRLR_EXTBUTTONS
-      // <= 23 - 0x51f CTRLR_TWIST & CTRLR_THROTTLE & CTRLR_ANALOG1 & ALL_BUTTONS
-      // 29-47 - 0x83f CTRLR_MOUSE & CTRLR_ANALOG1 & CTRLR_ANALOG2 & ALL_BUTTONS
-      // 48-69 - 0x01f CTRLR_ANALOG1 & ALL_BUTTONS
-      // 70-92 - 0x808 CTRLR_MOUSE & CTRLR_EXTBUTTONS
-      // >= 93 - ERROR?
-
-      switch (channel)
+      switch (fdev->channel)
       {
       case ATOD_CHANNEL_NONE:
         word1 = __rev(device_mode); // device mode packet?
@@ -525,28 +628,28 @@ void __not_in_flash_func(core1_task)(void)
 
       polyface_respond(word1, word0);
     }
-    else if (dataA == 0x25 && dataS == 0x01 && dataC == 0x00) // CONFIG
+    else if (dataA == 0x25 && dataS == 0x01 && dataC == 0x00 ) // CONFIG
     {
       word0 = 1;
       word1 = __rev(device_config); // device config packet?
 
       polyface_respond(word1, word0);
     }
-    else if (dataA == 0x31 && dataS == 0x01 && dataC == 0x00) // {SWITCH[16:9]}
+    else if (dataA == 0x31 && dataS == 0x01 && dataC == 0x00 ) // {SWITCH[16:9]}
     {
       word0 = 1;
       word1 = __rev(device_switch); // extra device config?
 
       polyface_respond(word1, word0);
     }
-    else if (dataA == 0x30 && dataS == 0x02 && dataC == 0x00) // {SWITCH[8:1]}
+    else if (dataA == 0x30 && dataS == 0x02 && dataC == 0x00 ) // {SWITCH[8:1]}
     {
       word0 = 1;
       word1 = __rev(output_buttons_0);
 
       polyface_respond(word1, word0);
     }
-    else if (dataA == 0x99 && dataS == 0x01) // STATE
+    else if (dataA == 0x99 && dataS == 0x01 ) // STATE
     {
       switch (type0)
       {
@@ -554,22 +657,21 @@ void __not_in_flash_func(core1_task)(void)
         word0 = 1;
         word1 = __rev(0b11000000000000101000000000000000);
 
-        if (((state >> 8) & 0xff) == 0x41 && (state & 0xff) == 0x51)
+        if (((fdev->state >> 8) & 0xff) == 0x41 && (fdev->state & 0xff) == 0x51)
         {
           word1 = __rev(0b11010001000000101110011000000000);
         }
         polyface_respond(word1, word0);
         break;
-      // case PACKET_TYPE_WRITE:
       default:
-        state = ((state) << 8) | (dataC & 0xff);
+        fdev->state = ((fdev->state) << 8) | (dataC & 0xff);
         break;
       }
     }
-    else if (dataA == 0xb4 && dataS == 0x00) // BRAND
+    else if (dataA == 0xb4 && dataS == 0x00 ) // BRAND — FOCUS addressed
     {
-      id = dataC;
-      branded = true;
+      fdev->id = dataC;
+      fdev->branded = true;
     }
   }
 }

@@ -199,6 +199,13 @@ static bool bt_initialized = false;
 
 void app_task(void)
 {
+    // Check for bootloader command on UART ('B' = reboot to bootloader)
+    // Must be before BT init delay so it works immediately after flash.
+    int c = getchar_timeout_us(0);
+    if (c == 'B') {
+        reset_usb_boot(0, 0);
+    }
+
     // Deferred BT init: wait 10 seconds for polyface handshake to complete
     if (!bt_initialized) {
         static uint32_t boot_time = 0;
@@ -210,12 +217,6 @@ void app_task(void)
             printf("[app:bt2nuon] Bluetooth initialized\n");
         }
         return;
-    }
-
-    // Check for bootloader command on UART ('B' = reboot to bootloader)
-    int c = getchar_timeout_us(0);
-    if (c == 'B') {
-        reset_usb_boot(0, 0);
     }
 
     // Process button input (BOOTSEL reads are throttled in button_task)
