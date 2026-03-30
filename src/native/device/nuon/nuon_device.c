@@ -394,8 +394,10 @@ void __not_in_flash_func(core1_task)(void)
         static int prev_count = 0;
 
         // Activate new device slots when BT controllers pair
-        if (count > prev_count) {
-            for (int d = prev_count; d < count && d < MAX_POLYFACE_DEVICES; d++) {
+        // TEMP: simulate 2 devices when any BT controller pairs
+        int sim_count = (count > 0) ? 2 : 0;
+        if (sim_count > prev_count) {
+            for (int d = prev_count; d < sim_count && d < MAX_POLYFACE_DEVICES; d++) {
                 // Reset device state for fresh detection
                 int slot = sniff_detected ? d + 1 : d;  // offset if physical controller uses slot 0
                 if (slot >= MAX_POLYFACE_DEVICES) break;
@@ -412,14 +414,14 @@ void __not_in_flash_func(core1_task)(void)
             }
         }
         // Deactivate slots when BT controllers disconnect
-        if (count < prev_count) {
-            for (int d = count; d < prev_count && d < MAX_POLYFACE_DEVICES; d++) {
+        if (sim_count < prev_count) {
+            for (int d = sim_count; d < prev_count && d < MAX_POLYFACE_DEVICES; d++) {
                 int slot = sniff_detected ? d + 1 : d;
                 if (slot < MAX_POLYFACE_DEVICES)
                     pf_devices[slot].active = false;
             }
         }
-        prev_count = count;
+        prev_count = sim_count;
 
         // If no active devices, skip command processing (stay transparent)
         bool any_active = false;
@@ -506,15 +508,14 @@ void __not_in_flash_func(core1_task)(void)
       uint32_t alive_bits = 0;
       for (int d = 0; d < MAX_POLYFACE_DEVICES; d++) {
         if (!pf_devices[d].active) continue;
-        if (pf_devices[d].alive) {
-          // Branded: respond in assigned ID's bit slot
-          if (pf_devices[d].branded)
-            alive_bits |= ((pf_devices[d].id & 0x7F) << 1);
+        if (pf_devices[d].branded) {
+          // Branded: respond in assigned ID's bit position
+          alive_bits |= ((pf_devices[d].id & 0x7F) << 1);
         } else {
-          // First ALIVE: respond in our bit slot
-          alive_bits |= (1 << pf_devices[d].bit_slot);  // bit slot N → bit position N
-          pf_devices[d].alive = true;
+          // Unbranded: always respond in our bit slot
+          alive_bits |= (1 << pf_devices[d].bit_slot);
         }
+        pf_devices[d].alive = true;
       }
       word1 = __rev(alive_bits);
       polyface_respond(word1, word0);
