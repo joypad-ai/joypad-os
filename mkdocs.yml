@@ -63,6 +63,7 @@ nav:
     - Nuon Polyface: protocols/NUON_POLYFACE.md
     - PC Engine: protocols/PCENGINE.md
   - Features:
+    - Web Config: features/web-config.md
     - SNES Rumble: features/SNES_RUMBLE.md
 
 markdown_extensions:

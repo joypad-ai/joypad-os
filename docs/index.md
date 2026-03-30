@@ -37,6 +37,10 @@ Joypad OS translates any input device into any output protocol. Connect USB, Blu
 
     USB, Bluetooth, keyboards, mice, and hubs
 
+- :material-cog: **[Web Config](features/web-config.md)**
+
+    Configure your adapter from the browser — no install required
+
 </div>
 
 ---
