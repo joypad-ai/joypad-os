@@ -18,7 +18,7 @@
   <a href="https://github.com/joypad-ai/joypad-os/blob/main/LICENSE"><img src="https://img.shields.io/github/license/joypad-ai/joypad-os?style=for-the-badge" alt="License" /></a>
   <a href="https://github.com/joypad-ai/joypad-os/actions/workflows/build.yml"><img src="https://img.shields.io/github/actions/workflow/status/joypad-ai/joypad-os/.github/workflows/build.yml?style=for-the-badge" alt="CI Status" /></a>
   <a href="https://docs.joypad.ai/"><img src="https://img.shields.io/badge/Docs-docs.joypad.ai-blue?style=for-the-badge" alt="Documentation" /></a>
-  <a href="http://community.joypad.ai/"><img src="https://img.shields.io/badge/Discord-community-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord" /></a>
+  <a href="http://community.joypad.ai/"><img src="https://img.shields.io/discord/1133112432684978256?style=for-the-badge&logo=discord&label=Discord" alt="Discord" /></a>
 </p>
 
 ---
