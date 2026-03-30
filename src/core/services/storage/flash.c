@@ -263,15 +263,7 @@ static bool flash_write_page(uint8_t slot_index, const flash_t* settings)
         .data = (const uint8_t*)&write_buffer
     };
 
-    // Try flash_safe_execute first
-    int result = flash_safe_execute(page_program_worker, &params, UINT32_MAX);
-
-    if (result != PICO_OK) {
-        // Fallback: direct write with interrupts disabled briefly
-        uint32_t ints = save_and_disable_interrupts();
-        flash_range_program(offset, (const uint8_t*)&write_buffer, FLASH_PAGE_SIZE);
-        restore_interrupts(ints);
-    }
+    flash_safe_execute(page_program_worker, &params, UINT32_MAX);
 
     return true;
 }
@@ -287,17 +279,7 @@ static void flash_erase_sector(uint8_t sector)
 
     sector_erase_params_t params = { .offset = offset };
 
-    // Try flash_safe_execute first
-    int result = flash_safe_execute(sector_erase_worker, &params, UINT32_MAX);
-
-    if (result != PICO_OK) {
-        printf("[flash] flash_safe_execute failed (%d), trying direct erase...\n", result);
-        flush_output();
-
-        uint32_t ints = save_and_disable_interrupts();
-        flash_range_erase(offset, FLASH_SECTOR_SIZE);
-        restore_interrupts(ints);
-    }
+    flash_safe_execute(sector_erase_worker, &params, UINT32_MAX);
 
     printf("[flash] Sector erase complete\n");
 }

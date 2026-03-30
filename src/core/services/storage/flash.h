@@ -67,9 +67,10 @@ typedef struct {
 
     // Global settings (continued)
     uint8_t ble_output_mode;     // BLE output mode (0=Standard composite, 1=Xbox BLE)
+    uint8_t ps4_auth_log;        // PS4 auth event log (0=disabled, 1=enabled)
 
-    // Reserved for future global settings (19 bytes)
-    uint8_t reserved[19];
+    // Reserved for future global settings (18 bytes)
+    uint8_t reserved[18];
 
     // Custom profiles (4 x 56 = 224 bytes)
     custom_profile_t profiles[CUSTOM_PROFILE_MAX_COUNT];
