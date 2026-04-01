@@ -90,10 +90,12 @@ static bool ps4_mode_send_report(uint8_t player_index,
     ps4_report_buffer[0] = 0x01;
 
     // Bytes 1-4: Analog sticks (HID convention: 0=up, 255=down)
-    ps4_report_buffer[1] = profile_out->left_x;
-    ps4_report_buffer[2] = profile_out->left_y;
-    ps4_report_buffer[3] = profile_out->right_x;
-    ps4_report_buffer[4] = profile_out->right_y;
+    // Apply a more robust deadzone to ensure perfect 128 (0x80) center.
+    // This is critical for menu navigation and Options button detection in EA games.
+    ps4_report_buffer[1] = (profile_out->left_x > 120 && profile_out->left_x < 136) ? 128 : profile_out->left_x;
+    ps4_report_buffer[2] = (profile_out->left_y > 120 && profile_out->left_y < 136) ? 128 : profile_out->left_y;
+    ps4_report_buffer[3] = (profile_out->right_x > 120 && profile_out->right_x < 136) ? 128 : profile_out->right_x;
+    ps4_report_buffer[4] = (profile_out->right_y > 120 && profile_out->right_y < 136) ? 128 : profile_out->right_y;
 
     // Byte 5: D-pad (bits 0-3) + face buttons (bits 4-7)
     uint8_t up = (buttons & JP_BUTTON_DU) ? 1 : 0;
@@ -126,10 +128,7 @@ static bool ps4_mode_send_report(uint8_t player_index,
     if (buttons & JP_BUTTON_R1) byte6 |= 0x02;  // R1
     
     // Hybrid Trigger Logic:
-    // 1. Digital bits (0x04/0x08) are flipped if pressure is above a small threshold (5).
-    //    This prevents hardware noise from keeping the digital buttons "always pressed"
-    //    while still allowing SF6 to register the press very early.
-    // 2. Analog values (Byte 8/9) are passed through normally for gradual control in FC26.
+    // Digital bits are flipped at threshold 5 for SF6, analog is passed for FC26.
     uint8_t l2_val = profile_out->l2_analog;
     uint8_t r2_val = profile_out->r2_analog;
 
@@ -159,13 +158,23 @@ static bool ps4_mode_send_report(uint8_t player_index,
     ps4_report_buffer[10] = ps4_timestamp & 0xFF;
     ps4_report_buffer[11] = (ps4_timestamp >> 8) & 0xFF;
 
-    // Byte 30: Power level (set to full battery + charging if zero)
-    if (ps4_report_buffer[30] == 0) ps4_report_buffer[30] = 0x1b;
+    // Power and Touchpad Metadata (Maintenance)
+    ps4_report_buffer[30] = 0x1b; // Battery: Full + Charging
+    
+    // Clear any potential touchpad coordinates to 0, ensuring only 0x80 unpressed bit is set.
+    // This prevents EA games from thinking the touchpad is being used.
+    ps4_report_buffer[35] = 0x80; 
+    ps4_report_buffer[36] = 0x00;
+    ps4_report_buffer[37] = 0x00;
+    ps4_report_buffer[38] = 0x00;
+    ps4_report_buffer[39] = 0x80;
+    ps4_report_buffer[40] = 0x00;
+    ps4_report_buffer[41] = 0x00;
+    ps4_report_buffer[42] = 0x00;
 
-    // Byte 35 & 39: Ensure touchpad unpressed bits are set if not active
-    if (!(buttons & JP_BUTTON_A2)) {
-        ps4_report_buffer[35] |= 0x80;
-        ps4_report_buffer[39] |= 0x80;
+    if (buttons & JP_BUTTON_A2) {
+        ps4_report_buffer[35] &= ~0x80; // Clear unpressed bit if clicked
+        ps4_report_buffer[39] &= ~0x80; 
     }
 
     // Send with report_id=0x01, letting TinyUSB prepend it
