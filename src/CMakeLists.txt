@@ -1673,7 +1673,7 @@ pico_generate_pio_header(joypad_nes2usb ${CMAKE_CURRENT_LIST_DIR}/native/host/ne
 
 # --- LODGENET2USB (LodgeNet -> USB HID) ---
 add_executable(joypad_lodgenet2usb)
-target_compile_definitions(joypad_lodgenet2usb PRIVATE CONFIG_LODGENET2USB=1 CONFIG_USB=1 DISABLE_USB_HOST=1)
+target_compile_definitions(joypad_lodgenet2usb PRIVATE CONFIG_LODGENET2USB=1 CONFIG_USB=1 DISABLE_USB_HOST=1 BOARD_LED_PIN=25)
 target_sources(joypad_lodgenet2usb PUBLIC ${CORE_SOURCES} ${USB_DEVICE_SOURCES}
     ${LODGENET_HOST_SOURCES}
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/lodgenet2usb/app.c

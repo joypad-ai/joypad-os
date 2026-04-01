@@ -99,4 +99,8 @@ void app_task(void)
         leds_set_color(r, g, b);
         last_led_mode = mode;
     }
+
+    // Track LodgeNet connection state for LED indicator
+    // Solid on connect, blink on disconnect — no button press needed
+    leds_set_connected_devices(lodgenet_host_is_connected() ? 1 : 0);
 }
