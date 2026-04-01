@@ -28,8 +28,11 @@
   #elif defined(PICO_DEFAULT_WS2812_PIN)
     #define WS2812_PIN PICO_DEFAULT_WS2812_PIN
   #else
-    // default to pin 2 if the board doesn't have a default WS2812 pin defined
-    #define WS2812_PIN 2
+    // No NeoPixel pin known for this board — disable automatically
+    #ifndef CONFIG_NO_NEOPIXEL
+      #define CONFIG_NO_NEOPIXEL 1
+    #endif
+    #define WS2812_PIN 0  // unused, neopixel_init returns early
   #endif
 #endif
 
