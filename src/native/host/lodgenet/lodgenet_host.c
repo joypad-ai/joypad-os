@@ -185,8 +185,12 @@ static void submit_mcu(uint8_t *bytes, bool is_gc)
     if (last_dpad & 0x02) buttons |= JP_BUTTON_DL;
     if (last_dpad & 0x01) buttons |= JP_BUTTON_DR;
 
+    if (encoded_type == 1) buttons |= JP_BUTTON_A4;   // Reset → A4
     if (encoded_type == 2) buttons |= JP_BUTTON_A1;   // Menu → Home
+    if (encoded_type == 3) buttons |= JP_BUTTON_R4;   // * (Star) → R4
     if (encoded_type == 4) buttons |= JP_BUTTON_S1;   // Select → Back
+    if (encoded_type == 5) buttons |= JP_BUTTON_A2;   // Order → Capture
+    if (encoded_type == 6) buttons |= JP_BUTTON_L4;   // # (Hash) → L4
 
     uint8_t stick_lx, stick_ly, stick_rx, stick_ry;
     uint8_t trigger_l = 0, trigger_r = 0;
