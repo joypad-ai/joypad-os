@@ -139,6 +139,105 @@ For wiring details, see the [Neo Geo adapter docs](neogeo.md#hardware-requiremen
 
 ---
 
+## LodgeNet to USB (lodgenet2usb)
+
+Convert Nintendo LodgeNet hotel gaming controllers into USB HID gamepads. Supports all three LodgeNet controller variants with automatic detection.
+
+### Features
+
+- Auto-detection between N64, GameCube, and SNES LodgeNet controllers
+- Hot-swap between controller types (no reboot needed)
+- Full analog support (N64 stick, GC sticks + triggers)
+- LodgeNet system buttons (Menu, Order, Select, Plus, Minus) mapped to extended buttons
+- SInput face style reporting (Nintendo/GameCube layout detected automatically)
+- Onboard LED indicator (blinks when idle, solid when connected)
+- USB output mode switching (XInput, DInput, Switch, PS3, PS4, SInput)
+- Web configuration via [joypad.ai](https://joypad.ai)
+
+### Hardware
+
+- **Board**: Pico or Pico 2
+- **Protocol**: PIO-based (MCU protocol for N64/GC at ~60Hz, SR protocol for SNES at ~131Hz)
+- **Connector**: RJ11 4-pin (Pin 1: +5V, Pin 2: CLK, Pin 3: DATA, Pin 4: GND)
+- **Build**: `make lodgenet2usb_pico` or `make lodgenet2usb_pico2`
+
+### Pinout
+
+| GPIO | Function |
+|---|---|
+| 2 | DATA (input, pull-up) |
+| 3 | CLK1 (output, idle HIGH) |
+| 4 | VCC (output, always HIGH) |
+| 5 | CLK2 (output, SNES SR protocol only) |
+
+### Button Mapping — N64 LodgeNet
+
+| LodgeNet N64 | USB Output |
+|---|---|
+| A | B1 |
+| C-Down | B2 |
+| B | B3 |
+| C-Left | B4 |
+| Z | R1 |
+| L | L2 |
+| R | R2 |
+| C-Up | L3 |
+| C-Right | R3 |
+| Start | S2 |
+| D-Pad | D-Pad |
+| Stick | Left Analog (scaled ±80 → full range) |
+| Menu (U+D) | A1 (Home) |
+| Select (U+D+R) | S1 (Back) |
+
+### Button Mapping — GameCube LodgeNet
+
+| LodgeNet GC | USB Output |
+|---|---|
+| A | B2 |
+| B | B1 |
+| X | B4 |
+| Y | B3 |
+| Z | R1 |
+| L | L2 |
+| R | R2 |
+| Start | S2 |
+| D-Pad | D-Pad |
+| Main Stick | Left Analog |
+| C-Stick | Right Analog |
+| L Trigger | L2 (analog) |
+| R Trigger | R2 (analog) |
+| Menu (U+D) | A1 (Home) |
+| Select (U+D+R) | S1 (Back) |
+
+### Button Mapping — SNES LodgeNet
+
+| LodgeNet SNES | USB Output |
+|---|---|
+| B | B1 |
+| A | B2 |
+| Y | B3 |
+| X | B4 |
+| L | L1 |
+| R | R1 |
+| Select | S1 |
+| Start | S2 |
+| D-Pad | D-Pad |
+| Menu | A1 (Home) |
+| Order | A2 (Capture) |
+| Minus (U+D) | A3 |
+| Plus (L+R) | A4 |
+
+### Protocol Details
+
+LodgeNet controllers use a proprietary 3-wire serial protocol over RJ11 connectors, originally used in Nintendo hotel gaming systems. Two protocol families exist:
+
+- **MCU Protocol** (N64/GC): Hello pulse sequence (2x 7us LOW pulses), then 80 bits clocked MSB-first. Byte 1 flags distinguish N64 (bit 6 clear) from GC (bit 6 set). Polled at ~60Hz.
+- **SR Protocol** (SNES): Dual-clock shift register. 16 data bits + 1 presence bit using CLK1 (side-set) and CLK2 (set pin). Polled at ~131Hz.
+
+Auto-detection cycles between protocols: MCU fails 5x → switch to SR, SR fails 5x → switch to MCU. MCU requires 15 consecutive good reads before outputting to prevent connection flash.
+
+---
+
 ## Cross-Console Adapters
 
 These adapters bridge native retro controllers to other retro consoles:
@@ -170,7 +269,7 @@ These adapters bridge native retro controllers to other retro consoles:
 
 ## USB Output
 
-All native-to-USB adapters (snes2usb, n642usb, gc2usb, neogeo2usb) share the same [USB output interface](usb.md), including:
+All native-to-USB adapters (snes2usb, n642usb, gc2usb, neogeo2usb, lodgenet2usb) share the same [USB output interface](usb.md), including:
 
 - Multiple USB output modes (XInput, DInput, Switch, PS3, PS4)
 - Web configuration at [config.joypad.ai](https://config.joypad.ai)
