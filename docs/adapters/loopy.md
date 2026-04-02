@@ -1,3 +1,6 @@
+> **Note:** This page is being replaced by the new layer-based documentation.
+> See [USB2Loopy](../apps/usb2loopy.md) and [Loopy Output](../output/loopy.md).
+
 # Casio Loopy Adapter (Experimental)
 
 USB controller adapter for the Casio Loopy console.

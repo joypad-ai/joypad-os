@@ -1,3 +1,7 @@
+> **Note:** This page is being replaced by the new layer-based documentation.
+> See [SNES Input](../input/snes.md), [N64 Input](../input/n64.md), [GameCube Input](../input/gamecube.md), [LodgeNet Input](../input/lodgenet.md),
+> and apps: [SNES2USB](../apps/snes2usb.md), [N642USB](../apps/n642usb.md), [GC2USB](../apps/gc2usb.md), [LodgeNet2USB](../apps/lodgenet2usb.md).
+
 # Native Input Adapters
 
 Use retro controllers as USB gamepads, or bridge them to other consoles. These adapters read native controller protocols directly via PIO — no USB involved on the input side.

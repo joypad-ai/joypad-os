@@ -1,3 +1,6 @@
+> **Note:** This page is being replaced by the new layer-based documentation.
+> See [Architecture](../overview/architecture.md) and [Data Flow](../overview/data-flow.md).
+
 # How It Works
 
 Joypad OS is a modular firmware that translates between any input device and any output protocol. It runs on RP2040, ESP32-S3, and nRF52840 microcontrollers.

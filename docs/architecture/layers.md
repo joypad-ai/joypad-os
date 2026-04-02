@@ -1,3 +1,6 @@
+> **Note:** This page is being replaced by the new layer-based documentation.
+> See [Architecture](../overview/architecture.md) and [Core Layer](../core/index.md).
+
 # Architecture Layers
 
 Developer reference for Joypad OS internals — layer boundaries, key interfaces, data flow, and runtime behavior.

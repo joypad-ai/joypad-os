@@ -1,3 +1,6 @@
+> **Note:** This page is being replaced by the new layer-based documentation.
+> See [USB2GC](../apps/usb2gc.md) and [GameCube Output](../output/gamecube.md).
+
 # GameCube / Wii Adapter
 
 USB controller adapter for GameCube and Wii consoles with profiles, rumble, and keyboard mode.

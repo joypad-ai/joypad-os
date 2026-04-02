@@ -1,3 +1,6 @@
+> **Note:** This page is being replaced by the new layer-based documentation.
+> See [BT2USB](../apps/bt2usb.md) and [Bluetooth Input](../input/bluetooth.md).
+
 # BT2USB — Bluetooth to USB Adapter
 
 BT2USB turns a Raspberry Pi Pico W, Pico 2 W, ESP32-S3, or nRF52840 board into a wireless Bluetooth-to-USB controller adapter. Pair any supported Bluetooth controller and it outputs as a standard USB gamepad.

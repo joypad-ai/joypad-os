@@ -1,3 +1,6 @@
+> **Note:** This page is being replaced by the new layer-based documentation.
+> See [NES2USB](../apps/nes2usb.md) and [NES Input](../input/nes.md).
+
 # NES to USB Adapter
 
 NES controller to USB HID gamepad adapter. Connect an original NES controller and get [USB Output Interface](./USB2USB.md).

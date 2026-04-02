@@ -1,3 +1,6 @@
+> **Note:** This page is being replaced by the new layer-based documentation.
+> See [USB23DO](../apps/usb23do.md) and [3DO Output](../output/3do.md).
+
 # 3DO Interactive Multiplayer Adapter
 
 USB controller adapter for 3DO with 8-player support and extension passthrough.

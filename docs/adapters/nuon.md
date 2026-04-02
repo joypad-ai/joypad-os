@@ -1,3 +1,6 @@
+> **Note:** This page is being replaced by the new layer-based documentation.
+> See [USB2Nuon](../apps/usb2nuon.md) and [Nuon Output](../output/nuon.md).
+
 # Nuon DVD Player Adapter
 
 USB controller adapter for Nuon DVD game players with spinner and In-Game Reset (IGR) support.

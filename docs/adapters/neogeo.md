@@ -1,3 +1,6 @@
+> **Note:** This page is being replaced by the new layer-based documentation.
+> See [USB2NeoGeo](../apps/usb2neogeo.md), [NeoGeo2USB](../apps/neogeo2usb.md), and [NeoGeo Input](../input/neogeo.md).
+
 # NEOGEO / SuperGun Adapter
 
 USB controller adapter for NEOGEO consoles and SuperGun with profiles, single player.

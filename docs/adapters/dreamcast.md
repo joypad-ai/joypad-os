@@ -1,3 +1,6 @@
+> **Note:** This page is being replaced by the new layer-based documentation.
+> See [USB2DC](../apps/usb2dc.md) and [Dreamcast Output](../output/dreamcast.md).
+
 # Dreamcast (usb2dc)
 
 USB/BT controller to Dreamcast console adapter using the Maple Bus protocol.

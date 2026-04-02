@@ -1,3 +1,6 @@
+> **Note:** This page is being replaced by the new layer-based documentation.
+> See [USB2USB](../apps/usb2usb.md) and [USB Device Output](../output/usb-device.md).
+
 # USB Output Interface
 
 The USB output interface lets Joypad adapters emulate various USB gamepads. Any connected controller (USB, Bluetooth, WiFi, or native) is translated into the selected output protocol.

@@ -1,3 +1,6 @@
+> **Note:** This page is being replaced by the new layer-based documentation.
+> See [USB2PCE](../apps/usb2pce.md) and [PCEngine Output](../output/pcengine.md).
+
 # PCEngine / TurboGrafx-16 Adapter
 
 USB controller and mouse adapter for PCEngine/TurboGrafx-16 with multitap support.
