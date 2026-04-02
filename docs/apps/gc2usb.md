@@ -31,6 +31,24 @@ Reads a native GameCube controller via the joybus single-wire protocol and outpu
 | **Xbox Layout** | A/B swapped |
 | **Nintendo Layout** | X/Y swapped |
 
+### Default Profile Button Mapping
+
+| GC Button | USB Output |
+|-----------|------------|
+| A | B1 |
+| B | B2 |
+| X | B3 |
+| Y | B4 |
+| L | L1 |
+| R | R1 |
+| Z | R2 |
+| Start | S2 |
+| D-Pad | D-Pad |
+| Main Stick | Left Analog |
+| C-Stick | Right Analog |
+| L Trigger | L2 (analog) |
+| R Trigger | R2 (analog) |
+
 ## Key Features
 
 - **Full analog** -- Main stick, C-stick, and L/R analog triggers all mapped.

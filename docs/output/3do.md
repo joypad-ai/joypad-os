@@ -9,7 +9,7 @@ Emulates 3DO controllers connected via the PBUS (Peripheral Bus) daisy chain pro
   - `sampling.pio` (sm_sampling) -- Samples clock and control signals from console
   - `output.pio` (sm_output) -- Outputs serial data to console
 - **Core**: Runs on Core 1 (timing-critical)
-- **Level shifters**: Required -- RP2040 GPIO is 3.3V and NOT 5V tolerant
+- **Level shifters**: Required -- RP2040 GPIO is 3.3V and NOT 5V tolerant. All signal lines (CLK, DATA_OUT, DATA_IN, CS_CTRL) need shifting.
 
 The 3DO console clocks data out of the controller chain serially. Each controller shifts its report bits, then relays the clock to the next device. Different device types have different report sizes.
 
@@ -24,7 +24,40 @@ See [3DO PBUS Protocol](../protocols/3DO_PBUS.md) for wire-level details.
 | DATA_IN | GP4 | Data input from next controller (daisy chain) |
 | CS_CTRL | GP5 | Chip Select / Control signal |
 
-All signal lines require bidirectional 3.3V-to-5V level shifting.
+### Level Shifter Wiring
+
+Based on [FCare's USBTo3DO](https://github.com/FCare/USBTo3DO) design. Uses a 4-channel BSS138 bidirectional level shifter (BD-LCC):
+
+| RP2040-Zero | BD-LCC (Low) | BD-LCC (High) | DB9-Female | DB9-Male |
+|-------------|--------------|---------------|------------|----------|
+| 5V | - | HV | - | - |
+| GND | G | G | - | - |
+| GPIO 2 | L1 | H1 | Pin 1 | Pin 1 |
+| GPIO 3 | L2 | H2 | Pin 2 | Pin 2 |
+| GPIO 4 | LV | HV | - | - |
+| GPIO 5 | G | G | Pin 6 | Pin 6 |
+| GPIO 6 | L3 | H3 | Pin 3 | Pin 3 |
+| GPIO 7 | L4 | H4 | Pin 4 | Pin 4 |
+| - | - | - | Pin 5 (5V) | Pin 5 |
+| - | - | - | Pin 9 (GND) | Pin 9 |
+
+- **DB9-Female**: Connects to 3DO console
+- **DB9-Male**: Passthrough for daisy-chaining native controllers
+
+All signal lines require bidirectional 3.3V-to-5V level shifting. Recommended: 4-channel BSS138 bidirectional level shifter (per FCare's [USBTo3DO](https://github.com/FCare/USBTo3DO) design).
+
+### 3DO Controller Port Pinout
+
+| Pin | Signal | Description |
+|-----|--------|-------------|
+| 1 | Clock | CLK from console |
+| 2 | Data Out | Data to console |
+| 3 | Data In | Data from next controller in chain |
+| 4 | Audio Left | Unused by adapter |
+| 5 | Audio Right | Unused by adapter |
+| 6 | VCC | 5V power |
+| 7 | GND | Ground |
+| 8 | Control Select | Chip select / control |
 
 ### Device Types
 

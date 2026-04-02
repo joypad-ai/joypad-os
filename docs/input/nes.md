@@ -65,6 +65,30 @@ Default GPIO pins (overridable per-app):
 
 PIO clock is set to 1MHz instruction rate for correct timing.
 
+### NES Controller Port (7-pin)
+
+| Pin | Signal | Description |
+|-----|--------|-------------|
+| 1 | GND | Ground |
+| 2 | CLK | Clock |
+| 3 | LATCH | Latch |
+| 4 | DATA | Data out from controller |
+| 5 | N/C | Not connected |
+| 6 | N/C | Not connected |
+| 7 | VCC | 5V power |
+
+### KB2040 Wiring
+
+| NES Pin | Signal | KB2040 GPIO |
+|---------|--------|-------------|
+| 1 | GND | GND |
+| 2 | CLK | GP5 |
+| 3 | LATCH | GP6 |
+| 4 | DATA | GP8 |
+| 7 | VCC (5V) | VBUS |
+
+The DATA pin has an internal pull-up enabled in firmware. No external pull-up resistor is required.
+
 - **Device address range**: 0xF0+ (port 0 = 0xF0)
 - **Max ports**: 1
 - **Transport type**: `INPUT_TRANSPORT_NATIVE`

@@ -12,6 +12,17 @@ Emulates a GameCube controller connected to a GameCube or Wii console via the si
 
 The console polls the controller, the adapter responds with a `gc_report_t` containing digital buttons, two analog sticks, and two analog trigger values. The poll command includes a rumble motor byte that the adapter reads back.
 
+### GameCube Controller Cable Pinout
+
+| Pin | Signal | Description |
+|-----|--------|-------------|
+| 1 | VCC | 5V power |
+| 2 | Data | Bidirectional data line |
+| 3 | GND | Ground |
+| 4 | GND | Ground |
+| 5 | (unused) | |
+| 6 | 3.3V | Optional, some boards |
+
 See [GameCube Joybus Protocol](../protocols/GAMECUBE_JOYBUS.md) for wire-level details.
 
 ### Poll Modes

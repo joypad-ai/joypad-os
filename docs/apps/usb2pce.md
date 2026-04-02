@@ -44,3 +44,34 @@ Connects USB and Bluetooth controllers to a PCEngine or TurboGrafx-16 via the mu
 make usb2pce_kb2040
 make flash-usb2pce_kb2040
 ```
+
+## Compatible Games
+
+### Mouse-Compatible
+- Afterburner II
+- Darius Plus
+- Lemmings
+
+### Multitap-Compatible (5 players)
+- Bomberman '93
+- Bomberman '94
+- Dungeon Explorer
+- Moto Roader
+
+## Troubleshooting
+
+**Controller not responding:**
+- Check PCEngine port connections, especially 5V power and ground.
+- Verify data and select pin assignments match your board.
+
+**Multitap not working:**
+- Ensure the USB hub provides enough power for all controllers.
+- Some games do not support 5-player mode.
+
+**Mouse not working:**
+- Verify the game supports the PCEngine mouse.
+- Check that the USB mouse is detected by the adapter.
+- Try a different USB mouse model.
+
+**Button mapping wrong:**
+- Verify 2/3/6-button mode in the game's settings -- some games expect specific button layouts.

@@ -25,6 +25,7 @@ Reads a native SNES or NES controller directly via GPIO and outputs as a USB HID
 
 ## Key Features
 
+- **Button mapping** -- B=B1, A=B2, Y=B3, X=B4, L=L1, R=R1, Select=S1, Start=S2, D-Pad=D-Pad.
 - **Multi-device** -- SNES controller, NES controller, SNES mouse, Xband keyboard all auto-detected.
 - **Rumble** -- Supported via LRG protocol if the controller has it.
 - **USB output modes** -- SInput, XInput, PS3, PS4, Switch, Keyboard/Mouse.

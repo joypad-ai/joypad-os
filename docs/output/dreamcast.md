@@ -24,6 +24,26 @@ The Dreamcast console sends command frames (device info, get condition, set cond
 
 ### GPIO Pins
 
+### Dreamcast Controller Connector Pinout
+
+Looking at the controller plug (male, from controller cable):
+
+```
+     ___
+   /  5  \
+  | 4   3 |
+  | 2   1 |
+   \_____/
+```
+
+| Pin | Signal | Description |
+|-----|--------|-------------|
+| 1 | SDCKA | Data line A |
+| 2 | GND (Sense) | Ground / device detect |
+| 3 | +5V | Power |
+| 4 | GND | Ground |
+| 5 | SDCKB | Data line B |
+
 **KB2040 (default):**
 
 | Signal | GPIO | Dreamcast Pin |

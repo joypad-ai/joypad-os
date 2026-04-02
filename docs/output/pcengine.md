@@ -13,6 +13,21 @@ Emulates a PCEngine multitap with up to 5 controllers. Supports 2-button, 3-butt
 
 The console scans controller ports sequentially. Each scan cycle toggles the SEL line to read two nibbles per controller (buttons are split across two 4-bit reads). The CLR/OE line resets the scan to port 0.
 
+### PCEngine Controller Port (8-pin DIN)
+
+| Pin | Signal | Description |
+|-----|--------|-------------|
+| 1 | VCC | 5V power |
+| 2 | D0 | Data bit 0 (Up/I) |
+| 3 | D1 | Data bit 1 (Right/II) |
+| 4 | D2 | Data bit 2 (Down/Select) |
+| 5 | D3 | Data bit 3 (Left/Run) |
+| 6 | SEL | Select -- nibble toggle from console |
+| 7 | CLR/OE | Clear/Output Enable -- scan reset from console |
+| 8 | GND | Ground |
+
+Pin 7 is labeled **OE** (Output Enable) in some references and **CLR** (Clear) in others. They are the same signal.
+
 See [PCEngine Protocol Reference](../protocols/PCENGINE.md) for wire-level details.
 
 ### GPIO Pins

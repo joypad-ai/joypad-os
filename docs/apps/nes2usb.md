@@ -42,3 +42,25 @@ Reads a native NES controller via PIO-based shift register protocol and outputs 
 make nes2usb_kb2040
 make flash-nes2usb_kb2040
 ```
+
+## Troubleshooting
+
+**Controller not detected:**
+- Check NES port wiring, especially GND and VCC.
+- Verify CLK, LATCH, and DATA pin assignments match your board.
+- Ensure the NES controller is fully seated in the connector.
+
+**No response from buttons:**
+- Confirm the adapter is powered (NeoPixel LED should be lit).
+- Try a different NES controller to rule out a faulty controller.
+- Check that the DATA line has continuity from the controller port to GPIO 8.
+
+**Wrong buttons or garbled input:**
+- Verify CLK and LATCH are not swapped.
+- Check for cold solder joints on signal lines.
+- Use [config.joypad.ai](https://config.joypad.ai) input monitor to view raw input state.
+
+**USB not recognized by host:**
+- Double-click the board button to cycle USB output mode.
+- Triple-click to reset to SInput (default HID mode).
+- Try a different USB cable or port.

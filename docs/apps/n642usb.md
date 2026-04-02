@@ -30,6 +30,23 @@ Reads a native N64 controller via the joybus single-wire protocol and outputs as
 | **Default** | A=B1, C-Down=B2, B=B3, C-Left=B4. C-buttons map to face buttons. |
 | **Dual Stick** | C-buttons map to right analog stick instead of face buttons. |
 
+### Default Profile Button Mapping
+
+| N64 Button | USB Output |
+|------------|------------|
+| A | B1 |
+| C-Down | B2 |
+| B | B3 |
+| C-Left | B4 |
+| L | L1 |
+| R | R1 |
+| Z | L2 |
+| C-Up | L3 |
+| C-Right | R3 |
+| Start | S2 |
+| D-Pad | D-Pad |
+| Stick | Left Analog |
+
 ## Key Features
 
 - **Full analog** -- N64 stick mapped to left analog with proper range scaling.

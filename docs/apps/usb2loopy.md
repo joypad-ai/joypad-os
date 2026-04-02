@@ -35,3 +35,17 @@ Connects USB and Bluetooth controllers to the Casio Loopy, a Japan-only 32-bit c
 make usb2loopy_kb2040
 make flash-usb2loopy_kb2040
 ```
+
+## Compatible Games
+
+The Casio Loopy has a limited library of approximately 10 titles:
+
+- Anime Land
+- Bow-wow Puppy Love Story
+- Dream Change
+- HARIHARI Seal Paradise
+- Little Romance
+- Lupiton's Wonder Palette
+- Magical Shop
+- PC Collection
+- Wanwan Aijou Monogatari

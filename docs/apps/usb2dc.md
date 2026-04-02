@@ -45,3 +45,16 @@ The RP2040-Zero build uses the same pinout as USB4Maple, so existing USB4Maple h
 make usb2dc_kb2040
 make flash-usb2dc_kb2040
 ```
+
+## Troubleshooting
+
+**Controller not detected by console:**
+- Check Maple Bus cable connections (SDCKA, SDCKB, 5V, GND).
+- Verify the data pin assignments match your board variant (KB2040 uses GPIO 2/3, RP2040-Zero uses GPIO 14/15).
+
+**Rumble not working:**
+- Only compatible USB/BT controllers support Puru Puru Pack feedback.
+- Check USB power supply -- rumble requires more current.
+
+**Analog triggers not responding:**
+- Verify your input controller has analog L2/R2 triggers (digital-only triggers map to full press).

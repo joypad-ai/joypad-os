@@ -117,6 +117,34 @@ Two CDC serial ports are exposed:
 
 The web configuration interface at [config.joypad.ai](https://config.joypad.ai) communicates over Port 0 using WebSerial.
 
+### CDC Command Reference
+
+Commands are JSON objects sent over CDC port 0. Format: `{"cmd":"COMMAND.NAME", ...params}`
+
+| Command | Description |
+|---------|-------------|
+| `INFO` | Get device info (app, version, board, serial) |
+| `PING` | Connectivity check |
+| `REBOOT` | Restart the adapter |
+| `BOOTSEL` | Reboot into UF2 flash mode |
+| `MODE.GET` | Get current output mode |
+| `MODE.SET` | Set output mode (triggers re-enumeration) |
+| `MODE.LIST` | List all available modes |
+| `PROFILE.LIST` | List button remapping profiles |
+| `PROFILE.GET` | Get profile details |
+| `PROFILE.SET` | Create/update a profile |
+| `PROFILE.SAVE` | Save profiles to flash |
+| `PROFILE.DELETE` | Delete a profile |
+| `PROFILE.CLONE` | Duplicate a profile |
+| `INPUT.STREAM` | Toggle real-time input event streaming |
+| `SETTINGS.GET` | Get device settings |
+| `SETTINGS.RESET` | Reset settings to defaults |
+| `PLAYERS.LIST` | List connected controllers |
+| `RUMBLE.TEST` | Send test rumble to a player |
+| `RUMBLE.STOP` | Stop rumble on a player |
+| `BT.STATUS` | Bluetooth connection status (BT builds only) |
+| `BT.BONDS.CLEAR` | Clear all Bluetooth pairings (BT builds only) |
+
 ## Profiles
 
 USB device output does not have console-specific profiles. Button remapping is handled by the profile system at the app/core level.

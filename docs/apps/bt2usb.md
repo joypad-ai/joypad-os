@@ -61,3 +61,13 @@ make flash-bt2usb_seeed_xiao_nrf52840
 ```
 
 See [ESP32 platform docs](../platforms/esp32.md) and [nRF52840 platform docs](../platforms/nrf52840.md) for toolchain setup.
+
+## Firmware Files
+
+| Board | Firmware Filename |
+|-------|-------------------|
+| Pico W | `joypad_*_bt2usb_pico_w.uf2` |
+| Pico 2 W | `joypad_*_bt2usb_pico2_w.uf2` |
+| XIAO ESP32-S3 | `joypad_*_bt2usb_esp32s3.uf2` |
+| XIAO nRF52840 | `joypad_*_bt2usb_seeed_xiao_nrf52840.uf2` |
+| Feather nRF52840 | `joypad_*_bt2usb_adafruit_feather_nrf52840.uf2` |
