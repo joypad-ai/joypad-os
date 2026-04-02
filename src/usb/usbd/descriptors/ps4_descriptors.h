@@ -17,12 +17,12 @@
 // USB IDENTIFIERS
 // ============================================================================
 
-// Using Sony DualShock 4 v2 for 100% precision and compatibility
-#define PS4_VID             0x054C  // Sony
-#define PS4_PID             0x09CC  // DualShock 4 v2
+// Using Hori Fighting Commander for better Gamepad compatibility
+#define PS4_VID             0x0F0D  // Hori
+#define PS4_PID             0x0086  // Fighting Commander
 #define PS4_BCD             0x0100  // v1.00
-#define PS4_MANUFACTURER    "Sony Interactive Entertainment"
-#define PS4_PRODUCT         "Wireless Controller"
+#define PS4_MANUFACTURER    "HORI CO., LTD."
+#define PS4_PRODUCT         "Fighting Commander"
 
 #define PS4_ENDPOINT_SIZE   64
 
@@ -222,141 +222,119 @@ static const tusb_desc_device_t ps4_device_descriptor = {
 // HID REPORT DESCRIPTOR
 // ============================================================================
 
-// Full PS4 HID report descriptor including ALL auth and feature reports
+// Full PS4 HID report descriptor including auth feature reports
 static const uint8_t ps4_report_descriptor[] = {
-    0x05, 0x01,                    // Usage Page (Generic Desktop),
-    0x09, 0x04,                    // Usage (Joystick),
-    0xA1, 0x01,                    // Collection (Application),
-    0x15, 0x00,                    //   Logical Minimum (0),
-    0x26, 0xFF, 0x00,              //   Logical Maximum (255),
-    0x85, 0x01,                    //   Report ID (1),
-    0x09, 0x30,                    //   Usage (X),
-    0x09, 0x31,                    //   Usage (Y),
-    0x09, 0x32,                    //   Usage (Z),
-    0x09, 0x35,                    //   Usage (Rz),
-    0x75, 0x08,                    //   Report Size (8),
-    0x95, 0x04,                    //   Report Count (4),
-    0x81, 0x02,                    //   Input (Data, Var, Abs),
+    0x05, 0x01,        // Usage Page (Generic Desktop Ctrls)
+    0x09, 0x05,        // Usage (Game Pad)
+    0xA1, 0x01,        // Collection (Application)
 
-    0x09, 0x39,                    //   Usage (Hat Switch),
-    0x15, 0x00,                    //   Logical Minimum (0),
-    0x25, 0x07,                    //   Logical Maximum (7),
-    0x35, 0x00,                    //   Physical Minimum (0),
-    0x46, 0x3B, 0x01,              //   Physical Maximum (315),
-    0x65, 0x14,                    //   Unit (Eng: Rotational Position, Degree),
-    0x75, 0x04,                    //   Report Size (4),
-    0x95, 0x01,                    //   Report Count (1),
-    0x81, 0x42,                    //   Input (Data, Var, Abs, Null),
+    // Report ID 1: Input Report
+    0x85, 0x01,        //   Report ID (1)
 
-    0x65, 0x00,                    //   Unit (None),
-    0x05, 0x09,                    //   Usage Page (Button),
-    0x19, 0x01,                    //   Usage Minimum (Button 1),
-    0x29, 0x0E,                    //   Usage Maximum (Button 14),
-    0x15, 0x00,                    //   Logical Minimum (0),
-    0x25, 0x01,                    //   Logical Maximum (1),
-    0x75, 0x01,                    //   Report Size (1),
-    0x95, 0x0E,                    //   Report Count (14),
-    0x81, 0x02,                    //   Input (Data, Var, Abs),
+    // Left/Right sticks (4 axes, 8 bits each)
+    0x09, 0x30,        //   Usage (X)
+    0x09, 0x31,        //   Usage (Y)
+    0x09, 0x32,        //   Usage (Z)
+    0x09, 0x35,        //   Usage (Rz)
+    0x15, 0x00,        //   Logical Minimum (0)
+    0x26, 0xFF, 0x00,  //   Logical Maximum (255)
+    0x75, 0x08,        //   Report Size (8)
+    0x95, 0x04,        //   Report Count (4)
+    0x81, 0x02,        //   Input (Data,Var,Abs)
 
-    0x06, 0x00, 0xFF,              //   Usage Page (Vendor Defined 0xFF00),
-    0x09, 0x20,                    //   Usage (Vendor Usage 0x20),
-    0x75, 0x06,                    //   Report Size (6),
-    0x95, 0x01,                    //   Report Count (1),
-    0x81, 0x02,                    //   Input (Data, Var, Abs),
+    // D-pad (hat switch, 4 bits)
+    0x09, 0x39,        //   Usage (Hat switch)
+    0x15, 0x00,        //   Logical Minimum (0)
+    0x25, 0x07,        //   Logical Maximum (7)
+    0x35, 0x00,        //   Physical Minimum (0)
+    0x46, 0x3B, 0x01,  //   Physical Maximum (315)
+    0x65, 0x14,        //   Unit (Eng Rot: Degree)
+    0x75, 0x04,        //   Report Size (4)
+    0x95, 0x01,        //   Report Count (1)
+    0x81, 0x42,        //   Input (Data,Var,Abs,Null)
 
-    0x05, 0x01,                    //   Usage Page (Generic Desktop),
-    0x09, 0x33,                    //   Usage (Rx),
-    0x09, 0x34,                    //   Usage (Ry),
-    0x15, 0x00,                    //   Logical Minimum (0),
-    0x26, 0xFF, 0x00,              //   Logical Maximum (255),
-    0x75, 0x08,                    //   Report Size (8),
-    0x95, 0x02,                    //   Report Count (2),
-    0x81, 0x02,                    //   Input (Data, Var, Abs),
+    // 14 buttons
+    0x65, 0x00,        //   Unit (None)
+    0x05, 0x09,        //   Usage Page (Button)
+    0x19, 0x01,        //   Usage Minimum (1)
+    0x29, 0x0E,        //   Usage Maximum (14)
+    0x15, 0x00,        //   Logical Minimum (0)
+    0x25, 0x01,        //   Logical Maximum (1)
+    0x75, 0x01,        //   Report Size (1)
+    0x95, 0x0E,        //   Report Count (14)
+    0x81, 0x02,        //   Input (Data,Var,Abs)
 
-    0x06, 0x00, 0xFF,              //   Usage Page (Vendor Defined 0xFF00),
-    0x09, 0x21,                    //   Usage (Vendor Usage 0x21),
-    0x95, 0x38,                    //   Report Count (56), // 56 bytes following
-    0x81, 0x02,                    //   Input (Data, Var, Abs),
+    // 6-bit counter (vendor specific)
+    0x06, 0x00, 0xFF,  //   Usage Page (Vendor Defined 0xFF00)
+    0x09, 0x20,        //   Usage (0x20)
+    0x75, 0x06,        //   Report Size (6)
+    0x95, 0x01,        //   Report Count (1)
+    0x81, 0x02,        //   Input (Data,Var,Abs)
 
-    0x85, 0x05,                    //   Report ID (5),
-    0x09, 0x22,                    //   Usage (Vendor Usage 0x22),
-    0x95, 0x1F,                    //   Report Count (31),
-    0x91, 0x02,                    //   Output (Data, Var, Abs),
+    // Triggers (Rx, Ry)
+    0x05, 0x01,        //   Usage Page (Generic Desktop Ctrls)
+    0x09, 0x33,        //   Usage (Rx)
+    0x09, 0x34,        //   Usage (Ry)
+    0x15, 0x00,        //   Logical Minimum (0)
+    0x26, 0xFF, 0x00,  //   Logical Maximum (255)
+    0x75, 0x08,        //   Report Size (8)
+    0x95, 0x02,        //   Report Count (2)
+    0x81, 0x02,        //   Input (Data,Var,Abs)
 
-    0x85, 0x02,                    //   Report ID (2),
-    0x09, 0x24,                    //   Usage (Vendor Usage 0x24),
-    0x95, 0x24,                    //   Report Count (36),
-    0xB1, 0x02,                    //   Feature (Data, Var, Abs),
+    // Vendor-specific data (54 bytes - gyro, accel, touchpad, etc.)
+    0x06, 0x00, 0xFF,  //   Usage Page (Vendor Defined 0xFF00)
+    0x09, 0x21,        //   Usage (0x21)
+    0x95, 0x36,        //   Report Count (54)
+    0x81, 0x02,        //   Input (Data,Var,Abs)
 
-    0x85, 0x03,                    //   Report ID (3),
-    0x0A, 0x21, 0x27,              //   Usage (Vendor Usage 0x2721),
-    0x95, 0x2F,                    //   Report Count (47),
-    0xB1, 0x02,                    //   Feature (Data, Var, Abs),
+    // Report ID 5: Output Report (LED/Rumble)
+    0x85, 0x05,        //   Report ID (5)
+    0x09, 0x22,        //   Usage (0x22)
+    0x95, 0x1F,        //   Report Count (31)
+    0x91, 0x02,        //   Output (Data,Var,Abs)
 
-    0x85, 0x04,                    //   Report ID (4),
-    0x09, 0x25,                    //   Usage (Vendor Usage 0x25),
-    0x95, 0x02,                    //   Report Count (2),
-    0xB1, 0x02,                    //   Feature (Data, Var, Abs),
+    // Report ID 3: Feature Report (controller definition)
+    0x85, 0x03,        //   Report ID (3)
+    0x0A, 0x21, 0x27,  //   Usage (0x2721)
+    0x95, 0x2F,        //   Report Count (47)
+    0xB1, 0x02,        //   Feature (Data,Var,Abs)
 
-    0x85, 0x08,                    //   Report ID (8),
-    0x09, 0x26,                    //   Usage (Vendor Usage 0x26),
-    0x95, 0x03,                    //   Report Count (3),
-    0xB1, 0x02,                    //   Feature (Data, Var, Abs),
+    0xC0,              // End Collection
 
-    0x85, 0x10,                    //   Report ID (16),
-    0x09, 0x27,                    //   Usage (Vendor Usage 0x27),
-    0x95, 0x04,                    //   Report Count (4),
-    0xB1, 0x02,                    //   Feature (Data, Var, Abs),
+    // Auth Feature Reports (separate collection)
+    0x06, 0xF0, 0xFF,  // Usage Page (Vendor Defined 0xFFF0)
+    0x09, 0x40,        // Usage (0x40)
+    0xA1, 0x01,        // Collection (Application)
+    // Global items reset after End Collection above; re-declare them here
+    0x15, 0x00,        //   Logical Minimum (0)
+    0x26, 0xFF, 0x00,  //   Logical Maximum (255)
+    0x75, 0x08,        //   Report Size (8)
 
-    0x85, 0x11,                    //   Report ID (17),
-    0x09, 0x28,                    //   Usage (Vendor Usage 0x28),
-    0x95, 0x02,                    //   Report Count (2),
-    0xB1, 0x02,                    //   Feature (Data, Var, Abs),
+    // Report ID 0xF0: Set Auth Payload (nonce from console)
+    0x85, 0xF0,        //   Report ID (240)
+    0x09, 0x47,        //   Usage (0x47)
+    0x95, 0x3F,        //   Report Count (63)
+    0xB1, 0x02,        //   Feature (Data,Var,Abs)
 
-    0x85, 0x12,                    //   Report ID (18),
-    0x09, 0x29,                    //   Usage (Vendor Usage 0x29),
-    0x95, 0x0F,                    //   Report Count (15),
-    0xB1, 0x02,                    //   Feature (Data, Var, Abs),
+    // Report ID 0xF1: Get Signature Nonce (response to console)
+    0x85, 0xF1,        //   Report ID (241)
+    0x09, 0x48,        //   Usage (0x48)
+    0x95, 0x3F,        //   Report Count (63)
+    0xB1, 0x02,        //   Feature (Data,Var,Abs)
 
-    0x85, 0x13,                    //   Report ID (19),
-    0x09, 0x2A,                    //   Usage (Vendor Usage 0x2A),
-    0x95, 0x16,                    //   Report Count (22),
-    0xB1, 0x02,                    //   Feature (Data, Var, Abs),
+    // Report ID 0xF2: Get Signing State
+    0x85, 0xF2,        //   Report ID (242)
+    0x09, 0x49,        //   Usage (0x49)
+    0x95, 0x0F,        //   Report Count (15)
+    0xB1, 0x02,        //   Feature (Data,Var,Abs)
 
-    0x85, 0x14,                    //   Report ID (20),
-    0x09, 0x2B,                    //   Usage (Vendor Usage 0x2B),
-    0x95, 0x10,                    //   Report Count (16),
-    0xB1, 0x02,                    //   Feature (Data, Var, Abs),
+    // Report ID 0xF3: Reset Auth
+    0x85, 0xF3,        //   Report ID (243)
+    0x0A, 0x01, 0x47,  //   Usage (0x4701)
+    0x95, 0x07,        //   Report Count (7)
+    0xB1, 0x02,        //   Feature (Data,Var,Abs)
 
-    0x85, 0x15,                    //   Report ID (21),
-    0x09, 0x2C,                    //   Usage (Vendor Usage 0x2C),
-    0x95, 0x2C,                    //   Report Count (44),
-    0xB1, 0x02,                    //   Feature (Data, Var, Abs),
-
-    // Auth Feature Reports (from GP2040-CE / HID-sony.c)
-    0x06, 0xF0, 0xFF,              // Usage Page (Vendor Defined 0xFFF0)
-    0x09, 0x40,                    // Usage (0x40)
-    0xA1, 0x01,                    // Collection (Application)
-    0x85, 0xF0,                    //   Report ID (240)
-    0x09, 0x47,                    //   Usage (0x47)
-    0x95, 0x3F,                    //   Report Count (63)
-    0xB1, 0x02,                    //   Feature (Data, Var, Abs)
-
-    0x85, 0xF1,                    //   Report ID (241)
-    0x09, 0x48,                    //   Usage (0x48)
-    0x95, 0x3F,                    //   Report Count (63)
-    0xB1, 0x02,                    //   Feature (Data, Var, Abs)
-
-    0x85, 0xF2,                    //   Report ID (242)
-    0x09, 0x49,                    //   Usage (0x49)
-    0x95, 0x0F,                    //   Report Count (15)
-    0xB1, 0x02,                    //   Feature (Data, Var, Abs)
-
-    0x85, 0xF3,                    //   Report ID (243)
-    0x0A, 0x01, 0x47,              //   Usage (0x4701)
-    0x95, 0x07,                    //   Report Count (7)
-    0xB1, 0x02,                    //   Feature (Data, Var, Abs)
-    0xC0                           // End Collection
+    0xC0,              // End Collection
 };
 
 // ============================================================================
