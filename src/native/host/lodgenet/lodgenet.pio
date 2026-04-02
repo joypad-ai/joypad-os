@@ -1,0 +1,118 @@
+; LodgeNet MCU protocol (N64/GC controllers)
+;
+; Hello (2x 7µs pulses) then clock N bits MSB-first
+; Timing: 6µs CLK LOW (sample during LOW), 30µs CLK HIGH
+;
+; Side-set: CLK1 pin (1 bit, idle HIGH)
+; IN pin: DATA pin
+; Clock divider: 125 = 1µs per PIO cycle
+
+.program lodgenet_mcu
+.side_set 1
+
+.wrap_target
+    pull block           side 1
+    mov x, osr           side 1
+
+    ; Hello pulse 1: LOW 7µs, HIGH 7µs
+    nop                  side 0 [6]
+    nop                  side 1 [6]
+
+    ; Hello pulse 2: LOW 7µs, HIGH 27µs
+    nop                  side 0 [6]
+    nop                  side 1 [15]
+    nop                  side 1 [10]
+
+bitloop:
+    nop                  side 0 [4]  ; CLK LOW 5µs
+    in pins, 1           side 0      ; sample at 6µs
+    nop                  side 1 [15] ; CLK HIGH 16µs
+    nop                  side 1 [12] ; 13µs
+    jmp x-- bitloop      side 1      ; 1µs = 30µs total HIGH
+.wrap
+
+
+; LodgeNet SR protocol (SNES controllers)
+;
+; Uses CLK1 (side-set) and CLK2 (set pin)
+; Per bit: CLK1 LOW + CLK2 HIGH (3µs), CLK1 HIGH (20µs),
+;          CLK2 LOW (25µs), read DATA
+; After 16 bits: extra pulse, then read presence bit
+;
+; Side-set: CLK1 (1 bit)
+; SET: CLK2 (1 pin)
+; IN: DATA
+; Clock divider: 125 = 1µs per cycle
+
+.program lodgenet_sr
+.side_set 1
+
+.wrap_target
+    pull block           side 1      ; wait for bit count-1, CLK1 HIGH
+    set pins, 0          side 1      ; CLK2 LOW (idle)
+    mov x, osr           side 1
+
+bitloop_sr:
+    ; CLK1 LOW + CLK2 HIGH for 3µs (latch/shift)
+    set pins, 1          side 0 [2]  ; CLK1 LOW, CLK2 HIGH, 3µs
+
+    ; CLK1 HIGH for 20µs
+    nop                  side 1 [15] ; 16µs
+    nop                  side 1 [3]  ; 4µs = 20µs
+
+    ; CLK2 LOW for 25µs then read
+    set pins, 0          side 1      ; CLK2 LOW
+    nop                  side 1 [15] ; 16µs
+    nop                  side 1 [6]  ; 7µs = 24µs
+    in pins, 1           side 1      ; read DATA at 25µs
+    jmp x-- bitloop_sr   side 1
+
+    ; Extra pulse for presence detection
+    set pins, 1          side 0 [2]  ; CLK1 LOW, CLK2 HIGH, 3µs
+    nop                  side 1 [15] ; CLK1 HIGH 16µs
+    nop                  side 1 [3]  ; 4µs = 20µs
+    nop                  side 1 [15] ; wait 16µs
+    nop                  side 1 [8]  ; 9µs = 25µs
+    in pins, 1           side 1      ; read presence bit (17th bit)
+    push noblock         side 1      ; flush remaining bits to FIFO
+.wrap
+
+
+% c-sdk {
+static inline void lodgenet_mcu_pio_init(PIO pio, uint sm, uint offset, uint clk_pin, uint data_pin) {
+    pio_gpio_init(pio, clk_pin);
+    pio_gpio_init(pio, data_pin);
+
+    pio_sm_config c = lodgenet_mcu_program_get_default_config(offset);
+    sm_config_set_sideset_pins(&c, clk_pin);
+    sm_config_set_in_pins(&c, data_pin);
+    sm_config_set_in_shift(&c, false, true, 8);  // left shift, autopush at 8
+    sm_config_set_clkdiv(&c, 125.0f);
+
+    pio_sm_init(pio, sm, offset, &c);
+    pio_sm_set_consecutive_pindirs(pio, sm, clk_pin, 1, true);
+    pio_sm_set_consecutive_pindirs(pio, sm, data_pin, 1, false);
+    pio_sm_exec(pio, sm, pio_encode_jmp(offset));
+    pio_sm_set_enabled(pio, sm, true);
+}
+
+static inline void lodgenet_sr_pio_init(PIO pio, uint sm, uint offset, uint clk1_pin, uint clk2_pin, uint data_pin) {
+    pio_gpio_init(pio, clk1_pin);
+    pio_gpio_init(pio, clk2_pin);
+    pio_gpio_init(pio, data_pin);
+
+    pio_sm_config c = lodgenet_sr_program_get_default_config(offset);
+    sm_config_set_sideset_pins(&c, clk1_pin);     // side-set = CLK1
+    sm_config_set_set_pins(&c, clk2_pin, 1);      // set = CLK2
+    sm_config_set_in_pins(&c, data_pin);           // in = DATA
+    sm_config_set_in_shift(&c, false, true, 8);    // left shift, autopush at 8
+    sm_config_set_clkdiv(&c, 125.0f);
+
+    pio_sm_init(pio, sm, offset, &c);
+    pio_sm_set_consecutive_pindirs(pio, sm, clk1_pin, 1, true);   // CLK1 output
+    pio_sm_set_consecutive_pindirs(pio, sm, clk2_pin, 1, true);   // CLK2 output
+    pio_sm_set_consecutive_pindirs(pio, sm, data_pin, 1, false);   // DATA input
+    pio_sm_exec(pio, sm, pio_encode_jmp(offset));
+    pio_sm_set_enabled(pio, sm, true);
+}
+%}

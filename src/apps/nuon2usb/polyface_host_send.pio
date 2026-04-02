@@ -1,0 +1,47 @@
+;
+; Polyface host send — 18 instructions
+; Identical to polyface_send but control bit = 1 (console/host source).
+
+.program polyface_host_send
+
+.wrap_target
+packet:
+    pull  block
+    mov   x, osr
+    set   pindirs, 1
+
+    wait  1 gpio 3
+    wait  0 gpio 3
+    set   pins, 1         ; start bit = 1
+    wait  1 gpio 3
+    wait  0 gpio 3
+    set   pins, 1         ; control bit = 1 (host source)
+
+    mov   osr, x
+    set   x, 4
+data_outer:
+    set   y, 6
+data_inner:
+    wait  1 gpio 3
+    wait  0 gpio 3
+    out   pins, 1
+    jmp   y--, data_inner
+    jmp   x--, data_outer
+
+    out   PINDIRS, 1      ; pin → input
+.wrap
+
+% c-sdk {
+static inline void polyface_host_send_program_init(PIO pio, uint sm, uint offset, uint pin) {
+    pio_sm_config c = polyface_host_send_program_get_default_config(offset);
+    pio_sm_set_consecutive_pindirs(pio, sm, pin, 1, false);
+    pio_gpio_init(pio, pin);
+    sm_config_set_out_pins(&c, pin, 1);
+    sm_config_set_set_pins(&c, pin, 1);
+    sm_config_set_in_pins(&c, pin);
+    sm_config_set_out_shift(&c, true, false, 32);
+    sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_TX);
+    pio_sm_init(pio, sm, offset, &c);
+    pio_sm_set_enabled(pio, sm, true);
+}
+%}

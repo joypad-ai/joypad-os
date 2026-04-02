@@ -98,9 +98,9 @@ Joypad uses PIO-based USB host (bit-banged via the RP2040's PIO peripheral). Thi
 
 Console-specific wiring is documented with each adapter:
 
-- [PCEngine / TurboGrafx-16](../adapters/pcengine.md#pin-configuration) — 8-pin DIN
-- [GameCube / Wii](../adapters/gamecube.md#hardware-requirements) — Controller cable
-- [Dreamcast](../adapters/dreamcast.md#dreamcast-controller-connector-pinout) — Maple bus connector
-- [Nuon](../adapters/nuon.md#hardware-requirements) — Polyface serial
-- [3DO](../adapters/3do.md#wiring-diagram) — DB9 with level shifters
-- [Neo Geo / SuperGun](../adapters/neogeo.md#hardware-requirements) — DB15
+- [PCEngine / TurboGrafx-16](../output/pcengine.md) — 8-pin DIN
+- [GameCube / Wii](../output/gamecube.md) — Controller cable
+- [Dreamcast](../output/dreamcast.md) — Maple bus connector
+- [Nuon](../output/nuon.md) — Polyface serial
+- [3DO](../output/3do.md) — DB9 with level shifters
+- [Neo Geo](../apps/usb2neogeo.md) — DB15

@@ -57,6 +57,9 @@ typedef enum {
 typedef enum {
     LAYOUT_UNKNOWN = 0,         // Unknown or default (4-face button modern gamepad)
     LAYOUT_MODERN_4FACE,        // SNES/PlayStation style (no 6-button row)
+    LAYOUT_NINTENDO_4FACE,      // Nintendo SNES: BAYX face style
+    LAYOUT_NINTENDO_N64,        // Nintendo N64: A/B + C-buttons + Z
+    LAYOUT_GAMECUBE,            // GameCube: AXBY face style
     LAYOUT_SEGA_6BUTTON,        // Genesis/Saturn: Bottom [A][B][C], Top [X][Y][Z]
     LAYOUT_PCE_6BUTTON,         // PCEngine Avenue Pad: Bottom [III][II][I], Top [IV][V][VI]
     LAYOUT_ASTROCITY,           // Astrocity: Bottom [D][E][F], Top [A][B][C]

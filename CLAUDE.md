@@ -11,7 +11,7 @@ Joypad OS (formerly **USBRetro**) is firmware for RP2040 and ESP32-S3 based adap
 - USB X-input (Xbox controllers)
 - Bluetooth controllers (via USB BT dongle or Pico W)
 - WiFi controllers (via JOCP protocol on Pico W)
-- Native controllers (SNES, N64, GameCube via joybus)
+- Native controllers (SNES, N64, GameCube via joybus, LodgeNet via PIO)
 
 **Outputs:**
 - Retro consoles: PCEngine, GameCube, Dreamcast, Nuon, 3DO, Loopy
@@ -43,6 +43,8 @@ make usb2usb_feather   # USB/BT → USB HID
 make snes2usb_kb2040   # SNES → USB HID
 make n642usb_kb2040    # N64 → USB HID
 make gc2usb_kb2040     # GameCube → USB HID
+make lodgenet2usb_pico # LodgeNet → USB HID (Pico)
+make lodgenet2usb_pico2 # LodgeNet → USB HID (Pico 2)
 make n642dc_kb2040     # N64 → Dreamcast
 make bt2usb_pico_w     # BT-only → USB HID (Pico W)
 make bt2usb_xiao_esp32s3    # BLE-only → USB HID (ESP32-S3, requires ESP-IDF)
@@ -52,6 +54,18 @@ make wifi2usb_pico_w   # WiFi → USB HID (Pico W)
 # Build all (RP2040 targets only)
 make all
 make clean
+
+# Flash (macOS - looks for /Volumes/RPI-RP2)
+make flash              # Flash most recent build
+make flash-usb2pce_kb2040  # Flash specific app
+
+# ESP32-S3 (requires ESP-IDF, see .dev/docs/esp32-port.md)
+make flash-bt2usb_xiao_esp32s3  # Flash via esptool
+```
+
+Output: `releases/joypad_<commit>_<app>_<board>.uf2`
+
+### App Build Matrix
 
 # Flash (macOS - looks for /Volumes/RPI-RP2)
 make flash              # Flash most recent build
@@ -79,6 +93,7 @@ Output: `releases/joypad_<commit>_<app>_<board>.uf2`
 | `snes2usb` | KB2040 | SNES | USB HID |
 | `n642usb` | KB2040 | N64 | USB HID |
 | `gc2usb` | KB2040 | GameCube | USB HID |
+| `lodgenet2usb` | Pico/Pico 2 | LodgeNet (N64/GC/SNES) | USB HID |
 | `n642dc` | KB2040 | N64 | Dreamcast |
 | `snes23do` | RP2040-Zero | SNES | 3DO |
 | `usb2uart` | KB2040 | USB | UART/ESP32 |
@@ -120,6 +135,7 @@ src/
 │   ├── usb2uart/               # USB → UART bridge
 │   ├── snes2usb/               # SNES → USB HID
 │   ├── snes23do/               # SNES → 3DO
+│   ├── lodgenet2usb/           # LodgeNet → USB HID
 │   └── controller/             # Custom GPIO controllers
 ├── usb/
 │   ├── usbh/                   # USB Host (input)
@@ -144,7 +160,6 @@ src/
 │       ├── jocp_input.c        # Packet parsing/conversion
 │       ├── wifi_transport.c/h  # WiFi AP, UDP/TCP servers
 │       └── dhcpserver.c/h      # DHCP server
-├── pad/                        # GPIO controller input (custom controller builds)
 └── native/
     ├── device/                 # Console outputs (we emulate devices)
     │   ├── pcengine/           # PCEngine multitap (PIO)
@@ -157,7 +172,8 @@ src/
     └── host/                   # Native inputs (we read controllers)
         ├── snes/               # SNES controller reading
         ├── n64/                # N64 controller reading (joybus)
-        └── gc/                 # GameCube controller reading (joybus)
+        ├── gc/                 # GameCube controller reading (joybus)
+        └── lodgenet/           # LodgeNet hotel controllers (PIO, N64/GC/SNES)
 esp/                                # ESP-IDF build directory (ESP32-S3)
 ├── CMakeLists.txt                  # ESP-IDF project file
 ├── Makefile                        # Build/flash/monitor shortcuts
@@ -200,7 +216,8 @@ Bluetooth ────┼──→ router_submit_input() ──→ router ──
 WiFi (JOCP) ──┤                              │               ├──→ Nuon, 3DO
 Native SNES ──┤                              │               ├──→ USB Device
 Native N64 ───┤                              │               └──→ UART
-Native GC ────┘
+Native GC ────┤
+LodgeNet ─────┘
                                     profile_apply()
                                     (button remapping)
 ```
@@ -271,14 +288,6 @@ W3C Gamepad API order - bit position = button index:
 
 - **Core 0**: USB/BT polling, input processing, main loop
 - **Core 1**: Console output protocol (timing-critical PIO)
-- On **Pico 2 W (RP2350)**: Core 0's CYW43 driver periodically locks flash — Core 1 functions must be RAM-only (`__not_in_flash_func` or fully inlined)
-
-### PIO Resource Conflicts
-
-- **CYW43** (Pico W/2W) uses PIO1 — assign console protocols to PIO0
-- **PIO-USB** (USB host) uses PIO0 — conflicts with CYW43 which needs PIO1
-- **NeoPixel** always claims PIO0 SM0 — can conflict with PIO-USB
-- Each PIO block has 32 instruction slots shared across all programs loaded into it
 
 ### PIO State Machines
 
@@ -290,6 +299,7 @@ Console protocols use RP2040 PIO for precise timing:
 - **3DO**: `sampling.pio`, `output.pio`
 - **Loopy**: `loopy.pio`
 - **N64/GC Host**: `joybus.pio` (shared with GC device)
+- **LodgeNet Host**: `lodgenet.pio` (MCU + SR programs, swapped at runtime)
 
 ## Development Workflow
 
@@ -300,13 +310,9 @@ Console protocols use RP2040 PIO for precise timing:
    - `app.h` - Version, config constants
    - `profiles.h` - Button mapping profiles (optional)
 
-2. Add CMake target in `src/CMakeLists.txt`
+2. Add to `CMakeLists.txt` and `Makefile`
 
-3. Add Make targets in `Makefile` and to the `APPS` list for `make all`
-
-4. Add to `.github/workflows/build.yml` for CI
-
-5. Build: `make <appname>`
+3. Build: `make <appname>`
 
 ### Adding a New USB Device Driver
 
@@ -349,6 +355,16 @@ Console protocols use RP2040 PIO for precise timing:
    - Use `router_submit_input()` with dev_addr 0xD0+ range
 
 5. Remember to invert Y-axis if protocol uses non-HID convention
+
+### LodgeNet Host (reference implementation)
+
+The LodgeNet host (`src/native/host/lodgenet/`) is a good reference for PIO-based native input with:
+- **Multi-protocol auto-detection**: MCU (N64/GC) and SR (SNES) protocols on a single PIO SM, with programs swapped at runtime via `pio_remove_program`/`pio_add_program`
+- **Device type detection**: N64 vs GC distinguished by protocol flags (byte[1] bit 6)
+- **Controller layout reporting**: Sets `event.layout` to `LAYOUT_NINTENDO_N64`, `LAYOUT_GAMECUBE`, or `LAYOUT_NINTENDO_4FACE` for SInput face style
+- **VCC pin**: Drives a GPIO high to power the controller (RJ11 connector)
+- **Poll throttling**: MCU at ~60Hz, SR at ~131Hz (matching reference hardware framework)
+- **Encoded virtual buttons**: Impossible d-pad combos (SOCD) decoded as LodgeNet system buttons (Menu, Select, etc.)
 
 ## ESP32-S3 Development
 
@@ -404,9 +420,6 @@ Key differences from RP2040:
 - **nRF Classic BT guards** - Same Classic-only APIs must be guarded with `#ifndef BTSTACK_USE_NRF`
 - **nRF BTstack threading** - All BTstack API calls must happen in the BTstack Zephyr thread, not the main thread
 - **nRF Zephyr USB disabled** - `CONFIG_USB_DEVICE_STACK=n` and `&usbd { status = "disabled"; }` required so TinyUSB can own the USB peripheral
-- **Digital-only triggers** - Controllers without analog triggers synthesize analog values in `profile_apply()` so threshold logic works uniformly; don't special-case digital triggers in output drivers
-- **BLE HCI handle 0x0000 is valid** - Use `HCI_CON_HANDLE_INVALID` (0xFFFF) as the "no connection" sentinel, never 0
-- **BTstack custom run loops** - Must implement `execute_on_main_thread`; omitting it silently breaks cross-thread BTstack API calls
 
 ## External Dependencies
 

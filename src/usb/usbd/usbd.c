@@ -1555,6 +1555,7 @@ static const tusb_desc_device_t desc_device_cdc = {
     .bDeviceClass       = TUSB_CLASS_MISC,
     .bDeviceSubClass    = MISC_SUBCLASS_COMMON,
     .bDeviceProtocol    = MISC_PROTOCOL_IAD,
+    .bDescriptorType    = TUSB_DESC_DEVICE,
     .bMaxPacketSize0    = CFG_TUD_ENDPOINT0_SIZE,
     .idVendor           = USB_CDC_VID,
     .idProduct          = USB_CDC_PID,

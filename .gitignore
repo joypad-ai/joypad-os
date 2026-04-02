@@ -25,3 +25,6 @@ src/lib
 
 plans/
 .agents/
+esp/sdkconfig
+esp/dependencies.lock
+esp/.cache/

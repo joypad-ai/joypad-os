@@ -13,6 +13,13 @@
 <p align="center">
   Build controller adapters, custom controllers, and assistive input devices — <br>on microcontrollers, not computers.
 </p>
+<p align="center">
+  <a href="https://github.com/joypad-ai/joypad-os/releases"><img src="https://img.shields.io/github/downloads/joypad-ai/joypad-os/total?style=for-the-badge&label=Downloads" alt="Downloads" /></a>
+  <a href="https://github.com/joypad-ai/joypad-os/blob/main/LICENSE"><img src="https://img.shields.io/github/license/joypad-ai/joypad-os?style=for-the-badge" alt="License" /></a>
+  <a href="https://github.com/joypad-ai/joypad-os/actions/workflows/build.yml"><img src="https://img.shields.io/github/actions/workflow/status/joypad-ai/joypad-os/.github/workflows/build.yml?style=for-the-badge" alt="CI Status" /></a>
+  <a href="https://docs.joypad.ai/"><img src="https://img.shields.io/badge/Docs-docs.joypad.ai-blue?style=for-the-badge" alt="Documentation" /></a>
+  <a href="http://community.joypad.ai/"><img src="https://img.shields.io/discord/1133112432684978256?style=for-the-badge&logo=discord&label=Discord" alt="Discord" /></a>
+</p>
 
 ---
 
@@ -20,7 +27,7 @@
 
 This fork of **Joypad OS** adds support for **PlayStation 4 (DS4) Emulation with Local Authentication**. 
 
-Unlike the main repository which only supports PS4 without authentication which makes it work for 8 minutesonly, this version allows for **Local RSA Authentication**. This means you can use your adapter on a PS4 by using cryptographic keys extracted from a real DualShock 4.
+Unlike the main repository which only supports PS4 without authentication (which makes it work for 8 minutes only), this version allows for **Local RSA Authentication**. This means you can use your adapter on a PS4 by using cryptographic keys extracted from a real DualShock 4.
 
 ### ⚠️ Limitations & Compatibility
 - **Buttons:** Some games may have trouble recognizing the **L2** and **Options** buttons (e.g., tested and confirmed issues in **FC26**).
@@ -68,6 +75,47 @@ Formerly known as **USBRetro**.
 
 ---
 
+## I Want to Build Something — Where Do I Start?
+
+### Quick Start (RP2040)
+
+```bash
+# Install ARM toolchain (macOS)
+brew install --cask gcc-arm-embedded cmake git
+
+# Clone and initialize
+git clone https://github.com/joypad-ai/joypad-os.git
+cd joypad-os && make init
+
+# Build an adapter
+make usb2gc_kb2040     # USB/BT → GameCube
+make usb2usb_feather   # USB/BT → USB HID
+make bt2usb_pico_w     # Bluetooth → USB
+make snes2usb_kb2040   # SNES controller → USB
+```
+
+### ESP32-S3
+
+```bash
+make init-esp                   # One-time ESP-IDF setup
+make bt2usb_esp32s3             # Build
+make flash-bt2usb_esp32s3       # Flash
+```
+
+### nRF52840
+
+```bash
+make init-nrf                               # One-time NCS setup
+make bt2usb_seeed_xiao_nrf52840             # Build
+make flash-bt2usb_seeed_xiao_nrf52840       # Flash
+```
+
+Output: `releases/joypad_<commit>_<app>_<board>.uf2`
+
+**[Full build guide](docs/getting-started/building.md)** — prerequisites, all targets, ESP32/nRF setup, troubleshooting
+
+---
+
 ## What Can It Do?
 
 ### Console Adapters
@@ -105,6 +153,16 @@ Convert retro controllers to USB or bridge them to other consoles:
 | **NEOGEO2USB** | Neo Geo arcade stick → USB | [Guide](docs/adapters/native-input.md#neo-geo-to-usb-neogeo2usb) |
 | **N642DC** | N64 → Dreamcast | [Guide](docs/adapters/native-input.md#cross-console-adapters) |
 | **SNES23DO** | SNES → 3DO | [Guide](docs/adapters/native-input.md#cross-console-adapters) |
+
+### Custom Controllers
+
+Wire up GPIO buttons and analog sticks to build your own USB gamepad:
+
+```bash
+make controller_fisherprice        # Digital buttons → USB HID
+make controller_fisherprice_analog # Buttons + analog stick → USB HID
+make controller_macropad           # Adafruit MacroPad → USB HID
+```
 
 ---
 

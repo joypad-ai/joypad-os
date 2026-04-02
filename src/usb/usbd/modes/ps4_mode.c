@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2024 Robert Dale Smith
 
-#include "platform/platform.h" // Adicionado para platform_time_ms()
+#include "platform/platform.h"
 #include "tusb.h"
 #include "../usbd_mode.h"
 #include "../usbd.h"

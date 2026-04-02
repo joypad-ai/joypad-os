@@ -55,6 +55,12 @@ static uint32_t s_core1_stack[0x2000 / sizeof(uint32_t)] __attribute__((aligned(
 static volatile void (*core1_actual_task)(void) = NULL;
 static volatile bool core1_task_ready = false;
 
+// Optional hook called from the Core 1 idle loop.
+// Override in an output-mode module to perform background work on Core 1.
+// IMPORTANT: Do NOT call flash_safe_execute() or any flash API from this hook —
+// flash ops must always originate from Core 0 while Core 1 handles lockout.
+__attribute__((weak)) void core1_idle_hook(void) {}
+
 // Core 1 wrapper - initializes flash safety, then waits for and runs actual task
 static void core1_wrapper(void) {
   // Initialize multicore lockout for flash_safe_execute to work
@@ -83,12 +89,6 @@ static void core1_wrapper(void) {
     }
   }
 }
-
-// Optional hook called from the Core 1 idle loop.
-// Override in an output-mode module to perform background work on Core 1.
-// IMPORTANT: Do NOT call flash_safe_execute() or any flash API from this hook —
-// flash ops must always originate from Core 0 while Core 1 handles lockout.
-__attribute__((weak)) void core1_idle_hook(void) {}
 
 // Core 0 main loop - pinned in SRAM for consistent timing
 static void __not_in_flash_func(core0_main)(void)

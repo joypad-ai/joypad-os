@@ -27,11 +27,13 @@ extern int hid_get_ctrl_type(uint8_t dev_addr, uint8_t instance);
 // SINPUT FACE STYLES
 // ============================================================================
 
-// Face style values (byte 5, upper 3 bits) - per SDL/SInput spec
-#define SINPUT_FACE_XBOX         0  // ABXY (default)
-#define SINPUT_FACE_GAMECUBE     2  // AXBY
-#define SINPUT_FACE_NINTENDO     3  // BAYX
-#define SINPUT_FACE_SONY         4  // Sony (Cross/Circle/Square/Triangle)
+// Face style values (byte 5, upper 3 bits) - per SInput spec
+// Must match joypad-web SINPUT_FACE_STYLE enum
+#define SINPUT_FACE_UNKNOWN      0
+#define SINPUT_FACE_XBOX         1  // ABXY (default)
+#define SINPUT_FACE_NINTENDO     2  // BAYX
+#define SINPUT_FACE_SONY         3  // Cross/Circle/Square/Triangle
+#define SINPUT_FACE_GAMECUBE     4  // AXBY
 
 // Gamepad physical type values (byte 4) - per SInput spec
 #define SINPUT_TYPE_UNKNOWN      0
@@ -46,6 +48,8 @@ extern int hid_get_ctrl_type(uint8_t dev_addr, uint8_t instance);
 #define SINPUT_TYPE_JOYCON_R     9
 #define SINPUT_TYPE_JOYCON_PAIR  10
 #define SINPUT_TYPE_GAMECUBE     11
+#define SINPUT_TYPE_N64          12
+#define SINPUT_TYPE_SNES         13
 
 // ============================================================================
 // STATE
@@ -117,6 +121,7 @@ static uint32_t convert_buttons(uint32_t buttons)
     if (buttons & JP_BUTTON_A1) sinput_buttons |= SINPUT_MASK_GUIDE;   // Home/Guide
     if (buttons & JP_BUTTON_A2) sinput_buttons |= SINPUT_MASK_CAPTURE; // Capture/Share
     if (buttons & JP_BUTTON_A3) sinput_buttons |= SINPUT_MASK_MISC4;  // Mute/Assistant
+    if (buttons & JP_BUTTON_A4) sinput_buttons |= SINPUT_MASK_MISC5;  // Misc 5
 
     // Extended buttons (paddles) - map L4/R4 if available
     if (buttons & JP_BUTTON_L4) sinput_buttons |= SINPUT_MASK_L_PADDLE1;
@@ -130,8 +135,27 @@ static uint32_t convert_buttons(uint32_t buttons)
 // ============================================================================
 
 // Determine face style and gamepad type from device address, instance, and transport
-static void update_device_info(uint8_t dev_addr, int8_t instance, input_transport_t transport)
+static void update_device_info(uint8_t dev_addr, int8_t instance, input_transport_t transport,
+                               controller_layout_t layout)
 {
+    // Native controllers: determine face style from layout
+    if (transport == INPUT_TRANSPORT_NATIVE && layout != LAYOUT_UNKNOWN) {
+        if (layout == LAYOUT_GAMECUBE) {
+            cached_face_style = SINPUT_FACE_GAMECUBE;
+            cached_gamepad_type = SINPUT_TYPE_GAMECUBE;
+        } else if (layout == LAYOUT_NINTENDO_N64) {
+            cached_face_style = SINPUT_FACE_NINTENDO;
+            cached_gamepad_type = SINPUT_TYPE_N64;
+        } else if (layout == LAYOUT_NINTENDO_4FACE) {
+            cached_face_style = SINPUT_FACE_NINTENDO;
+            cached_gamepad_type = SINPUT_TYPE_SNES;
+        } else {
+            cached_face_style = SINPUT_FACE_XBOX;
+            cached_gamepad_type = SINPUT_TYPE_STANDARD;
+        }
+        return;
+    }
+
 #if (defined(CONFIG_USB_HOST) || defined(CONFIG_USB)) && !defined(DISABLE_USB_HOST)
     if (transport == INPUT_TRANSPORT_USB) {
         int ctrl_type = hid_get_ctrl_type(dev_addr, instance);
@@ -256,7 +280,7 @@ static bool sinput_mode_send_report(uint8_t player_index,
 
     // Update device face style from connected controller
     uint8_t prev_type = cached_gamepad_type;
-    update_device_info(event->dev_addr, event->instance, event->transport);
+    update_device_info(event->dev_addr, event->instance, event->transport, event->layout);
 
     // Track capabilities from input device
     bool prev_motion = cached_has_motion;
@@ -467,7 +491,8 @@ static void sinput_mode_task(void)
     if (playersCount > 0 && players[0].dev_addr >= 0) {
         update_device_info((uint8_t)players[0].dev_addr,
                            (int8_t)players[0].instance,
-                           players[0].transport);
+                           players[0].transport,
+                           LAYOUT_UNKNOWN);
     }
 
     // Build feature response (24 bytes per SInput spec)
@@ -530,8 +555,8 @@ static void sinput_mode_task(void)
     feature_response[13] = 0xFF;
     // Byte 2: START|BACK|GUIDE|CAPTURE = lower 4 bits
     feature_response[14] = 0x0F;
-    // Byte 3: MISC4 (mute/assistant)
-    feature_response[15] = 0x02;
+    // Byte 3: MISC4 (mute/assistant) + MISC5
+    feature_response[15] = 0x06;
 
     // Touchpad
     if (cached_has_touch) {

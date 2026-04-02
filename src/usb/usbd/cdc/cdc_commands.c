@@ -1002,6 +1002,13 @@ static void cmd_debug_stream(const char* json)
         stream_ctx = NULL;
     }
 
+    if (!enable) {
+        // Drain any stale data when disabling
+        log_tail = log_head;
+    } else {
+        // Flush stale data so only fresh logs are streamed
+        log_tail = log_head;
+    }
 
     snprintf(response_buf, sizeof(response_buf),
              "{\"ok\":true,\"streaming\":%s}",
@@ -1012,404 +1019,6 @@ static void cmd_debug_stream(const char* json)
     if (enable) {
         printf("[LOG] Debug log streaming started\n");
     }
-}
-
-// ============================================================================
-// SETTINGS COMMANDS
-// ============================================================================
-
-static void cmd_settings_get(const char* json)
-{
-    (void)json;
-    flash_t flash_data;
-    if (flash_load(&flash_data)) {
-        snprintf(response_buf, sizeof(response_buf),
-                 "{\"profile\":%d,\"mode\":%d}",
-                 flash_data.active_profile_index,
-                 flash_data.usb_output_mode);
-    } else {
-        snprintf(response_buf, sizeof(response_buf),
-                 "{\"profile\":0,\"mode\":0,\"valid\":false}");
-    }
-    send_json(response_buf);
-}
-
-static void cmd_settings_reset(const char* json)
-{
-    (void)json;
-
-    // Clear flash by writing defaults
-    flash_t flash_data = {0};
-    flash_save_now(&flash_data);
-
-    snprintf(response_buf, sizeof(response_buf),
-             "{\"ok\":true,\"reboot\":true}");
-    send_json(response_buf);
-
-    // Defer reboot to cdc_commands_task()
-    pending_reboot = PENDING_REBOOT;
-    pending_reboot_time = platform_time_ms();
-}
-
-#ifdef ENABLE_BTSTACK
-static void cmd_bt_status(const char* json)
-{
-    (void)json;
-    snprintf(response_buf, sizeof(response_buf),
-             "{\"enabled\":%s,\"scanning\":%s,\"connections\":%d}",
-             btstack_host_is_initialized() ? "true" : "false",
-             btstack_host_is_scanning() ? "true" : "false",
-             btstack_classic_get_connection_count());
-    send_json(response_buf);
-}
-
-static void cmd_bt_bonds_clear(const char* json)
-{
-    (void)json;
-    btstack_host_delete_all_bonds();
-    send_ok();
-}
-
-static void cmd_wiimote_orient_get(const char* json)
-{
-    (void)json;
-    uint8_t mode = wiimote_get_orient_mode();
-    snprintf(response_buf, sizeof(response_buf),
-             "{\"mode\":%d,\"name\":\"%s\"}",
-             mode, wiimote_get_orient_mode_name(mode));
-    send_json(response_buf);
-}
-
-static void cmd_wiimote_orient_set(const char* json)
-{
-    int mode;
-    if (!json_get_int(json, "mode", &mode)) {
-        send_error("missing mode");
-        return;
-    }
-    if (mode < 0 || mode > 2) {
-        send_error("invalid mode (0=auto, 1=horizontal, 2=vertical)");
-        return;
-    }
-    wiimote_set_orient_mode((uint8_t)mode);
-
-    // Save to flash
-    flash_t flash_data;
-    if (flash_load(&flash_data)) {
-        flash_data.wiimote_orient_mode = (uint8_t)mode;
-        flash_save(&flash_data);
-    }
-
-    snprintf(response_buf, sizeof(response_buf),
-             "{\"mode\":%d,\"name\":\"%s\"}",
-             mode, wiimote_get_orient_mode_name(mode));
-    send_json(response_buf);
-}
-#endif
-
-// ============================================================================
-// MAX3421E DIAGNOSTICS
-// ============================================================================
-
-#if defined(CONFIG_MAX3421) && CFG_TUH_MAX3421
-extern bool max3421_is_detected(void);
-extern uint8_t max3421_get_revision(void);
-extern void max3421_get_diag(uint8_t *out_hirq, uint8_t *out_mode,
-                             uint8_t *out_hrsl, uint8_t *out_int_pin);
-
-static void cmd_max3421_status(const char* json)
-{
-    (void)json;
-    bool detected = max3421_is_detected();
-    if (!detected) {
-        snprintf(response_buf, sizeof(response_buf),
-                 "{\"detected\":false}");
-        send_json(response_buf);
-        return;
-    }
-
-    uint8_t hirq, mode, hrsl, int_pin;
-    max3421_get_diag(&hirq, &mode, &hrsl, &int_pin);
-
-    // HRSL bits 7:6 = JSTATUS:KSTATUS
-    // J=1,K=0 = full-speed device; J=0,K=1 = low-speed device; both 0 = no device
-    bool j_status = (hrsl >> 7) & 1;
-    bool k_status = (hrsl >> 6) & 1;
-    const char* conn = "none";
-    if (j_status && !k_status) conn = "full-speed";
-    else if (!j_status && k_status) conn = "low-speed";
-    else if (j_status && k_status) conn = "se0";
-
-    snprintf(response_buf, sizeof(response_buf),
-             "{\"detected\":true,\"rev\":\"0x%02X\",\"hirq\":\"0x%02X\","
-             "\"mode\":\"0x%02X\",\"hrsl\":\"0x%02X\",\"int_pin\":%d,"
-             "\"connection\":\"%s\"}",
-             max3421_get_revision(), hirq, mode, hrsl, int_pin, conn);
-    send_json(response_buf);
-}
-#endif
-
-// ============================================================================
-// PLAYER MANAGEMENT
-// ============================================================================
-
-// PLAYERS.LIST - Get list of connected players/controllers
-static void cmd_players_list(const char* json)
-{
-    (void) json;
-
-    // Build JSON array of players
-    int len = snprintf(response_buf, sizeof(response_buf), "{\"count\":%d,\"players\":[", playersCount);
-
-    for (int i = 0; i < playersCount && i < MAX_PLAYERS; i++) {
-        if (players[i].dev_addr == -1) continue;  // Skip empty slots
-
-        const char* name = get_player_name(i);
-        const char* transport;
-        switch (players[i].transport) {
-            case INPUT_TRANSPORT_USB: transport = "usb"; break;
-            case INPUT_TRANSPORT_BT_CLASSIC: transport = "bt_classic"; break;
-            case INPUT_TRANSPORT_BT_BLE: transport = "bt_ble"; break;
-            case INPUT_TRANSPORT_NATIVE: transport = "native"; break;
-            default: transport = "unknown"; break;
-        }
-
-        // Most USB/BT controllers support rumble
-        bool supports_rumble = (players[i].transport == INPUT_TRANSPORT_USB ||
-                               players[i].transport == INPUT_TRANSPORT_BT_CLASSIC ||
-                               players[i].transport == INPUT_TRANSPORT_BT_BLE);
-
-        len += snprintf(response_buf + len, sizeof(response_buf) - len,
-                        "%s{\"slot\":%d,\"name\":\"%s\",\"transport\":\"%s\",\"rumble\":%s}",
-                        i > 0 ? "," : "",
-                        i,
-                        name ? name : "Unknown",
-                        transport,
-                        supports_rumble ? "true" : "false");
-    }
-
-    snprintf(response_buf + len, sizeof(response_buf) - len, "]}");
-    send_json(response_buf);
-}
-
-// ============================================================================
-// RUMBLE TEST
-// ============================================================================
-
-// State for auto-stopping rumble after duration
-static struct {
-    bool active;
-    uint32_t start_ms;
-    uint32_t duration_ms;
-    int player;  // -1 for all players
-} rumble_test_state = {0};
-
-// RUMBLE.TEST - Test rumble on a player's controller
-// {"cmd":"RUMBLE.TEST","player":0,"left":255,"right":255,"duration":500}
-// player: 0-based index, or -1 for all players
-// left/right: motor intensity 0-255
-// duration: optional, ms (default 500, max 5000)
-static void cmd_rumble_test(const char* json)
-{
-    int player = 0;
-    int left = 128;
-    int right = 128;
-    int duration = 500;
-
-    json_get_int(json, "player", &player);
-    json_get_int(json, "left", &left);
-    json_get_int(json, "right", &right);
-    json_get_int(json, "duration", &duration);
-
-    // Clamp values
-    if (left < 0) left = 0;
-    if (left > 255) left = 255;
-    if (right < 0) right = 0;
-    if (right > 255) right = 255;
-    if (duration < 0) duration = 0;
-    if (duration > 5000) duration = 5000;
-
-    printf("[CDC] RUMBLE.TEST: player=%d left=%d right=%d duration=%d\n",
-           player, left, right, duration);
-
-    // Apply rumble via feedback system
-    if (player == -1) {
-        // All players
-        for (int i = 0; i < playersCount && i < MAX_PLAYERS; i++) {
-            if (players[i].dev_addr != -1) {
-                feedback_set_rumble_internal(i, (uint8_t)left, (uint8_t)right);
-            }
-        }
-    } else if (player >= 0 && player < playersCount && players[player].dev_addr != -1) {
-        feedback_set_rumble_internal(player, (uint8_t)left, (uint8_t)right);
-    } else {
-        send_error("invalid player");
-        return;
-    }
-
-    // Store state for auto-stop
-    if (duration > 0 && (left > 0 || right > 0)) {
-        rumble_test_state.active = true;
-        rumble_test_state.start_ms = platform_time_ms();
-        rumble_test_state.duration_ms = duration;
-        rumble_test_state.player = player;
-    }
-
-    snprintf(response_buf, sizeof(response_buf),
-             "{\"ok\":true,\"player\":%d,\"left\":%d,\"right\":%d,\"duration\":%d}",
-             player, left, right, duration);
-    send_json(response_buf);
-}
-
-// RUMBLE.STOP - Stop rumble on a player's controller
-static void cmd_rumble_stop(const char* json)
-{
-    int player = -1;
-    json_get_int(json, "player", &player);
-
-    if (player == -1) {
-        // All players
-        for (int i = 0; i < playersCount && i < MAX_PLAYERS; i++) {
-            if (players[i].dev_addr != -1) {
-                feedback_set_rumble_internal(i, 0, 0);
-            }
-        }
-    } else if (player >= 0 && player < playersCount) {
-        feedback_set_rumble_internal(player, 0, 0);
-    }
-
-    rumble_test_state.active = false;
-    send_ok();
-}
-
-// Call from main loop to auto-stop rumble after duration and drain log buffer
-void cdc_commands_task(void)
-{
-    // Handle deferred reboots (runs outside tud_task/protocol handler context)
-    if (pending_reboot != PENDING_NONE) {
-        uint32_t elapsed = platform_time_ms() - pending_reboot_time;
-        if (elapsed >= 50) {
-            uint8_t type = pending_reboot;
-            pending_reboot = PENDING_NONE;
-            printf("[CDC] Executing deferred %s...\n",
-                   type == PENDING_BOOTSEL ? "bootloader" : "reboot");
-            // Disconnect USB cleanly so host sees device removal
-            tud_disconnect();
-            platform_sleep_ms(500);
-            if (type == PENDING_BOOTSEL) {
-                platform_reboot_bootloader();
-            } else {
-                platform_reboot();
-            }
-        }
-    }
-
-    if (rumble_test_state.active) {
-        uint32_t now = platform_time_ms();
-        if (now - rumble_test_state.start_ms >= rumble_test_state.duration_ms) {
-            // Stop rumble
-            if (rumble_test_state.player == -1) {
-                for (int i = 0; i < MAX_PLAYERS; i++) {
-                    feedback_set_rumble_internal(i, 0, 0);
-                }
-            } else {
-                feedback_set_rumble_internal(rumble_test_state.player, 0, 0);
-            }
-            rumble_test_state.active = false;
-            printf("[CDC] RUMBLE.TEST: auto-stopped after %lu ms\n",
-                   (unsigned long)rumble_test_state.duration_ms);
-        }
-    }
-
-    // Drain log ring buffer and send as events
-    if (stream_ctx && stream_ctx->log_streaming && log_head != log_tail) {
-        // Collect up to 256 raw bytes from ring buffer
-        char raw[256];
-        int raw_len = 0;
-        while (log_tail != log_head && raw_len < (int)sizeof(raw)) {
-            raw[raw_len++] = log_ring[log_tail];
-            log_tail = (log_tail + 1) % LOG_BUF_SIZE;
-        }
-
-        if (raw_len > 0) {
-            // Build JSON event with escaped message
-            // Prefix: {"type":"log","msg":"  = 22 chars
-            // Suffix: "}                     = 2 chars
-            // Max overhead per char: 2 (for \n, \", \\)
-            int pos = 0;
-            pos += snprintf(log_event_buf + pos, sizeof(log_event_buf) - pos,
-                            "{\"type\":\"log\",\"msg\":\"");
-            for (int i = 0; i < raw_len && pos < (int)sizeof(log_event_buf) - 10; i++) {
-                char c = raw[i];
-                if (c == '\\') {
-                    log_event_buf[pos++] = '\\';
-                    log_event_buf[pos++] = '\\';
-                } else if (c == '"') {
-                    log_event_buf[pos++] = '\\';
-                    log_event_buf[pos++] = '"';
-                } else if (c == '\n') {
-                    log_event_buf[pos++] = '\\';
-                    log_event_buf[pos++] = 'n';
-                } else if (c == '\r') {
-                    log_event_buf[pos++] = '\\';
-                    log_event_buf[pos++] = 'r';
-                } else if (c == '\t') {
-                    log_event_buf[pos++] = '\\';
-                    log_event_buf[pos++] = 't';
-                } else if (c >= 0x20) {
-                    log_event_buf[pos++] = c;
-                }
-                // Drop other control characters
-            }
-            log_event_buf[pos++] = '"';
-            log_event_buf[pos++] = '}';
-            log_event_buf[pos] = '\0';
-
-            if (stream_ctx) {
-                cdc_protocol_send_event(stream_ctx, log_event_buf);
-            }
-        }
-    }
-
-    // Drain LOG.DUMP snapshot (uses dump_pos / dump_end, independent of log_tail)
-    // Handle empty-buffer case: immediately send logdone so JS doesn't hang
-    if (dump_active && stream_ctx && dump_pos == dump_end) {
-        dump_active = false;
-        cdc_protocol_send_event(stream_ctx, "{\"type\":\"logdone\"}");
-    }
-    if (dump_active && stream_ctx && dump_pos != dump_end) {
-        char raw[150];
-        int raw_len = 0;
-        while (dump_pos != dump_end && raw_len < (int)sizeof(raw)) {
-            raw[raw_len++] = log_ring[dump_pos];
-            dump_pos = (dump_pos + 1) % LOG_BUF_SIZE;
-        }
-
-        if (raw_len > 0) {
-            int pos = 0;
-            pos += snprintf(log_event_buf + pos, sizeof(log_event_buf) - pos,
-                            "{\"type\":\"logdump\",\"msg\":\"");
-            for (int i = 0; i < raw_len && pos < (int)sizeof(log_event_buf) - 10; i++) {
-                char c = raw[i];
-                if (c == '\\')      { log_event_buf[pos++] = '\\'; log_event_buf[pos++] = '\\'; }
-                else if (c == '"')  { log_event_buf[pos++] = '\\'; log_event_buf[pos++] = '"'; }
-                else if (c == '\n') { log_event_buf[pos++] = '\\'; log_event_buf[pos++] = 'n'; }
-                else if (c == '\r') { log_event_buf[pos++] = '\\'; log_event_buf[pos++] = 'r'; }
-                else if (c == '\t') { log_event_buf[pos++] = '\\'; log_event_buf[pos++] = 't'; }
-                else if (c >= 0x20) { log_event_buf[pos++] = c; }
-            }
-            log_event_buf[pos++] = '"';
-            log_event_buf[pos++] = '}';
-            log_event_buf[pos] = '\0';
-            cdc_protocol_send_event(stream_ctx, log_event_buf);
-        }
-
-        if (dump_pos == dump_end) {
-            dump_active = false;
-            cdc_protocol_send_event(stream_ctx, "{\"type\":\"logdone\"}");
-        }
-    }
-
 }
 
 // ============================================================================
@@ -1683,6 +1292,274 @@ static void cmd_ps4auth_clear(const char *json)
 }
 
 // ============================================================================
+// SETTINGS COMMANDS
+// ============================================================================
+
+static void cmd_settings_get(const char* json)
+{
+    (void)json;
+    flash_t flash_data;
+    if (flash_load(&flash_data)) {
+        snprintf(response_buf, sizeof(response_buf),
+                 "{\"profile\":%d,\"mode\":%d}",
+                 flash_data.active_profile_index,
+                 flash_data.usb_output_mode);
+    } else {
+        snprintf(response_buf, sizeof(response_buf),
+                 "{\"profile\":0,\"mode\":0,\"valid\":false}");
+    }
+    send_json(response_buf);
+}
+
+static void cmd_settings_reset(const char* json)
+{
+    (void)json;
+
+    // Clear flash by writing defaults
+    flash_t flash_data = {0};
+    flash_save_now(&flash_data);
+
+    snprintf(response_buf, sizeof(response_buf),
+             "{\"ok\":true,\"reboot\":true}");
+    send_json(response_buf);
+
+    // Defer reboot to cdc_commands_task()
+    pending_reboot = PENDING_REBOOT;
+    pending_reboot_time = platform_time_ms();
+}
+
+#ifdef ENABLE_BTSTACK
+static void cmd_bt_status(const char* json)
+{
+    (void)json;
+    snprintf(response_buf, sizeof(response_buf),
+             "{\"enabled\":%s,\"scanning\":%s,\"connections\":%d}",
+             btstack_host_is_initialized() ? "true" : "false",
+             btstack_host_is_scanning() ? "true" : "false",
+             btstack_classic_get_connection_count());
+    send_json(response_buf);
+}
+
+static void cmd_bt_bonds_clear(const char* json)
+{
+    (void)json;
+    btstack_host_delete_all_bonds();
+    send_ok();
+}
+
+static void cmd_wiimote_orient_get(const char* json)
+{
+    (void)json;
+    uint8_t mode = wiimote_get_orient_mode();
+    snprintf(response_buf, sizeof(response_buf),
+             "{\"mode\":%d,\"name\":\"%s\"}",
+             mode, wiimote_get_orient_mode_name(mode));
+    send_json(response_buf);
+}
+
+static void cmd_wiimote_orient_set(const char* json)
+{
+    int mode;
+    if (!json_get_int(json, "mode", &mode)) {
+        send_error("missing mode");
+        return;
+    }
+    if (mode < 0 || mode > 2) {
+        send_error("invalid mode (0=auto, 1=horizontal, 2=vertical)");
+        return;
+    }
+    wiimote_set_orient_mode((uint8_t)mode);
+
+    // Save to flash
+    flash_t flash_data;
+    if (flash_load(&flash_data)) {
+        flash_data.wiimote_orient_mode = (uint8_t)mode;
+        flash_save(&flash_data);
+    }
+
+    snprintf(response_buf, sizeof(response_buf),
+             "{\"mode\":%d,\"name\":\"%s\"}",
+             mode, wiimote_get_orient_mode_name(mode));
+    send_json(response_buf);
+}
+#endif
+
+// ============================================================================
+// MAX3421E DIAGNOSTICS
+// ============================================================================
+
+#if defined(CONFIG_MAX3421) && CFG_TUH_MAX3421
+extern bool max3421_is_detected(void);
+extern uint8_t max3421_get_revision(void);
+extern void max3421_get_diag(uint8_t *out_hirq, uint8_t *out_mode,
+                             uint8_t *out_hrsl, uint8_t *out_int_pin);
+
+static void cmd_max3421_status(const char* json)
+{
+    (void)json;
+    bool detected = max3421_is_detected();
+    if (!detected) {
+        snprintf(response_buf, sizeof(response_buf),
+                 "{\"detected\":false}");
+        send_json(response_buf);
+        return;
+    }
+
+    uint8_t hirq, mode, hrsl, int_pin;
+    max3421_get_diag(&hirq, &mode, &hrsl, &int_pin);
+
+    // HRSL bits 7:6 = JSTATUS:KSTATUS
+    // J=1,K=0 = full-speed device; J=0,K=1 = low-speed device; both 0 = no device
+    bool j_status = (hrsl >> 7) & 1;
+    bool k_status = (hrsl >> 6) & 1;
+    const char* conn = "none";
+    if (j_status && !k_status) conn = "full-speed";
+    else if (!j_status && k_status) conn = "low-speed";
+    else if (j_status && k_status) conn = "se0";
+
+    snprintf(response_buf, sizeof(response_buf),
+             "{\"detected\":true,\"rev\":\"0x%02X\",\"hirq\":\"0x%02X\","
+             "\"mode\":\"0x%02X\",\"hrsl\":\"0x%02X\",\"int_pin\":%d,"
+             "\"connection\":\"%s\"}",
+             max3421_get_revision(), hirq, mode, hrsl, int_pin, conn);
+    send_json(response_buf);
+}
+#endif
+
+// ============================================================================
+// PLAYER MANAGEMENT
+// ============================================================================
+
+// PLAYERS.LIST - Get list of connected players/controllers
+static void cmd_players_list(const char* json)
+{
+    (void) json;
+
+    // Build JSON array of players
+    int len = snprintf(response_buf, sizeof(response_buf), "{\"count\":%d,\"players\":[", playersCount);
+
+    for (int i = 0; i < playersCount && i < MAX_PLAYERS; i++) {
+        if (players[i].dev_addr == -1) continue;  // Skip empty slots
+
+        const char* name = get_player_name(i);
+        const char* transport;
+        switch (players[i].transport) {
+            case INPUT_TRANSPORT_USB: transport = "usb"; break;
+            case INPUT_TRANSPORT_BT_CLASSIC: transport = "bt_classic"; break;
+            case INPUT_TRANSPORT_BT_BLE: transport = "bt_ble"; break;
+            case INPUT_TRANSPORT_NATIVE: transport = "native"; break;
+            default: transport = "unknown"; break;
+        }
+
+        // Most USB/BT controllers support rumble
+        bool supports_rumble = (players[i].transport == INPUT_TRANSPORT_USB ||
+                               players[i].transport == INPUT_TRANSPORT_BT_CLASSIC ||
+                               players[i].transport == INPUT_TRANSPORT_BT_BLE);
+
+        len += snprintf(response_buf + len, sizeof(response_buf) - len,
+                        "%s{\"slot\":%d,\"name\":\"%s\",\"transport\":\"%s\",\"rumble\":%s}",
+                        i > 0 ? "," : "",
+                        i,
+                        name ? name : "Unknown",
+                        transport,
+                        supports_rumble ? "true" : "false");
+    }
+
+    snprintf(response_buf + len, sizeof(response_buf) - len, "]}");
+    send_json(response_buf);
+}
+
+// ============================================================================
+// RUMBLE TEST
+// ============================================================================
+
+// State for auto-stopping rumble after duration
+static struct {
+    bool active;
+    uint32_t start_ms;
+    uint32_t duration_ms;
+    int player;  // -1 for all players
+} rumble_test_state = {0};
+
+// RUMBLE.TEST - Test rumble on a player's controller
+// {"cmd":"RUMBLE.TEST","player":0,"left":255,"right":255,"duration":500}
+// player: 0-based index, or -1 for all players
+// left/right: motor intensity 0-255
+// duration: optional, ms (default 500, max 5000)
+static void cmd_rumble_test(const char* json)
+{
+    int player = 0;
+    int left = 128;
+    int right = 128;
+    int duration = 500;
+
+    json_get_int(json, "player", &player);
+    json_get_int(json, "left", &left);
+    json_get_int(json, "right", &right);
+    json_get_int(json, "duration", &duration);
+
+    // Clamp values
+    if (left < 0) left = 0;
+    if (left > 255) left = 255;
+    if (right < 0) right = 0;
+    if (right > 255) right = 255;
+    if (duration < 0) duration = 0;
+    if (duration > 5000) duration = 5000;
+
+    printf("[CDC] RUMBLE.TEST: player=%d left=%d right=%d duration=%d\n",
+           player, left, right, duration);
+
+    // Apply rumble via feedback system
+    if (player == -1) {
+        // All players
+        for (int i = 0; i < playersCount && i < MAX_PLAYERS; i++) {
+            if (players[i].dev_addr != -1) {
+                feedback_set_rumble_internal(i, (uint8_t)left, (uint8_t)right);
+            }
+        }
+    } else if (player >= 0 && player < playersCount && players[player].dev_addr != -1) {
+        feedback_set_rumble_internal(player, (uint8_t)left, (uint8_t)right);
+    } else {
+        send_error("invalid player");
+        return;
+    }
+
+    // Store state for auto-stop
+    if (duration > 0 && (left > 0 || right > 0)) {
+        rumble_test_state.active = true;
+        rumble_test_state.start_ms = platform_time_ms();
+        rumble_test_state.duration_ms = duration;
+        rumble_test_state.player = player;
+    }
+
+    snprintf(response_buf, sizeof(response_buf),
+             "{\"ok\":true,\"player\":%d,\"left\":%d,\"right\":%d,\"duration\":%d}",
+             player, left, right, duration);
+    send_json(response_buf);
+}
+
+// RUMBLE.STOP - Stop rumble on a player's controller
+static void cmd_rumble_stop(const char* json)
+{
+    int player = -1;
+    json_get_int(json, "player", &player);
+
+    if (player == -1) {
+        // All players
+        for (int i = 0; i < playersCount && i < MAX_PLAYERS; i++) {
+            if (players[i].dev_addr != -1) {
+                feedback_set_rumble_internal(i, 0, 0);
+            }
+        }
+    } else if (player >= 0 && player < playersCount) {
+        feedback_set_rumble_internal(player, 0, 0);
+    }
+
+    rumble_test_state.active = false;
+    send_ok();
+}
+
+// ============================================================================
 // COMMAND DISPATCH
 // ============================================================================
 
@@ -1868,4 +1745,134 @@ void cdc_commands_send_disconnect_event(uint8_t port)
     snprintf(response_buf, sizeof(response_buf),
              "{\"type\":\"disconnect\",\"port\":%d}", port);
     cdc_protocol_send_event(stream_ctx, response_buf);
+}
+
+// Call from main loop to auto-stop rumble after duration and drain log buffer
+void cdc_commands_task(void)
+{
+    // Handle deferred reboots (runs outside tud_task/protocol handler context)
+    if (pending_reboot != PENDING_NONE) {
+        uint32_t elapsed = platform_time_ms() - pending_reboot_time;
+        if (elapsed >= 50) {
+            uint8_t type = pending_reboot;
+            pending_reboot = PENDING_NONE;
+            printf("[CDC] Executing deferred %s...\n",
+                   type == PENDING_BOOTSEL ? "bootloader" : "reboot");
+            // Disconnect USB cleanly so host sees device removal
+            tud_disconnect();
+            platform_sleep_ms(500);
+            if (type == PENDING_BOOTSEL) {
+                platform_reboot_bootloader();
+            } else {
+                platform_reboot();
+            }
+        }
+    }
+
+    if (rumble_test_state.active) {
+        uint32_t now = platform_time_ms();
+        if (now - rumble_test_state.start_ms >= rumble_test_state.duration_ms) {
+            // Stop rumble
+            if (rumble_test_state.player == -1) {
+                for (int i = 0; i < MAX_PLAYERS; i++) {
+                    feedback_set_rumble_internal(i, 0, 0);
+                }
+            } else {
+                feedback_set_rumble_internal(rumble_test_state.player, 0, 0);
+            }
+            rumble_test_state.active = false;
+            printf("[CDC] RUMBLE.TEST: auto-stopped after %lu ms\n",
+                   (unsigned long)rumble_test_state.duration_ms);
+        }
+    }
+
+    // Drain log ring buffer and send as events
+    if (stream_ctx && stream_ctx->log_streaming && log_head != log_tail) {
+        // Collect up to 256 raw bytes from ring buffer
+        char raw[256];
+        int raw_len = 0;
+        while (log_tail != log_head && raw_len < (int)sizeof(raw)) {
+            raw[raw_len++] = log_ring[log_tail];
+            log_tail = (log_tail + 1) % LOG_BUF_SIZE;
+        }
+
+        if (raw_len > 0) {
+            // Build JSON event with escaped message
+            // Prefix: {"type":"log","msg":"  = 22 chars
+            // Suffix: "}                     = 2 chars
+            // Max overhead per char: 2 (for \n, \", \\)
+            int pos = 0;
+            pos += snprintf(log_event_buf + pos, sizeof(log_event_buf) - pos,
+                            "{\"type\":\"log\",\"msg\":\"");
+            for (int i = 0; i < raw_len && pos < (int)sizeof(log_event_buf) - 10; i++) {
+                char c = raw[i];
+                if (c == '\\') {
+                    log_event_buf[pos++] = '\\';
+                    log_event_buf[pos++] = '\\';
+                } else if (c == '"') {
+                    log_event_buf[pos++] = '\\';
+                    log_event_buf[pos++] = '"';
+                } else if (c == '\n') {
+                    log_event_buf[pos++] = '\\';
+                    log_event_buf[pos++] = 'n';
+                } else if (c == '\r') {
+                    log_event_buf[pos++] = '\\';
+                    log_event_buf[pos++] = 'r';
+                } else if (c == '\t') {
+                    log_event_buf[pos++] = '\\';
+                    log_event_buf[pos++] = 't';
+                } else if (c >= 0x20) {
+                    log_event_buf[pos++] = c;
+                }
+                // Drop other control characters
+            }
+            log_event_buf[pos++] = '"';
+            log_event_buf[pos++] = '}';
+            log_event_buf[pos] = '\0';
+
+            if (stream_ctx) {
+                cdc_protocol_send_event(stream_ctx, log_event_buf);
+            }
+        }
+    }
+
+    // Drain LOG.DUMP snapshot (uses dump_pos / dump_end, independent of log_tail)
+    // Handle empty-buffer case: immediately send logdone so JS doesn't hang
+    if (dump_active && stream_ctx && dump_pos == dump_end) {
+        dump_active = false;
+        cdc_protocol_send_event(stream_ctx, "{\"type\":\"logdone\"}");
+    }
+    if (dump_active && stream_ctx && dump_pos != dump_end) {
+        char raw[150];
+        int raw_len = 0;
+        while (dump_pos != dump_end && raw_len < (int)sizeof(raw)) {
+            raw[raw_len++] = log_ring[dump_pos];
+            dump_pos = (dump_pos + 1) % LOG_BUF_SIZE;
+        }
+
+        if (raw_len > 0) {
+            int pos = 0;
+            pos += snprintf(log_event_buf + pos, sizeof(log_event_buf) - pos,
+                            "{\"type\":\"logdump\",\"msg\":\"");
+            for (int i = 0; i < raw_len && pos < (int)sizeof(log_event_buf) - 10; i++) {
+                char c = raw[i];
+                if (c == '\\')      { log_event_buf[pos++] = '\\'; log_event_buf[pos++] = '\\'; }
+                else if (c == '"')  { log_event_buf[pos++] = '\\'; log_event_buf[pos++] = '"'; }
+                else if (c == '\n') { log_event_buf[pos++] = '\\'; log_event_buf[pos++] = 'n'; }
+                else if (c == '\r') { log_event_buf[pos++] = '\\'; log_event_buf[pos++] = 'r'; }
+                else if (c == '\t') { log_event_buf[pos++] = '\\'; log_event_buf[pos++] = 't'; }
+                else if (c >= 0x20) { log_event_buf[pos++] = c; }
+            }
+            log_event_buf[pos++] = '"';
+            log_event_buf[pos++] = '}';
+            log_event_buf[pos] = '\0';
+            cdc_protocol_send_event(stream_ctx, log_event_buf);
+        }
+
+        if (dump_pos == dump_end) {
+            dump_active = false;
+            cdc_protocol_send_event(stream_ctx, "{\"type\":\"logdone\"}");
+        }
+    }
+
 }

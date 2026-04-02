@@ -58,6 +58,8 @@ jobs:
           - controller_fisherprice_v1_kb2040
           - controller_fisherprice_v2_kb2040
           - controller_alpakka_pico
+          - lodgenet2usb_pico
+          - lodgenet2usb_pico2
 
     steps:
       - name: Checkout code with submodules
@@ -272,7 +274,7 @@ jobs:
           mv artifacts/*.uf2 releases/
 
           # Known board suffixes (order matters - check longer suffixes first)
-          BOARDS="esp32s3 seeed_xiao_nrf52840 feather_nrf52840_max3421 feather_nrf52840 pico2_w pico_w rp2040zero rp2350usba kb2040 feather_rp2040 feather pico macropad"
+          BOARDS="esp32s3 seeed_xiao_nrf52840 feather_nrf52840_max3421 feather_nrf52840 pico2_w pico2 pico_w rp2040zero rp2350usba kb2040 feather_rp2040 feather pico macropad"
 
           for file in releases/joypad_*.uf2; do
             if [ -f "$file" ]; then
@@ -413,6 +415,13 @@ jobs:
         with:
           name: joypad_${{ steps.commit.outputs.hash }}_gc2usb
           path: organized/gc2usb/*.uf2
+          if-no-files-found: ignore
+
+      - name: Upload lodgenet2usb
+        uses: actions/upload-artifact@v4
+        with:
+          name: joypad_${{ steps.commit.outputs.hash }}_lodgenet2usb
+          path: organized/lodgenet2usb/*.uf2
           if-no-files-found: ignore
 
       - name: Upload controllers

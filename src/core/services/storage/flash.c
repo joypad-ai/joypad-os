@@ -194,6 +194,7 @@ void flash_init(void)
         runtime_settings.sequence = 0;
         runtime_settings.active_profile_index = 0;  // Default profile
         runtime_settings.custom_profile_count = 0;
+        runtime_settings.ps4_auth_log = 1; // Default to log enabled for troubleshooting
     }
     runtime_settings_loaded = true;
 }
@@ -263,7 +264,15 @@ static bool flash_write_page(uint8_t slot_index, const flash_t* settings)
         .data = (const uint8_t*)&write_buffer
     };
 
-    flash_safe_execute(page_program_worker, &params, UINT32_MAX);
+    // Try flash_safe_execute first
+    int result = flash_safe_execute(page_program_worker, &params, UINT32_MAX);
+
+    if (result != PICO_OK) {
+        // Fallback: direct write with interrupts disabled briefly
+        uint32_t ints = save_and_disable_interrupts();
+        flash_range_program(offset, (const uint8_t*)&write_buffer, FLASH_PAGE_SIZE);
+        restore_interrupts(ints);
+    }
 
     return true;
 }
@@ -279,7 +288,17 @@ static void flash_erase_sector(uint8_t sector)
 
     sector_erase_params_t params = { .offset = offset };
 
-    flash_safe_execute(sector_erase_worker, &params, UINT32_MAX);
+    // Try flash_safe_execute first
+    int result = flash_safe_execute(sector_erase_worker, &params, UINT32_MAX);
+
+    if (result != PICO_OK) {
+        printf("[flash] flash_safe_execute failed (%d), trying direct erase...\n", result);
+        flush_output();
+
+        uint32_t ints = save_and_disable_interrupts();
+        flash_range_erase(offset, FLASH_SECTOR_SIZE);
+        restore_interrupts(ints);
+    }
 
     printf("[flash] Sector erase complete\n");
 }
@@ -527,4 +546,3 @@ void flash_cycle_profile_prev(void)
     uint8_t prev = (current == 0) ? (total - 1) : (current - 1);
     flash_set_active_profile_index(prev);
 }
-

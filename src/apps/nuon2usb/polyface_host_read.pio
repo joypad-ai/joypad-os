@@ -1,0 +1,45 @@
+;
+; Polyface host read — 12 instructions
+; Detects start(1) + control(0) to only capture device responses.
+; Ignores idle-HIGH packets (control=1) entirely — no software drain needed.
+; Uses jmp pin (configured to data pin) for branchless bit checks.
+; Pushes a single 32-bit word (data payload only).
+
+.program polyface_host_read
+
+.wrap_target
+packet:
+    wait  0 pin 1         ; Clock low
+    wait  1 pin 1         ; Clock high — sample start bit
+    jmp   pin, check_ctrl ; Data=1 (possible start bit)
+    jmp   packet          ; Data=0, not start, retry
+
+check_ctrl:
+    wait  0 pin 1         ; Clock low
+    wait  1 pin 1         ; Clock high — sample control bit
+    jmp   pin, packet     ; Data=1 = control=1 (idle/echo), restart
+
+    ; Control=0: device response! Read 32 data bits.
+    set   x, 31
+data_bit:
+    wait  0 pin 1
+    wait  1 pin 1
+    in    pins, 1
+    jmp   x--, data_bit
+.wrap
+
+% c-sdk {
+static inline void polyface_host_read_program_init(PIO pio, uint sm, uint offset, uint pin) {
+    pio_sm_config c = polyface_host_read_program_get_default_config(offset);
+    pio_gpio_init(pio, pin);
+    pio_gpio_init(pio, pin + 1);
+    gpio_set_input_hysteresis_enabled(pin, true);
+    gpio_set_input_hysteresis_enabled(pin + 1, true);
+    sm_config_set_in_pins(&c, pin);       // pin 0 = data, pin 1 = clock
+    sm_config_set_jmp_pin(&c, pin);       // jmp pin = data pin
+    sm_config_set_in_shift(&c, false, true, 32);  // shift left, autopush at 32
+    sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX);
+    pio_sm_init(pio, sm, offset, &c);
+    pio_sm_set_enabled(pio, sm, true);
+}
+%}

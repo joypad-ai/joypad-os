@@ -10,7 +10,7 @@ The easiest way to get started without DIY. Upcoming dev kits:
 - **USB2USB** — USB controller passthrough adapter
 - **BT2USB** — Bluetooth-to-USB controller adapter
 
-Visit [joypad.ai/products](https://joypad.ai/products) for current availability.
+Visit [joypad.ai/shop](https://joypad.ai/shop) for current availability.
 
 ### Legacy Controller Adapter Hardware
 
@@ -145,19 +145,19 @@ Several adapters support switchable button mapping profiles:
 - Hold **Select** for 2 seconds
 - Then press **D-Pad Up/Down** to cycle profiles
 - Profiles: Default, SNES, SSBM, MKWii, Fighting
-- See [GameCube docs](../adapters/gamecube.md) for details
+- See [GameCube app docs](../apps/usb2gc.md) for details
 
 ### 3DO (USB23DO)
 - Hold **Select** for 2 seconds
 - Then press **D-Pad Up/Down** to cycle profiles
 - Profiles: Default, Fighting, Shooter
-- See [3DO docs](../adapters/3do.md) for details
+- See [3DO app docs](../apps/usb23do.md) for details
 
 ### Nuon (USB2Nuon)
 - **In-Game Reset (IGR)**: Hold L1+R1+Start+Select
   - Tap: Stop button (return to menu)
   - Hold 2 seconds: Power button (power off player)
-- See [Nuon docs](../adapters/nuon.md) for details
+- See [Nuon app docs](../apps/usb2nuon.md) for details
 
 ## Verifying Firmware Version
 

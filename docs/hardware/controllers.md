@@ -157,6 +157,7 @@ Classic BT controllers (DS3, DS4, DualSense, Switch Pro, Wii U Pro) require the 
 **Supported Chipsets:**
 - **Broadcom** (e.g. BCM20702A0) — firmware in ROM, recommended
 - **CSR/Cambridge Silicon Radio** (e.g. CSR8510 A10) — firmware in ROM, works but beware counterfeits
+- **Barrot BR8654A02** - firmware in ROM
 
 **Not Supported:**
 - **Realtek** (RTL8761B, RTL8761BU, etc.) — requires firmware loading at every boot, not implemented
@@ -168,6 +169,7 @@ Classic BT controllers (DS3, DS4, DualSense, Switch Pro, Wii U Pro) require the 
 - Amazon Basics BT 4.0 (unknown Chinese chip, BT 4.0)
 - ASUS USB-BT400 (Broadcom BCM20702, BT 4.0)
 - Adafruit Bluetooth 4.0 USB Module #1327 (CSR8510 A10)
+- UGREEN Bluetooth 6.0 USB Adapter (Barrot BR8654A02)
 
 **Known Not Working:**
 - TP-Link UB400/UB500 (Realtek RTL8761B)

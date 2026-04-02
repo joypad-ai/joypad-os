@@ -21,12 +21,13 @@ Most boards need a USB-A connector wired to GPIO pins for controller input. See 
 
 Each adapter has its own wiring diagram in its documentation:
 
-- [PCEngine Pinout](../adapters/pcengine.md#pin-configuration)
-- [GameCube Pinout](../adapters/gamecube.md#hardware-requirements)
-- [Dreamcast Pinout](../adapters/dreamcast.md#dreamcast-controller-connector-pinout)
-- [Nuon Pinout](../adapters/nuon.md#hardware-requirements)
-- [3DO Pinout](../adapters/3do.md#wiring-diagram)
-- [Neo Geo Pinout](../adapters/neogeo.md#hardware-requirements)
+- [PCEngine Pinout](../output/pcengine.md)
+- [GameCube Pinout](../output/gamecube.md)
+- [Dreamcast Pinout](../output/dreamcast.md)
+- [Nuon Pinout](../output/nuon.md)
+- [3DO Pinout](../output/3do.md)
+- [Neo Geo Wiring](../apps/usb2neogeo.md)
+- [LodgeNet Pinout](../input/lodgenet.md)
 
 ## Common Mistakes
 
@@ -50,7 +51,7 @@ Each adapter has its own wiring diagram in its documentation:
 
 ### Pre-Built Adapters
 
-- [Controller Adapter](https://controlleradapter.com/) - Ready-to-use products
+- [Joypad Shop](https://joypad.ai/shop) - Ready-to-use products
   - USB2PCE
   - USB2GC (GCUSB)
   - USB2Nuon (NUONUSB)

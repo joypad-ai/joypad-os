@@ -277,7 +277,12 @@ set(GC_HOST_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/lib/joybus-pio/src/GamecubeController.c
 )
 
-# Nuon host sources (polyface master, software bit-bang)
+# LodgeNet host sources
+set(LODGENET_HOST_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/host/lodgenet/lodgenet_host.c
+)
+
+# Nuon host sources (polyface master)
 # TODO: uncomment when nuon_host.c is implemented
 # set(NUON_HOST_SOURCES
 #     ${CMAKE_CURRENT_SOURCE_DIR}/native/host/nuon/nuon_host.c
@@ -353,21 +358,6 @@ function(joypad_target_common TARGET)
     )
 endfunction()
 
-# Add BTstack support to a target
-function(joypad_add_btstack TARGET)
-    target_compile_definitions(${TARGET} PRIVATE ${BTSTACK_DEFINITIONS})
-    target_sources(${TARGET} PRIVATE
-        ${BT_HOST_SOURCES}
-        ${BTSTACK_SOURCES}
-        ${BTSTACK_EXTRA_SOURCES}
-    )
-    target_include_directories(${TARGET} PUBLIC ${BTSTACK_INCLUDES})
-    # Link hardware_flash and pico_flash for persistent link key storage
-    target_link_libraries(${TARGET} PRIVATE hardware_flash pico_flash)
-    # Add PS4 local auth for all USB device targets (no-op if pico_mbedtls unavailable)
-    joypad_add_ps4_local_auth(${TARGET})
-endfunction()
-
 # Add PS4 local auth (mbedTLS RSA signing) to a target
 # Only added to targets that include USB_DEVICE_SOURCES (USB output apps)
 function(joypad_add_ps4_local_auth TARGET)
@@ -395,6 +385,21 @@ function(joypad_add_ps4_local_auth TARGET)
     )
     target_link_libraries(${TARGET} PRIVATE pico_mbedtls pico_rand)
     message(STATUS "${TARGET}: PS4 local auth enabled (pico_mbedtls)")
+endfunction()
+
+# Add BTstack support to a target
+function(joypad_add_btstack TARGET)
+    target_compile_definitions(${TARGET} PRIVATE ${BTSTACK_DEFINITIONS})
+    target_sources(${TARGET} PRIVATE
+        ${BT_HOST_SOURCES}
+        ${BTSTACK_SOURCES}
+        ${BTSTACK_EXTRA_SOURCES}
+    )
+    target_include_directories(${TARGET} PUBLIC ${BTSTACK_INCLUDES})
+    # Link hardware_flash and pico_flash for persistent link key storage
+    target_link_libraries(${TARGET} PRIVATE hardware_flash pico_flash)
+    # Add PS4 local auth for all USB device targets (no-op if pico_mbedtls unavailable)
+    joypad_add_ps4_local_auth(${TARGET})
 endfunction()
 
 # USB host console app (USB input -> console output)
@@ -752,6 +757,8 @@ target_link_libraries(joypad_n642nuon PRIVATE ${COMMON_LIBRARIES} pico_bit_ops)
 joypad_target_common(joypad_n642nuon)
 # No BTstack - native N64 input only
 pico_generate_pio_header(joypad_n642nuon ${CMAKE_CURRENT_LIST_DIR}/lib/joybus-pio/src/joybus.pio)
+pico_generate_pio_header(joypad_n642nuon ${CMAKE_CURRENT_LIST_DIR}/native/device/nuon/polyface_read.pio)
+pico_generate_pio_header(joypad_n642nuon ${CMAKE_CURRENT_LIST_DIR}/native/device/nuon/polyface_send.pio)
 
 # --- N64 to Nuon (Aries64 board) ---
 # Aries64: RP2040 board with N64 data on GPIO11, Nuon polyface on GPIO12/13.
@@ -781,8 +788,6 @@ joypad_target_common(joypad_n642nuon_aries64)
 pico_generate_pio_header(joypad_n642nuon_aries64 ${CMAKE_CURRENT_LIST_DIR}/lib/joybus-pio/src/joybus.pio)
 pico_generate_pio_header(joypad_n642nuon_aries64 ${CMAKE_CURRENT_LIST_DIR}/native/device/nuon/polyface_read.pio)
 pico_generate_pio_header(joypad_n642nuon_aries64 ${CMAKE_CURRENT_LIST_DIR}/native/device/nuon/polyface_send.pio)
-pico_generate_pio_header(joypad_n642nuon ${CMAKE_CURRENT_LIST_DIR}/native/device/nuon/polyface_read.pio)
-pico_generate_pio_header(joypad_n642nuon ${CMAKE_CURRENT_LIST_DIR}/native/device/nuon/polyface_send.pio)
 
 # --- 3DO ---
 add_executable(joypad_3do)
@@ -1613,23 +1618,30 @@ joypad_target_common(joypad_n642usb)
 pico_generate_pio_header(joypad_n642usb ${CMAKE_CURRENT_LIST_DIR}/lib/joybus-pio/src/joybus.pio)
 
 # --- NUON2USB (Nuon -> USB HID) ---
-# TODO: uncomment when nuon_host.c and apps/nuon2usb/app.c are implemented
-# add_executable(joypad_nuon2usb)
-# target_compile_definitions(joypad_nuon2usb PRIVATE CONFIG_NUON2USB=1 CONFIG_USB=1 DISABLE_USB_HOST=1 NUON_PIN_DATA=2)
-# target_sources(joypad_nuon2usb PUBLIC ${CORE_SOURCES} ${USB_DEVICE_SOURCES}
-#     ${NUON_HOST_SOURCES}
-#     ${CMAKE_CURRENT_SOURCE_DIR}/apps/nuon2usb/app.c
-# )
-# target_include_directories(joypad_nuon2usb PUBLIC
-#     ${CMAKE_CURRENT_SOURCE_DIR}/apps/nuon2usb
-#     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd
-#     ${CMAKE_CURRENT_SOURCE_DIR}/native/host/nuon
-#     ${CMAKE_CURRENT_SOURCE_DIR}/native/device/nuon
-# )
-# target_link_libraries(joypad_nuon2usb PRIVATE pico_stdlib pico_multicore hardware_pio pico_rand tinyusb_device tinyusb_board)
-# joypad_target_common(joypad_nuon2usb)
-# pico_generate_pio_header(joypad_nuon2usb ${CMAKE_CURRENT_LIST_DIR}/native/device/nuon/polyface_read.pio)
-# pico_generate_pio_header(joypad_nuon2usb ${CMAKE_CURRENT_LIST_DIR}/native/device/nuon/polyface_send.pio)
+# Uses same nuon_device.c and polyface PIOs as usb2nuon (joypad_nuon).
+# Currently in development/monitor mode.
+add_executable(joypad_nuon2usb)
+target_compile_definitions(joypad_nuon2usb PRIVATE CONFIG_NUON2USB=1 CONFIG_USB=1 DISABLE_USB_HOST=1 CONFIG_NO_NEOPIXEL=1
+    PICO_DEFAULT_UART=0
+    PICO_DEFAULT_UART_TX_PIN=0
+    PICO_DEFAULT_UART_RX_PIN=1
+)
+target_sources(joypad_nuon2usb PUBLIC ${CORE_SOURCES} ${USB_DEVICE_SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/device/nuon/nuon_device.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/nuon2usb/app.c
+)
+target_include_directories(joypad_nuon2usb PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/nuon2usb
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/device/nuon
+    ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd
+)
+target_link_libraries(joypad_nuon2usb PRIVATE pico_stdlib pico_multicore hardware_pio pico_rand pico_bit_ops tinyusb_device tinyusb_board)
+joypad_target_common(joypad_nuon2usb)
+pico_generate_pio_header(joypad_nuon2usb ${CMAKE_CURRENT_LIST_DIR}/native/device/nuon/polyface_read.pio)
+pico_generate_pio_header(joypad_nuon2usb ${CMAKE_CURRENT_LIST_DIR}/native/device/nuon/polyface_send.pio)
+pico_generate_pio_header(joypad_nuon2usb ${CMAKE_CURRENT_LIST_DIR}/apps/nuon2usb/polyface_host_send.pio)
+pico_generate_pio_header(joypad_nuon2usb ${CMAKE_CURRENT_LIST_DIR}/apps/nuon2usb/polyface_host_read.pio)
+pico_generate_pio_header(joypad_nuon2usb ${CMAKE_CURRENT_LIST_DIR}/apps/nuon2usb/polyface_clock.pio)
 
 # --- GC2USB (GameCube -> USB HID) ---
 add_executable(joypad_gc2usb)
@@ -1703,6 +1715,23 @@ target_include_directories(joypad_nes2usb PUBLIC
 target_link_libraries(joypad_nes2usb PRIVATE pico_stdlib pico_multicore hardware_pio pico_rand tinyusb_device tinyusb_board)
 joypad_target_common(joypad_nes2usb)
 pico_generate_pio_header(joypad_nes2usb ${CMAKE_CURRENT_LIST_DIR}/native/host/nes/nes_host.pio)
+
+
+# --- LODGENET2USB (LodgeNet -> USB HID) ---
+add_executable(joypad_lodgenet2usb)
+target_compile_definitions(joypad_lodgenet2usb PRIVATE CONFIG_LODGENET2USB=1 CONFIG_USB=1 DISABLE_USB_HOST=1 BOARD_LED_PIN=25)
+target_sources(joypad_lodgenet2usb PUBLIC ${CORE_SOURCES} ${USB_DEVICE_SOURCES}
+    ${LODGENET_HOST_SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/lodgenet2usb/app.c
+)
+target_include_directories(joypad_lodgenet2usb PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/lodgenet2usb
+    ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/host/lodgenet
+)
+target_link_libraries(joypad_lodgenet2usb PRIVATE pico_stdlib pico_multicore hardware_pio pico_rand tinyusb_device tinyusb_board)
+joypad_target_common(joypad_lodgenet2usb)
+pico_generate_pio_header(joypad_lodgenet2usb ${CMAKE_CURRENT_LIST_DIR}/native/host/lodgenet/lodgenet.pio)
 
 
 # ============================================================================

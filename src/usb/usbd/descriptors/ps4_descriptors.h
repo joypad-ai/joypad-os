@@ -4,8 +4,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2024 Robert Dale Smith
 //
 // PlayStation 4 (DualShock 4) USB controller emulation.
-// Uses Razer Panthera VID/PID for compatibility.
-// Includes auth feature reports (0xF0-0xF3) for future passthrough support.
+// Uses Hori Fighting Commander VID/PID for gamepad compatibility.
+// Includes auth feature reports (0xF0-0xF3) for local auth and passthrough support.
 
 #ifndef PS4_DESCRIPTORS_H
 #define PS4_DESCRIPTORS_H

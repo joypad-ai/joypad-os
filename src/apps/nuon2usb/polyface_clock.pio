@@ -1,0 +1,22 @@
+;
+; Polyface clock — 2 instructions
+; Continuous clock on the configured pin. Frequency = PIO clock / 4.
+
+.program polyface_clock
+
+.wrap_target
+    set pins, 1 [1]
+    set pins, 0 [1]
+.wrap
+
+% c-sdk {
+static inline void polyface_clock_program_init(PIO pio, uint sm, uint offset, uint pin, float clk_div) {
+    pio_sm_config c = polyface_clock_program_get_default_config(offset);
+    pio_gpio_init(pio, pin);
+    sm_config_set_set_pins(&c, pin, 1);
+    sm_config_set_clkdiv(&c, clk_div);
+    pio_sm_set_consecutive_pindirs(pio, sm, pin, 1, true);
+    pio_sm_init(pio, sm, offset, &c);
+    pio_sm_set_enabled(pio, sm, true);
+}
+%}
