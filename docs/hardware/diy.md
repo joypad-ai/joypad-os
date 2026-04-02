@@ -51,7 +51,7 @@ Each adapter has its own wiring diagram in its documentation:
 
 ### Pre-Built Adapters
 
-- [Controller Adapter](https://controlleradapter.com/) - Ready-to-use products
+- [Joypad Shop](https://joypad.ai/shop) - Ready-to-use products
   - USB2PCE
   - USB2GC (GCUSB)
   - USB2Nuon (NUONUSB)

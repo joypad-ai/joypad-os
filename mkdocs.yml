@@ -34,37 +34,102 @@ nav:
   - Getting Started:
     - Installation: getting-started/installation.md
     - Building from Source: getting-started/building.md
-  - Adapters:
-    - PC Engine / TurboGrafx-16: adapters/pcengine.md
-    - GameCube / Wii: adapters/gamecube.md
-    - Dreamcast: adapters/dreamcast.md
-    - Nuon: adapters/nuon.md
-    - 3DO: adapters/3do.md
-    - Neo Geo / SuperGun: adapters/neogeo.md
-    - Casio Loopy: adapters/loopy.md
-    - N64 (BT2N64): adapters/n64.md
-    - USB Output: adapters/usb.md
-    - Bluetooth: adapters/bluetooth.md
-    - Native Input: adapters/native-input.md
+  - Overview:
+    - Architecture: overview/architecture.md
+    - Data Flow: overview/data-flow.md
+    - Glossary: overview/glossary.md
+  - Input Interfaces:
+    - Overview: input/index.md
+    - USB HID: input/usb-hid.md
+    - XInput: input/xinput.md
+    - Bluetooth: input/bluetooth.md
+    - WiFi (JOCP): input/wifi-jocp.md
+    - SNES: input/snes.md
+    - N64: input/n64.md
+    - GameCube: input/gamecube.md
+    - LodgeNet: input/lodgenet.md
+    - NES: input/nes.md
+    - Neo Geo: input/neogeo.md
+    - GPIO: input/gpio.md
+    - UART: input/uart.md
+  - Output Interfaces:
+    - Overview: output/index.md
+    - GameCube: output/gamecube.md
+    - PCEngine: output/pcengine.md
+    - Dreamcast: output/dreamcast.md
+    - Nuon: output/nuon.md
+    - 3DO: output/3do.md
+    - N64: output/n64.md
+    - Casio Loopy: output/loopy.md
+    - USB Device: output/usb-device.md
+    - UART: output/uart.md
+  - Joypad Core:
+    - Overview: core/index.md
+    - Router: core/router.md
+    - Buttons: core/buttons.md
+    - Profiles: core/profiles.md
+    - Players: core/players.md
+    - Storage: core/storage.md
+    - LEDs: core/leds.md
+    - Platform HAL: core/platform-hal.md
+  - Apps:
+    - Overview: apps/index.md
+    - Console Adapters:
+      - usb2gc (GameCube): apps/usb2gc.md
+      - usb2pce (PCEngine): apps/usb2pce.md
+      - usb2dc (Dreamcast): apps/usb2dc.md
+      - usb2nuon (Nuon): apps/usb2nuon.md
+      - usb23do (3DO): apps/usb23do.md
+      - usb2loopy (Loopy): apps/usb2loopy.md
+      - usb2neogeo (Neo Geo): apps/usb2neogeo.md
+    - BT Console Adapters:
+      - bt2gc (GameCube): apps/bt2gc.md
+      - bt2n64 (N64): apps/bt2n64.md
+      - bt2nuon (Nuon): apps/bt2nuon.md
+    - USB Output:
+      - usb2usb: apps/usb2usb.md
+      - bt2usb: apps/bt2usb.md
+      - wifi2usb: apps/wifi2usb.md
+    - Native to USB:
+      - snes2usb: apps/snes2usb.md
+      - n642usb: apps/n642usb.md
+      - gc2usb: apps/gc2usb.md
+      - nes2usb: apps/nes2usb.md
+      - neogeo2usb: apps/neogeo2usb.md
+      - lodgenet2usb: apps/lodgenet2usb.md
+    - Cross-Console Bridges:
+      - n642dc: apps/n642dc.md
+      - snes23do: apps/snes23do.md
+      - n642nuon: apps/n642nuon.md
+    - Utility:
+      - usb2uart: apps/usb2uart.md
+      - Custom Controllers: apps/controllers.md
   - Hardware:
-    - Supported Controllers: hardware/controllers.md
     - Supported Boards: hardware/boards.md
+    - Supported Controllers: hardware/controllers.md
     - Wiring Guide: hardware/wiring.md
     - DIY Builds: hardware/diy.md
+    - Build Guides:
+      - USB2GC (KB2040): hardware/builds/usb2gc-kb2040.md
+      - BT2USB (Pico W): hardware/builds/bt2usb-pico-w.md
+      - LodgeNet2USB (Pico): hardware/builds/lodgenet2usb-pico.md
+      - SNES2USB (KB2040): hardware/builds/snes2usb-kb2040.md
+      - N642DC (KB2040): hardware/builds/n642dc-kb2040.md
   - Platforms:
     - ESP32-S3: platforms/esp32.md
     - nRF52840: platforms/nrf52840.md
-  - Architecture:
-    - How It Works: architecture/overview.md
-    - Layers & Internals: architecture/layers.md
   - Protocol Reference:
     - 3DO PBus: protocols/3DO_PBUS.md
     - GameCube Joybus: protocols/GAMECUBE_JOYBUS.md
     - Nuon Polyface: protocols/NUON_POLYFACE.md
     - PC Engine: protocols/PCENGINE.md
+    - LodgeNet: protocols/lodgenet.md
+    - SInput HID: protocols/sinput.md
   - Features:
     - Web Config: features/web-config.md
     - SNES Rumble: features/SNES_RUMBLE.md
+  - Development:
+    - Contributing: development/index.md
 
 markdown_extensions:
   - admonition

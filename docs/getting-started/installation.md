@@ -10,7 +10,7 @@ The easiest way to get started without DIY. Upcoming dev kits:
 - **USB2USB** — USB controller passthrough adapter
 - **BT2USB** — Bluetooth-to-USB controller adapter
 
-Visit [joypad.ai/products](https://joypad.ai/products) for current availability.
+Visit [joypad.ai/shop](https://joypad.ai/shop) for current availability.
 
 ### Legacy Controller Adapter Hardware
 
