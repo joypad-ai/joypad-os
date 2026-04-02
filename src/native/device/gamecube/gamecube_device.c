@@ -74,7 +74,10 @@ static struct {
     .button_mode = BUTTON_MODE_3  // Default to gamepad mode
 };
 
-// SetMode not yet in GamecubeConsole.h — declare locally
+// Externs for functions in GamecubeConsole.c (some not yet in header)
+extern void GamecubeConsole_init(GamecubeConsole* console, uint pin, PIO pio, int sm, int offset);
+extern bool GamecubeConsole_WaitForPoll(GamecubeConsole* console);
+extern void GamecubeConsole_SendReport(GamecubeConsole* console, gc_report_t *report);
 extern void GamecubeConsole_SetMode(GamecubeConsole* console, GamecubeMode mode);
 
 uint8_t hid_to_gc_key[256] = {[0 ... 255] = GC_KEY_NOT_FOUND};
@@ -266,7 +269,7 @@ void __not_in_flash_func(core1_task)(void)
     gc_rumble = GamecubeConsole_WaitForPoll(&gc) ? 255 : 0;
 
     // Send GameCube controller button report
-    GamecubeConsole_SendReport(&gc, &gc_report, 0, 0);
+    GamecubeConsole_SendReport(&gc, &gc_report);
 
     gc_kb_counter++;
     gc_kb_counter &= 15;
