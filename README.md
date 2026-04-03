@@ -34,6 +34,14 @@ Unlike the main repository which only supports PS4 without authentication (which
 - **Fighting Games:** This fork has been extensively tested and works perfectly with fighting games, including **Street Fighter** and various **Capcom Collections**.
 - **Setup:** To enable local authentication, you **must** upload your own controller keys.
 
+### 🎮 Touchpad Shortcuts
+For controllers that lack a dedicated touchpad button (like many Bluetooth controllers), you can use the following shortcuts:
+- **R1 + Options/Start**: Simulates a Touchpad click.
+- **Touchpad (or R1 + Options/Start) + D-Pad Left**: Simulates a Left Touchpad click.
+- **Touchpad (or R1 + Options/Start) + D-Pad Right**: Simulates a Right Touchpad click.
+
+This allows full compatibility with games that require specific touchpad interactions (left/right side clicks).
+
 ### 🔑 Authentication Setup
 To use local authentication, you need to upload three specific files from a genuine DualShock 4 controller:
 1. `key.prm` (Private Key)
@@ -41,9 +49,9 @@ To use local authentication, you need to upload three specific files from a genu
 3. `sig.bin` (Sony Device Signature)
 
 Use the provided web tool located at:  
-`tools/ps4-auth-upload/ps4_auth_upload.html`
+[lucasleal.dev/joypad-os-ds4/tools/ps4-auth-upload/ps4_auth_upload.html](https://lucasleal.dev/joypad-os-ds4/tools/ps4-auth-upload/ps4_auth_upload.html)
 
-Simply open this file in a WebHID-compatible browser (like Chrome or Edge), connect your Joypad OS device via USB, and follow the instructions to upload your keys to the device's flash memory.
+Simply open this link in a WebHID-compatible browser (like Chrome or Edge), connect your Joypad OS device via USB, and follow the instructions to upload your keys to the device's flash memory.
 
 ---
 
