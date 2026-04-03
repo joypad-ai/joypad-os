@@ -337,6 +337,17 @@ void app_task(void)
                n64_diag_write_data[0], n64_diag_write_data[1],
                n64_diag_write_data[2], n64_diag_write_data[3],
                edges);
+        extern volatile uint32_t n64_diag_total_reads, n64_diag_total_writes;
+        extern volatile uint32_t n64_diag_total_probes, n64_diag_total_unknown;
+        extern volatile uint32_t n64_diag_read_addr_fail, n64_diag_write_buf_fail;
+        printf("[diag] TOTAL: probes=%lu rd=%lu wr=%lu unk=%lu(0x%02x) rdFail=%lu wrFail=%lu\n",
+               (unsigned long)n64_diag_total_probes,
+               (unsigned long)n64_diag_total_reads,
+               (unsigned long)n64_diag_total_writes,
+               (unsigned long)n64_diag_total_unknown,
+               n64_diag_last_cmd,
+               (unsigned long)n64_diag_read_addr_fail,
+               (unsigned long)n64_diag_write_buf_fail);
     }
 
     // Update LED status
