@@ -263,12 +263,38 @@ void app_task(void)
     }
 
     // Forward rumble from N64 console to BT controllers
-    // N64 rumble pak is binary (on/off) with a single weak motor.
-    // Use moderate intensity on left (heavy) motor only to approximate the feel.
+    // N64 games use 60Hz PWM: toggling motor ON/OFF each frame for variable
+    // intensity. Real rumble pak motor has inertia and is weak. BT controllers
+    // are stronger and more responsive. Track duty cycle over a rolling window
+    // and scale intensity proportionally to simulate motor inertia.
     if (n64_output_interface.get_rumble) {
-        uint8_t rumble = n64_output_interface.get_rumble();
-        uint8_t left = rumble ? 128 : 0;   // Heavy motor at ~50%
-        uint8_t right = rumble ? 40 : 0;   // Light motor gentle
+        #define RUMBLE_WINDOW 8  // Sample window (~133ms at 60Hz)
+        static uint8_t rumble_history[RUMBLE_WINDOW];
+        static uint8_t rumble_idx = 0;
+        static uint32_t rumble_last_sample = 0;
+        uint32_t now = platform_time_ms();
+
+        // Sample at ~60Hz (every 16ms) to match N64 frame rate
+        if (now - rumble_last_sample >= 16) {
+            rumble_last_sample = now;
+            rumble_history[rumble_idx] = n64_output_interface.get_rumble() ? 1 : 0;
+            rumble_idx = (rumble_idx + 1) % RUMBLE_WINDOW;
+        }
+
+        // Calculate duty cycle: count ON samples in window
+        uint8_t on_count = 0;
+        for (int i = 0; i < RUMBLE_WINDOW; i++) {
+            on_count += rumble_history[i];
+        }
+
+        // Scale intensity by duty cycle. Max ~80% to avoid overpowering.
+        // Minimum 2 ON samples to filter pak init pulses.
+        uint8_t left = 0, right = 0;
+        if (on_count >= 2) {
+            left = (on_count * 100) / RUMBLE_WINDOW;
+            right = (on_count * 25) / RUMBLE_WINDOW;
+        }
+
         for (int i = 0; i < playersCount; i++) {
             feedback_set_rumble(i, left, right);
         }

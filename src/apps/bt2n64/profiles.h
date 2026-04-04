@@ -48,7 +48,8 @@ static const button_map_entry_t n64_default_map[] = {
 
     // System
     MAP_BUTTON(JP_BUTTON_S2, N64_BUTTON_START),  // Start -> Start
-    MAP_BUTTON(JP_BUTTON_A1, N64_BUTTON_START),  // Guide/Home -> Start
+    // Guide/Home -> Z+R+A+B+Start (N64 reset/return combo)
+    { .input = JP_BUTTON_A1, .output = (N64_BUTTON_Z | N64_BUTTON_R | N64_BUTTON_A | N64_BUTTON_B | N64_BUTTON_START), .analog = ANALOG_TARGET_NONE, .analog_value = 0 },
 
     // L3/R3 unused
     MAP_DISABLED(JP_BUTTON_L3),
