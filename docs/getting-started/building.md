@@ -346,6 +346,6 @@ make <target>
 
 ## Getting Help
 
-- **Docs**: [README.md](../README.md), [Hardware Compatibility](../hardware/controllers.md)
+- **Docs**: [Home](../index.md), [Hardware Compatibility](../hardware/controllers.md)
 - **Issues**: https://github.com/joypad-ai/joypad-os/issues
 - **Discord**: http://community.joypad.ai/

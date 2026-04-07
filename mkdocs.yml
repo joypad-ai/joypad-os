@@ -60,6 +60,7 @@ nav:
     - Nuon: output/nuon.md
     - 3DO: output/3do.md
     - N64: output/n64.md
+    - Neo Geo: output/neogeo.md
     - Casio Loopy: output/loopy.md
     - USB Device: output/usb-device.md
     - UART: output/uart.md
