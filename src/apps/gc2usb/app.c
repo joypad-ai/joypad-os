@@ -83,9 +83,19 @@ void app_init(void)
     };
     profile_init(&profile_cfg);
 
+    // Initialize GC host with per-board pin configuration
+#if GC_MAX_PORTS >= 4 && defined(GC_PIN_DATA_1) && defined(GC_PIN_DATA_2) && defined(GC_PIN_DATA_3)
+    {
+        uint8_t pins[] = { GC_PIN_DATA, GC_PIN_DATA_1, GC_PIN_DATA_2, GC_PIN_DATA_3 };
+        gc_host_init_pins(pins, 4);
+    }
+#else
+    gc_host_init_pin(GC_PIN_DATA);
+#endif
+
     printf("[app:gc2usb] Initialization complete\n");
     printf("[app:gc2usb]   Routing: GC -> USB HID Gamepad\n");
-    printf("[app:gc2usb]   GC data pin: GPIO%d\n", GC_DATA_PIN);
+    printf("[app:gc2usb]   GC ports: %d\n", GC_MAX_PORTS);
     printf("[app:gc2usb]   Profiles: %d (Select+DPad to cycle)\n", gc2usb_profile_set.profile_count);
 }
 

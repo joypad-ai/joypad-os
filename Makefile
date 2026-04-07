@@ -46,6 +46,7 @@ export PICO_TINYUSB_PATH := $(CURDIR)/src/lib/tinyusb
 BOARD_SCRIPT_pico := boards/build_rpi_pico.sh
 BOARD_SCRIPT_pico_w := boards/build_pico_w.sh
 BOARD_SCRIPT_pico2 := boards/build_pico2.sh
+BOARD_SCRIPT_hhl_gc_pocket := boards/build_hhl_gc_pocket.sh
 BOARD_SCRIPT_pico2_w := boards/build_pico2_w.sh
 BOARD_SCRIPT_kb2040 := boards/build_ada_kb2040.sh
 BOARD_SCRIPT_qtpy := boards/build_ada_qtpy.sh
@@ -97,6 +98,7 @@ CONSOLE_nes2usb := joypad_nes2usb
 CONSOLE_n642usb := joypad_n642usb
 CONSOLE_nuon2usb := joypad_nuon2usb
 CONSOLE_gc2usb := joypad_gc2usb
+CONSOLE_gc2usb_4port := joypad_gc2usb_4port
 CONSOLE_lodgenet2usb := joypad_lodgenet2usb
 CONSOLE_lodgenet2n64 := joypad_lodgenet2n64
 CONSOLE_lodgenet2gc := joypad_lodgenet2gc
@@ -163,6 +165,7 @@ APP_n642usb_kb2040 := kb2040 n642usb n642usb_kb2040 N64 USB
 APP_nuon2usb_kb2040 := kb2040 nuon2usb nuon2usb_kb2040 Nuon USB
 APP_nuon2usb_pico_w := pico_w nuon2usb nuon2usb_pico_w Nuon USB
 APP_gc2usb_kb2040 := kb2040 gc2usb gc2usb_kb2040 GameCube USB
+APP_gc2usb_hhl_gc_pocket := hhl_gc_pocket gc2usb_4port gc2usb_hhl_gc_pocket GameCube USB
 APP_lodgenet2usb_pico := pico lodgenet2usb lodgenet2usb_pico LodgeNet USB
 APP_lodgenet2usb_pico2 := pico2 lodgenet2usb lodgenet2usb_pico2 LodgeNet USB
 APP_lodgenet2n64_pico := pico lodgenet2n64 lodgenet2n64_pico LodgeNet N64
@@ -832,6 +835,10 @@ nuon2usb_pico_w:
 gc2usb_kb2040:
 	$(call build_app,gc2usb_kb2040)
 
+.PHONY: gc2usb_hhl_gc_pocket
+gc2usb_hhl_gc_pocket:
+	$(call build_app,gc2usb_hhl_gc_pocket)
+
 .PHONY: neogeo2usb_kb2040
 neogeo2usb_kb2040:
 	$(call build_app,neogeo2usb_kb2040)
@@ -1193,6 +1200,10 @@ flash-nuon2usb_pico_w:
 .PHONY: flash-gc2usb_kb2040
 flash-gc2usb_kb2040:
 	@$(MAKE) --no-print-directory _flash_app APP_NAME=gc2usb_kb2040
+
+.PHONY: flash-gc2usb_hhl_gc_pocket
+flash-gc2usb_hhl_gc_pocket:
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=gc2usb_hhl_gc_pocket
 
 .PHONY: flash-neogeo2usb_kb2040
 flash-neogeo2usb_kb2040:

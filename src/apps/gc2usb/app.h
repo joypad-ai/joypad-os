@@ -27,19 +27,24 @@
 // INPUT CONFIGURATION
 // ============================================================================
 
-// GC data pin (joybus single-wire protocol)
-// KB2040: A3 = GPIO29
+// GC data pins (joybus single-wire protocol)
+// KB2040 single-port: GPIO 29
+// HHL GC Pocket 4-port: GPIO 22, 23, 24, 25
 #ifndef GC_PIN_DATA
 #define GC_PIN_DATA  29
 #endif
-#define GC_DATA_PIN  GC_PIN_DATA  // Alias for display
+
+// Additional port pins for multi-port adapters (set via CMakeLists.txt)
+// GC_PIN_DATA_1, GC_PIN_DATA_2, GC_PIN_DATA_3 defined externally when GC_MAX_PORTS > 1
 
 // ============================================================================
 // OUTPUT CONFIGURATION
 // ============================================================================
 
 #define REQUIRE_USB_DEVICE 1
-#define USB_OUTPUT_PORTS 1              // Single USB gamepad output
+#ifndef USB_OUTPUT_PORTS
+#define USB_OUTPUT_PORTS 1              // Single USB gamepad output (4 for multi-port)
+#endif
 
 // ============================================================================
 // ROUTER CONFIGURATION
@@ -57,7 +62,9 @@
 // ============================================================================
 
 #define PLAYER_SLOT_MODE        PLAYER_SLOT_FIXED
+#ifndef MAX_PLAYER_SLOTS
 #define MAX_PLAYER_SLOTS        1
+#endif
 #define AUTO_ASSIGN_ON_PRESS    false
 
 // ============================================================================

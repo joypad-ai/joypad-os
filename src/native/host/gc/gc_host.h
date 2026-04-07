@@ -24,8 +24,10 @@
 #define GC_POLLING_RATE  125
 #endif
 
-// Maximum number of GameCube controllers (1 for now, future: adapter/multitap)
+// Maximum number of GameCube controllers (1 default, up to 4 for multi-port adapters)
+#ifndef GC_MAX_PORTS
 #define GC_MAX_PORTS 1
+#endif
 
 // ============================================================================
 // PUBLIC API
@@ -34,8 +36,12 @@
 // Initialize GC host driver with default pin
 void gc_host_init(void);
 
-// Initialize with custom pin configuration
+// Initialize with custom pin configuration (single port)
 void gc_host_init_pin(uint8_t data_pin);
+
+// Initialize with multiple pins (multi-port adapters)
+// Pass array of pin numbers, one per port. num_ports must be <= GC_MAX_PORTS.
+void gc_host_init_pins(const uint8_t* data_pins, uint8_t num_ports);
 
 // Poll GC controllers and submit events to router
 // Call this regularly from main loop (typically from app's task function)

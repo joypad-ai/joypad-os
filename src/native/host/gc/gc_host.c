@@ -79,21 +79,43 @@ void gc_host_init(void)
     gc_host_init_pin(GC_PIN_DATA);
 }
 
+static uint8_t active_ports = 0;
+
 void gc_host_init_pin(uint8_t data_pin)
 {
-    printf("[gc_host] Initializing GC host driver\n");
-    printf("[gc_host]   DATA=%d, rate=%dHz\n", data_pin, GC_POLLING_RATE);
+    uint8_t pins[] = { data_pin };
+    gc_host_init_pins(pins, 1);
+}
 
-    // Enable pull-up before joybus init (open-drain protocol needs pull-up)
-    gpio_init(data_pin);
-    gpio_set_dir(data_pin, GPIO_IN);
-    gpio_pull_up(data_pin);
-    printf("[gc_host]   GPIO%d pull-up enabled, state=%d\n", data_pin, gpio_get(data_pin));
+void gc_host_init_pins(const uint8_t* data_pins, uint8_t num_ports)
+{
+    if (num_ports > GC_MAX_PORTS) num_ports = GC_MAX_PORTS;
+    active_ports = num_ports;
 
-    // Initialize GameCube controller on port 0
-    GamecubeController_init(&gc_controllers[0], data_pin, GC_POLLING_RATE,
-                            pio0, -1, -1);
-    printf("[gc_host]   joybus loaded at PIO0 offset %d\n", GamecubeController_GetOffset(&gc_controllers[0]));
+    printf("[gc_host] Initializing GC host driver (%d port%s)\n",
+           num_ports, num_ports > 1 ? "s" : "");
+
+    // Load joybus PIO program once, share across all SMs
+    PIO pio = pio0;
+
+    for (int i = 0; i < num_ports; i++) {
+        uint8_t pin = data_pins[i];
+
+        // Enable pull-up before joybus init (open-drain protocol needs pull-up)
+        gpio_init(pin);
+        gpio_set_dir(pin, GPIO_IN);
+        gpio_pull_up(pin);
+
+        // First port: auto-claim SM and offset. Subsequent: share PIO program offset.
+        int sm = -1;
+        int offset = (i == 0) ? -1 : GamecubeController_GetOffset(&gc_controllers[0]);
+        GamecubeController_init(&gc_controllers[i], pin, GC_POLLING_RATE, pio, sm, offset);
+
+        printf("[gc_host]   Port %d: GPIO%d PIO%d SM%d offset=%d\n",
+               i, pin, pio_get_index(pio),
+               gc_controllers[i]._port.sm,
+               GamecubeController_GetOffset(&gc_controllers[i]));
+    }
 
     // Initialize state tracking
     for (int i = 0; i < GC_MAX_PORTS; i++) {
@@ -118,7 +140,7 @@ void gc_host_task(void)
 
 
     // Check feedback system for rumble updates
-    for (int port = 0; port < GC_MAX_PORTS; port++) {
+    for (int port = 0; port < active_ports; port++) {
         feedback_state_t* feedback = feedback_get_state(port);
         if (feedback && feedback->rumble_dirty) {
             // GC rumble is binary (on/off), use max of left/right motors
@@ -131,7 +153,7 @@ void gc_host_task(void)
         }
     }
 
-    for (int port = 0; port < GC_MAX_PORTS; port++) {
+    for (int port = 0; port < active_ports; port++) {
         GamecubeController* controller = &gc_controllers[port];
 
         // Poll the controller (rumble state passed in poll command)

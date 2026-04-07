@@ -1618,6 +1618,35 @@ target_link_libraries(joypad_gc2usb PRIVATE pico_stdlib pico_multicore hardware_
 joypad_target_common(joypad_gc2usb)
 pico_generate_pio_header(joypad_gc2usb ${CMAKE_CURRENT_LIST_DIR}/lib/joybus-pio/src/joybus.pio)
 
+# --- GC2USB 4-port (GameCube -> USB HID, HHL GC Pocket Adapter) ---
+add_executable(joypad_gc2usb_4port)
+target_compile_definitions(joypad_gc2usb_4port PRIVATE
+    CONFIG_GC2USB=1 CONFIG_USB=1 DISABLE_USB_HOST=1
+    GC_MAX_PORTS=4
+    GC_PIN_DATA=22
+    GC_PIN_DATA_1=23
+    GC_PIN_DATA_2=24
+    GC_PIN_DATA_3=25
+    USB_OUTPUT_PORTS=4
+    MAX_PLAYER_SLOTS=4
+    NO_CUSTOM_UART_PINS=1
+    BOARD_LED_PIN=10
+    CONFIG_NO_NEOPIXEL=1
+)
+target_sources(joypad_gc2usb_4port PUBLIC ${CORE_SOURCES} ${USB_DEVICE_SOURCES}
+    ${GC_HOST_SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/gc2usb/app.c
+)
+target_include_directories(joypad_gc2usb_4port PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/gc2usb
+    ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/host/gc
+    ${CMAKE_CURRENT_SOURCE_DIR}/lib/joybus-pio/include
+)
+target_link_libraries(joypad_gc2usb_4port PRIVATE pico_stdlib pico_multicore hardware_pio pico_rand tinyusb_device tinyusb_board)
+joypad_target_common(joypad_gc2usb_4port)
+pico_generate_pio_header(joypad_gc2usb_4port ${CMAKE_CURRENT_LIST_DIR}/lib/joybus-pio/src/joybus.pio)
+
 # --- NEGEO2USB (NEOGEO -> USB HID) ---
 add_executable(joypad_neogeo2usb)
 target_compile_definitions(joypad_neogeo2usb PRIVATE CONFIG_NEOGEO2USB=1 CONFIG_USB=1 DISABLE_USB_HOST=1 BUTTON_USER_GPIO=${BOARD_BUTTON_GPIO})
