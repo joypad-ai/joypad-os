@@ -1632,6 +1632,8 @@ target_compile_definitions(joypad_gc2usb_4port PRIVATE
     NO_CUSTOM_UART_PINS=1
     BOARD_LED_PIN=10
     CONFIG_NO_NEOPIXEL=1
+    HHL_BUTTON_1_PIN=11
+    HHL_BUTTON_2_PIN=12
 )
 target_sources(joypad_gc2usb_4port PUBLIC ${CORE_SOURCES} ${USB_DEVICE_SOURCES}
     ${GC_HOST_SOURCES}

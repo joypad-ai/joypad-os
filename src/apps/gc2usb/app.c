@@ -14,6 +14,8 @@
 #include "usb/usbd/usbd.h"
 #include "native/host/gc/gc_host.h"
 #include "core/services/leds/leds.h"
+#include "pico/stdlib.h"
+#include "pico/bootrom.h"
 #include <stdio.h>
 
 // ============================================================================
@@ -50,6 +52,20 @@ const OutputInterface** app_get_output_interfaces(uint8_t* count)
 
 void app_init(void)
 {
+    // HHL GC Pocket: check GPIO 11 + 12 held at boot → reboot to UF2 bootloader
+#if defined(HHL_BUTTON_1_PIN) && defined(HHL_BUTTON_2_PIN)
+    gpio_init(HHL_BUTTON_1_PIN);
+    gpio_init(HHL_BUTTON_2_PIN);
+    gpio_set_dir(HHL_BUTTON_1_PIN, GPIO_IN);
+    gpio_set_dir(HHL_BUTTON_2_PIN, GPIO_IN);
+    gpio_pull_up(HHL_BUTTON_1_PIN);
+    gpio_pull_up(HHL_BUTTON_2_PIN);
+    sleep_ms(10);  // Let pull-ups settle
+    if (!gpio_get(HHL_BUTTON_1_PIN) && !gpio_get(HHL_BUTTON_2_PIN)) {
+        reset_usb_boot(0, 0);
+    }
+#endif
+
     printf("[app:gc2usb] Initializing GC2USB v%s\n", APP_VERSION);
 
     // Configure router for GC -> USB routing
