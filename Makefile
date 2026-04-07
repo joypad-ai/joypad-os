@@ -97,6 +97,7 @@ CONSOLE_nes2usb := joypad_nes2usb
 CONSOLE_n642usb := joypad_n642usb
 CONSOLE_nuon2usb := joypad_nuon2usb
 CONSOLE_gc2usb := joypad_gc2usb
+CONSOLE_cdi := joypad_cdi
 CONSOLE_lodgenet2usb := joypad_lodgenet2usb
 CONSOLE_lodgenet2n64 := joypad_lodgenet2n64
 CONSOLE_lodgenet2gc := joypad_lodgenet2gc
@@ -130,6 +131,7 @@ APP_nes2usb_kb2040 := kb2040 nes2usb nes2usb_kb2040 NES USB
 APP_nes2usb_pico_w := pico_w nes2usb nes2usb_pico_w NES USB
 APP_n642nuon_pico := pico n642nuon n642nuon_pico N64 Nuon
 APP_n642nuon_aries64 := pico n642nuon_aries64 n642nuon_aries64 N64 Nuon
+APP_usb2cdi_kb2040 := kb2040 cdi usb2cdi_kb2040 USB/BT CD-i
 APP_usb23do_rp2040zero := rp2040zero 3do usb23do_rp2040zero USB/BT 3DO
 APP_snes23do_rp2040zero := rp2040zero snes3do snes23do_rp2040zero SNES 3DO
 APP_usb2uart_kb2040 := kb2040 uart usb2uart_kb2040 USB/BT UART
@@ -439,6 +441,10 @@ n642nuon_pico:
 .PHONY: n642nuon_aries64
 n642nuon_aries64:
 	$(call build_app,n642nuon_aries64)
+
+.PHONY: usb2cdi_kb2040
+usb2cdi_kb2040:
+	$(call build_app,usb2cdi_kb2040)
 
 .PHONY: usb23do_rp2040zero
 usb23do_rp2040zero:
@@ -1061,6 +1067,10 @@ flash-n642nuon_pico:
 .PHONY: flash-n642nuon_aries64
 flash-n642nuon_aries64:
 	@$(MAKE) --no-print-directory _flash_app APP_NAME=n642nuon_aries64
+
+.PHONY: flash-usb2cdi_kb2040
+flash-usb2cdi_kb2040:
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=usb2cdi_kb2040
 
 .PHONY: flash-usb23do_rp2040zero
 flash-usb23do_rp2040zero:

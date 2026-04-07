@@ -745,6 +745,22 @@ pico_generate_pio_header(joypad_n642nuon_aries64 ${CMAKE_CURRENT_LIST_DIR}/nativ
 pico_generate_pio_header(joypad_n642nuon ${CMAKE_CURRENT_LIST_DIR}/native/device/nuon/polyface_read.pio)
 pico_generate_pio_header(joypad_n642nuon ${CMAKE_CURRENT_LIST_DIR}/native/device/nuon/polyface_send.pio)
 
+# --- CD-i ---
+add_executable(joypad_cdi)
+target_compile_definitions(joypad_cdi PRIVATE CONFIG_CDI=1)
+target_sources(joypad_cdi PUBLIC ${COMMON_SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/device/cdi/cdi_device.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2cdi/app.c
+)
+target_include_directories(joypad_cdi PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2cdi
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/device/cdi
+)
+target_link_libraries(joypad_cdi PRIVATE ${COMMON_LIBRARIES})
+joypad_target_common(joypad_cdi)
+joypad_add_btstack(joypad_cdi)
+pico_generate_pio_header(joypad_cdi ${CMAKE_CURRENT_LIST_DIR}/native/device/cdi/cdi_tx.pio)
+
 # --- 3DO ---
 add_executable(joypad_3do)
 target_compile_definitions(joypad_3do PRIVATE CONFIG_3DO=1)

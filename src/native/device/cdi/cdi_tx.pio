@@ -1,0 +1,47 @@
+; CD-i inverted UART TX: 7 data bits, no parity, 2 stop bits
+; Inverted logic: idle = LOW, start bit = HIGH, stop bits = LOW
+; Data bits inverted by software before pushing to FIFO.
+;
+; Bit timing: 1200 baud = ~833us per bit
+; PIO clock: system_clock / divider, 8 cycles per bit
+
+.program cdi_tx
+.side_set 1 opt
+
+start:
+    pull       side 0      ; Pull data from FIFO, drive idle LOW
+    set x, 6  side 1 [7]  ; Start bit = HIGH (inverted), 8 cycles
+bitloop:
+    out pins, 1      [6]  ; Shift out 1 data bit (pre-inverted), 7 cycles
+    jmp x-- bitloop  [0]  ; Loop for 7 data bits, 1 cycle (total 8 per bit)
+    nop        side 0 [7]  ; Stop bit 1 = LOW (inverted), 8 cycles
+    jmp !osre more   [7]  ; Stop bit 2 = LOW, check if more data; 8 cycles
+    jmp start              ; No more data, back to pull (idle LOW)
+more:
+    pull       side 0      ; More data ready, pull next byte (stay LOW during stop)
+    set x, 6  side 1 [7]  ; Start bit for next byte
+    jmp bitloop            ; Continue sending
+
+% c-sdk {
+#include <hardware/clocks.h>
+
+static inline void cdi_tx_program_init(PIO pio, uint sm, uint offset, uint pin) {
+    pio_gpio_init(pio, pin);
+    pio_sm_set_consecutive_pindirs(pio, sm, pin, 1, true);  // Output
+
+    pio_sm_config c = cdi_tx_program_get_default_config(offset);
+    sm_config_set_out_pins(&c, pin, 1);
+    sm_config_set_sideset_pins(&c, pin);
+    // Shift right, autopull disabled, 7-bit threshold (we push 7-bit words)
+    sm_config_set_out_shift(&c, true, false, 7);
+
+    // 1200 baud, 8 PIO cycles per bit
+    float div = (float)clock_get_hz(clk_sys) / (1200 * 8);
+    sm_config_set_clkdiv(&c, div);
+
+    pio_sm_init(pio, sm, offset, &c);
+    // Start with pin LOW (inverted idle)
+    pio_sm_set_pins_with_mask(pio, sm, 0, 1u << pin);
+    pio_sm_set_enabled(pio, sm, true);
+}
+%}

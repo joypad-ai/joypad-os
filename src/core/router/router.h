@@ -63,6 +63,7 @@ typedef enum {
     OUTPUT_TARGET_USB_DEVICE,
     OUTPUT_TARGET_BLE_PERIPHERAL,
     OUTPUT_TARGET_UART,             // UART bridge to ESP32/other MCU
+    OUTPUT_TARGET_CDI,              // Philips CD-i console
     OUTPUT_TARGET_COUNT             // Must be last — used to size arrays
 } output_target_t;
 
