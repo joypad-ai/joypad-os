@@ -44,22 +44,22 @@ jobs:
           echo ${{ secrets.SIG }} | base64 --decode > src/usb/usbh/hid/devices/vendors/sony/sig.bin
           echo ${{ secrets.KEY }} | base64 --decode > src/usb/usbh/hid/devices/vendors/sony/key.pem
           echo ${{ secrets.SN }} > src/usb/usbh/hid/devices/vendors/sony/serial.txt
-          echo "#define MBEDTLS_NO_PLATFORM_ENTROPY" >> src/lib/pico-sdk/lib/mbedtls/include/mbedtls/mbedtls_config.h
-          echo "#define MBEDTLS_TEST_NULL_ENTROPY" >> src/lib/pico-sdk/lib/mbedtls/include/mbedtls/mbedtls_config.h
-          echo "#define MBEDTLS_ENTROPY_C" >> src/lib/pico-sdk/lib/mbedtls/include/mbedtls/mbedtls_config.h
-          echo "#define MBEDTLS_CTR_DRBG_C" >> src/lib/pico-sdk/lib/mbedtls/include/mbedtls/mbedtls_config.h
-          echo "#define MBEDTLS_SHA256_C" >> src/lib/pico-sdk/lib/mbedtls/include/mbedtls/mbedtls_config.h
-          echo "#undef MBEDTLS_HAVE_TIME" >> src/lib/pico-sdk/lib/mbedtls/include/mbedtls/mbedtls_config.h
-          echo "#undef MBEDTLS_HAVE_TIME_DATE" >> src/lib/pico-sdk/lib/mbedtls/include/mbedtls/mbedtls_config.h
-          echo "#undef MBEDTLS_TIMING_C" >> src/lib/pico-sdk/lib/mbedtls/include/mbedtls/mbedtls_config.h
-          echo "#undef MBEDTLS_FS_IO" >> src/lib/pico-sdk/lib/mbedtls/include/mbedtls/mbedtls_config.h
-          echo "#undef MBEDTLS_PSA_ITS_FILE_C" >> src/lib/pico-sdk/lib/mbedtls/include/mbedtls/mbedtls_config.h
+          # echo "#define MBEDTLS_NO_PLATFORM_ENTROPY" >> src/lib/pico-sdk/lib/mbedtls/include/mbedtls/mbedtls_config.h
+          # echo "#define MBEDTLS_TEST_NULL_ENTROPY" >> src/lib/pico-sdk/lib/mbedtls/include/mbedtls/mbedtls_config.h
+          # echo "#define MBEDTLS_ENTROPY_C" >> src/lib/pico-sdk/lib/mbedtls/include/mbedtls/mbedtls_config.h
+          # echo "#define MBEDTLS_CTR_DRBG_C" >> src/lib/pico-sdk/lib/mbedtls/include/mbedtls/mbedtls_config.h
+          # echo "#define MBEDTLS_SHA256_C" >> src/lib/pico-sdk/lib/mbedtls/include/mbedtls/mbedtls_config.h
+          # echo "#undef MBEDTLS_HAVE_TIME" >> src/lib/pico-sdk/lib/mbedtls/include/mbedtls/mbedtls_config.h
+          # echo "#undef MBEDTLS_HAVE_TIME_DATE" >> src/lib/pico-sdk/lib/mbedtls/include/mbedtls/mbedtls_config.h
+          # echo "#undef MBEDTLS_TIMING_C" >> src/lib/pico-sdk/lib/mbedtls/include/mbedtls/mbedtls_config.h
+          # echo "#undef MBEDTLS_FS_IO" >> src/lib/pico-sdk/lib/mbedtls/include/mbedtls/mbedtls_config.h
+          # echo "#undef MBEDTLS_PSA_ITS_FILE_C" >> src/lib/pico-sdk/lib/mbedtls/include/mbedtls/mbedtls_config.h
           
-          echo "#undef MBEDTLS_PSA_ITS_C" >> src/lib/pico-sdk/lib/mbedtls/include/mbedtls/mbedtls_config.h
-          echo "#undef MBEDTLS_PSA_CRYPTO_STORAGE_C" >> src/lib/pico-sdk/lib/mbedtls/include/mbedtls/mbedtls_config.h
-          echo "#undef MBEDTLS_PSA_CRYPTO_C" >> src/lib/pico-sdk/lib/mbedtls/include/mbedtls/mbedtls_config.h
-          echo "#undef MBEDTLS_USE_PSA_CRYPTO" >> src/lib/pico-sdk/lib/mbedtls/include/mbedtls/mbedtls_config.h
-          cp src/lib/pico-sdk/lib/mbedtls/include/mbedtls/*.h src/lib/pico-sdk/src/rp2_common/pico_mbedtls/include/
+          # echo "#undef MBEDTLS_PSA_ITS_C" >> src/lib/pico-sdk/lib/mbedtls/include/mbedtls/mbedtls_config.h
+          # echo "#undef MBEDTLS_PSA_CRYPTO_STORAGE_C" >> src/lib/pico-sdk/lib/mbedtls/include/mbedtls/mbedtls_config.h
+          # echo "#undef MBEDTLS_PSA_CRYPTO_C" >> src/lib/pico-sdk/lib/mbedtls/include/mbedtls/mbedtls_config.h
+          # echo "#undef MBEDTLS_USE_PSA_CRYPTO" >> src/lib/pico-sdk/lib/mbedtls/include/mbedtls/mbedtls_config.h
+          # cp src/lib/pico-sdk/lib/mbedtls/include/mbedtls/*.h src/lib/pico-sdk/src/rp2_common/pico_mbedtls/include/
 
       - name: Build usb2usb_pico
         id: build
