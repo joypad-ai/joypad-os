@@ -49,6 +49,9 @@ jobs:
           echo "#define MBEDTLS_ENTROPY_C" >> src/lib/pico-sdk/lib/mbedtls/include/mbedtls/mbedtls_config.h
           echo "#define MBEDTLS_CTR_DRBG_C" >> src/lib/pico-sdk/lib/mbedtls/include/mbedtls/mbedtls_config.h
           echo "#define MBEDTLS_SHA256_C" >> src/lib/pico-sdk/lib/mbedtls/include/mbedtls/mbedtls_config.h
+          echo "#undef MBEDTLS_HAVE_TIME" >> src/lib/pico-sdk/lib/mbedtls/include/mbedtls/mbedtls_config.h
+          echo "#undef MBEDTLS_HAVE_TIME_DATE" >> src/lib/pico-sdk/lib/mbedtls/include/mbedtls/mbedtls_config.h
+          echo "#undef MBEDTLS_TIMING_C" >> src/lib/pico-sdk/lib/mbedtls/include/mbedtls/mbedtls_config.h
           cp src/lib/pico-sdk/lib/mbedtls/include/mbedtls/*.h src/lib/pico-sdk/src/rp2_common/pico_mbedtls/include/
 
       - name: Build usb2usb_pico
