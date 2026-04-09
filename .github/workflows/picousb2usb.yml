@@ -60,9 +60,9 @@ jobs:
           echo "firmware_file=${FIRMWARE_FILE}" >> $GITHUB_OUTPUT
           echo "firmware_name=$(basename ${FIRMWARE_FILE})" >> $GITHUB_OUTPUT
 
-      - name: Setup tmate session
-        uses: mxschmitt/action-tmate@v3
-        if: failure()
+      # - name: Setup tmate session
+      #   uses: mxschmitt/action-tmate@v3
+      #   if: failure()
 
       - name: Upload firmware artifact
         uses: actions/upload-artifact@v4
