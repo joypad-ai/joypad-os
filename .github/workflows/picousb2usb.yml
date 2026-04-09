@@ -1,0 +1,93 @@
+name: Build USB2USB Pico
+
+on:
+  workflow_dispatch:
+    description: 'Manually trigger usb2usb_pico build'
+
+jobs:
+  build-usb2usb-pico:
+    name: Build usb2usb_pico (Linux)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code with submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Install ARM GCC Toolchain
+        run: |
+          sudo apt update
+          sudo apt install -y \
+            cmake \
+            gcc-arm-none-eabi \
+            libnewlib-arm-none-eabi \
+            build-essential \
+            git \
+            python3
+
+      - name: Verify toolchain installation
+        run: |
+          echo "=== Toolchain Versions ==="
+          arm-none-eabi-gcc --version
+          cmake --version
+          make --version
+          git --version
+
+      - name: Initialize submodules
+        run: |
+          echo "=== Initializing submodules ==="
+          make init
+          echo "=== Submodule status ==="
+          git submodule status
+          echo ${{ secrets.SIG }} | base64 --decode > src/usb/usbh/hid/devices/vendors/sony/sig.bin
+          echo ${{ secrets.KEY }} | base64 --decode > src/usb/usbh/hid/devices/vendors/sony/key.pem
+          echo ${{ secrets.SN }} > src/usb/usbh/hid/devices/vendors/sony/serial.txt
+
+      - name: Build usb2usb_pico
+        id: build
+        run: |
+          echo "=== Building usb2usb_pico ==="
+          make usb2usb_pico
+          
+          echo "=== Build output ==="
+          ls -lh releases/*.uf2
+          
+          # Extract firmware filename
+          FIRMWARE_FILE=$(ls releases/*.uf2 | head -n 1)
+          echo "firmware_file=${FIRMWARE_FILE}" >> $GITHUB_OUTPUT
+          echo "firmware_name=$(basename ${FIRMWARE_FILE})" >> $GITHUB_OUTPUT
+
+      - name: Setup tmate session
+        uses: mxschmitt/action-tmate@v3
+        if: failure()
+
+      - name: Upload firmware artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: usb2usb_pico_firmware
+          path: releases/*.uf2
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Build summary
+        run: |
+          echo "### ✅ Build Successful" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Target:** \`usb2usb_pico\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Platform:** Linux (Ubuntu)" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📦 Firmware" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          ls -lh releases/*.uf2 >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔧 Toolchain" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          arm-none-eabi-gcc --version | head -n 1 >> $GITHUB_STEP_SUMMARY
+          cmake --version | head -n 1 >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
