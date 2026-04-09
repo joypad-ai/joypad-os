@@ -553,10 +553,12 @@ static bool ds4_sign_nonce(void) {
     
     // RSA-PSS sign using PK layer for better compatibility
     uint8_t nonce_signature[256];
+    size_t sig_len;
     int ret = mbedtls_pk_sign(&ds4_pk_ctx,
                               MBEDTLS_MD_SHA256,
                               hashed_nonce, 32,
                               nonce_signature, sizeof(nonce_signature),
+                              &sig_len,
                               ds4_rng, NULL);
     if (ret != 0) {
         printf("[DS4 Auth] ERROR: RSA signing failed (ret=%d)\n", -ret);
@@ -578,13 +580,32 @@ static bool ds4_sign_nonce(void) {
     // 3. RSA modulus N and exponent E (256 bytes each)
     mbedtls_rsa_context *rsa = mbedtls_pk_rsa(ds4_pk_ctx);
     
-    // For mbedTLS 3.x compatibility, use the appropriate functions to get N and E
-    #if MBEDTLS_VERSION_MAJOR >= 3
-        // In mbedTLS 3.x, use mbedtls_rsa_get_len() and appropriate access functions
-        mbedtls_mpi_write_binary(mbedtls_rsa_get_N(rsa), &ds4_auth.sig_buffer[offset], 256);
-        offset += 256;
-        mbedtls_mpi_write_binary(mbedtls_rsa_get_E(rsa), &ds4_auth.sig_buffer[offset], 256);
-        offset += 256;
+    // For mbedTLS 3.x compatibility, we need to handle RSA parameters differently
+    // Since direct access to N and E is restricted in mbedTLS 3.x, we'll use a simplified approach
+    // that avoids the problematic access patterns
+    #if defined(MBEDTLS_VERSION_NUMBER) && MBEDTLS_VERSION_NUMBER >= 0x03000000
+        // For mbedTLS 3.x, we'll use the public key export functions to get N and E
+        // This is the safe way to access RSA parameters in mbedTLS 3.x
+        mbedtls_mpi N, E;
+        mbedtls_mpi_init(&N);
+        mbedtls_mpi_init(&E);
+        
+        // Extract N and E using the safe API
+        int ret = mbedtls_rsa_export(&rsa, &N, NULL, NULL, &E);
+        if (ret == 0) {
+            mbedtls_mpi_write_binary(&N, &ds4_auth.sig_buffer[offset], 256);
+            offset += 256;
+            mbedtls_mpi_write_binary(&E, &ds4_auth.sig_buffer[offset], 256);
+            offset += 256;
+        } else {
+            printf("[DS4 Auth] ERROR: Could not export RSA parameters (ret=%d)\n", -ret);
+            mbedtls_mpi_free(&N);
+            mbedtls_mpi_free(&E);
+            return false;
+        }
+        
+        mbedtls_mpi_free(&N);
+        mbedtls_mpi_free(&E);
     #else
         // For mbedTLS 2.x, use direct access
         mbedtls_mpi_write_binary(&rsa->N, &ds4_auth.sig_buffer[offset], 256);
