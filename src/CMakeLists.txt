@@ -288,8 +288,39 @@ set(CONTROLLER_SOURCES
 # Common sources (core + USB host)
 set(COMMON_SOURCES ${CORE_SOURCES} ${USB_HOST_SOURCES})
 
+# DS4 PS4 authentication embedded resources (key.pem, serial.txt, sig.bin)
+# These files must be placed in src/usb/usbh/hid/devices/vendors/sony/ directory
+set(DS4_AUTH_RESOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/hid/devices/vendors/sony)
+set(DS4_AUTH_KEY_FILE ${DS4_AUTH_RESOURCE_DIR}/key.pem)
+set(DS4_AUTH_SERIAL_FILE ${DS4_AUTH_RESOURCE_DIR}/serial.txt)
+set(DS4_AUTH_SIG_FILE ${DS4_AUTH_RESOURCE_DIR}/sig.bin)
+
+# Function to embed binary files into firmware for a target
+function(embed_ds4_auth_resources target)
+    if(EXISTS ${DS4_AUTH_KEY_FILE})
+        pico_embed_binary_in_flash(${target} ${DS4_AUTH_KEY_FILE} key.pem)
+        message(STATUS "Embedded key.pem for PS4 auth")
+    else()
+        message(WARNING "key.pem not found at ${DS4_AUTH_KEY_FILE}, PS4 auth will fail")
+    endif()
+    
+    if(EXISTS ${DS4_AUTH_SERIAL_FILE})
+        pico_embed_binary_in_flash(${target} ${DS4_AUTH_SERIAL_FILE} serial.txt)
+        message(STATUS "Embedded serial.txt for PS4 auth")
+    else()
+        message(WARNING "serial.txt not found at ${DS4_AUTH_SERIAL_FILE}, PS4 auth will fail")
+    endif()
+    
+    if(EXISTS ${DS4_AUTH_SIG_FILE})
+        pico_embed_binary_in_flash(${target} ${DS4_AUTH_SIG_FILE} sig.bin)
+        message(STATUS "Embedded sig.bin for PS4 auth")
+    else()
+        message(WARNING "sig.bin not found at ${DS4_AUTH_SIG_FILE}, PS4 auth will fail")
+    endif()
+endfunction()
+
 # Common libraries for USB host apps
-set(COMMON_LIBRARIES pico_stdlib pico_multicore hardware_pio pico_rand tinyusb_host tinyusb_board xinput_host)
+set(COMMON_LIBRARIES pico_stdlib pico_multicore hardware_pio pico_rand tinyusb_host tinyusb_board xinput_host mbedtls)
 
 # BTstack compile definitions (shared by all USB host apps)
 # Note: Most BTstack feature flags are in bt/btstack/btstack_config.h
@@ -338,6 +369,10 @@ function(joypad_target_common TARGET)
         BUILD_TIME="${BUILD_TIME}"
         BOARD_NAME="${PICO_BOARD}"
     )
+    
+    # Embed DS4 PS4 auth resources (key.pem, serial.txt, sig.bin)
+    # Only embed if the target uses USB host (has COMMON_SOURCES)
+    embed_ds4_auth_resources(${TARGET})
 endfunction()
 
 # Add BTstack support to a target
