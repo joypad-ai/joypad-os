@@ -17,3 +17,6 @@
 [submodule "src/lib/Pico-PIO-USB"]
 	path = src/lib/Pico-PIO-USB
 	url = https://github.com/sekigon-gonnoc/Pico-PIO-USB.git
+[submodule "src/lib/lwip"]
+	path = src/lib/lwip
+	url = https://github.com/lwip-tcpip/lwip.git

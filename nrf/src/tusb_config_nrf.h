@@ -74,6 +74,12 @@
 #define CFG_TUD_MIDI                0
 #define CFG_TUD_VENDOR              0
 
+// USB Ethernet (ECM/RNDIS)
+#define CFG_TUD_ECM_RNDIS           1
+#define CFG_TUD_NCM                 0
+#define CFG_TUD_NET_ENDPOINT_SIZE   64
+#define CFG_TUD_NET_MTU             1514
+
 // HID buffer sizes
 #define CFG_TUD_HID_EP_BUFSIZE      64
 

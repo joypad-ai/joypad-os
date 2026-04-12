@@ -100,15 +100,52 @@ set(SRCS
     "${TINYUSB_PATH}/src/class/cdc/cdc_device.c"
     "${TINYUSB_PATH}/src/class/hid/hid_device.c"
     "${TINYUSB_PATH}/src/portable/nordic/nrf5x/dcd_nrf5x.c"
+
+    # --- TinyUSB ECM/RNDIS + networking ---
+    "${TINYUSB_PATH}/src/class/net/ecm_rndis_device.c"
+    "${TINYUSB_PATH}/lib/networking/dhserver.c"
+    "${TINYUSB_PATH}/lib/networking/dnserver.c"
+    "${TINYUSB_PATH}/lib/networking/rndis_reports.c"
+    "${SHARED_SRC}/usb/usbd/net/usb_ethernet.c"
+
+    # --- lwIP ---
+    "${SHARED_SRC}/lib/lwip/src/core/def.c"
+    "${SHARED_SRC}/lib/lwip/src/core/inet_chksum.c"
+    "${SHARED_SRC}/lib/lwip/src/core/init.c"
+    "${SHARED_SRC}/lib/lwip/src/core/ip.c"
+    "${SHARED_SRC}/lib/lwip/src/core/mem.c"
+    "${SHARED_SRC}/lib/lwip/src/core/memp.c"
+    "${SHARED_SRC}/lib/lwip/src/core/netif.c"
+    "${SHARED_SRC}/lib/lwip/src/core/pbuf.c"
+    "${SHARED_SRC}/lib/lwip/src/core/tcp.c"
+    "${SHARED_SRC}/lib/lwip/src/core/tcp_in.c"
+    "${SHARED_SRC}/lib/lwip/src/core/tcp_out.c"
+    "${SHARED_SRC}/lib/lwip/src/core/timeouts.c"
+    "${SHARED_SRC}/lib/lwip/src/core/udp.c"
+    "${SHARED_SRC}/lib/lwip/src/core/ipv4/autoip.c"
+    "${SHARED_SRC}/lib/lwip/src/core/ipv4/dhcp.c"
+    "${SHARED_SRC}/lib/lwip/src/core/ipv4/etharp.c"
+    "${SHARED_SRC}/lib/lwip/src/core/ipv4/icmp.c"
+    "${SHARED_SRC}/lib/lwip/src/core/ipv4/igmp.c"
+    "${SHARED_SRC}/lib/lwip/src/core/ipv4/ip4.c"
+    "${SHARED_SRC}/lib/lwip/src/core/ipv4/ip4_addr.c"
+    "${SHARED_SRC}/lib/lwip/src/core/ipv4/ip4_frag.c"
+    "${SHARED_SRC}/lib/lwip/src/netif/ethernet.c"
+    "${SHARED_SRC}/lib/lwip/src/api/err.c"
 )
 
 set(INCLUDE_DIRS
     "src"
     "${SHARED_SRC}"
     "${SHARED_SRC}/usb/usbd"
+    "${SHARED_SRC}/usb/usbd/net"
+    "${SHARED_SRC}/usb/usbd/net/arch"
     "${SHARED_SRC}/lib/libxsm3"
     # TinyUSB
     "${TINYUSB_PATH}/src"
+    "${TINYUSB_PATH}/lib/networking"
+    # lwIP
+    "${SHARED_SRC}/lib/lwip/src/include"
 )
 
 # ============================================================================

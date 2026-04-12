@@ -1479,6 +1479,10 @@ enum {
     ITF_NUM_CDC_0 = ITF_NUM_HID_GAMEPAD + 1,
     ITF_NUM_CDC_0_DATA,
 #endif
+#if CFG_TUD_ECM_RNDIS
+    ITF_NUM_NET_ESP,
+    ITF_NUM_NET_DATA_ESP,
+#endif
     ITF_NUM_TOTAL
 };
 #else
@@ -1486,6 +1490,10 @@ enum {
 #if CFG_TUD_CDC >= 1
     ITF_NUM_CDC_0 = ITF_NUM_HID_MOUSE + 1,  // CDC 0 control interface (data port)
     ITF_NUM_CDC_0_DATA,                       // CDC 0 data interface
+#endif
+#if CFG_TUD_ECM_RNDIS
+    ITF_NUM_NET,
+    ITF_NUM_NET_DATA,
 #endif
     ITF_NUM_TOTAL
 };
@@ -1518,6 +1526,21 @@ enum {
 #define EPNUM_CDC_0_OUT     0x05
 #define EPNUM_CDC_0_IN      0x85
 #endif
+#endif
+
+#if CFG_TUD_ECM_RNDIS
+// ECM/RNDIS endpoints (after CDC)
+#ifdef PLATFORM_ESP32
+#define EPNUM_NET_NOTIF     0x84
+#define EPNUM_NET_OUT       0x05
+#define EPNUM_NET_IN        0x85
+#else
+#define EPNUM_NET_NOTIF     0x86
+#define EPNUM_NET_OUT       0x07
+#define EPNUM_NET_IN        0x87
+#endif
+#define STRID_NET_INTERFACE 5
+#define STRID_NET_MAC       6
 #endif
 
 
@@ -1641,10 +1664,32 @@ static const uint8_t desc_frag_cdc_only[] = {
     TUD_CDC_DESCRIPTOR(0, 4, EPNUM_CDC_ONLY_NOTIF, 8, EPNUM_CDC_ONLY_OUT, EPNUM_CDC_ONLY_IN, 64),
 };
 
+#if CFG_TUD_ECM_RNDIS
+// ECM descriptor fragment
+#ifdef PLATFORM_ESP32
+static const uint8_t desc_frag_ecm[] = {
+    TUD_CDC_ECM_DESCRIPTOR(ITF_NUM_NET_ESP, STRID_NET_INTERFACE, STRID_NET_MAC,
+                           EPNUM_NET_NOTIF, 64, EPNUM_NET_OUT, EPNUM_NET_IN,
+                           CFG_TUD_NET_ENDPOINT_SIZE, CFG_TUD_NET_MTU),
+};
+#else
+static const uint8_t desc_frag_ecm[] = {
+    TUD_CDC_ECM_DESCRIPTOR(ITF_NUM_NET, STRID_NET_INTERFACE, STRID_NET_MAC,
+                           EPNUM_NET_NOTIF, 64, EPNUM_NET_OUT, EPNUM_NET_IN,
+                           CFG_TUD_NET_ENDPOINT_SIZE, CFG_TUD_NET_MTU),
+};
+#endif
+#endif
+
 // Max possible config descriptor sizes
-#define MAX_CONFIG_LEN_HID    (TUD_CONFIG_DESC_LEN + TUD_HID_DESC_LEN + TUD_CDC_DESC_LEN)
-#define MAX_CONFIG_LEN_SINPUT (TUD_CONFIG_DESC_LEN + TUD_HID_INOUT_DESC_LEN + 2 * TUD_HID_DESC_LEN + TUD_CDC_DESC_LEN)
-#define MAX_CONFIG_LEN_CDC    (TUD_CONFIG_DESC_LEN + TUD_CDC_DESC_LEN)
+#if CFG_TUD_ECM_RNDIS
+#define NET_DESC_EXTRA TUD_CDC_ECM_DESC_LEN
+#else
+#define NET_DESC_EXTRA 0
+#endif
+#define MAX_CONFIG_LEN_HID    (TUD_CONFIG_DESC_LEN + TUD_HID_DESC_LEN + TUD_CDC_DESC_LEN + NET_DESC_EXTRA)
+#define MAX_CONFIG_LEN_SINPUT (TUD_CONFIG_DESC_LEN + TUD_HID_INOUT_DESC_LEN + 2 * TUD_HID_DESC_LEN + TUD_CDC_DESC_LEN + NET_DESC_EXTRA)
+#define MAX_CONFIG_LEN_CDC    (TUD_CONFIG_DESC_LEN + TUD_CDC_DESC_LEN + NET_DESC_EXTRA)
 
 // Runtime-built config descriptor buffers
 static uint8_t runtime_desc_hid[MAX_CONFIG_LEN_HID];
@@ -1670,6 +1715,10 @@ static void build_config_descriptors(void)
     off = TUD_CONFIG_DESC_LEN;  // Skip header, fill later
     off = append_fragment(runtime_desc_hid, off, desc_frag_hid_gamepad, sizeof(desc_frag_hid_gamepad));
     off = append_fragment(runtime_desc_hid, off, desc_frag_cdc0, sizeof(desc_frag_cdc0));
+#if CFG_TUD_ECM_RNDIS
+    off = append_fragment(runtime_desc_hid, off, desc_frag_ecm, sizeof(desc_frag_ecm));
+    hid_itf_count += 2;  // ECM adds 2 interfaces
+#endif
 
     // Write config header (9 bytes)
     uint8_t hid_header[] = {
@@ -1692,6 +1741,10 @@ static void build_config_descriptors(void)
     off = append_fragment(runtime_desc_sinput, off, desc_frag_sinput_keyboard, sizeof(desc_frag_sinput_keyboard));
     off = append_fragment(runtime_desc_sinput, off, desc_frag_sinput_mouse, sizeof(desc_frag_sinput_mouse));
     off = append_fragment(runtime_desc_sinput, off, desc_frag_cdc0, sizeof(desc_frag_cdc0));
+#endif
+#if CFG_TUD_ECM_RNDIS
+    off = append_fragment(runtime_desc_sinput, off, desc_frag_ecm, sizeof(desc_frag_ecm));
+    sinput_itf_count += 2;
 #endif
 
     // Write config header (9 bytes)
@@ -1901,6 +1954,23 @@ uint16_t const *tud_descriptor_string_cb(uint8_t index, uint16_t langid)
         case STRID_CDC_DATA:
             str = "Joypad Data";
             break;
+#endif
+#if CFG_TUD_ECM_RNDIS
+        case STRID_NET_INTERFACE:
+            str = "Joypad Network";
+            break;
+        case STRID_NET_MAC:
+        {
+            /* Convert MAC to UTF-16 string */
+            extern uint8_t tud_network_mac_address[6];
+            chr_count = 0;
+            for (unsigned i = 0; i < 6; i++) {
+                _desc_str[1 + chr_count++] = "0123456789ABCDEF"[(tud_network_mac_address[i] >> 4) & 0xf];
+                _desc_str[1 + chr_count++] = "0123456789ABCDEF"[(tud_network_mac_address[i] >> 0) & 0xf];
+            }
+            _desc_str[0] = (uint16_t)((TUSB_DESC_STRING << 8) | (2 * chr_count + 2));
+            return _desc_str;
+        }
 #endif
         default:
             return NULL;

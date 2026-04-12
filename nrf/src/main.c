@@ -203,6 +203,9 @@ int main(void)
 
     printf("[joypad] tusb_inited=%d\n", tud_inited());
 
+    // USB Ethernet (lwIP + DHCP) initializes lazily in usb_ethernet_task()
+    // when tud_ready() returns true — no early init needed.
+
     // Trigger USB enumeration (handles VBUS already present at boot)
     usb_power_init();
 
@@ -224,6 +227,10 @@ int main(void)
     while (1) {
         // Poll TinyUSB device (non-blocking)
         tud_task_ext(0, false);
+
+#if CFG_TUD_ECM_RNDIS
+        { extern void usb_ethernet_task(void); usb_ethernet_task(); }
+#endif
 
 #ifdef CONFIG_MAX3421
         // Process TinyUSB host events (MAX3421E ISR handles SPI directly)
