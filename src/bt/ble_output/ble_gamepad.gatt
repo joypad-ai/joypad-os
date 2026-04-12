@@ -1,5 +1,5 @@
 PRIMARY_SERVICE, GAP_SERVICE
-CHARACTERISTIC, GAP_DEVICE_NAME, READ, "Joypad Gamepad"
+CHARACTERISTIC, GAP_DEVICE_NAME, READ, "Joypad Controller"
 // Appearance: Gamepad (0x03C4) — tells macOS to use gamepad icon
 CHARACTERISTIC, GAP_APPEARANCE, READ, C4 03
 

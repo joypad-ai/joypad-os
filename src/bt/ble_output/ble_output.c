@@ -297,10 +297,10 @@ static btstack_packet_callback_registration_t sm_event_callback_registration;
 static const uint8_t adv_data_standard[] = {
     // Flags: general discoverable, BR/EDR not supported
     0x02, BLUETOOTH_DATA_TYPE_FLAGS, 0x06,
-    // Complete local name: "Joypad Gamepad"
-    0x0F, BLUETOOTH_DATA_TYPE_COMPLETE_LOCAL_NAME,
+    // Complete local name: "Joypad Controller"
+    0x12, BLUETOOTH_DATA_TYPE_COMPLETE_LOCAL_NAME,
     'J', 'o', 'y', 'p', 'a', 'd', ' ',
-    'G', 'a', 'm', 'e', 'p', 'a', 'd',
+    'C', 'o', 'n', 't', 'r', 'o', 'l', 'l', 'e', 'r',
     // 16-bit Service UUIDs: HID Service
     0x03, BLUETOOTH_DATA_TYPE_COMPLETE_LIST_OF_16_BIT_SERVICE_CLASS_UUIDS,
     ORG_BLUETOOTH_SERVICE_HUMAN_INTERFACE_DEVICE & 0xFF,
@@ -539,6 +539,10 @@ void ble_output_late_init(void)
 
     // Setup GATT services
     battery_service_server_init(100);
+#ifdef BTSTACK_USE_ESP32
+    extern void battery_monitor_init(void);
+    battery_monitor_init();
+#endif
     device_information_service_server_init();
 
     // Mode-dependent PnP ID and device info
@@ -597,7 +601,7 @@ void ble_output_late_init(void)
         adv_data = adv_data_xbox;
         adv_data_len = sizeof(adv_data_xbox);
     } else {
-        gap_name = "Joypad Gamepad";
+        gap_name = "Joypad Controller";
         adv_data = adv_data_standard;
         adv_data_len = sizeof(adv_data_standard);
     }

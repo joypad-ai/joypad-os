@@ -49,6 +49,12 @@ if(CONFIG_APP STREQUAL "controller_btusb")
         # BT transport (peripheral mode — no btstack_host, no bthid)
         "${SHARED_SRC}/bt/transport/bt_transport.c"
         "${SHARED_SRC}/bt/transport/bt_transport_esp32.c"
+        # Display (I2C, SH1107 FeatherWing OLED)
+        "display_i2c_esp32.c"
+        "${SHARED_SRC}/core/services/display/display.c"
+        "${SHARED_SRC}/core/services/display/joy_anim.c"
+        # Battery monitoring (I2C fuel gauge)
+        "battery_esp32.c"
     )
     set(APP_INCLUDE_DIR "${SHARED_SRC}/apps/controller_btusb")
     set(APP_NEEDS_BTSTACK ON)
@@ -495,6 +501,8 @@ if(CONFIG_APP STREQUAL "controller_btusb")
         ENABLE_BTSTACK=1
         SENSOR_JOYWING=1
         USBD_DEFAULT_MODE=1
+        OLED_I2C_DISPLAY=1
+        DISABLE_DISPLAY_SPI=1
     )
 elseif(CONFIG_APP STREQUAL "usb2usb")
     target_compile_definitions(${COMPONENT_LIB} PUBLIC
