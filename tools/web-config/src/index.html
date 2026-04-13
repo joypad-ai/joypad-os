@@ -2,497 +2,144 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <!-- Joypad Controller Web Config -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="icon" type="image/png" sizes="32x32" href="data:image/png;base64,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">
+    <link rel="icon" type="image/png" sizes="32x32" href="data:image/png;base64,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">
     <title>Joypad Config</title>
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>Joypad Config</h1>
-            <div class="status">
-                <div class="status-dot" id="statusDot"></div>
-                <span id="statusText">Disconnected</span>
-                <button id="connectBtn">Connect</button>
+    <div class="app-layout">
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="sidebar-title">Joypad</div>
             </div>
-        </header>
+            <nav class="sidebar-nav" id="sidebarNav">
+                <div class="nav-group">
+                    <div class="nav-group-label">Output</div>
+                    <a class="nav-link active" data-page="modes" href="#">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M9.405 1.05c-.413-1.4-2.397-1.4-2.81 0l-.1.34a1.464 1.464 0 0 1-2.105.872l-.31-.17c-1.283-.698-2.686.705-1.987 1.987l.169.311c.446.82.023 1.841-.872 2.105l-.34.1c-1.4.413-1.4 2.397 0 2.81l.34.1a1.464 1.464 0 0 1 .872 2.105l-.17.31c-.698 1.283.705 2.686 1.987 1.987l.311-.169a1.464 1.464 0 0 1 2.105.872l.1.34c.413 1.4 2.397 1.4 2.81 0l.1-.34a1.464 1.464 0 0 1 2.105-.872l.31.17c1.283.698 2.686-.705 1.987-1.987l-.169-.311a1.464 1.464 0 0 1 .872-2.105l.34-.1c1.4-.413 1.4-2.397 0-2.81l-.34-.1a1.464 1.464 0 0 1-.872-2.105l.17-.31c.698-1.283-.705-2.686-1.987-1.987l-.311.169a1.464 1.464 0 0 1-2.105-.872l-.1-.34zM8 10.93a2.929 2.929 0 1 1 0-5.86 2.929 2.929 0 0 1 0 5.858z"/></svg>
+                        Modes
+                    </a>
+                    <a class="nav-link" data-page="profiles" href="#">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M3 14s-1 0-1-1 1-4 6-4 6 3 6 4-1 1-1 1H3zm5-6a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/></svg>
+                        Profiles
+                    </a>
+                </div>
+                <div class="nav-group">
+                    <div class="nav-group-label">Hardware</div>
+                    <a class="nav-link" data-page="gpio" id="navGpio" href="#">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M6 0a1 1 0 0 0-1 1v3.5a.5.5 0 0 1-.5.5h-3a.5.5 0 0 0-.5.5v1a.5.5 0 0 0 .5.5h3a.5.5 0 0 1 .5.5V11a.5.5 0 0 1-.5.5h-3a.5.5 0 0 0-.5.5v1a.5.5 0 0 0 .5.5h3A2.5 2.5 0 0 0 7.5 11V1A1 1 0 0 0 6 0zm4 0a1 1 0 0 0-1 1v10a2.5 2.5 0 0 0 2.5 2.5h3a.5.5 0 0 0 .5-.5v-1a.5.5 0 0 0-.5-.5h-3a.5.5 0 0 1-.5-.5V7.5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 0 .5-.5v-1a.5.5 0 0 0-.5-.5h-3a.5.5 0 0 1-.5-.5V1a1 1 0 0 0-1-1z"/></svg>
+                        GPIO Pins
+                    </a>
+                    <a class="nav-link" data-page="wiimote" href="#">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M11.5 6.027a.5.5 0 1 1-1 0 .5.5 0 0 1 1 0zm-1.5 1.5a.5.5 0 1 0 0-1 .5.5 0 0 0 0 1zm2.5-.5a.5.5 0 1 1-1 0 .5.5 0 0 1 1 0zm-1.5 1.5a.5.5 0 1 0 0-1 .5.5 0 0 0 0 1zm-6.5-3h1v1h1v1h-1v1h-1v-1h-1v-1h1v-1z"/><path d="M3.051 3.26a.5.5 0 0 1 .354-.613l1.932-.518a.5.5 0 0 1 .62.39c.655-.079 1.35-.117 2.043-.117.72 0 1.443.041 2.12.126a.5.5 0 0 1 .622-.399l1.932.518a.5.5 0 0 1 .306.729c.14.09.266.19.373.297.408.408.78 1.05 1.095 1.772.32.733.599 1.591.805 2.466.206.875.34 1.78.364 2.606.024.816-.059 1.602-.328 2.21a1.42 1.42 0 0 1-1.445.83c-.636-.067-1.115-.394-1.513-.773a11.307 11.307 0 0 1-.979-1.045 15.69 15.69 0 0 1-.985-1.26 15.7 15.7 0 0 1-.985 1.26c-.34.42-.674.793-.979 1.045-.398.379-.877.706-1.513.773a1.42 1.42 0 0 1-1.445-.83c-.27-.608-.352-1.395-.329-2.21.024-.826.16-1.73.365-2.606.206-.875.486-1.733.805-2.466.315-.722.687-1.364 1.094-1.772a2.34 2.34 0 0 1 .433-.335.504.504 0 0 1-.028-.079z"/></svg>
+                        Wiimote
+                    </a>
+                </div>
+                <div class="nav-group">
+                    <div class="nav-group-label">Debug</div>
+                    <a class="nav-link" data-page="input-test" href="#">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/></svg>
+                        Input Test
+                    </a>
+                    <a class="nav-link" data-page="log" href="#">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M5 0h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2 2 2 0 0 1-2 2H3a2 2 0 0 1-2-2h1a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1H1a2 2 0 0 1 2-2h2V0z"/><path d="M1 6v-.5a.5.5 0 0 1 1 0V6h.5a.5.5 0 0 1 0 1h-.5v.5a.5.5 0 0 1-1 0V7H.5a.5.5 0 0 1 0-1H1zm0 4v-.5a.5.5 0 0 1 1 0v.5h.5a.5.5 0 0 1 0 1H2v.5a.5.5 0 0 1-1 0V11H.5a.5.5 0 0 1 0-1H1z"/></svg>
+                        Log
+                    </a>
+                </div>
+                <div class="nav-group">
+                    <div class="nav-group-label">System</div>
+                    <a class="nav-link" data-page="advanced" href="#">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767L8.982 1.566zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5zm.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z"/></svg>
+                        Advanced
+                    </a>
+                </div>
+            </nav>
+        </aside>
 
-        <!-- Connect Prompt -->
-        <div id="connectPrompt" class="connect-prompt">
-            <p>Connect your Joypad device to configure it.</p>
-            <div class="connect-buttons">
-                <button id="connectSerialBtn">USB (Serial)</button>
-                <button id="connectBleBtn" class="secondary">Bluetooth (BLE)</button>
-            </div>
-            <p style="margin-top: 20px; font-size: 12px;">
-                USB requires Chrome, Edge, or Opera with Web Serial support.<br>
-                BLE requires Chrome with Web Bluetooth support.<br>
-                <strong>Note:</strong> Unpair the device from your OS Bluetooth settings before connecting via BLE.
-            </p>
-        </div>
-
-        <!-- Main Content (hidden until connected) -->
-        <div id="mainContent" class="hidden">
-            <!-- Device Info -->
-            <div class="card">
-                <h2>Device</h2>
-                <div class="card-content">
-                    <div class="device-info">
-                        <div class="row">
-                            <span class="label">App</span>
-                            <span class="value" id="deviceApp">-</span>
-                        </div>
-                        <div class="row">
-                            <span class="label">Version</span>
-                            <span class="value" id="deviceVersion">-</span>
-                        </div>
-                        <div class="row">
-                            <span class="label">Board</span>
-                            <span class="value" id="deviceBoard">-</span>
-                        </div>
-                        <div class="row">
-                            <span class="label">Serial</span>
-                            <span class="value" id="deviceSerial">-</span>
-                        </div>
-                        <div class="row">
-                            <span class="label">Commit</span>
-                            <span class="value" id="deviceCommit">-</span>
-                        </div>
-                        <div class="row">
-                            <span class="label">Build</span>
-                            <span class="value" id="deviceBuild">-</span>
-                        </div>
-                    </div>
+        <!-- Main Content -->
+        <main class="main">
+            <!-- Header Bar (always visible) -->
+            <div class="header-bar" id="headerBar">
+                <div class="header-info" id="headerInfo">
+                    <span class="header-item" id="headerApp">Joypad</span>
+                    <span class="header-sep"></span>
+                    <span class="header-item header-mono" id="headerBoard">-</span>
+                </div>
+                <div class="header-status">
+                    <div class="status-dot" id="statusDot"></div>
+                    <span class="header-item" id="statusText">Disconnected</span>
+                    <button id="connectBtn" class="btn-sm">Connect</button>
                 </div>
             </div>
 
-            <!-- USB Output Mode -->
-            <div class="card">
-                <h2>USB Output Mode</h2>
-                <div class="card-content">
-                    <div class="row">
-                        <span class="label">Current Mode</span>
-                        <select id="modeSelect">
-                            <option value="">Loading...</option>
-                        </select>
+            <!-- Connect Prompt -->
+            <div id="connectPrompt" class="connect-prompt">
+                <div class="connect-inner">
+                    <h2>Connect your device</h2>
+                    <p>Choose a connection method to configure your Joypad controller.</p>
+                    <div class="connect-buttons">
+                        <button id="connectSerialBtn">USB (Serial)</button>
+                        <button id="connectBleBtn" class="secondary">Bluetooth (BLE)</button>
                     </div>
-                    <p style="font-size: 12px; color: var(--text-muted);">
-                        Changing mode will reboot the device.
+                    <p class="hint" style="margin-top: 24px;">
+                        USB requires Chrome, Edge, or Opera with Web Serial support.<br>
+                        BLE requires Chrome with Web Bluetooth support.
                     </p>
                 </div>
             </div>
 
-            <!-- BLE Output Mode -->
-            <div class="card" id="bleModeCard" style="display:none;">
-                <h2>BLE Output Mode</h2>
-                <div class="card-content">
-                    <div class="row">
-                        <span class="label">Current Mode</span>
-                        <select id="bleModeSelect">
-                            <option value="">Loading...</option>
-                        </select>
+            <!-- Content Area (hidden until connected) -->
+            <div id="mainContent" class="content-area hidden">
+                <section class="page page--active" data-page="modes">
+                    <div id="cardModeSelect"></div>
+                </section>
+                <section class="page" data-page="profiles">
+                    <div id="cardProfiles"></div>
+                </section>
+                <section class="page" data-page="gpio">
+                    <div id="cardPadConfig"></div>
+                </section>
+                <section class="page" data-page="wiimote">
+                    <div id="cardWiimote"></div>
+                </section>
+                <section class="page" data-page="input-test">
+                    <div id="cardInputTest"></div>
+                </section>
+                <section class="page" data-page="log">
+                    <div class="card">
+                        <div class="card-header">
+                            <h2>Log</h2>
+                            <button id="debugStreamBtn" class="btn-sm secondary">Debug Stream</button>
+                        </div>
+                        <div class="log" id="log"></div>
                     </div>
-                    <p style="font-size: 12px; color: var(--text-muted);">
-                        Changing mode will reboot the device.
-                    </p>
-                </div>
+                </section>
+                <section class="page" data-page="advanced">
+                    <div id="cardAdvanced"></div>
+                </section>
             </div>
+        </main>
 
-            <!-- GPIO Pin Configuration (controller apps only) -->
-            <div class="card" id="padConfigCard" style="display:none;">
-                <h2>GPIO Pin Configuration</h2>
-                <div class="card-content">
-                    <div class="row">
-                        <span class="label">Config Name</span>
-                        <input type="text" id="padConfigName" maxlength="15" placeholder="Custom" style="width: 150px;">
-                    </div>
-                    <div class="row">
-                        <span class="label">Source</span>
-                        <span class="value" id="padConfigSource">-</span>
-                    </div>
-                    <div class="row">
-                        <span class="label">Active Level</span>
-                        <select id="padActiveHigh">
-                            <option value="false">Active Low (pull-up, GND = pressed)</option>
-                            <option value="true">Active High (pull-down, VCC = pressed)</option>
-                        </select>
-                    </div>
-
-                    <!-- Button Pin Assignments -->
-                    <h3 style="margin-top: 15px; margin-bottom: 10px;">Button Pin Assignments</h3>
-                    <div id="padButtonPins" class="pad-pin-grid">
-                        <!-- Populated by JS -->
-                    </div>
-
-                    <!-- D-pad Toggle -->
-                    <h3 style="margin-top: 15px; margin-bottom: 10px;">D-pad Toggle Switch</h3>
-                    <div class="row">
-                        <span class="label">Toggle Pin</span>
-                        <input type="number" id="padDpadToggle" min="-1" max="29" value="-1" style="width: 80px;">
-                    </div>
-                    <div class="checkbox-row">
-                        <input type="checkbox" id="padDpadToggleInvert">
-                        <label for="padDpadToggleInvert">Invert toggle (HIGH = D-pad mode)</label>
-                    </div>
-
-                    <!-- Analog Sticks -->
-                    <h3 style="margin-top: 15px; margin-bottom: 10px;">Analog Sticks (ADC)</h3>
-                    <div class="pad-pin-grid">
-                        <div class="pad-pin-row">
-                            <span>Left X</span>
-                            <select id="padAdcLX" class="pad-adc-select">
-                                <option value="-1">Disabled</option>
-                                <option value="0">ADC 0 (GPIO 26)</option>
-                                <option value="1">ADC 1 (GPIO 27)</option>
-                                <option value="2">ADC 2 (GPIO 28)</option>
-                                <option value="3">ADC 3 (GPIO 29)</option>
-                            </select>
-                            <label class="pad-invert"><input type="checkbox" id="padInvertLX"> Invert</label>
-                        </div>
-                        <div class="pad-pin-row">
-                            <span>Left Y</span>
-                            <select id="padAdcLY" class="pad-adc-select">
-                                <option value="-1">Disabled</option>
-                                <option value="0">ADC 0 (GPIO 26)</option>
-                                <option value="1">ADC 1 (GPIO 27)</option>
-                                <option value="2">ADC 2 (GPIO 28)</option>
-                                <option value="3">ADC 3 (GPIO 29)</option>
-                            </select>
-                            <label class="pad-invert"><input type="checkbox" id="padInvertLY"> Invert</label>
-                        </div>
-                        <div class="pad-pin-row">
-                            <span>Right X</span>
-                            <select id="padAdcRX" class="pad-adc-select">
-                                <option value="-1">Disabled</option>
-                                <option value="0">ADC 0 (GPIO 26)</option>
-                                <option value="1">ADC 1 (GPIO 27)</option>
-                                <option value="2">ADC 2 (GPIO 28)</option>
-                                <option value="3">ADC 3 (GPIO 29)</option>
-                            </select>
-                            <label class="pad-invert"><input type="checkbox" id="padInvertRX"> Invert</label>
-                        </div>
-                        <div class="pad-pin-row">
-                            <span>Right Y</span>
-                            <select id="padAdcRY" class="pad-adc-select">
-                                <option value="-1">Disabled</option>
-                                <option value="0">ADC 0 (GPIO 26)</option>
-                                <option value="1">ADC 1 (GPIO 27)</option>
-                                <option value="2">ADC 2 (GPIO 28)</option>
-                                <option value="3">ADC 3 (GPIO 29)</option>
-                            </select>
-                            <label class="pad-invert"><input type="checkbox" id="padInvertRY"> Invert</label>
-                        </div>
-                    </div>
-                    <div class="row" style="margin-top: 10px;">
-                        <span class="label">Deadzone</span>
-                        <input type="range" id="padDeadzone" min="0" max="127" value="10" style="width: 120px;">
-                        <span id="padDeadzoneValue">10</span>
-                    </div>
-
-                    <!-- I2C Expander -->
-                    <h3 style="margin-top: 15px; margin-bottom: 10px;">I2C Expander</h3>
-                    <div class="row">
-                        <span class="label">SDA Pin</span>
-                        <input type="number" id="padI2cSda" min="-1" max="29" value="-1" style="width: 80px;">
-                    </div>
-                    <div class="row">
-                        <span class="label">SCL Pin</span>
-                        <input type="number" id="padI2cScl" min="-1" max="29" value="-1" style="width: 80px;">
-                    </div>
-
-                    <!-- LED -->
-                    <h3 style="margin-top: 15px; margin-bottom: 10px;">NeoPixel LEDs</h3>
-                    <div class="row">
-                        <span class="label">LED Pin</span>
-                        <input type="number" id="padLedPin" min="-1" max="29" value="-1" style="width: 80px;">
-                    </div>
-                    <div class="row">
-                        <span class="label">LED Count</span>
-                        <input type="number" id="padLedCount" min="0" max="16" value="0" style="width: 80px;">
-                    </div>
-
-                    <!-- Speaker -->
-                    <h3 style="margin-top: 15px; margin-bottom: 10px;">Speaker</h3>
-                    <div class="row">
-                        <span class="label">Speaker Pin</span>
-                        <input type="number" id="padSpeakerPin" min="-1" max="29" value="-1" style="width: 80px;">
-                    </div>
-                    <div class="row">
-                        <span class="label">Enable Pin</span>
-                        <input type="number" id="padSpeakerEnablePin" min="-1" max="29" value="-1" style="width: 80px;">
-                    </div>
-
-                    <!-- Pin Conflicts -->
-                    <div id="padPinConflicts" class="pad-conflicts" style="display:none;">
-                        <!-- Populated by JS -->
-                    </div>
-
-                    <!-- Actions -->
-                    <div class="buttons" style="margin-top: 15px;">
-                        <button id="padSaveBtn">Save &amp; Reboot</button>
-                        <button id="padResetBtn" class="secondary">Reset to Default</button>
-                    </div>
-                    <p style="font-size: 12px; color: var(--text-muted); margin-top: 8px;">
-                        Saving will reboot the device to apply the new pin configuration.
-                    </p>
-                </div>
-            </div>
-
-            <!-- Profiles (unified built-in + custom) -->
-            <div class="card" id="customProfilesCard">
-                <h2>Profiles</h2>
-                <div class="card-content">
-                    <div class="row">
-                        <span class="label">Manage Profiles</span>
-                        <button id="newProfileBtn" class="secondary">+ New Profile</button>
-                    </div>
-                    <div id="profileList" class="profile-list">
-                        <!-- Populated by JS -->
-                    </div>
-                </div>
-            </div>
-
-            <!-- Profile Editor Modal -->
-            <div id="profileEditorModal" class="modal hidden">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h3 id="profileEditorTitle">Edit Profile</h3>
-                        <button class="modal-close" id="closeEditorBtn">&times;</button>
-                    </div>
-                    <div class="modal-body">
-                        <div class="form-group">
-                            <label>Profile Name</label>
-                            <input type="text" id="profileNameInput" maxlength="11" placeholder="Profile name">
-                        </div>
-                        <div class="form-group">
-                            <label>Button Mapping</label>
-                            <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 10px;">
-                                For each input button, select what output button it should produce.
-                            </p>
-                            <div id="buttonMapContainer" class="button-map-grid">
-                                <!-- Populated by JS -->
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label>Stick Sensitivity</label>
-                            <div class="sensitivity-row">
-                                <span>Left Stick</span>
-                                <input type="range" id="leftStickSens" min="0" max="200" value="100">
-                                <span id="leftStickSensValue">100%</span>
-                            </div>
-                            <div class="sensitivity-row">
-                                <span>Right Stick</span>
-                                <input type="range" id="rightStickSens" min="0" max="200" value="100">
-                                <span id="rightStickSensValue">100%</span>
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label>SOCD Cleaning</label>
-                            <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 10px;">
-                                How to handle simultaneous opposite cardinal directions (e.g. Left+Right).
-                            </p>
-                            <select id="socdModeSelect" style="width: 100%;">
-                                <option value="0">Passthrough (no cleaning)</option>
-                                <option value="1">Neutral (cancel both directions)</option>
-                                <option value="2">Up Priority (U+D=U, L+R=neutral) — Hitbox style</option>
-                                <option value="3">Last Win (last input takes priority)</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Options</label>
-                            <div class="checkbox-row">
-                                <input type="checkbox" id="flagSwapSticks">
-                                <label for="flagSwapSticks">Swap Left/Right Sticks</label>
-                            </div>
-                            <div class="checkbox-row">
-                                <input type="checkbox" id="flagInvertLY">
-                                <label for="flagInvertLY">Invert Left Y Axis</label>
-                            </div>
-                            <div class="checkbox-row">
-                                <input type="checkbox" id="flagInvertRY">
-                                <label for="flagInvertRY">Invert Right Y Axis</label>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button id="deleteProfileBtn" class="secondary danger">Delete</button>
-                        <div style="flex: 1;"></div>
-                        <button id="cancelEditorBtn" class="secondary">Cancel</button>
-                        <button id="saveProfileBtn">Save Profile</button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Wiimote Settings -->
-            <div class="card">
-                <h2>Wiimote</h2>
-                <div class="card-content">
-                    <div class="row">
-                        <span class="label">Orientation</span>
-                        <select id="wiimoteOrientSelect">
-                            <option value="0">Auto</option>
-                            <option value="1">Horizontal</option>
-                            <option value="2">Vertical</option>
-                        </select>
-                    </div>
-                    <p style="font-size: 12px; color: var(--text-muted);">
-                        Controls D-pad mapping when using Wiimote alone (no extension).
-                    </p>
-                </div>
-            </div>
-
-            <!-- Input Test -->
-            <div class="card">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                    <h2 style="margin-bottom: 0;">Input Test</h2>
-                    <button id="streamBtn" class="secondary" style="padding: 6px 12px; font-size: 12px;">Start Stream</button>
-                </div>
-                <div class="card-content">
-                    <div class="stream-container">
-                        <!-- Input (raw controller data) -->
-                        <div class="stream-section">
-                            <h4>Input (Raw) <span id="inputDeviceName" style="font-weight: normal; color: var(--text-muted);"></span>
-                                <button id="rumbleBtn" class="secondary" style="padding: 4px 8px; font-size: 11px; margin-left: 10px;" title="Test rumble on connected controller">🎮 Rumble</button>
-                            </h4>
-                            <div class="input-display" id="inputDisplay">
-                                <div class="buttons" id="inputButtons">
-                                    <span class="btn" data-bit="0">B1</span>
-                                    <span class="btn" data-bit="1">B2</span>
-                                    <span class="btn" data-bit="2">B3</span>
-                                    <span class="btn" data-bit="3">B4</span>
-                                    <span class="btn" data-bit="4">L1</span>
-                                    <span class="btn" data-bit="5">R1</span>
-                                    <span class="btn" data-bit="6">L2</span>
-                                    <span class="btn" data-bit="7">R2</span>
-                                    <span class="btn" data-bit="8">S1</span>
-                                    <span class="btn" data-bit="9">S2</span>
-                                    <span class="btn" data-bit="10">L3</span>
-                                    <span class="btn" data-bit="11">R3</span>
-                                    <span class="btn" data-bit="20">L4</span>
-                                    <span class="btn" data-bit="21">R4</span>
-                                    <span class="btn" data-bit="12">DU</span>
-                                    <span class="btn" data-bit="13">DD</span>
-                                    <span class="btn" data-bit="14">DL</span>
-                                    <span class="btn" data-bit="15">DR</span>
-                                    <span class="btn" data-bit="16">A1</span>
-                                    <span class="btn" data-bit="17">A2</span>
-                                    <span class="btn" data-bit="18">A3</span>
-                                    <!-- <span class="btn" data-bit="19">A4</span> --><!-- Reserved, not used by any controller -->
-                                </div>
-                                <div class="axes">
-                                    <div class="axis">
-                                        <div>LX: <span id="axisLX">128</span></div>
-                                        <div class="axis-bar"><div class="axis-bar-fill" id="axisLXBar" style="width: 50%"></div></div>
-                                    </div>
-                                    <div class="axis">
-                                        <div>LY: <span id="axisLY">128</span></div>
-                                        <div class="axis-bar"><div class="axis-bar-fill" id="axisLYBar" style="width: 50%"></div></div>
-                                    </div>
-                                    <div class="axis">
-                                        <div>RX: <span id="axisRX">128</span></div>
-                                        <div class="axis-bar"><div class="axis-bar-fill" id="axisRXBar" style="width: 50%"></div></div>
-                                    </div>
-                                    <div class="axis">
-                                        <div>RY: <span id="axisRY">128</span></div>
-                                        <div class="axis-bar"><div class="axis-bar-fill" id="axisRYBar" style="width: 50%"></div></div>
-                                    </div>
-                                    <div class="axis">
-                                        <div>L2: <span id="axisL2">0</span></div>
-                                        <div class="axis-bar"><div class="axis-bar-fill" id="axisL2Bar" style="width: 0%"></div></div>
-                                    </div>
-                                    <div class="axis">
-                                        <div>R2: <span id="axisR2">0</span></div>
-                                        <div class="axis-bar"><div class="axis-bar-fill" id="axisR2Bar" style="width: 0%"></div></div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <!-- Output (after profile mapping) -->
-                        <div class="stream-section">
-                            <h4>Output (Mapped)</h4>
-                            <div class="input-display" id="outputDisplay">
-                                <div class="buttons" id="outputButtons">
-                                    <span class="btn" data-bit="0">B1</span>
-                                    <span class="btn" data-bit="1">B2</span>
-                                    <span class="btn" data-bit="2">B3</span>
-                                    <span class="btn" data-bit="3">B4</span>
-                                    <span class="btn" data-bit="4">L1</span>
-                                    <span class="btn" data-bit="5">R1</span>
-                                    <span class="btn" data-bit="6">L2</span>
-                                    <span class="btn" data-bit="7">R2</span>
-                                    <span class="btn" data-bit="8">S1</span>
-                                    <span class="btn" data-bit="9">S2</span>
-                                    <span class="btn" data-bit="10">L3</span>
-                                    <span class="btn" data-bit="11">R3</span>
-                                    <span class="btn" data-bit="20">L4</span>
-                                    <span class="btn" data-bit="21">R4</span>
-                                    <span class="btn" data-bit="12">DU</span>
-                                    <span class="btn" data-bit="13">DD</span>
-                                    <span class="btn" data-bit="14">DL</span>
-                                    <span class="btn" data-bit="15">DR</span>
-                                    <span class="btn" data-bit="16">A1</span>
-                                    <span class="btn" data-bit="17">A2</span>
-                                    <span class="btn" data-bit="18">A3</span>
-                                    <!-- <span class="btn" data-bit="19">A4</span> --><!-- Reserved, not used by any controller -->
-                                </div>
-                                <div class="axes">
-                                    <div class="axis">
-                                        <div>LX: <span id="outAxisLX">128</span></div>
-                                        <div class="axis-bar"><div class="axis-bar-fill" id="outAxisLXBar" style="width: 50%"></div></div>
-                                    </div>
-                                    <div class="axis">
-                                        <div>LY: <span id="outAxisLY">128</span></div>
-                                        <div class="axis-bar"><div class="axis-bar-fill" id="outAxisLYBar" style="width: 50%"></div></div>
-                                    </div>
-                                    <div class="axis">
-                                        <div>RX: <span id="outAxisRX">128</span></div>
-                                        <div class="axis-bar"><div class="axis-bar-fill" id="outAxisRXBar" style="width: 50%"></div></div>
-                                    </div>
-                                    <div class="axis">
-                                        <div>RY: <span id="outAxisRY">128</span></div>
-                                        <div class="axis-bar"><div class="axis-bar-fill" id="outAxisRYBar" style="width: 50%"></div></div>
-                                    </div>
-                                    <div class="axis">
-                                        <div>L2: <span id="outAxisL2">0</span></div>
-                                        <div class="axis-bar"><div class="axis-bar-fill" id="outAxisL2Bar" style="width: 0%"></div></div>
-                                    </div>
-                                    <div class="axis">
-                                        <div>R2: <span id="outAxisR2">0</span></div>
-                                        <div class="axis-bar"><div class="axis-bar-fill" id="outAxisR2Bar" style="width: 0%"></div></div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Advanced Settings -->
-            <div class="card">
-                <h2>Advanced</h2>
-                <div class="card-content">
-                    <div class="danger-zone">
-                        <h3>Danger Zone</h3>
-                        <div class="buttons">
-                            <button id="clearBtBtn" class="secondary">Clear BT Bonds</button>
-                            <button id="resetBtn" class="secondary">Factory Reset</button>
-                            <button id="rebootBtn" class="secondary">Reboot</button>
-                            <button id="bootselBtn" class="secondary">Bootloader</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Log -->
-            <div class="card">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                    <h2 style="margin-bottom: 0;">Log</h2>
-                    <button id="debugStreamBtn" class="secondary" style="padding: 6px 12px; font-size: 12px;">Debug Stream</button>
-                </div>
-                <div class="log" id="log"></div>
-            </div>
-        </div>
+        <!-- Mobile Bottom Tabs -->
+        <nav class="mobile-tabs" id="mobileTabs">
+            <button class="tab active" data-group="output">
+                <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor"><path d="M9.405 1.05c-.413-1.4-2.397-1.4-2.81 0l-.1.34a1.464 1.464 0 0 1-2.105.872l-.31-.17c-1.283-.698-2.686.705-1.987 1.987l.169.311c.446.82.023 1.841-.872 2.105l-.34.1c-1.4.413-1.4 2.397 0 2.81l.34.1a1.464 1.464 0 0 1 .872 2.105l-.17.31c-.698 1.283.705 2.686 1.987 1.987l.311-.169a1.464 1.464 0 0 1 2.105.872l.1.34c.413 1.4 2.397 1.4 2.81 0l.1-.34a1.464 1.464 0 0 1 2.105-.872l.31.17c1.283.698 2.686-.705 1.987-1.987l-.169-.311a1.464 1.464 0 0 1 .872-2.105l.34-.1c1.4-.413 1.4-2.397 0-2.81l-.34-.1a1.464 1.464 0 0 1-.872-2.105l.17-.31c.698-1.283-.705-2.686-1.987-1.987l-.311.169a1.464 1.464 0 0 1-2.105-.872l-.1-.34zM8 10.93a2.929 2.929 0 1 1 0-5.86 2.929 2.929 0 0 1 0 5.858z"/></svg>
+                <span>Output</span>
+            </button>
+            <button class="tab" data-group="hardware">
+                <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor"><path d="M6 0a1 1 0 0 0-1 1v3.5a.5.5 0 0 1-.5.5h-3a.5.5 0 0 0-.5.5v1a.5.5 0 0 0 .5.5h3a.5.5 0 0 1 .5.5V11a.5.5 0 0 1-.5.5h-3a.5.5 0 0 0-.5.5v1a.5.5 0 0 0 .5.5h3A2.5 2.5 0 0 0 7.5 11V1A1 1 0 0 0 6 0zm4 0a1 1 0 0 0-1 1v10a2.5 2.5 0 0 0 2.5 2.5h3a.5.5 0 0 0 .5-.5v-1a.5.5 0 0 0-.5-.5h-3a.5.5 0 0 1-.5-.5V7.5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 0 .5-.5v-1a.5.5 0 0 0-.5-.5h-3a.5.5 0 0 1-.5-.5V1a1 1 0 0 0-1-1z"/></svg>
+                <span>Hardware</span>
+            </button>
+            <button class="tab" data-group="debug">
+                <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor"><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/></svg>
+                <span>Debug</span>
+            </button>
+            <button class="tab" data-group="system">
+                <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor"><path d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767L8.982 1.566zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5zm.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z"/></svg>
+                <span>System</span>
+            </button>
+        </nav>
     </div>
 
     <script type="module" src="./main.js"></script>
