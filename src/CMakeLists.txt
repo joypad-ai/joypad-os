@@ -290,7 +290,7 @@ set(COMMON_SOURCES ${CORE_SOURCES} ${USB_HOST_SOURCES})
 
 # DS4 PS4 authentication embedded resources (key.pem, serial.txt, sig.bin)
 # These files must be placed in src/usb/usbh/hid/devices/vendors/sony/ directory
-set(DS4_AUTH_RESOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/usb/usbd/modes)
+set(DS4_AUTH_RESOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd/modes)
 set(DS4_AUTH_KEY_FILE ${DS4_AUTH_RESOURCE_DIR}/key.pem)
 set(DS4_AUTH_SERIAL_FILE ${DS4_AUTH_RESOURCE_DIR}/serial.txt)
 set(DS4_AUTH_SIG_FILE ${DS4_AUTH_RESOURCE_DIR}/sig.bin)
@@ -1008,7 +1008,7 @@ target_sources(joypad_usb_pico PUBLIC ${COMMON_SOURCES} ${USB_DEVICE_SOURCES}
 target_include_directories(joypad_usb_pico PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2usb
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd
-    ${CMAKE_CURRENT_SOURCE_DIR}/lib/pico-sdk/test/kitchen_sink
+    ${CMAKE_CURRENT_SOURCE_DIR}/h
 )
 target_link_libraries(joypad_usb_pico PRIVATE ${COMMON_LIBRARIES} tinyusb_device tinyusb_pico_pio_usb)
 joypad_target_common(joypad_usb_pico)
