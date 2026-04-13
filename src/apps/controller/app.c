@@ -19,11 +19,15 @@
 #include "native/device/uart/uart_device.h"
 #include "native/host/uart/uart_host.h"
 #include "pad/pad_input.h"
+#include "pad/pad_config_flash.h"
 #include "usb/usbd/usbd.h"
 #include "core/buttons.h"
 #include "tusb.h"
 #include "pico/stdlib.h"
 #include <stdio.h>
+
+// Active pad config (points to flash or compile-time default)
+static const pad_device_config_t* pad_config = NULL;
 
 // UART linking state
 static bool uart_link_enabled = false;
@@ -233,39 +237,49 @@ void app_init(void)
     // Initialize codes service (Konami code detection)
     codes_set_callback(on_code_detected);
 
+    // Load pad config: try flash first, fall back to compile-time default
+    pad_config_flash_init();
+    pad_config = pad_config_load_runtime();
+    if (!pad_config) {
+        pad_config = &PAD_CONFIG;
+        printf("[app:controller] Using compile-time default config\n");
+    } else {
+        printf("[app:controller] Using flash config: %s\n", pad_config->name);
+    }
+
     // Register pad device configuration BEFORE interface init
-    int dev_idx = pad_input_add_device(&PAD_CONFIG);
+    int dev_idx = pad_input_add_device(pad_config);
 
     if (dev_idx < 0) {
         printf("[app:controller] ERROR: Failed to register pad device!\n");
         return;
     }
 
-    printf("[app:controller] Pad config: %s\n", PAD_CONFIG.name);
+    printf("[app:controller] Pad config: %s\n", pad_config->name);
 
     // Set custom LED colors from pad config if defined
-    if (PAD_CONFIG.led_count > 0) {
-        neopixel_set_custom_colors(PAD_CONFIG.led_colors, PAD_CONFIG.led_count);
+    if (pad_config->led_count > 0) {
+        neopixel_set_custom_colors(pad_config->led_colors, pad_config->led_count);
         if (neopixel_has_custom_colors()) {
-            printf("[app:controller] Using custom LED colors (%d LEDs)\n", PAD_CONFIG.led_count);
+            printf("[app:controller] Using custom LED colors (%d LEDs)\n", pad_config->led_count);
         }
     }
 
     // Initialize speaker for haptic/rumble feedback if configured
-    if (PAD_CONFIG.speaker_pin != PAD_PIN_DISABLED) {
-        speaker_init(PAD_CONFIG.speaker_pin, PAD_CONFIG.speaker_enable_pin);
+    if (pad_config->speaker_pin != PAD_PIN_DISABLED) {
+        speaker_init(pad_config->speaker_pin, pad_config->speaker_enable_pin);
         printf("[app:controller] Speaker initialized for rumble feedback\n");
     }
 
     // Initialize display if configured
-    if (PAD_CONFIG.display_spi >= 0) {
+    if (pad_config->display_spi >= 0) {
         display_config_t disp_cfg = {
-            .spi_inst = PAD_CONFIG.display_spi,
-            .pin_sck = PAD_CONFIG.display_sck,
-            .pin_mosi = PAD_CONFIG.display_mosi,
-            .pin_cs = PAD_CONFIG.display_cs,
-            .pin_dc = PAD_CONFIG.display_dc,
-            .pin_rst = PAD_CONFIG.display_rst,
+            .spi_inst = pad_config->display_spi,
+            .pin_sck = pad_config->display_sck,
+            .pin_mosi = pad_config->display_mosi,
+            .pin_cs = pad_config->display_cs,
+            .pin_dc = pad_config->display_dc,
+            .pin_rst = pad_config->display_rst,
         };
         display_init(&disp_cfg);
         printf("[app:controller] Display initialized\n");
@@ -273,13 +287,13 @@ void app_init(void)
 
     // Initialize QWIIC link: I2C peer mode or UART link
 #ifdef I2C_PEER_ENABLED
-    if (PAD_CONFIG.qwiic_i2c_inst >= 0 &&
-        PAD_CONFIG.qwiic_tx != PAD_PIN_DISABLED && PAD_CONFIG.qwiic_rx != PAD_PIN_DISABLED) {
+    if (pad_config->qwiic_i2c_inst >= 0 &&
+        pad_config->qwiic_tx != PAD_PIN_DISABLED && pad_config->qwiic_rx != PAD_PIN_DISABLED) {
         // I2C peer slave mode — serve local inputs to master over I2C
         i2c_peer_config_t peer_cfg = {
-            .i2c_inst = (uint8_t)PAD_CONFIG.qwiic_i2c_inst,
-            .sda_pin = (uint8_t)PAD_CONFIG.qwiic_tx,
-            .scl_pin = (uint8_t)PAD_CONFIG.qwiic_rx,
+            .i2c_inst = (uint8_t)pad_config->qwiic_i2c_inst,
+            .sda_pin = (uint8_t)pad_config->qwiic_tx,
+            .scl_pin = (uint8_t)pad_config->qwiic_rx,
             .addr = I2C_PEER_DEFAULT_ADDR,
             .skip_i2c_init = false,
         };
@@ -288,17 +302,17 @@ void app_init(void)
         i2c_peer_enabled = true;
     } else
 #endif
-    if (PAD_CONFIG.qwiic_tx != PAD_PIN_DISABLED && PAD_CONFIG.qwiic_rx != PAD_PIN_DISABLED) {
+    if (pad_config->qwiic_tx != PAD_PIN_DISABLED && pad_config->qwiic_rx != PAD_PIN_DISABLED) {
         // UART link mode — bidirectional UART between two controllers
-        uart_host_init_pins(PAD_CONFIG.qwiic_tx, PAD_CONFIG.qwiic_rx, UART_PROTOCOL_BAUD_DEFAULT);
+        uart_host_init_pins(pad_config->qwiic_tx, pad_config->qwiic_rx, UART_PROTOCOL_BAUD_DEFAULT);
         uart_host_set_mode(UART_HOST_MODE_NORMAL);
 
-        uart_device_init_pins(PAD_CONFIG.qwiic_tx, PAD_CONFIG.qwiic_rx, UART_PROTOCOL_BAUD_DEFAULT);
+        uart_device_init_pins(pad_config->qwiic_tx, pad_config->qwiic_rx, UART_PROTOCOL_BAUD_DEFAULT);
         uart_device_set_mode(UART_DEVICE_MODE_ON_CHANGE);
 
         uart_link_enabled = true;
         printf("[app:controller] UART link enabled on QWIIC (TX=%d, RX=%d)\n",
-               PAD_CONFIG.qwiic_tx, PAD_CONFIG.qwiic_rx);
+               pad_config->qwiic_tx, pad_config->qwiic_rx);
     }
 
     // Configure router for Pad → USB Device
@@ -459,16 +473,16 @@ void app_task(void)
             last_led_mode = mode;
             uint8_t r, g, b;
             usbd_get_mode_color(mode, &r, &g, &b);
-            if (PAD_CONFIG.led_count > 1) {
+            if (pad_config->led_count > 1) {
                 // Multi-LED: set all LEDs to mode color, enable pulse mask
                 uint8_t colors[16][3];
-                for (int i = 0; i < PAD_CONFIG.led_count && i < 16; i++) {
+                for (int i = 0; i < pad_config->led_count && i < 16; i++) {
                     colors[i][0] = r;
                     colors[i][1] = g;
                     colors[i][2] = b;
                 }
-                neopixel_set_custom_colors(colors, PAD_CONFIG.led_count);
-                neopixel_set_pulse_mask(PAD_CONFIG.led_pulse_mask);
+                neopixel_set_custom_colors(colors, pad_config->led_count);
+                neopixel_set_pulse_mask(pad_config->led_pulse_mask);
             } else if (!neopixel_has_custom_colors()) {
                 // Single LED: use override color
                 leds_set_color(r, g, b);
@@ -514,15 +528,15 @@ void app_task(void)
             peer_status_valid = true;
 
             // Update LEDs with master's mode color
-            if (PAD_CONFIG.led_count > 1) {
+            if (pad_config->led_count > 1) {
                 uint8_t colors[16][3];
-                for (int i = 0; i < PAD_CONFIG.led_count && i < 16; i++) {
+                for (int i = 0; i < pad_config->led_count && i < 16; i++) {
                     colors[i][0] = new_status.mode_color[0];
                     colors[i][1] = new_status.mode_color[1];
                     colors[i][2] = new_status.mode_color[2];
                 }
-                neopixel_set_custom_colors(colors, PAD_CONFIG.led_count);
-                neopixel_set_pulse_mask(PAD_CONFIG.led_pulse_mask);
+                neopixel_set_custom_colors(colors, pad_config->led_count);
+                neopixel_set_pulse_mask(pad_config->led_pulse_mask);
             } else {
                 leds_set_color(new_status.mode_color[0],
                                new_status.mode_color[1],
@@ -564,10 +578,10 @@ void app_task(void)
     }
 
     // Update LED press mask from button state
-    if (PAD_CONFIG.led_button_map[0]) {
+    if (pad_config->led_button_map[0]) {
         uint16_t press_mask = 0;
-        for (int i = 0; i < PAD_CONFIG.led_count && i < 16; i++) {
-            if (PAD_CONFIG.led_button_map[i] && (buttons & PAD_CONFIG.led_button_map[i])) {
+        for (int i = 0; i < pad_config->led_count && i < 16; i++) {
+            if (pad_config->led_button_map[i] && (buttons & pad_config->led_button_map[i])) {
                 press_mask |= (1 << i);
             }
         }

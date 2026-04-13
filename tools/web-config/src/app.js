@@ -118,6 +118,16 @@ class JoypadConfigApp {
         document.getElementById('saveProfileBtn').addEventListener('click', () => this.saveProfile());
         document.getElementById('deleteProfileBtn').addEventListener('click', () => this.deleteProfile());
 
+        // Pad config events
+        const padSaveBtn = document.getElementById('padSaveBtn');
+        const padResetBtn = document.getElementById('padResetBtn');
+        if (padSaveBtn) padSaveBtn.addEventListener('click', () => this.savePadConfig());
+        if (padResetBtn) padResetBtn.addEventListener('click', () => this.resetPadConfig());
+        const padDeadzone = document.getElementById('padDeadzone');
+        if (padDeadzone) padDeadzone.addEventListener('input', (e) => {
+            document.getElementById('padDeadzoneValue').textContent = e.target.value;
+        });
+
         // Sensitivity slider events
         this.leftStickSens.addEventListener('input', (e) => {
             document.getElementById('leftStickSensValue').textContent = e.target.value + '%';
@@ -242,6 +252,7 @@ class JoypadConfigApp {
         await this.loadDeviceInfo();
         await this.loadModes();
         await this.loadBleModes();
+        await this.loadPadConfig();
         await this.loadProfiles();
         await this.loadWiimoteOrient();
     }
@@ -811,6 +822,233 @@ class JoypadConfigApp {
             await this.loadProfiles();
         } catch (e) {
             this.log(`Failed to delete profile: ${e.message}`, 'error');
+        }
+    }
+    // ================================================================
+    // PAD GPIO CONFIG
+    // ================================================================
+
+    // Button names in pad config buttons[] array order
+    static PAD_BUTTON_NAMES = [
+        'D-Up', 'D-Down', 'D-Left', 'D-Right',
+        'B1', 'B2', 'B3', 'B4',
+        'L1', 'R1', 'L2', 'R2',
+        'S1', 'S2', 'L3', 'R3',
+        'A1', 'A2', 'L4', 'R4'
+    ];
+
+    buildPadPinSelect(id, value) {
+        // Build a GPIO pin select dropdown
+        let html = `<select id="${id}" class="pad-pin-select">`;
+        html += '<option value="-1">Disabled</option>';
+        // Direct GPIO 0-29
+        for (let i = 0; i <= 29; i++) {
+            html += `<option value="${i}"${value === i ? ' selected' : ''}>GPIO ${i}</option>`;
+        }
+        // I2C expander 0: 100-115
+        for (let i = 100; i <= 115; i++) {
+            html += `<option value="${i}"${value === i ? ' selected' : ''}>I2C0 P${i - 100}</option>`;
+        }
+        // I2C expander 1: 200-215
+        for (let i = 200; i <= 215; i++) {
+            html += `<option value="${i}"${value === i ? ' selected' : ''}>I2C1 P${i - 200}</option>`;
+        }
+        html += '</select>';
+        return html;
+    }
+
+    async loadPadConfig() {
+        const card = document.getElementById('padConfigCard');
+        try {
+            const config = await this.protocol.getPadConfig();
+
+            if (!config.ok || config.name === 'none') {
+                // Not a controller app — hide the card
+                card.style.display = 'none';
+                return;
+            }
+
+            // Show the card
+            card.style.display = '';
+
+            // Populate fields
+            document.getElementById('padConfigName').value = config.name || '';
+            document.getElementById('padConfigSource').textContent =
+                config.source === 'flash' ? 'Custom (Flash)' : `Default: ${config.name}`;
+            document.getElementById('padActiveHigh').value = String(config.active_high || false);
+
+            // Build button pin assignment grid
+            const container = document.getElementById('padButtonPins');
+            const buttons = config.buttons || [];
+            let gridHTML = '';
+            for (let i = 0; i < 20; i++) {
+                const name = JoypadConfigApp.PAD_BUTTON_NAMES[i];
+                const pin = buttons[i] !== undefined ? buttons[i] : -1;
+                gridHTML += `<div class="pad-pin-row">
+                    <span>${name}</span>
+                    ${this.buildPadPinSelect('padBtn' + i, pin)}
+                </div>`;
+            }
+            container.innerHTML = gridHTML;
+
+            // D-pad toggle
+            document.getElementById('padDpadToggle').value = config.dpad_toggle !== undefined ? config.dpad_toggle : -1;
+            document.getElementById('padDpadToggleInvert').checked = config.dpad_toggle_invert || false;
+
+            // ADC
+            const adc = config.adc || [-1, -1, -1, -1];
+            document.getElementById('padAdcLX').value = adc[0];
+            document.getElementById('padAdcLY').value = adc[1];
+            document.getElementById('padAdcRX').value = adc[2];
+            document.getElementById('padAdcRY').value = adc[3];
+            document.getElementById('padInvertLX').checked = config.invert_lx || false;
+            document.getElementById('padInvertLY').checked = config.invert_ly || false;
+            document.getElementById('padInvertRX').checked = config.invert_rx || false;
+            document.getElementById('padInvertRY').checked = config.invert_ry || false;
+
+            // Deadzone
+            document.getElementById('padDeadzone').value = config.deadzone || 10;
+            document.getElementById('padDeadzoneValue').textContent = config.deadzone || 10;
+
+            // I2C
+            document.getElementById('padI2cSda').value = config.i2c_sda !== undefined ? config.i2c_sda : -1;
+            document.getElementById('padI2cScl').value = config.i2c_scl !== undefined ? config.i2c_scl : -1;
+
+            // LED
+            document.getElementById('padLedPin').value = config.led_pin !== undefined ? config.led_pin : -1;
+            document.getElementById('padLedCount').value = config.led_count || 0;
+
+            // Speaker
+            document.getElementById('padSpeakerPin').value = config.speaker_pin !== undefined ? config.speaker_pin : -1;
+            document.getElementById('padSpeakerEnablePin').value = config.speaker_enable_pin !== undefined ? config.speaker_enable_pin : -1;
+
+            // Add change listeners for conflict detection
+            container.addEventListener('change', () => this.checkPadPinConflicts());
+            this.checkPadPinConflicts();
+
+            this.log(`Pad config loaded: ${config.name} (${config.source})`);
+        } catch (e) {
+            // Command not supported = not a controller app
+            card.style.display = 'none';
+            this.log(`Pad config not available: ${e.message}`);
+        }
+    }
+
+    checkPadPinConflicts() {
+        const pinCounts = {};
+        const conflicts = [];
+
+        // Collect all assigned pins
+        for (let i = 0; i < 20; i++) {
+            const sel = document.getElementById('padBtn' + i);
+            if (!sel) continue;
+            const pin = parseInt(sel.value);
+            if (pin < 0) continue;
+            if (!pinCounts[pin]) pinCounts[pin] = [];
+            pinCounts[pin].push(JoypadConfigApp.PAD_BUTTON_NAMES[i]);
+            sel.classList.remove('conflict');
+        }
+
+        // Check for duplicates
+        for (const [pin, names] of Object.entries(pinCounts)) {
+            if (names.length > 1) {
+                conflicts.push(`Pin ${pin} used by: ${names.join(', ')}`);
+                // Mark conflicting selects
+                for (let i = 0; i < 20; i++) {
+                    const sel = document.getElementById('padBtn' + i);
+                    if (sel && parseInt(sel.value) === parseInt(pin)) {
+                        sel.classList.add('conflict');
+                    }
+                }
+            }
+        }
+
+        // Check ADC/digital overlap (ADC uses GPIO 26-29)
+        const adcIds = ['padAdcLX', 'padAdcLY', 'padAdcRX', 'padAdcRY'];
+        const adcLabels = ['Left X', 'Left Y', 'Right X', 'Right Y'];
+        for (let a = 0; a < 4; a++) {
+            const ch = parseInt(document.getElementById(adcIds[a]).value);
+            if (ch < 0) continue;
+            const adcGpio = 26 + ch;
+            if (pinCounts[adcGpio]) {
+                conflicts.push(`GPIO ${adcGpio} used as both ADC (${adcLabels[a]}) and digital (${pinCounts[adcGpio].join(', ')})`);
+            }
+        }
+
+        // Display conflicts
+        const el = document.getElementById('padPinConflicts');
+        if (conflicts.length > 0) {
+            el.innerHTML = conflicts.map(c => `<p>⚠ ${c}</p>`).join('');
+            el.style.display = '';
+        } else {
+            el.style.display = 'none';
+        }
+    }
+
+    async savePadConfig() {
+        // Check for conflicts first
+        this.checkPadPinConflicts();
+        const conflictEl = document.getElementById('padPinConflicts');
+        if (conflictEl.style.display !== 'none') {
+            if (!confirm('There are pin conflicts. Save anyway?')) return;
+        }
+
+        if (!confirm('Save GPIO configuration? The device will reboot.')) return;
+
+        // Collect button pins
+        const buttons = [];
+        for (let i = 0; i < 22; i++) {
+            const sel = document.getElementById('padBtn' + i);
+            buttons.push(sel ? parseInt(sel.value) : -1);
+        }
+
+        const config = {
+            name: document.getElementById('padConfigName').value || 'Custom',
+            active_high: document.getElementById('padActiveHigh').value === 'true',
+            dpad_toggle_invert: document.getElementById('padDpadToggleInvert').checked,
+            invert_lx: document.getElementById('padInvertLX').checked,
+            invert_ly: document.getElementById('padInvertLY').checked,
+            invert_rx: document.getElementById('padInvertRX').checked,
+            invert_ry: document.getElementById('padInvertRY').checked,
+            i2c_sda: parseInt(document.getElementById('padI2cSda').value),
+            i2c_scl: parseInt(document.getElementById('padI2cScl').value),
+            deadzone: parseInt(document.getElementById('padDeadzone').value),
+            buttons: buttons,
+            dpad_toggle: parseInt(document.getElementById('padDpadToggle').value),
+            adc: [
+                parseInt(document.getElementById('padAdcLX').value),
+                parseInt(document.getElementById('padAdcLY').value),
+                parseInt(document.getElementById('padAdcRX').value),
+                parseInt(document.getElementById('padAdcRY').value)
+            ],
+            led_pin: parseInt(document.getElementById('padLedPin').value),
+            led_count: parseInt(document.getElementById('padLedCount').value),
+            speaker_pin: parseInt(document.getElementById('padSpeakerPin').value),
+            speaker_enable_pin: parseInt(document.getElementById('padSpeakerEnablePin').value),
+        };
+
+        try {
+            this.log('Saving pad GPIO config...');
+            const result = await this.protocol.setPadConfig(config);
+            if (result.reboot) {
+                this.log('Config saved. Device rebooting...', 'success');
+            } else {
+                this.log('Config saved.', 'success');
+            }
+        } catch (e) {
+            this.log(`Failed to save pad config: ${e.message}`, 'error');
+        }
+    }
+
+    async resetPadConfig() {
+        if (!confirm('Reset GPIO configuration to compile-time default? The device will reboot.')) return;
+
+        try {
+            this.log('Resetting pad config...');
+            await this.protocol.resetPadConfig();
+            this.log('Config reset. Device rebooting...', 'success');
+        } catch (e) {
+            this.log(`Failed to reset pad config: ${e.message}`, 'error');
         }
     }
 }

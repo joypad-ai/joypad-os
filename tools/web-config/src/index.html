@@ -99,6 +99,146 @@
                 </div>
             </div>
 
+            <!-- GPIO Pin Configuration (controller apps only) -->
+            <div class="card" id="padConfigCard" style="display:none;">
+                <h2>GPIO Pin Configuration</h2>
+                <div class="card-content">
+                    <div class="row">
+                        <span class="label">Config Name</span>
+                        <input type="text" id="padConfigName" maxlength="15" placeholder="Custom" style="width: 150px;">
+                    </div>
+                    <div class="row">
+                        <span class="label">Source</span>
+                        <span class="value" id="padConfigSource">-</span>
+                    </div>
+                    <div class="row">
+                        <span class="label">Active Level</span>
+                        <select id="padActiveHigh">
+                            <option value="false">Active Low (pull-up, GND = pressed)</option>
+                            <option value="true">Active High (pull-down, VCC = pressed)</option>
+                        </select>
+                    </div>
+
+                    <!-- Button Pin Assignments -->
+                    <h3 style="margin-top: 15px; margin-bottom: 10px;">Button Pin Assignments</h3>
+                    <div id="padButtonPins" class="pad-pin-grid">
+                        <!-- Populated by JS -->
+                    </div>
+
+                    <!-- D-pad Toggle -->
+                    <h3 style="margin-top: 15px; margin-bottom: 10px;">D-pad Toggle Switch</h3>
+                    <div class="row">
+                        <span class="label">Toggle Pin</span>
+                        <input type="number" id="padDpadToggle" min="-1" max="29" value="-1" style="width: 80px;">
+                    </div>
+                    <div class="checkbox-row">
+                        <input type="checkbox" id="padDpadToggleInvert">
+                        <label for="padDpadToggleInvert">Invert toggle (HIGH = D-pad mode)</label>
+                    </div>
+
+                    <!-- Analog Sticks -->
+                    <h3 style="margin-top: 15px; margin-bottom: 10px;">Analog Sticks (ADC)</h3>
+                    <div class="pad-pin-grid">
+                        <div class="pad-pin-row">
+                            <span>Left X</span>
+                            <select id="padAdcLX" class="pad-adc-select">
+                                <option value="-1">Disabled</option>
+                                <option value="0">ADC 0 (GPIO 26)</option>
+                                <option value="1">ADC 1 (GPIO 27)</option>
+                                <option value="2">ADC 2 (GPIO 28)</option>
+                                <option value="3">ADC 3 (GPIO 29)</option>
+                            </select>
+                            <label class="pad-invert"><input type="checkbox" id="padInvertLX"> Invert</label>
+                        </div>
+                        <div class="pad-pin-row">
+                            <span>Left Y</span>
+                            <select id="padAdcLY" class="pad-adc-select">
+                                <option value="-1">Disabled</option>
+                                <option value="0">ADC 0 (GPIO 26)</option>
+                                <option value="1">ADC 1 (GPIO 27)</option>
+                                <option value="2">ADC 2 (GPIO 28)</option>
+                                <option value="3">ADC 3 (GPIO 29)</option>
+                            </select>
+                            <label class="pad-invert"><input type="checkbox" id="padInvertLY"> Invert</label>
+                        </div>
+                        <div class="pad-pin-row">
+                            <span>Right X</span>
+                            <select id="padAdcRX" class="pad-adc-select">
+                                <option value="-1">Disabled</option>
+                                <option value="0">ADC 0 (GPIO 26)</option>
+                                <option value="1">ADC 1 (GPIO 27)</option>
+                                <option value="2">ADC 2 (GPIO 28)</option>
+                                <option value="3">ADC 3 (GPIO 29)</option>
+                            </select>
+                            <label class="pad-invert"><input type="checkbox" id="padInvertRX"> Invert</label>
+                        </div>
+                        <div class="pad-pin-row">
+                            <span>Right Y</span>
+                            <select id="padAdcRY" class="pad-adc-select">
+                                <option value="-1">Disabled</option>
+                                <option value="0">ADC 0 (GPIO 26)</option>
+                                <option value="1">ADC 1 (GPIO 27)</option>
+                                <option value="2">ADC 2 (GPIO 28)</option>
+                                <option value="3">ADC 3 (GPIO 29)</option>
+                            </select>
+                            <label class="pad-invert"><input type="checkbox" id="padInvertRY"> Invert</label>
+                        </div>
+                    </div>
+                    <div class="row" style="margin-top: 10px;">
+                        <span class="label">Deadzone</span>
+                        <input type="range" id="padDeadzone" min="0" max="127" value="10" style="width: 120px;">
+                        <span id="padDeadzoneValue">10</span>
+                    </div>
+
+                    <!-- I2C Expander -->
+                    <h3 style="margin-top: 15px; margin-bottom: 10px;">I2C Expander</h3>
+                    <div class="row">
+                        <span class="label">SDA Pin</span>
+                        <input type="number" id="padI2cSda" min="-1" max="29" value="-1" style="width: 80px;">
+                    </div>
+                    <div class="row">
+                        <span class="label">SCL Pin</span>
+                        <input type="number" id="padI2cScl" min="-1" max="29" value="-1" style="width: 80px;">
+                    </div>
+
+                    <!-- LED -->
+                    <h3 style="margin-top: 15px; margin-bottom: 10px;">NeoPixel LEDs</h3>
+                    <div class="row">
+                        <span class="label">LED Pin</span>
+                        <input type="number" id="padLedPin" min="-1" max="29" value="-1" style="width: 80px;">
+                    </div>
+                    <div class="row">
+                        <span class="label">LED Count</span>
+                        <input type="number" id="padLedCount" min="0" max="16" value="0" style="width: 80px;">
+                    </div>
+
+                    <!-- Speaker -->
+                    <h3 style="margin-top: 15px; margin-bottom: 10px;">Speaker</h3>
+                    <div class="row">
+                        <span class="label">Speaker Pin</span>
+                        <input type="number" id="padSpeakerPin" min="-1" max="29" value="-1" style="width: 80px;">
+                    </div>
+                    <div class="row">
+                        <span class="label">Enable Pin</span>
+                        <input type="number" id="padSpeakerEnablePin" min="-1" max="29" value="-1" style="width: 80px;">
+                    </div>
+
+                    <!-- Pin Conflicts -->
+                    <div id="padPinConflicts" class="pad-conflicts" style="display:none;">
+                        <!-- Populated by JS -->
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="buttons" style="margin-top: 15px;">
+                        <button id="padSaveBtn">Save &amp; Reboot</button>
+                        <button id="padResetBtn" class="secondary">Reset to Default</button>
+                    </div>
+                    <p style="font-size: 12px; color: var(--text-muted); margin-top: 8px;">
+                        Saving will reboot the device to apply the new pin configuration.
+                    </p>
+                </div>
+            </div>
+
             <!-- Profiles (unified built-in + custom) -->
             <div class="card" id="customProfilesCard">
                 <h2>Profiles</h2>

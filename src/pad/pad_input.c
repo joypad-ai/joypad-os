@@ -481,6 +481,11 @@ const input_event_t* pad_input_get_event(uint8_t device_index) {
     return &pad_events[device_index];
 }
 
+const pad_device_config_t* pad_input_get_config(uint8_t device_index) {
+    if (device_index >= pad_device_count) return NULL;
+    return pad_devices[device_index];
+}
+
 // ============================================================================
 // INPUT INTERFACE IMPLEMENTATION
 // ============================================================================

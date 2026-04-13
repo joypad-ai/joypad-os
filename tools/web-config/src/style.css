@@ -548,3 +548,63 @@
                 flex: 1;
             }
         }
+
+        /* Pad GPIO Config */
+        .pad-pin-grid {
+            display: grid;
+            gap: 6px;
+        }
+
+        .pad-pin-row {
+            display: grid;
+            grid-template-columns: 90px 1fr auto;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .pad-pin-row span {
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+
+        .pad-pin-row select,
+        .pad-pin-row input[type="number"] {
+            background: var(--bg-input);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 4px 6px;
+            font-size: 13px;
+        }
+
+        .pad-pin-row select.conflict {
+            border-color: var(--accent);
+            background: rgba(233, 69, 96, 0.1);
+        }
+
+        .pad-invert {
+            font-size: 12px;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            white-space: nowrap;
+        }
+
+        .pad-adc-select {
+            width: 100%;
+        }
+
+        .pad-conflicts {
+            margin-top: 10px;
+            padding: 8px 12px;
+            background: rgba(233, 69, 96, 0.1);
+            border: 1px solid var(--accent);
+            border-radius: 6px;
+            font-size: 12px;
+            color: var(--accent);
+        }
+
+        .pad-conflicts p {
+            margin: 2px 0;
+        }

@@ -615,6 +615,23 @@ class CDCProtocol {
         return this.sendCommand('DEBUG.STREAM', { enable });
     }
 
+    // Pad GPIO Config
+    async getPadConfig() {
+        return this.sendCommand('PAD.CONFIG.GET');
+    }
+
+    async setPadConfig(config) {
+        return this.sendCommand('PAD.CONFIG.SET', config);
+    }
+
+    async resetPadConfig() {
+        return this.sendCommand('PAD.CONFIG.RESET');
+    }
+
+    async getPadPins() {
+        return this.sendCommand('PAD.CONFIG.PINS');
+    }
+
 }
 
 export { CDCProtocol, WebSerialTransport, WebBluetoothTransport, crc16, buildPacket };

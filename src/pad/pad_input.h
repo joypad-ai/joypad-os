@@ -153,6 +153,9 @@ uint8_t pad_input_get_device_count(void);
 // Get current input event for a pad device (NULL if invalid index)
 const input_event_t* pad_input_get_event(uint8_t device_index);
 
+// Get the device config for a pad device (NULL if invalid index)
+const pad_device_config_t* pad_input_get_config(uint8_t device_index);
+
 // Pad input interface (implements InputInterface pattern)
 extern const InputInterface pad_input_interface;
 

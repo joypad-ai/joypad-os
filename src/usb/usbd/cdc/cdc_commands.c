@@ -20,6 +20,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+// Optional pad config support (controller apps)
+#ifdef CONFIG_PAD_INPUT
+#include "pad/pad_input.h"
+#include "pad/pad_config_flash.h"
+#endif
+
 // Optional BT support
 #ifdef ENABLE_BTSTACK
 #include "bt/btstack/btstack_host.h"
@@ -1034,6 +1040,11 @@ static void cmd_settings_reset(const char* json)
     flash_t flash_data = {0};
     flash_save_now(&flash_data);
 
+#ifdef CONFIG_PAD_INPUT
+    // Also clear pad GPIO config
+    pad_config_reset();
+#endif
+
     snprintf(response_buf, sizeof(response_buf),
              "{\"ok\":true,\"reboot\":true}");
     send_json(response_buf);
@@ -1365,6 +1376,311 @@ void cdc_commands_task(void)
 }
 
 // ============================================================================
+// PAD CONFIG COMMANDS (controller apps only)
+// ============================================================================
+
+#ifdef CONFIG_PAD_INPUT
+
+// Button field names for JSON serialization (matches PAD_BTN_* order)
+static const char* const pad_button_names[] = {
+    "dpad_up", "dpad_down", "dpad_left", "dpad_right",
+    "b1", "b2", "b3", "b4",
+    "l1", "r1", "l2", "r2",
+    "s1", "s2", "l3", "r3",
+    "a1", "a2", "l4", "r4",
+    NULL, NULL  // slots 20-21 reserved
+};
+
+// Helper: extract int16_t array from JSON "key":[1,2,3,...]
+static int json_get_int16_array(const char* json, const char* key,
+                                int16_t* out, int max_count)
+{
+    char search[64];
+    snprintf(search, sizeof(search), "\"%s\":[", key);
+
+    const char* start = strstr(json, search);
+    if (!start) return 0;
+
+    start += strlen(search);
+    int count = 0;
+
+    while (*start && count < max_count) {
+        while (*start == ' ' || *start == '\t') start++;
+        if (*start == ']') break;
+
+        if (*start == '-' || (*start >= '0' && *start <= '9')) {
+            out[count++] = (int16_t)atoi(start);
+            while (*start == '-' || (*start >= '0' && *start <= '9')) start++;
+        }
+
+        while (*start == ' ' || *start == '\t') start++;
+        if (*start == ',') start++;
+    }
+
+    return count;
+}
+
+static void cmd_pad_config_get(const char* json)
+{
+    (void)json;
+
+    bool has_custom = pad_config_has_custom();
+    const pad_device_config_t* config;
+    pad_config_flash_t flash_data;
+
+    if (has_custom) {
+        config = pad_config_load_runtime();
+    } else {
+        // No custom config — report compile-time default from pad_input
+        config = pad_input_get_config(0);
+    }
+
+    if (!config) {
+        snprintf(response_buf, sizeof(response_buf),
+                 "{\"ok\":true,\"source\":\"default\",\"name\":\"none\"}");
+        send_json(response_buf);
+        return;
+    }
+
+    // Convert to flash format for consistent serialization
+    pad_config_to_flash(config, &flash_data);
+
+    // Build JSON response - split across multiple snprintf calls due to size
+    int pos = 0;
+    pos += snprintf(response_buf + pos, sizeof(response_buf) - pos,
+                    "{\"ok\":true,\"source\":\"%s\",\"name\":\"%s\"",
+                    has_custom ? "flash" : "default",
+                    flash_data.name);
+
+    // Flags
+    pos += snprintf(response_buf + pos, sizeof(response_buf) - pos,
+                    ",\"active_high\":%s,\"dpad_toggle_invert\":%s",
+                    (flash_data.flags & PAD_FLAG_ACTIVE_HIGH) ? "true" : "false",
+                    (flash_data.flags & PAD_FLAG_DPAD_TOGGLE_INVERT) ? "true" : "false");
+
+    // I2C
+    pos += snprintf(response_buf + pos, sizeof(response_buf) - pos,
+                    ",\"i2c_sda\":%d,\"i2c_scl\":%d",
+                    flash_data.i2c_sda, flash_data.i2c_scl);
+
+    // Deadzone
+    pos += snprintf(response_buf + pos, sizeof(response_buf) - pos,
+                    ",\"deadzone\":%d", flash_data.deadzone);
+
+    // Buttons array
+    pos += snprintf(response_buf + pos, sizeof(response_buf) - pos, ",\"buttons\":[");
+    for (int i = 0; i < 22; i++) {
+        if (i > 0) pos += snprintf(response_buf + pos, sizeof(response_buf) - pos, ",");
+        pos += snprintf(response_buf + pos, sizeof(response_buf) - pos, "%d", flash_data.buttons[i]);
+    }
+    pos += snprintf(response_buf + pos, sizeof(response_buf) - pos, "]");
+
+    // D-pad toggle
+    pos += snprintf(response_buf + pos, sizeof(response_buf) - pos,
+                    ",\"dpad_toggle\":%d", flash_data.dpad_toggle);
+
+    // ADC
+    pos += snprintf(response_buf + pos, sizeof(response_buf) - pos,
+                    ",\"adc\":[%d,%d,%d,%d]",
+                    flash_data.adc_channels[0], flash_data.adc_channels[1],
+                    flash_data.adc_channels[2], flash_data.adc_channels[3]);
+
+    // ADC invert flags
+    pos += snprintf(response_buf + pos, sizeof(response_buf) - pos,
+                    ",\"invert_lx\":%s,\"invert_ly\":%s,\"invert_rx\":%s,\"invert_ry\":%s",
+                    (flash_data.flags & PAD_FLAG_INVERT_LX) ? "true" : "false",
+                    (flash_data.flags & PAD_FLAG_INVERT_LY) ? "true" : "false",
+                    (flash_data.flags & PAD_FLAG_INVERT_RX) ? "true" : "false",
+                    (flash_data.flags & PAD_FLAG_INVERT_RY) ? "true" : "false");
+
+    // LED
+    pos += snprintf(response_buf + pos, sizeof(response_buf) - pos,
+                    ",\"led_pin\":%d,\"led_count\":%d",
+                    flash_data.led_pin, flash_data.led_count);
+
+    // Speaker
+    pos += snprintf(response_buf + pos, sizeof(response_buf) - pos,
+                    ",\"speaker_pin\":%d,\"speaker_enable_pin\":%d",
+                    flash_data.speaker_pin, flash_data.speaker_enable_pin);
+
+    pos += snprintf(response_buf + pos, sizeof(response_buf) - pos, "}");
+
+    send_json(response_buf);
+}
+
+static void cmd_pad_config_set(const char* json)
+{
+    pad_device_config_t config;
+    memset(&config, 0, sizeof(config));
+
+    // Name
+    int name_len;
+    const char* name = json_get_string(json, "name", &name_len);
+    static char set_name[PAD_CONFIG_NAME_LEN];
+    if (name && name_len > 0) {
+        int copy_len = name_len < (PAD_CONFIG_NAME_LEN - 1) ? name_len : (PAD_CONFIG_NAME_LEN - 1);
+        memcpy(set_name, name, copy_len);
+        set_name[copy_len] = '\0';
+        config.name = set_name;
+    } else {
+        config.name = "Custom";
+    }
+
+    // Flags
+    bool bval;
+    if (json_get_bool(json, "active_high", &bval)) config.active_high = bval;
+    if (json_get_bool(json, "dpad_toggle_invert", &bval)) config.dpad_toggle_invert = bval;
+    if (json_get_bool(json, "invert_lx", &bval)) config.invert_lx = bval;
+    if (json_get_bool(json, "invert_ly", &bval)) config.invert_ly = bval;
+    if (json_get_bool(json, "invert_rx", &bval)) config.invert_rx = bval;
+    if (json_get_bool(json, "invert_ry", &bval)) config.invert_ry = bval;
+
+    // I2C
+    int ival;
+    config.i2c_sda = PAD_PIN_DISABLED;
+    config.i2c_scl = PAD_PIN_DISABLED;
+    if (json_get_int(json, "i2c_sda", &ival)) config.i2c_sda = (int8_t)ival;
+    if (json_get_int(json, "i2c_scl", &ival)) config.i2c_scl = (int8_t)ival;
+
+    // Deadzone
+    config.deadzone = 10;
+    if (json_get_int(json, "deadzone", &ival)) config.deadzone = (uint8_t)ival;
+
+    // Buttons array (22 int16_t values)
+    int16_t buttons[22];
+    for (int i = 0; i < 22; i++) buttons[i] = PAD_PIN_DISABLED;
+    int btn_count = json_get_int16_array(json, "buttons", buttons, 22);
+    if (btn_count > 0) {
+        config.dpad_up    = buttons[PAD_BTN_DPAD_UP];
+        config.dpad_down  = buttons[PAD_BTN_DPAD_DOWN];
+        config.dpad_left  = buttons[PAD_BTN_DPAD_LEFT];
+        config.dpad_right = buttons[PAD_BTN_DPAD_RIGHT];
+        config.b1  = buttons[PAD_BTN_B1];
+        config.b2  = buttons[PAD_BTN_B2];
+        config.b3  = buttons[PAD_BTN_B3];
+        config.b4  = buttons[PAD_BTN_B4];
+        config.l1  = buttons[PAD_BTN_L1];
+        config.r1  = buttons[PAD_BTN_R1];
+        config.l2  = buttons[PAD_BTN_L2];
+        config.r2  = buttons[PAD_BTN_R2];
+        config.s1  = buttons[PAD_BTN_S1];
+        config.s2  = buttons[PAD_BTN_S2];
+        config.l3  = buttons[PAD_BTN_L3];
+        config.r3  = buttons[PAD_BTN_R3];
+        config.a1  = buttons[PAD_BTN_A1];
+        config.a2  = buttons[PAD_BTN_A2];
+        config.l4  = buttons[PAD_BTN_L4];
+        config.r4  = buttons[PAD_BTN_R4];
+    }
+
+    // D-pad toggle
+    config.dpad_toggle = PAD_PIN_DISABLED;
+    if (json_get_int(json, "dpad_toggle", &ival)) config.dpad_toggle = (int16_t)ival;
+
+    // ADC channels
+    int8_t adc[4] = {PAD_PIN_DISABLED, PAD_PIN_DISABLED, PAD_PIN_DISABLED, PAD_PIN_DISABLED};
+    int16_t adc_temp[4];
+    int adc_count = json_get_int16_array(json, "adc", adc_temp, 4);
+    if (adc_count > 0) {
+        for (int i = 0; i < adc_count && i < 4; i++) adc[i] = (int8_t)adc_temp[i];
+    }
+    config.adc_lx = adc[0];
+    config.adc_ly = adc[1];
+    config.adc_rx = adc[2];
+    config.adc_ry = adc[3];
+
+    // LED
+    config.led_pin = PAD_PIN_DISABLED;
+    config.led_count = 0;
+    if (json_get_int(json, "led_pin", &ival)) config.led_pin = (int8_t)ival;
+    if (json_get_int(json, "led_count", &ival)) config.led_count = (uint8_t)ival;
+
+    // Speaker
+    config.speaker_pin = PAD_PIN_DISABLED;
+    config.speaker_enable_pin = PAD_PIN_DISABLED;
+    if (json_get_int(json, "speaker_pin", &ival)) config.speaker_pin = (int8_t)ival;
+    if (json_get_int(json, "speaker_enable_pin", &ival)) config.speaker_enable_pin = (int8_t)ival;
+
+    // Display (optional, default disabled)
+    config.display_spi = PAD_PIN_DISABLED;
+    config.display_sck = PAD_PIN_DISABLED;
+    config.display_mosi = PAD_PIN_DISABLED;
+    config.display_cs = PAD_PIN_DISABLED;
+    config.display_dc = PAD_PIN_DISABLED;
+    config.display_rst = PAD_PIN_DISABLED;
+
+    // QWIIC (optional, default disabled)
+    config.qwiic_tx = PAD_PIN_DISABLED;
+    config.qwiic_rx = PAD_PIN_DISABLED;
+    config.qwiic_i2c_inst = PAD_PIN_DISABLED;
+
+    // Save to flash
+    pad_config_save(&config);
+
+    snprintf(response_buf, sizeof(response_buf),
+             "{\"ok\":true,\"reboot\":true}");
+    send_json(response_buf);
+
+    // Defer reboot so response gets sent
+    pending_reboot = PENDING_REBOOT;
+    pending_reboot_time = platform_time_ms();
+}
+
+static void cmd_pad_config_reset(const char* json)
+{
+    (void)json;
+    pad_config_reset();
+
+    snprintf(response_buf, sizeof(response_buf),
+             "{\"ok\":true,\"reboot\":true}");
+    send_json(response_buf);
+
+    pending_reboot = PENDING_REBOOT;
+    pending_reboot_time = platform_time_ms();
+}
+
+static void cmd_pad_config_pins(const char* json)
+{
+    (void)json;
+
+    // Report available GPIO pins for this board
+    // RP2040 has GPIO 0-29, ADC on channels 0-3 (GPIO 26-29)
+    int pos = 0;
+    pos += snprintf(response_buf + pos, sizeof(response_buf) - pos,
+                    "{\"ok\":true,\"gpio\":[");
+
+    // GPIO 0-29 (all available on RP2040)
+    for (int i = 0; i <= 29; i++) {
+        if (i > 0) pos += snprintf(response_buf + pos, sizeof(response_buf) - pos, ",");
+        pos += snprintf(response_buf + pos, sizeof(response_buf) - pos, "%d", i);
+    }
+    pos += snprintf(response_buf + pos, sizeof(response_buf) - pos, "]");
+
+    // ADC channels
+    pos += snprintf(response_buf + pos, sizeof(response_buf) - pos,
+                    ",\"adc\":[0,1,2,3]");
+
+    // I2C expander pin ranges
+    pos += snprintf(response_buf + pos, sizeof(response_buf) - pos,
+                    ",\"i2c_exp_0\":[100,115],\"i2c_exp_1\":[200,215]");
+
+    // Button names for UI labels
+    pos += snprintf(response_buf + pos, sizeof(response_buf) - pos,
+                    ",\"button_names\":[");
+    for (int i = 0; i < 20; i++) {
+        if (i > 0) pos += snprintf(response_buf + pos, sizeof(response_buf) - pos, ",");
+        pos += snprintf(response_buf + pos, sizeof(response_buf) - pos,
+                        "\"%s\"", pad_button_names[i]);
+    }
+    pos += snprintf(response_buf + pos, sizeof(response_buf) - pos, "]");
+
+    pos += snprintf(response_buf + pos, sizeof(response_buf) - pos, "}");
+    send_json(response_buf);
+}
+
+#endif // CONFIG_PAD_INPUT
+
+// ============================================================================
 // COMMAND DISPATCH
 // ============================================================================
 
@@ -1418,6 +1734,12 @@ static const cmd_entry_t commands[] = {
     {"BLE.MODE.GET", cmd_ble_mode_get},
     {"BLE.MODE.SET", cmd_ble_mode_set},
     {"BLE.MODE.LIST", cmd_ble_mode_list},
+#endif
+#ifdef CONFIG_PAD_INPUT
+    {"PAD.CONFIG.GET", cmd_pad_config_get},
+    {"PAD.CONFIG.SET", cmd_pad_config_set},
+    {"PAD.CONFIG.RESET", cmd_pad_config_reset},
+    {"PAD.CONFIG.PINS", cmd_pad_config_pins},
 #endif
     {NULL, NULL}
 };

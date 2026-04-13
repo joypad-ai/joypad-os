@@ -109,6 +109,7 @@ CONSOLE_controller_alpakka := joypad_controller_alpakka
 CONSOLE_controller_macropad := joypad_controller_macropad
 CONSOLE_bt2gc := joypad_bt2gc
 CONSOLE_controller_btusb := joypad_controller_btusb
+CONSOLE_controller_btusb_abb := joypad_controller_btusb_abb
 CONSOLE_controller_btusb_feather_rp2040 := joypad_controller_btusb_feather_rp2040
 
 

@@ -57,6 +57,7 @@ extern void le_device_db_remove(int index);
 
 #ifdef SENSOR_PAD
 #include "pad/pad_input.h"
+#include "pad/pad_config_flash.h"
 #ifdef PAD_CONFIG_ABB
 #include "pad/configs/abb.h"
 #endif
@@ -188,12 +189,18 @@ void app_init(void)
     button_init();
     button_set_callback(on_button_event);
 
-    // Configure pad input (GPIO buttons)
+    // Configure pad input (GPIO buttons) — flash config overrides compile-time default
 #ifdef SENSOR_PAD
+    pad_config_flash_init();
+    const pad_device_config_t* pad_cfg = pad_config_load_runtime();
 #ifdef PAD_CONFIG_ABB
-    pad_input_add_device(&pad_config_abb);
-    printf("[app:controller_btusb] Pad: RP2040 Advanced Breakout Board\n");
+    if (!pad_cfg) pad_cfg = &pad_config_abb;
 #endif
+    if (pad_cfg) {
+        pad_input_add_device(pad_cfg);
+        printf("[app:controller_btusb] Pad: %s (%s)\n", pad_cfg->name,
+               pad_config_has_custom() ? "flash" : "default");
+    }
 #endif
 
     // Configure sensor inputs
