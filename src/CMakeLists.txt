@@ -1008,7 +1008,7 @@ target_sources(joypad_usb_pico PUBLIC ${COMMON_SOURCES} ${USB_DEVICE_SOURCES}
 target_include_directories(joypad_usb_pico PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2usb
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd
-    ${CMAKE_CURRENT_SOURCE_DIR}/build/_deps/picotool-src/lib/include/
+    ${CMAKE_CURRENT_SOURCE_DIR}/lib/pico-sdk/test/kitchen_sink
 )
 target_link_libraries(joypad_usb_pico PRIVATE ${COMMON_LIBRARIES} tinyusb_device tinyusb_pico_pio_usb)
 joypad_target_common(joypad_usb_pico)
