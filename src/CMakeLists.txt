@@ -290,7 +290,7 @@ set(COMMON_SOURCES ${CORE_SOURCES} ${USB_HOST_SOURCES})
 
 # DS4 PS4 authentication embedded resources (key.pem, serial.txt, sig.bin)
 # These files must be placed in src/usb/usbh/hid/devices/vendors/sony/ directory
-set(DS4_AUTH_RESOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/hid/devices/vendors/sony)
+set(DS4_AUTH_RESOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/usb/usbd/modes)
 set(DS4_AUTH_KEY_FILE ${DS4_AUTH_RESOURCE_DIR}/key.pem)
 set(DS4_AUTH_SERIAL_FILE ${DS4_AUTH_RESOURCE_DIR}/serial.txt)
 set(DS4_AUTH_SIG_FILE ${DS4_AUTH_RESOURCE_DIR}/sig.bin)
