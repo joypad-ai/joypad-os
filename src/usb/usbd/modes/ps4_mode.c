@@ -13,6 +13,18 @@
 #include "usb/usbh/hid/devices/vendors/sony/sony_ds4.h"
 #endif
 
+extern const unsigned char key_pem_start[] asm("_binary_key_pem_start");
+extern const unsigned char key_pem_end[] asm("_binary_key_pem_end");
+extern const unsigned char ps4_serial_start[] asm("_binary_serial_txt_start");
+extern const unsigned char ps4_serial_end[] asm("_binary_serial_txt_end");
+extern const unsigned char ps4_signature_start[] asm("_binary_sig_bin_start");
+extern const unsigned char ps4_signature_end[] asm("_binary_sig_bin_end");
+
+// 计算大小的宏
+#define KEY_PEM_SIZE (key_pem_end - key_pem_start)
+#define PS4_SERIAL_SIZE (ps4_serial_end - ps4_serial_start)
+#define PS4_SIGNATURE_SIZE (ps4_signature_end - ps4_signature_start)
+
 // ============================================================================
 // STATE
 // ============================================================================
