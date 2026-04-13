@@ -159,7 +159,7 @@ const usbd_mode_t* usbd_get_current_mode(void)
 
 // Apply profile mapping (combos, button remaps) to input event
 // Returns the processed buttons; analog values are updated in-place in profile_out
-static uint32_t apply_usbd_profile(const input_event_t* event, profile_output_t* profile_out)
+static uint32_t apply_usbd_profile_player(const input_event_t* event, profile_output_t* profile_out, uint8_t player_index)
 {
     const profile_t* profile = profile_get_active(OUTPUT_TARGET_USB_DEVICE);
 
@@ -256,7 +256,7 @@ static uint32_t apply_usbd_profile(const input_event_t* event, profile_output_t*
         profile_out->l2_analog, profile_out->r2_analog,
         profile_out->rz_analog
     };
-    cdc_commands_send_output_event(profile_out->buttons, output_axes);
+    cdc_commands_send_player_output(player_index, profile_out->buttons, output_axes);
 
     return profile_out->buttons;
 }
@@ -942,7 +942,7 @@ static bool usbd_send_xid_report(uint8_t player_index)
 
     // Apply profile
     profile_output_t profile_out;
-    uint32_t processed_buttons = apply_usbd_profile(event, &profile_out);
+    uint32_t processed_buttons = apply_usbd_profile_player(event, &profile_out, player_index);
 
     return mode->send_report(player_index, event, &profile_out, processed_buttons);
 }
@@ -971,7 +971,7 @@ static bool usbd_send_hid_report(uint8_t player_index)
 
     // Apply profile (combos, button remaps)
     profile_output_t profile_out;
-    uint32_t processed_buttons = apply_usbd_profile(event, &profile_out);
+    uint32_t processed_buttons = apply_usbd_profile_player(event, &profile_out, player_index);
 
     // Delegate to mode implementation
     return mode->send_report(player_index, event, &profile_out, processed_buttons);
@@ -1001,7 +1001,7 @@ static bool usbd_send_sinput_report(uint8_t player_index)
 
     // Apply profile (combos, button remaps)
     profile_output_t profile_out;
-    uint32_t processed_buttons = apply_usbd_profile(event, &profile_out);
+    uint32_t processed_buttons = apply_usbd_profile_player(event, &profile_out, player_index);
 
     // Delegate to mode implementation
     return mode->send_report(player_index, event, &profile_out, processed_buttons);
@@ -1032,7 +1032,7 @@ static bool usbd_send_xinput_report(uint8_t player_index)
 
     // Apply profile (combos, button remaps)
     profile_output_t profile_out;
-    uint32_t processed_buttons = apply_usbd_profile(event, &profile_out);
+    uint32_t processed_buttons = apply_usbd_profile_player(event, &profile_out, player_index);
 
     // Delegate to mode implementation
     return mode->send_report(player_index, event, &profile_out, processed_buttons);
@@ -1063,7 +1063,7 @@ static bool usbd_send_switch_report(uint8_t player_index)
 
     // Apply profile (combos, button remaps)
     profile_output_t profile_out;
-    uint32_t processed_buttons = apply_usbd_profile(event, &profile_out);
+    uint32_t processed_buttons = apply_usbd_profile_player(event, &profile_out, player_index);
 
     // Delegate to mode implementation
     return mode->send_report(player_index, event, &profile_out, processed_buttons);
@@ -1093,7 +1093,7 @@ static bool usbd_send_ps3_report(uint8_t player_index)
 
     // Apply profile (combos, button remaps)
     profile_output_t profile_out;
-    uint32_t processed_buttons = apply_usbd_profile(event, &profile_out);
+    uint32_t processed_buttons = apply_usbd_profile_player(event, &profile_out, player_index);
 
     // Delegate to mode implementation
     return mode->send_report(player_index, event, &profile_out, processed_buttons);
@@ -1123,7 +1123,7 @@ static bool usbd_send_psclassic_report(uint8_t player_index)
 
     // Apply profile (combos, button remaps)
     profile_output_t profile_out;
-    uint32_t processed_buttons = apply_usbd_profile(event, &profile_out);
+    uint32_t processed_buttons = apply_usbd_profile_player(event, &profile_out, player_index);
 
     // Delegate to mode implementation
     return mode->send_report(player_index, event, &profile_out, processed_buttons);
@@ -1146,7 +1146,7 @@ static bool usbd_send_pcemini_report(uint8_t player_index)
 
     // Apply profile
     profile_output_t profile_out;
-    uint32_t processed_buttons = apply_usbd_profile(event, &profile_out);
+    uint32_t processed_buttons = apply_usbd_profile_player(event, &profile_out, player_index);
 
     return mode->send_report(player_index, event, &profile_out, processed_buttons);
 }
@@ -1168,7 +1168,7 @@ static bool usbd_send_ps4_report(uint8_t player_index)
 
     // Apply profile
     profile_output_t profile_out;
-    uint32_t processed_buttons = apply_usbd_profile(event, &profile_out);
+    uint32_t processed_buttons = apply_usbd_profile_player(event, &profile_out, player_index);
 
     return mode->send_report(player_index, event, &profile_out, processed_buttons);
 }
@@ -1190,7 +1190,7 @@ static bool usbd_send_xbone_report(uint8_t player_index)
 
     // Apply profile
     profile_output_t profile_out;
-    uint32_t processed_buttons = apply_usbd_profile(event, &profile_out);
+    uint32_t processed_buttons = apply_usbd_profile_player(event, &profile_out, player_index);
 
     return mode->send_report(player_index, event, &profile_out, processed_buttons);
 }
@@ -1212,7 +1212,7 @@ static bool usbd_send_xac_report(uint8_t player_index)
 
     // Apply profile
     profile_output_t profile_out;
-    uint32_t processed_buttons = apply_usbd_profile(event, &profile_out);
+    uint32_t processed_buttons = apply_usbd_profile_player(event, &profile_out, player_index);
 
     return mode->send_report(player_index, event, &profile_out, processed_buttons);
 }
@@ -1235,7 +1235,7 @@ static bool usbd_send_kbmouse_report(uint8_t player_index)
 
     // Apply profile
     profile_output_t profile_out;
-    uint32_t processed_buttons = apply_usbd_profile(event, &profile_out);
+    uint32_t processed_buttons = apply_usbd_profile_player(event, &profile_out, player_index);
 
     return mode->send_report(player_index, event, &profile_out, processed_buttons);
 }
@@ -1258,7 +1258,7 @@ static bool usbd_send_gc_adapter_report(uint8_t player_index)
 
     // Apply profile
     profile_output_t profile_out;
-    uint32_t processed_buttons = apply_usbd_profile(event, &profile_out);
+    uint32_t processed_buttons = apply_usbd_profile_player(event, &profile_out, player_index);
 
     return mode->send_report(player_index, event, &profile_out, processed_buttons);
 }

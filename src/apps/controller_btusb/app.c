@@ -208,6 +208,12 @@ void app_init(void)
         pad_input_add_device(pad_cfg);
         printf("[app:controller_btusb] Pad: %s (%s)\n", pad_cfg->name,
                pad_config_has_custom() ? "flash" : "default");
+#ifndef DISABLE_USB_HOST
+        // Set PIO-USB D+ pin from pad config (before usbh_init runs)
+        if (pad_cfg->usb_host_dp >= 0) {
+            usbh_set_pio_dp_pin(pad_cfg->usb_host_dp);
+        }
+#endif
     }
 #endif
 

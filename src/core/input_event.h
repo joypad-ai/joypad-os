@@ -35,6 +35,7 @@ typedef enum {
     INPUT_TRANSPORT_BT_BLE,     // Bluetooth Low Energy (HOGP)
     INPUT_TRANSPORT_NATIVE,     // Native protocol (3DO, SNES, etc.)
     INPUT_TRANSPORT_I2C,        // I2C peer (STEMMA QT / QWIIC)
+    INPUT_TRANSPORT_GPIO,       // Direct GPIO buttons/analog (pad input)
 } input_transport_t;
 
 // ============================================================================

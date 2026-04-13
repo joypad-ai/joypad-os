@@ -1387,8 +1387,7 @@ static const char* const pad_button_names[] = {
     "b1", "b2", "b3", "b4",
     "l1", "r1", "l2", "r2",
     "s1", "s2", "l3", "r3",
-    "a1", "a2", "l4", "r4",
-    NULL, NULL  // slots 20-21 reserved
+    "a1", "a2", "a3", "a4", "l4", "r4",
 };
 
 // Helper: extract int16_t array from JSON "key":[1,2,3,...]
@@ -1503,6 +1502,10 @@ static void cmd_pad_config_get(const char* json)
                     ",\"speaker_pin\":%d,\"speaker_enable_pin\":%d",
                     flash_data.speaker_pin, flash_data.speaker_enable_pin);
 
+    // USB host
+    pos += snprintf(response_buf + pos, sizeof(response_buf) - pos,
+                    ",\"usb_host_dp\":%d", flash_data.usb_host_dp);
+
     pos += snprintf(response_buf + pos, sizeof(response_buf) - pos, "}");
 
     send_json(response_buf);
@@ -1614,6 +1617,10 @@ static void cmd_pad_config_set(const char* json)
     config.qwiic_rx = PAD_PIN_DISABLED;
     config.qwiic_i2c_inst = PAD_PIN_DISABLED;
 
+    // USB host
+    config.usb_host_dp = PAD_PIN_DISABLED;
+    if (json_get_int(json, "usb_host_dp", &ival)) config.usb_host_dp = (int8_t)ival;
+
     // Save to flash
     pad_config_save(&config);
 
@@ -1667,7 +1674,7 @@ static void cmd_pad_config_pins(const char* json)
     // Button names for UI labels
     pos += snprintf(response_buf + pos, sizeof(response_buf) - pos,
                     ",\"button_names\":[");
-    for (int i = 0; i < 20; i++) {
+    for (int i = 0; i < 22; i++) {
         if (i > 0) pos += snprintf(response_buf + pos, sizeof(response_buf) - pos, ",");
         pos += snprintf(response_buf + pos, sizeof(response_buf) - pos,
                         "\"%s\"", pad_button_names[i]);
@@ -1858,6 +1865,100 @@ void cdc_commands_send_output_event(uint32_t buttons, const uint8_t* axes)
     snprintf(response_buf, sizeof(response_buf),
              "{\"type\":\"output\",\"buttons\":%lu,\"axes\":[%d,%d,%d,%d,%d,%d,%d]}",
              (unsigned long)buttons,
+             axes[0], axes[1], axes[2], axes[3], axes[4], axes[5], axes[6]);
+    cdc_protocol_send_event(stream_ctx, response_buf);
+}
+
+// Per-device streaming throttle (keyed by dev_addr, not player index)
+#define STREAM_MAX_DEVICES 8
+#define STREAM_MAX_PLAYERS 4
+
+typedef struct {
+    uint8_t dev_addr;
+    uint32_t buttons;
+    uint8_t axes[7];
+    uint32_t last_ms;
+} stream_throttle_t;
+
+static stream_throttle_t input_throttle[STREAM_MAX_DEVICES];
+static uint32_t last_po_buttons[STREAM_MAX_PLAYERS];
+static uint8_t  last_po_axes[STREAM_MAX_PLAYERS][7];
+static uint32_t last_po_ms[STREAM_MAX_PLAYERS];
+static bool stream_throttle_init = false;
+
+static void stream_throttle_reset(void) {
+    memset(input_throttle, 0, sizeof(input_throttle));
+    for (int i = 0; i < STREAM_MAX_DEVICES; i++) {
+        input_throttle[i].buttons = 0xFFFFFFFF;
+        memset(input_throttle[i].axes, 0xFF, 7);
+    }
+    memset(last_po_buttons, 0xFF, sizeof(last_po_buttons));
+    memset(last_po_axes, 0xFF, sizeof(last_po_axes));
+    memset(last_po_ms, 0, sizeof(last_po_ms));
+    stream_throttle_init = true;
+}
+
+static stream_throttle_t* get_input_throttle(uint8_t dev_addr) {
+    // Find existing slot
+    for (int i = 0; i < STREAM_MAX_DEVICES; i++) {
+        if (input_throttle[i].dev_addr == dev_addr && input_throttle[i].last_ms > 0)
+            return &input_throttle[i];
+    }
+    // Allocate new slot
+    for (int i = 0; i < STREAM_MAX_DEVICES; i++) {
+        if (input_throttle[i].last_ms == 0) {
+            input_throttle[i].dev_addr = dev_addr;
+            return &input_throttle[i];
+        }
+    }
+    return &input_throttle[0];  // fallback
+}
+
+void cdc_commands_send_player_input(uint8_t player, uint8_t dev_addr,
+                                    const char* name, const char* source,
+                                    uint32_t buttons, const uint8_t* axes)
+{
+    if (!stream_ctx || !stream_ctx->input_streaming) return;
+    if (!stream_throttle_init) stream_throttle_reset();
+
+    stream_throttle_t* th = get_input_throttle(dev_addr);
+    uint32_t now = platform_time_ms();
+    bool changed = (buttons != th->buttons || memcmp(axes, th->axes, 7) != 0);
+    if (!changed && (now - th->last_ms) < 16) return;
+
+    th->buttons = buttons;
+    memcpy(th->axes, axes, 7);
+    th->last_ms = now;
+
+    snprintf(response_buf, sizeof(response_buf),
+             "{\"type\":\"input\",\"player\":%d,\"addr\":%d,\"name\":\"%.31s\",\"src\":\"%.8s\","
+             "\"buttons\":%lu,\"axes\":[%d,%d,%d,%d,%d,%d,%d]}",
+             player, dev_addr, name ? name : "", source ? source : "",
+             (unsigned long)buttons,
+             axes[0], axes[1], axes[2], axes[3], axes[4], axes[5], axes[6]);
+    cdc_protocol_send_event(stream_ctx, response_buf);
+}
+
+void cdc_commands_send_player_output(uint8_t player, uint32_t buttons,
+                                     const uint8_t* axes)
+{
+    if (!stream_ctx || !stream_ctx->input_streaming) return;
+    if (player >= STREAM_MAX_PLAYERS) return;
+    if (!stream_throttle_init) stream_throttle_reset();
+
+    uint32_t now = platform_time_ms();
+    bool changed = (buttons != last_po_buttons[player] ||
+                    memcmp(axes, last_po_axes[player], 7) != 0);
+    if (!changed && (now - last_po_ms[player]) < 16) return;
+
+    last_po_buttons[player] = buttons;
+    memcpy(last_po_axes[player], axes, 7);
+    last_po_ms[player] = now;
+
+    snprintf(response_buf, sizeof(response_buf),
+             "{\"type\":\"output\",\"player\":%d,"
+             "\"buttons\":%lu,\"axes\":[%d,%d,%d,%d,%d,%d,%d]}",
+             player, (unsigned long)buttons,
              axes[0], axes[1], axes[2], axes[3], axes[4], axes[5], axes[6]);
     cdc_protocol_send_event(stream_ctx, response_buf);
 }

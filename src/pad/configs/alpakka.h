@@ -59,6 +59,8 @@ static const pad_device_config_t pad_config_alpakka = {
     // Home (direct GPIO)
     .a1 = 20,               // Home / Guide (PIN_HOME)
     .a2 = PAD_PIN_DISABLED,
+    .a3 = PAD_PIN_DISABLED,
+    .a4 = PAD_PIN_DISABLED,
 
     // Extra paddles
     .l4 = 109,              // Left paddle (expander 0, PIN_L4)
@@ -88,6 +90,7 @@ static const pad_device_config_t pad_config_alpakka = {
     .qwiic_tx = PAD_PIN_DISABLED,
     .qwiic_rx = PAD_PIN_DISABLED,
     .qwiic_i2c_inst = PAD_PIN_DISABLED,
+    .usb_host_dp = PAD_PIN_DISABLED,
 };
 
 #endif // PAD_CONFIG_ALPAKKA_H

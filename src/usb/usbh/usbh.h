@@ -10,6 +10,9 @@
 #include <stdbool.h>
 #include "core/input_interface.h"
 
+// Set PIO-USB D+ pin override (call before usbh_init, -1 = use compile-time default)
+void usbh_set_pio_dp_pin(int8_t pin);
+
 // Initialize USB host layer (HID registry, etc.)
 void usbh_init(void);
 

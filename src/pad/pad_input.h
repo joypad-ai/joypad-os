@@ -77,6 +77,8 @@ typedef struct {
     int16_t r3;                 // Right stick click
     int16_t a1;                 // Home / Guide
     int16_t a2;                 // Capture / Touchpad
+    int16_t a3;                 // Mute / Aux 3
+    int16_t a4;                 // Aux 4
 
     // Extra buttons (for controllers with more than standard layout)
     int16_t l4;                 // Extra left trigger/paddle
@@ -133,6 +135,9 @@ typedef struct {
     int8_t qwiic_tx;            // UART TX pin (QWIIC SDA) / I2C SDA
     int8_t qwiic_rx;            // UART RX pin (QWIIC SCL) / I2C SCL
     int8_t qwiic_i2c_inst;      // I2C instance for peer mode (-1 = UART, 0 = I2C0, 1 = I2C1)
+
+    // USB host PIO-USB (PAD_PIN_DISABLED = no USB host)
+    int8_t usb_host_dp;         // PIO-USB D+ pin (D- is always D+1)
 } pad_device_config_t;
 
 // ============================================================================
@@ -187,6 +192,8 @@ extern const InputInterface pad_input_interface;
     .r3 = PAD_PIN_DISABLED, \
     .a1 = PAD_PIN_DISABLED, \
     .a2 = PAD_PIN_DISABLED, \
+    .a3 = PAD_PIN_DISABLED, \
+    .a4 = PAD_PIN_DISABLED, \
     .l4 = PAD_PIN_DISABLED, \
     .r4 = PAD_PIN_DISABLED, \
     .dpad_toggle = PAD_PIN_DISABLED, \
@@ -202,6 +209,7 @@ extern const InputInterface pad_input_interface;
     .led_pin = PAD_PIN_DISABLED, \
     .led_count = 0, \
     .qwiic_i2c_inst = PAD_PIN_DISABLED, \
+    .usb_host_dp = PAD_PIN_DISABLED, \
 }
 
 #endif // PAD_INPUT_H

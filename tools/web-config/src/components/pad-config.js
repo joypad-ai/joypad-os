@@ -5,7 +5,7 @@ const PAD_BUTTON_NAMES = [
     'B1', 'B2', 'B3', 'B4',
     'L1', 'R1', 'L2', 'R2',
     'S1', 'S2', 'L3', 'R3',
-    'A1', 'A2', 'L4', 'R4'
+    'A1', 'A2', 'A3', 'A4', 'L4', 'R4'
 ];
 
 const ADC_OPTIONS = `
@@ -35,29 +35,25 @@ export class PadConfigCard {
             <div class="card" id="padConfigCard" style="display:none;">
                 <h2>GPIO Pin Configuration</h2>
                 <div class="card-content">
-                    <div class="row">
+                    <div class="pad-form-row">
                         <span class="label">Config Name</span>
-                        <input type="text" id="padConfigName" maxlength="15" placeholder="Custom" style="width: 150px;">
+                        <input type="text" id="padConfigName" maxlength="31" placeholder="Custom">
                     </div>
-                    <div class="row">
-                        <span class="label">Source</span>
-                        <span class="value" id="padConfigSource">-</span>
-                    </div>
-                    <div class="row">
+                    <div class="pad-form-row">
                         <span class="label">Active Level</span>
                         <select id="padActiveHigh">
-                            <option value="false">Active Low (pull-up, GND = pressed)</option>
-                            <option value="true">Active High (pull-down, VCC = pressed)</option>
+                            <option value="false">Active Low (GND = pressed)</option>
+                            <option value="true">Active High (VCC = pressed)</option>
                         </select>
                     </div>
 
                     <h3 style="margin-top: 15px; margin-bottom: 10px;">Button Pin Assignments</h3>
-                    <div id="padButtonPins" class="pad-pin-grid"></div>
+                    <div id="padButtonPins" class="pad-pin-grid two-col"></div>
 
                     <h3 style="margin-top: 15px; margin-bottom: 10px;">D-pad Toggle Switch</h3>
-                    <div class="row">
+                    <div class="pad-form-row">
                         <span class="label">Toggle Pin</span>
-                        <input type="number" id="padDpadToggle" min="-1" max="29" value="-1" style="width: 80px;">
+                        <input type="number" id="padDpadToggle" min="-1" max="29" value="-1">
                     </div>
                     <div class="checkbox-row">
                         <input type="checkbox" id="padDpadToggleInvert">
@@ -71,41 +67,50 @@ export class PadConfigCard {
                         ${adcRow('Right X', 'padAdcRX')}
                         ${adcRow('Right Y', 'padAdcRY')}
                     </div>
-                    <div class="row" style="margin-top: 10px;">
+                    <div class="pad-form-row" style="margin-top: 10px;">
                         <span class="label">Deadzone</span>
-                        <input type="range" id="padDeadzone" min="0" max="127" value="10" style="width: 120px;">
-                        <span id="padDeadzoneValue">10</span>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <input type="range" id="padDeadzone" min="0" max="127" value="10" style="width: 120px;">
+                            <span id="padDeadzoneValue">10</span>
+                        </div>
                     </div>
 
                     <h3 style="margin-top: 15px; margin-bottom: 10px;">I2C Expander</h3>
-                    <div class="row">
+                    <div class="pad-form-row">
                         <span class="label">SDA Pin</span>
-                        <input type="number" id="padI2cSda" min="-1" max="29" value="-1" style="width: 80px;">
+                        <input type="number" id="padI2cSda" min="-1" max="29" value="-1">
                     </div>
-                    <div class="row">
+                    <div class="pad-form-row">
                         <span class="label">SCL Pin</span>
-                        <input type="number" id="padI2cScl" min="-1" max="29" value="-1" style="width: 80px;">
+                        <input type="number" id="padI2cScl" min="-1" max="29" value="-1">
                     </div>
 
                     <h3 style="margin-top: 15px; margin-bottom: 10px;">NeoPixel LEDs</h3>
-                    <div class="row">
+                    <div class="pad-form-row">
                         <span class="label">LED Pin</span>
-                        <input type="number" id="padLedPin" min="-1" max="29" value="-1" style="width: 80px;">
+                        <input type="number" id="padLedPin" min="-1" max="29" value="-1">
                     </div>
-                    <div class="row">
+                    <div class="pad-form-row">
                         <span class="label">LED Count</span>
-                        <input type="number" id="padLedCount" min="0" max="16" value="0" style="width: 80px;">
+                        <input type="number" id="padLedCount" min="0" max="16" value="0">
                     </div>
 
                     <h3 style="margin-top: 15px; margin-bottom: 10px;">Speaker</h3>
-                    <div class="row">
+                    <div class="pad-form-row">
                         <span class="label">Speaker Pin</span>
-                        <input type="number" id="padSpeakerPin" min="-1" max="29" value="-1" style="width: 80px;">
+                        <input type="number" id="padSpeakerPin" min="-1" max="29" value="-1">
                     </div>
-                    <div class="row">
+                    <div class="pad-form-row">
                         <span class="label">Enable Pin</span>
-                        <input type="number" id="padSpeakerEnablePin" min="-1" max="29" value="-1" style="width: 80px;">
+                        <input type="number" id="padSpeakerEnablePin" min="-1" max="29" value="-1">
                     </div>
+
+                    <h3 style="margin-top: 15px; margin-bottom: 10px;">USB Host (PIO-USB)</h3>
+                    <div class="pad-form-row">
+                        <span class="label">D+ Pin</span>
+                        <input type="number" id="padUsbHostDp" min="-1" max="28" value="-1">
+                    </div>
+                    <p class="hint">D- is always D+1. Set to -1 to disable USB host. Requires reboot.</p>
 
                     <div id="padPinConflicts" class="pad-conflicts" style="display:none;"></div>
 
@@ -148,7 +153,7 @@ export class PadConfigCard {
         if (!container) return;
         // Preserve current values
         const values = [];
-        for (let i = 0; i < 20; i++) {
+        for (let i = 0; i < PAD_BUTTON_NAMES.length; i++) {
             const sel = this.el.querySelector('#padBtn' + i);
             values.push(sel ? parseInt(sel.value) : -1);
         }
@@ -172,8 +177,6 @@ export class PadConfigCard {
             card.style.display = '';
 
             this.el.querySelector('#padConfigName').value = config.name || '';
-            this.el.querySelector('#padConfigSource').textContent =
-                config.source === 'flash' ? 'Custom (Flash)' : `Default: ${config.name}`;
             this.el.querySelector('#padActiveHigh').value = String(config.active_high || false);
 
             // I2C (set before button pins so buildPinSelect can check hasI2C)
@@ -219,6 +222,9 @@ export class PadConfigCard {
             this.el.querySelector('#padSpeakerPin').value = config.speaker_pin !== undefined ? config.speaker_pin : -1;
             this.el.querySelector('#padSpeakerEnablePin').value = config.speaker_enable_pin !== undefined ? config.speaker_enable_pin : -1;
 
+            // USB host
+            this.el.querySelector('#padUsbHostDp').value = config.usb_host_dp !== undefined ? config.usb_host_dp : -1;
+
             // Conflict detection
             container.addEventListener('change', () => this.checkConflicts());
             this.checkConflicts();
@@ -234,7 +240,7 @@ export class PadConfigCard {
         const pinCounts = {};
         const conflicts = [];
 
-        for (let i = 0; i < 20; i++) {
+        for (let i = 0; i < PAD_BUTTON_NAMES.length; i++) {
             const sel = this.el.querySelector('#padBtn' + i);
             if (!sel) continue;
             const pin = parseInt(sel.value);
@@ -247,7 +253,7 @@ export class PadConfigCard {
         for (const [pin, names] of Object.entries(pinCounts)) {
             if (names.length > 1) {
                 conflicts.push(`Pin ${pin} used by: ${names.join(', ')}`);
-                for (let i = 0; i < 20; i++) {
+                for (let i = 0; i < PAD_BUTTON_NAMES.length; i++) {
                     const sel = this.el.querySelector('#padBtn' + i);
                     if (sel && parseInt(sel.value) === parseInt(pin)) sel.classList.add('conflict');
                 }
@@ -311,6 +317,7 @@ export class PadConfigCard {
             led_count: parseInt(this.el.querySelector('#padLedCount').value),
             speaker_pin: parseInt(this.el.querySelector('#padSpeakerPin').value),
             speaker_enable_pin: parseInt(this.el.querySelector('#padSpeakerEnablePin').value),
+            usb_host_dp: parseInt(this.el.querySelector('#padUsbHostDp').value),
         };
 
         try {

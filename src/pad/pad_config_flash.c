@@ -44,7 +44,7 @@ static uint32_t pad_current_sequence = 0;
 
 // Static runtime config (filled by pad_config_from_flash)
 static pad_device_config_t runtime_config;
-static char runtime_name[PAD_CONFIG_NAME_LEN];
+static char runtime_name[PAD_CONFIG_NAME_LEN + 1];
 
 // ============================================================================
 // FLASH HELPERS
@@ -204,6 +204,8 @@ void pad_config_to_flash(const pad_device_config_t* config, pad_config_flash_t* 
     flash->buttons[PAD_BTN_R3]  = config->r3;
     flash->buttons[PAD_BTN_A1]  = config->a1;
     flash->buttons[PAD_BTN_A2]  = config->a2;
+    flash->buttons[PAD_BTN_A3]  = config->a3;
+    flash->buttons[PAD_BTN_A4]  = config->a4;
     flash->buttons[PAD_BTN_L4]  = config->l4;
     flash->buttons[PAD_BTN_R4]  = config->r4;
 
@@ -236,6 +238,9 @@ void pad_config_to_flash(const pad_device_config_t* config, pad_config_flash_t* 
     flash->qwiic_tx = config->qwiic_tx;
     flash->qwiic_rx = config->qwiic_rx;
     flash->qwiic_i2c_inst = config->qwiic_i2c_inst;
+
+    // USB host
+    flash->usb_host_dp = config->usb_host_dp;
 }
 
 const pad_device_config_t* pad_config_from_flash(const pad_config_flash_t* flash)
@@ -281,6 +286,8 @@ const pad_device_config_t* pad_config_from_flash(const pad_config_flash_t* flash
     runtime_config.r3  = flash->buttons[PAD_BTN_R3];
     runtime_config.a1  = flash->buttons[PAD_BTN_A1];
     runtime_config.a2  = flash->buttons[PAD_BTN_A2];
+    runtime_config.a3  = flash->buttons[PAD_BTN_A3];
+    runtime_config.a4  = flash->buttons[PAD_BTN_A4];
     runtime_config.l4  = flash->buttons[PAD_BTN_L4];
     runtime_config.r4  = flash->buttons[PAD_BTN_R4];
 
@@ -313,6 +320,9 @@ const pad_device_config_t* pad_config_from_flash(const pad_config_flash_t* flash
     runtime_config.qwiic_tx = flash->qwiic_tx;
     runtime_config.qwiic_rx = flash->qwiic_rx;
     runtime_config.qwiic_i2c_inst = flash->qwiic_i2c_inst;
+
+    // USB host
+    runtime_config.usb_host_dp = flash->usb_host_dp;
 
     return &runtime_config;
 }

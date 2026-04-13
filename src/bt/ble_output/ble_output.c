@@ -644,7 +644,7 @@ static void ble_output_task_standard(void)
     if (!event) return;
 
     // Stream output event to CDC/NUS for web config (if enabled)
-    cdc_commands_send_output_event(event->buttons, event->analog);
+    cdc_commands_send_player_output(0, event->buttons, event->analog);
 
     switch (event->type) {
         case INPUT_TYPE_KEYBOARD: {
@@ -699,7 +699,7 @@ static void ble_output_task_xbox(void)
     if (!event) return;
 
     // Stream output event to CDC/NUS for web config (if enabled)
-    cdc_commands_send_output_event(event->buttons, event->analog);
+    cdc_commands_send_player_output(0, event->buttons, event->analog);
 
     ble_xbox_report_t report;
     ble_xbox_report_from_event(event, &report);

@@ -34,6 +34,15 @@ void cdc_commands_send_input_event(uint32_t buttons, const uint8_t* axes);
 // Send output event (if streaming enabled) - processed output after profile mapping
 void cdc_commands_send_output_event(uint32_t buttons, const uint8_t* axes);
 
+// Per-player input event with source identification
+void cdc_commands_send_player_input(uint8_t player, uint8_t dev_addr,
+                                    const char* name, const char* source,
+                                    uint32_t buttons, const uint8_t* axes);
+
+// Per-player output event (merged result)
+void cdc_commands_send_player_output(uint8_t player, uint32_t buttons,
+                                     const uint8_t* axes);
+
 // Send controller connect/disconnect event
 void cdc_commands_send_connect_event(uint8_t port, const char* name,
                                      uint16_t vid, uint16_t pid);

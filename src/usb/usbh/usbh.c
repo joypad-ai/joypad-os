@@ -52,6 +52,14 @@ void usbh_set_bt_available(bool available)
     #define PIO_USB_DP_PIN      16  // D+ pin for PIO USB
 #endif
 
+// Runtime D+ pin override (set via pad config before usbh_init)
+static int8_t pio_dp_pin_override = -1;
+
+void usbh_set_pio_dp_pin(int8_t pin)
+{
+    pio_dp_pin_override = pin;
+}
+
 void usbh_init(void)
 {
     printf("[usbh] Initializing USB host\n");
@@ -115,6 +123,13 @@ void usbh_init(void)
 #ifdef PIO_USB_DP_PIN
     pio_cfg.pin_dp = PIO_USB_DP_PIN;
 #endif
+
+    // Runtime override from pad config (web config GPIO settings)
+    if (pio_dp_pin_override >= 0) {
+        pio_cfg.pin_dp = pio_dp_pin_override;
+    }
+
+    printf("[usbh] PIO-USB D+ pin: GPIO %d\n", pio_cfg.pin_dp);
 
     // Configure TinyUSB PIO USB driver before initialization
     tuh_configure(1, TUH_CFGID_RPI_PIO_USB_CONFIGURATION, &pio_cfg);

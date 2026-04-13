@@ -17,7 +17,7 @@
 // ============================================================================
 
 #define PAD_CONFIG_MAGIC    0x50414443  // "PADC"
-#define PAD_CONFIG_NAME_LEN 16
+#define PAD_CONFIG_NAME_LEN 32
 
 // Compact flash representation of pad_device_config_t (256 bytes = 1 flash page)
 // Only stores pin assignments + basic settings — LED colors/button maps are
@@ -77,9 +77,13 @@ typedef struct {
     int8_t qwiic_rx;
     int8_t qwiic_i2c_inst;
 
+    // USB host config (1 byte)
+    // PIO-USB D+ pin (D- is always D+1). PAD_PIN_DISABLED = no USB host.
+    int8_t usb_host_dp;
+
     // Reserved for future use (pad to 256 bytes)
-    // 256 - 8 - 16 - 1 - 2 - 1 - 44 - 2 - 4 - 2 - 2 - 6 - 3 = 165
-    uint8_t reserved[165];
+    // 256 - 8 - 32 - 1 - 2 - 1 - 44 - 2 - 4 - 2 - 2 - 6 - 3 - 1 = 148
+    uint8_t reserved[148];
 } pad_config_flash_t;
 
 _Static_assert(sizeof(pad_config_flash_t) == 256, "pad_config_flash_t must be exactly 256 bytes");
@@ -107,9 +111,10 @@ _Static_assert(sizeof(pad_config_flash_t) == 256, "pad_config_flash_t must be ex
 #define PAD_BTN_R3          15
 #define PAD_BTN_A1          16
 #define PAD_BTN_A2          17
-#define PAD_BTN_L4          18
-#define PAD_BTN_R4          19
-#define PAD_BTN_DPAD_TOGGLE 20  // Not used in buttons[], but kept for reference
+#define PAD_BTN_A3          18
+#define PAD_BTN_A4          19
+#define PAD_BTN_L4          20
+#define PAD_BTN_R4          21
 #define PAD_BTN_COUNT       22
 
 // ============================================================================

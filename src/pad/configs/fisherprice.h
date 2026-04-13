@@ -53,6 +53,8 @@ static const pad_device_config_t pad_config_fisherprice_v1 = {
     // Home/Capture
     .a1 = PAD_PIN_DISABLED,
     .a2 = PAD_PIN_DISABLED,
+    .a3 = PAD_PIN_DISABLED,
+    .a4 = PAD_PIN_DISABLED,
 
     // Extra paddles
     .l4 = PAD_PIN_DISABLED,
@@ -81,6 +83,7 @@ static const pad_device_config_t pad_config_fisherprice_v1 = {
     .qwiic_tx = PAD_PIN_DISABLED,
     .qwiic_rx = PAD_PIN_DISABLED,
     .qwiic_i2c_inst = PAD_PIN_DISABLED,
+    .usb_host_dp = PAD_PIN_DISABLED,
 };
 
 // ============================================================================
@@ -127,6 +130,8 @@ static const pad_device_config_t pad_config_fisherprice_v2 = {
     // Home/Capture
     .a1 = PAD_PIN_DISABLED,
     .a2 = PAD_PIN_DISABLED,
+    .a3 = PAD_PIN_DISABLED,
+    .a4 = PAD_PIN_DISABLED,
 
     // Extra paddles
     .l4 = PAD_PIN_DISABLED,
@@ -155,6 +160,7 @@ static const pad_device_config_t pad_config_fisherprice_v2 = {
     .qwiic_tx = PAD_PIN_DISABLED,
     .qwiic_rx = PAD_PIN_DISABLED,
     .qwiic_i2c_inst = PAD_PIN_DISABLED,
+    .usb_host_dp = PAD_PIN_DISABLED,
 };
 
 #endif // PAD_CONFIG_FISHERPRICE_H

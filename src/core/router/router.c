@@ -11,6 +11,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+// Pad input config (for GPIO device name lookup)
+#ifdef CONFIG_PAD_INPUT
+#include "pad/pad_input.h"
+#endif
+
 // CDC input streaming (optional, for web config)
 #ifdef CONFIG_USB
 #include "usb/usbd/cdc/cdc_commands.h"
@@ -128,6 +133,14 @@ static const char* get_device_name(const input_event_t* event) {
 #ifdef I2C_PEER_ENABLED
         case INPUT_TRANSPORT_I2C:
             return i2c_peer_get_device_name();
+#endif
+#ifdef CONFIG_PAD_INPUT
+        case INPUT_TRANSPORT_GPIO: {
+            // Return pad config name for GPIO pad devices
+            uint8_t pad_idx = event->dev_addr - 0xF0;
+            const pad_device_config_t* cfg = pad_input_get_config(pad_idx);
+            return cfg && cfg->name ? cfg->name : "GPIO Pad";
+        }
 #endif
         default:
             return "Unknown";
@@ -717,7 +730,27 @@ void router_submit_input(const input_event_t* event) {
 
     // Stream input to CDC for web config (if enabled)
 #ifdef CONFIG_USB
-    cdc_commands_send_input_event(event->buttons, event->analog);
+    {
+        static const char* transport_names[] = {
+            [INPUT_TRANSPORT_NONE]       = "none",
+            [INPUT_TRANSPORT_USB]        = "usb",
+            [INPUT_TRANSPORT_BT_CLASSIC] = "bt",
+            [INPUT_TRANSPORT_BT_BLE]     = "ble",
+            [INPUT_TRANSPORT_NATIVE]     = "native",
+            [INPUT_TRANSPORT_I2C]        = "i2c",
+            [INPUT_TRANSPORT_GPIO]       = "gpio",
+        };
+        int pi = find_player_index(event->dev_addr, event->instance);
+        const char* name = (pi >= 0) ? players[pi].name : get_device_name(event);
+        const char* src = (event->transport < sizeof(transport_names)/sizeof(transport_names[0]))
+                          ? transport_names[event->transport] : "?";
+        // In merge mode, all inputs go to output player 0
+        int stream_player = (router_config.mode == ROUTING_MODE_MERGE) ? 0
+                          : (pi >= 0 ? pi : 0);
+        cdc_commands_send_player_input(stream_player, event->dev_addr,
+                                       name, src,
+                                       event->buttons, event->analog);
+    }
 #endif
 
     // Find first active route to determine output target

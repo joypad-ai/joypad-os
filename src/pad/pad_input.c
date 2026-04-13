@@ -331,6 +331,8 @@ static void pad_poll_device(uint8_t device_index) {
     if (pad_read_button(config->r3, ah)) buttons |= JP_BUTTON_R3;
     if (pad_read_button(config->a1, ah)) buttons |= JP_BUTTON_A1;
     if (pad_read_button(config->a2, ah)) buttons |= JP_BUTTON_A2;
+    if (pad_read_button(config->a3, ah)) buttons |= JP_BUTTON_A3;
+    if (pad_read_button(config->a4, ah)) buttons |= JP_BUTTON_A4;
 
     // Extra buttons (L4/R4 mapped to L2/R2 digital for now)
     // TODO: Add proper L4/R4 button defines if needed
@@ -475,6 +477,7 @@ int pad_input_add_device(const pad_device_config_t* config) {
     pad_events[index].dev_addr = 0xF0 + index;  // Virtual address for pad devices
     pad_events[index].instance = index;
     pad_events[index].type = INPUT_TYPE_GAMEPAD;
+    pad_events[index].transport = INPUT_TRANSPORT_GPIO;
 
     pad_prev_buttons[index] = 0;
 

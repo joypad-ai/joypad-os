@@ -19,7 +19,7 @@
 #include "../pad_input.h"
 
 static const pad_device_config_t pad_config_abb = {
-    .name = "RP2040 Advanced Breakout Board",
+    .name = "JoypadOS Controller",
     .active_high = false,   // Active low (pull-up, grounded when pressed)
 
     // No I2C expanders (I2C0 used for OLED display)
@@ -55,6 +55,8 @@ static const pad_device_config_t pad_config_abb = {
     // Extra buttons
     .a1 = 14,   // Home / Guide
     .a2 = 20,   // Capture
+    .a3 = PAD_PIN_DISABLED,
+    .a4 = PAD_PIN_DISABLED,
 
     .l4 = PAD_PIN_DISABLED,
     .r4 = PAD_PIN_DISABLED,
@@ -109,6 +111,10 @@ static const pad_device_config_t pad_config_abb = {
     .qwiic_tx = PAD_PIN_DISABLED,
     .qwiic_rx = PAD_PIN_DISABLED,
     .qwiic_i2c_inst = PAD_PIN_DISABLED,
+
+    // USB host via PIO-USB on GPIO 23 (D+) / GPIO 24 (D-)
+    // Passthrough variant: USB-A port, SMD slider in USB position
+    .usb_host_dp = 23,
 };
 
 #endif // PAD_CONFIG_ABB_H

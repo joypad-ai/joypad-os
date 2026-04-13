@@ -71,6 +71,8 @@ static const pad_device_config_t pad_config_macropad = {
     // Aux buttons (unused)
     .a1 = 0,                // Home / Guide (Encoder button)
     .a2 = PAD_PIN_DISABLED,
+    .a3 = PAD_PIN_DISABLED,
+    .a4 = PAD_PIN_DISABLED,
 
     // Extra buttons (Key 2 unused)
     .l4 = PAD_PIN_DISABLED,
@@ -152,7 +154,8 @@ static const pad_device_config_t pad_config_macropad = {
     // QWIIC / STEMMA QT (GPIO 20=SDA, 21=SCL on I2C0)
     .qwiic_tx = 20,             // STEMMA QT SDA (I2C0)
     .qwiic_rx = 21,             // STEMMA QT SCL (I2C0)
-    .qwiic_i2c_inst = 0,        // I2C peer mode on I2C0
+    0
+    .usb_host_dp = PAD_PIN_DISABLED,
 };
 
 #endif // PAD_CONFIG_MACROPAD_H
