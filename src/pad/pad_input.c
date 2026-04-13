@@ -407,6 +407,7 @@ static void pad_poll_device(uint8_t device_index) {
         }
     }
 
+    static dpad_mode_t prev_effective_mode = DPAD_MODE_DPAD;
     if (effective_mode != DPAD_MODE_DPAD) {
         uint32_t dpad_bits = event->buttons & (JP_BUTTON_DU | JP_BUTTON_DD | JP_BUTTON_DL | JP_BUTTON_DR);
         event->buttons &= ~(JP_BUTTON_DU | JP_BUTTON_DD | JP_BUTTON_DL | JP_BUTTON_DR);
@@ -424,7 +425,17 @@ static void pad_poll_device(uint8_t device_index) {
             event->analog[ANALOG_RX] = ax;
             event->analog[ANALOG_RY] = ay;
         }
+    } else if (prev_effective_mode != DPAD_MODE_DPAD) {
+        // Switched back to d-pad mode — reset analog axes to center
+        if (prev_effective_mode == DPAD_MODE_LEFT_STICK) {
+            event->analog[ANALOG_LX] = 128;
+            event->analog[ANALOG_LY] = 128;
+        } else {
+            event->analog[ANALOG_RX] = 128;
+            event->analog[ANALOG_RY] = 128;
+        }
     }
+    prev_effective_mode = effective_mode;
 
     // Read analog sticks (ADC overrides dpad-to-stick if both present)
     uint8_t dz = config->deadzone;
