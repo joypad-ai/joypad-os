@@ -238,6 +238,8 @@ void app_init(void)
             jw_pad_cfg = pad_config_load_runtime();
 #endif
             if (jw_pad_cfg) {
+            // Flash config exists — use it (even if all JoyWings are disabled)
+            jw_configured = true;  // Don't fall back to compile-time defaults
             for (int i = 0; i < 2; i++) {
                 if (jw_pad_cfg->joywing[i].sda >= 0) {
                     joywing_config_t jw_cfg = {
@@ -249,14 +251,13 @@ void app_init(void)
                     joywing_input_init_config(&jw_cfg);
                     printf("[app:controller_btusb] JoyWing %d (bus=%d, SDA=%d, SCL=%d, addr=0x%02X)\n",
                            i, jw_cfg.i2c_bus, jw_cfg.sda_pin, jw_cfg.scl_pin, jw_pad_cfg->joywing[i].addr);
-                    jw_configured = true;
                 }
             }
             }
         }
 #endif
         if (!jw_configured) {
-            // Fall back to compile-time defaults
+            // No flash config — fall back to compile-time defaults
             joywing_config_t jw_cfg = {
                 .i2c_bus = JOYWING_I2C_BUS,
                 .sda_pin = JOYWING_SDA_PIN,
