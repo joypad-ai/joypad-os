@@ -1495,10 +1495,23 @@ static void cmd_pad_config_get(const char* json)
                     (flash_data.flags & PAD_FLAG_INVERT_RX) ? "true" : "false",
                     (flash_data.flags & PAD_FLAG_INVERT_RY) ? "true" : "false");
 
-    // LED
-    pos += snprintf(response_buf + pos, sizeof(response_buf) - pos,
-                    ",\"led_pin\":%d,\"led_count\":%d",
-                    flash_data.led_pin, flash_data.led_count);
+    // LED (pad config override + system defaults)
+    {
+#ifndef WS2812_NUM_PIXELS
+#define WS2812_NUM_PIXELS 0
+#endif
+#ifndef WS2812_PIN
+#define WS2812_PIN -1
+#endif
+        int sys_pin = WS2812_PIN;
+        int sys_count = WS2812_NUM_PIXELS;
+        // If pad config overrides LED, use that; otherwise show system defaults
+        int eff_pin = (flash_data.led_pin >= 0) ? flash_data.led_pin : sys_pin;
+        int eff_count = (flash_data.led_count > 0) ? flash_data.led_count : sys_count;
+        pos += snprintf(response_buf + pos, sizeof(response_buf) - pos,
+                        ",\"led_pin\":%d,\"led_count\":%d,\"sys_led_pin\":%d,\"sys_led_count\":%d",
+                        eff_pin, eff_count, sys_pin, sys_count);
+    }
 
     // Speaker
     pos += snprintf(response_buf + pos, sizeof(response_buf) - pos,

@@ -1,4 +1,4 @@
-/** LEDs Output Page — NeoPixel strip configuration */
+/** LEDs Output Page — NeoPixel/WS2812 configuration */
 export class LedsCard {
     constructor(container, protocol, log) {
         this.protocol = protocol;
@@ -13,21 +13,36 @@ export class LedsCard {
             <div class="card" id="ledsCard" style="display:none;">
                 <h2>LEDs</h2>
                 <div class="card-content">
-                    <div class="pad-form-row">
-                        <span class="label">LED Pin</span>
-                        <input type="number" id="ledPin" min="-1" max="47" value="-1">
+                    <div id="ledsSystemInfo" style="display:none; margin-bottom: 12px;">
+                        <p class="hint">System default: <span id="ledsSysInfo">-</span></p>
                     </div>
-                    <div class="pad-form-row">
-                        <span class="label">LED Count</span>
-                        <input type="number" id="ledCount" min="0" max="16" value="0">
+                    <div class="toggle-row" style="margin-bottom: 12px;">
+                        <label class="toggle">
+                            <input type="checkbox" id="ledsOverride">
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <span>Custom LED Configuration</span>
                     </div>
-                    <p class="hint">WS2812/NeoPixel data pin and number of LEDs. Set pin to -1 to disable.</p>
+                    <div id="ledsOverridePins" style="display:none;">
+                        <div class="pad-form-row">
+                            <span class="label">LED Pin</span>
+                            <input type="number" id="ledPin" min="0" max="47" value="0">
+                        </div>
+                        <div class="pad-form-row">
+                            <span class="label">LED Count</span>
+                            <input type="number" id="ledCount" min="1" max="16" value="1">
+                        </div>
+                    </div>
                     <div class="buttons" style="margin-top: 12px;">
                         <button id="ledsSaveBtn">Save &amp; Reboot</button>
                     </div>
                 </div>
             </div>`;
 
+        this.el.querySelector('#ledsOverride').addEventListener('change', () => {
+            this.el.querySelector('#ledsOverridePins').style.display =
+                this.el.querySelector('#ledsOverride').checked ? '' : 'none';
+        });
         this.el.querySelector('#ledsSaveBtn').addEventListener('click', () => this.save());
     }
 
@@ -42,9 +57,29 @@ export class LedsCard {
             }
             card.style.display = '';
             this.visible = true;
-            this.el.querySelector('#ledPin').value = config.led_pin !== undefined ? config.led_pin : -1;
-            this.el.querySelector('#ledCount').value = config.led_count || 0;
             this.currentConfig = config;
+
+            // Show system defaults
+            const sysPin = config.sys_led_pin;
+            const sysCount = config.sys_led_count;
+            if (sysPin !== undefined && sysPin >= 0) {
+                this.el.querySelector('#ledsSysInfo').textContent =
+                    `GPIO ${sysPin}, ${sysCount} LED${sysCount !== 1 ? 's' : ''}`;
+                this.el.querySelector('#ledsSystemInfo').style.display = '';
+            }
+
+            // Check if pad config overrides the system LED
+            const hasOverride = config.led_pin >= 0 && config.led_pin !== sysPin;
+            this.el.querySelector('#ledsOverride').checked = hasOverride;
+            this.el.querySelector('#ledsOverridePins').style.display = hasOverride ? '' : 'none';
+            if (hasOverride) {
+                this.el.querySelector('#ledPin').value = config.led_pin;
+                this.el.querySelector('#ledCount').value = config.led_count || 1;
+            } else if (sysPin >= 0) {
+                // Pre-fill with system values for convenience
+                this.el.querySelector('#ledPin').value = sysPin;
+                this.el.querySelector('#ledCount').value = sysCount || 1;
+            }
         } catch (e) {
             card.style.display = 'none';
             this.visible = false;
@@ -54,6 +89,8 @@ export class LedsCard {
     async save() {
         if (!confirm('Save LED configuration? The device will reboot.')) return;
         if (!this.currentConfig) return;
+
+        const override = this.el.querySelector('#ledsOverride').checked;
 
         const config = {
             name: this.currentConfig.name || 'Custom',
@@ -67,12 +104,11 @@ export class LedsCard {
             invert_ly: this.currentConfig.invert_ly || false,
             invert_rx: this.currentConfig.invert_rx || false,
             invert_ry: this.currentConfig.invert_ry || false,
-            led_pin: parseInt(this.el.querySelector('#ledPin').value),
-            led_count: parseInt(this.el.querySelector('#ledCount').value),
+            led_pin: override ? parseInt(this.el.querySelector('#ledPin').value) : -1,
+            led_count: override ? parseInt(this.el.querySelector('#ledCount').value) : 0,
             speaker_pin: this.currentConfig.speaker_pin !== undefined ? this.currentConfig.speaker_pin : -1,
             speaker_enable_pin: this.currentConfig.speaker_enable_pin !== undefined ? this.currentConfig.speaker_enable_pin : -1,
             usb_host_dp: this.currentConfig.usb_host_dp !== undefined ? this.currentConfig.usb_host_dp : -1,
-            // Preserve toggles
             ...(() => {
                 const tg = {};
                 const toggles = this.currentConfig.toggles || [];
@@ -84,7 +120,6 @@ export class LedsCard {
                 }
                 return tg;
             })(),
-            // Preserve joywing
             ...(() => {
                 const jw = {};
                 const joywing = this.currentConfig.joywing || [];
