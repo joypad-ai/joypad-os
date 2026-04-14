@@ -34,7 +34,11 @@ if(CONFIG_APP STREQUAL "controller_btusb")
     set(APP_SRCS
         "btstack_hal_esp32.c"
         "stubs_peripheral.c"
+        "pad_config_storage_esp32.c"
+        "pad_input_stub.c"
         "${SHARED_SRC}/apps/controller_btusb/app.c"
+        # Pad config (runtime GPIO pin config via web config)
+        "${SHARED_SRC}/pad/pad_config_flash.c"
         # Sensor drivers
         "${SHARED_SRC}/drivers/seesaw/seesaw.c"
         "${SHARED_SRC}/drivers/joywing/joywing_input.c"
@@ -370,6 +374,7 @@ set(INCLUDE_DIRS
     "${SHARED_SRC}"
     "${APP_INCLUDE_DIR}"
     "${SHARED_SRC}/usb/usbd"
+    "${SHARED_SRC}/pad"
     "${SHARED_SRC}/lib/libxsm3"
     # TinyUSB
     "${TINYUSB_PATH}/src"
@@ -497,6 +502,7 @@ endif()
 if(CONFIG_APP STREQUAL "controller_btusb")
     target_compile_definitions(${COMPONENT_LIB} PUBLIC
         CONFIG_CONTROLLER_BTUSB=1
+        CONFIG_PAD_INPUT=1
         BTSTACK_USE_ESP32=1
         ENABLE_BTSTACK=1
         SENSOR_JOYWING=1
