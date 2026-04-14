@@ -6,11 +6,6 @@
 #include "core/input_event.h"
 #include "platform/platform.h"
 
-static uint8_t g_verify_buf[64];
-
-uint8_t *ds3_get_verify_buffer(void) {
-    return g_verify_buf; // 调用方自行知道长度
-}
 
 // TODO: Get these from BTstack when BT dongle is connected
 static const uint8_t* btd_get_local_bd_addr(void) {
