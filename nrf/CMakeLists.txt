@@ -362,6 +362,12 @@ elseif(APP_TYPE STREQUAL "controller_btusb")
         "src/stubs_peripheral.c"
         "${SHARED_SRC}/apps/controller_btusb/app.c"
 
+        # --- Pad input + config ---
+        "${SHARED_SRC}/pad/pad_input.c"
+        "${SHARED_SRC}/pad/pad_config_flash.c"
+        "src/pad_config_storage_nrf.c"
+        "src/platform_gpio_nrf.c"
+
         # --- Sensor drivers ---
         "${SHARED_SRC}/drivers/seesaw/seesaw.c"
         "${SHARED_SRC}/drivers/joywing/joywing_input.c"
@@ -439,6 +445,7 @@ elseif(APP_TYPE STREQUAL "controller_btusb")
 
     list(APPEND INCLUDE_DIRS
         "${SHARED_SRC}/apps/controller_btusb"
+        "${SHARED_SRC}/pad"
         "${SHARED_SRC}/drivers"
         "${SHARED_SRC}/bt"
         "${SHARED_SRC}/bt/btstack"
@@ -456,6 +463,8 @@ elseif(APP_TYPE STREQUAL "controller_btusb")
     target_compile_definitions(app PRIVATE
         CONFIG_CONTROLLER_BTUSB=1
         CONFIG_USB=1
+        CONFIG_PAD_INPUT=1
+        SENSOR_PAD=1
         DISABLE_USB_HOST=1
         BTSTACK_USE_NRF=1
         ENABLE_BTSTACK=1

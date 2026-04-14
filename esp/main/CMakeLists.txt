@@ -35,9 +35,10 @@ if(CONFIG_APP STREQUAL "controller_btusb")
         "btstack_hal_esp32.c"
         "stubs_peripheral.c"
         "pad_config_storage_esp32.c"
-        "pad_input_stub.c"
+        "platform_gpio_esp32.c"
         "${SHARED_SRC}/apps/controller_btusb/app.c"
-        # Pad config (runtime GPIO pin config via web config)
+        # Pad input + config (runtime GPIO pin config via web config)
+        "${SHARED_SRC}/pad/pad_input.c"
         "${SHARED_SRC}/pad/pad_config_flash.c"
         # Sensor drivers
         "${SHARED_SRC}/drivers/seesaw/seesaw.c"
@@ -418,6 +419,7 @@ endif()
 set(ESP_REQUIRES
     nvs_flash
     esp_driver_gpio
+    esp_adc
     esp_driver_i2c
     esp_driver_rmt
     esp_driver_spi
@@ -503,6 +505,7 @@ if(CONFIG_APP STREQUAL "controller_btusb")
     target_compile_definitions(${COMPONENT_LIB} PUBLIC
         CONFIG_CONTROLLER_BTUSB=1
         CONFIG_PAD_INPUT=1
+        SENSOR_PAD=1
         BTSTACK_USE_ESP32=1
         ENABLE_BTSTACK=1
         SENSOR_JOYWING=1

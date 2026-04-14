@@ -285,6 +285,7 @@ set(CONTROLLER_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/pad/pad_input.c
     ${CMAKE_CURRENT_SOURCE_DIR}/pad/pad_config_flash.c
     ${CMAKE_CURRENT_SOURCE_DIR}/pad/pad_config_storage_rp2040.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/platform/rp2040/platform_gpio_rp2040.c
     ${CMAKE_CURRENT_SOURCE_DIR}/core/services/speaker/speaker.c
     ${CMAKE_CURRENT_SOURCE_DIR}/core/services/display/display.c
     ${CMAKE_CURRENT_SOURCE_DIR}/core/services/display/display_spi.c

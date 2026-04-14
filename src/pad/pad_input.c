@@ -10,12 +10,16 @@
 #include "core/buttons.h"
 #include "core/input_event.h"
 #include "core/router/router.h"
-#include "pico/stdlib.h"
-#include "hardware/gpio.h"
-#include "hardware/adc.h"
-#include "hardware/i2c.h"
+#include "platform/platform_gpio.h"
 #include <stdio.h>
 #include <string.h>
+
+// I2C expander support (RP2040-only — uses pico-sdk I2C directly)
+#if !defined(PLATFORM_ESP32) && !defined(PLATFORM_NRF)
+#include "pico/stdlib.h"
+#include "hardware/i2c.h"
+#define HAS_I2C_EXPANDER 1
+#endif
 
 #ifdef SENSOR_JOYWING
 #include "drivers/joywing/joywing_input.h"
@@ -23,16 +27,6 @@
 
 // ============================================================================
 // I2C I/O EXPANDER REGISTERS (PCA9555/TCA9555 compatible)
-// ============================================================================
-
-#define I2C_IO_REG_INPUT     0x00  // Input port register
-#define I2C_IO_REG_OUTPUT    0x02  // Output port register
-#define I2C_IO_REG_POLARITY  0x04  // Polarity inversion register
-#define I2C_IO_REG_CONFIG    0x06  // Configuration register
-#define I2C_IO_REG_PULLUP    0x46  // Pull-up resistor register (TCA9555 only)
-
-#define I2C_FREQ 400000  // 400kHz
-
 // ============================================================================
 // INTERNAL STATE
 // ============================================================================
@@ -63,9 +57,16 @@ static bool combo_used = false;
 // ADC initialized flag
 static bool adc_initialized = false;
 
-// I2C initialized flag
-static bool i2c_initialized = false;
+#ifdef HAS_I2C_EXPANDER
+// I2C I/O expander registers and state
+#define I2C_IO_REG_INPUT     0x00
+#define I2C_IO_REG_OUTPUT    0x02
+#define I2C_IO_REG_POLARITY  0x04
+#define I2C_IO_REG_CONFIG    0x06
+#define I2C_IO_REG_PULLUP    0x46
+#define I2C_FREQ 400000
 
+static bool i2c_initialized = false;
 // I2C expander cached state (16 bits per expander)
 static uint16_t i2c_expander_cache[2] = {0, 0};
 
@@ -123,6 +124,7 @@ static void i2c_expander_update_cache(void) {
     i2c_expander_cache[0] = i2c_expander_read(PAD_I2C_EXPANDER_ADDR_0);
     i2c_expander_cache[1] = i2c_expander_read(PAD_I2C_EXPANDER_ADDR_1);
 }
+#endif // HAS_I2C_EXPANDER
 
 // ============================================================================
 // GPIO HELPERS
@@ -130,18 +132,13 @@ static void i2c_expander_update_cache(void) {
 
 // Initialize a single GPIO pin as input with appropriate pull
 static void pad_init_button_pin(int16_t pin, bool active_high) {
-    // Only initialize direct GPIO pins (0-29)
-    if (pin < 0 || pin > 29) return;
-
-    gpio_init(pin);
-    gpio_set_dir(pin, GPIO_IN);
+    // Only initialize direct GPIO pins (0-29 on RP2040, 0-48 on ESP32)
+    if (pin < 0 || pin > 48) return;
+    // I2C expander pins (100+) are not direct GPIO
+    if (pin >= 100) return;
 
     // Pull opposite to active state
-    if (active_high) {
-        gpio_pull_down(pin);  // Active high: pull down, button connects to VCC
-    } else {
-        gpio_pull_up(pin);    // Active low: pull up, button connects to GND
-    }
+    platform_gpio_init_input(pin, !active_high);
 }
 
 // Read a button pin and return true if pressed
@@ -153,8 +150,10 @@ static bool pad_read_button(int16_t pin, bool active_high) {
 
     if (pin < 100) {
         // Direct GPIO
-        state = gpio_get(pin);
-    } else if (pin < 200) {
+        state = platform_gpio_get(pin);
+    }
+#ifdef HAS_I2C_EXPANDER
+    else if (pin < 200) {
         // I2C expander 0 (pins 100-115)
         uint8_t bit = pin - PAD_I2C_EXPANDER_0_BASE;
         if (bit > 15) return false;
@@ -165,6 +164,9 @@ static bool pad_read_button(int16_t pin, bool active_high) {
         if (bit > 15) return false;
         state = (i2c_expander_cache[1] >> bit) & 1;
     }
+#else
+    else { return false; }
+#endif
 
     return active_high ? state : !state;
 }
@@ -179,8 +181,7 @@ static bool pad_read_button(int16_t pin, bool active_high) {
 static uint8_t pad_read_adc(int8_t channel, bool invert) {
     if (channel < 0 || channel > 3) return 128;  // Centered
 
-    adc_select_input(channel);
-    uint16_t raw = adc_read();  // 12-bit: 0-4095
+    uint16_t raw = platform_adc_read(channel);  // 12-bit: 0-4095
 
     // Scale from joystick's actual range to full 0-255
     // Clamp to expected range first
@@ -209,6 +210,7 @@ static uint8_t apply_deadzone(uint8_t value, uint8_t deadzone) {
     return value;
 }
 
+#ifdef HAS_I2C_EXPANDER
 // Check if config uses I2C expanders
 static bool config_uses_i2c(const pad_device_config_t* config) {
     return (config->dpad_up >= 100 || config->dpad_down >= 100 ||
@@ -222,6 +224,7 @@ static bool config_uses_i2c(const pad_device_config_t* config) {
             config->a1 >= 100 || config->a2 >= 100 ||
             config->l4 >= 100 || config->r4 >= 100);
 }
+#endif // HAS_I2C_EXPANDER
 
 // Initialize GPIO pins for a device config
 static void pad_init_device_pins(const pad_device_config_t* config) {
@@ -230,9 +233,11 @@ static void pad_init_device_pins(const pad_device_config_t* config) {
     bool ah = config->active_high;
 
     // Initialize I2C if this config uses expanders
+#ifdef HAS_I2C_EXPANDER
     if (config_uses_i2c(config)) {
         i2c_expander_init(config->i2c_sda, config->i2c_scl);
     }
+#endif
 
     // Initialize direct GPIO button pins (I2C pins are handled by expander init)
     pad_init_button_pin(config->dpad_up, ah);
@@ -262,14 +267,8 @@ static void pad_init_device_pins(const pad_device_config_t* config) {
     // Initialize toggle switch pins
     for (int t = 0; t < 2; t++) {
         int16_t pin = config->toggle[t].pin;
-        if (pin >= 0 && pin <= 29) {
-            gpio_init(pin);
-            gpio_set_dir(pin, GPIO_IN);
-            if (config->toggle[t].invert) {
-                gpio_pull_up(pin);
-            } else {
-                gpio_pull_down(pin);
-            }
+        if (pin >= 0 && pin <= 48) {
+            platform_gpio_init_input(pin, config->toggle[t].invert);
             printf("[pad] Toggle %d on GPIO %d (func=%d%s)\n",
                    t, pin, config->toggle[t].function,
                    config->toggle[t].invert ? ", inverted" : "");
@@ -282,33 +281,24 @@ static void pad_init_device_pins(const pad_device_config_t* config) {
                        config->adc_lt >= 0 || config->adc_rt >= 0);
 
     if (has_analog && !adc_initialized) {
-        adc_init();
+        platform_adc_init();
         adc_initialized = true;
     }
 
-    // Initialize ADC pins (GPIO 26-29 are ADC0-3)
-    if (config->adc_lx >= 0 && config->adc_lx <= 3) {
-        adc_gpio_init(26 + config->adc_lx);
-    }
-    if (config->adc_ly >= 0 && config->adc_ly <= 3) {
-        adc_gpio_init(26 + config->adc_ly);
-    }
-    if (config->adc_rx >= 0 && config->adc_rx <= 3) {
-        adc_gpio_init(26 + config->adc_rx);
-    }
-    if (config->adc_ry >= 0 && config->adc_ry <= 3) {
-        adc_gpio_init(26 + config->adc_ry);
-    }
-    if (config->adc_lt >= 0 && config->adc_lt <= 3) {
-        adc_gpio_init(26 + config->adc_lt);
-    }
-    if (config->adc_rt >= 0 && config->adc_rt <= 3) {
-        adc_gpio_init(26 + config->adc_rt);
-    }
+    // Initialize ADC channels
+    if (config->adc_lx >= 0 && config->adc_lx <= 3) platform_adc_init_channel(config->adc_lx);
+    if (config->adc_ly >= 0 && config->adc_ly <= 3) platform_adc_init_channel(config->adc_ly);
+    if (config->adc_rx >= 0 && config->adc_rx <= 3) platform_adc_init_channel(config->adc_rx);
+    if (config->adc_ry >= 0 && config->adc_ry <= 3) platform_adc_init_channel(config->adc_ry);
+    if (config->adc_lt >= 0 && config->adc_lt <= 3) platform_adc_init_channel(config->adc_lt);
+    if (config->adc_rt >= 0 && config->adc_rt <= 3) platform_adc_init_channel(config->adc_rt);
 
     printf("[pad] Initialized device: %s (active_%s%s)\n",
            config->name, ah ? "high" : "low",
-           config_uses_i2c(config) ? ", I2C" : "");
+#ifdef HAS_I2C_EXPANDER
+           config_uses_i2c(config) ? ", I2C" :
+#endif
+           "");
 }
 
 // Poll a single device and update its input event
@@ -419,7 +409,7 @@ static void pad_poll_device(uint8_t device_index) {
         if (pin < 0 || pin > 29) continue;
         if (config->toggle[t].function == 0) continue;  // No function assigned
 
-        bool toggle_state = gpio_get(pin);
+        bool toggle_state = platform_gpio_get(pin);
         if (config->toggle[t].invert) toggle_state = !toggle_state;
         if (!toggle_state) continue;  // Toggle not active
 
@@ -554,9 +544,11 @@ static void pad_input_init(void) {
 
 static void pad_input_task(void) {
     // Update I2C expander cache once per cycle (more efficient than per-button)
+#ifdef HAS_I2C_EXPANDER
     if (i2c_initialized) {
         i2c_expander_update_cache();
     }
+#endif
 
     // Poll all registered devices
     for (uint8_t i = 0; i < pad_device_count; i++) {
