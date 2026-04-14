@@ -161,16 +161,6 @@ export class PadConfigCard {
                         <input type="number" id="padI2cScl" min="-1" max="47" value="-1">
                     </div>
 
-                    <h3 style="margin-top: 12px; margin-bottom: 8px;">NeoPixel LEDs</h3>
-                    <div class="pad-form-row">
-                        <span class="label">LED Pin</span>
-                        <input type="number" id="padLedPin" min="-1" max="47" value="-1">
-                    </div>
-                    <div class="pad-form-row">
-                        <span class="label">LED Count</span>
-                        <input type="number" id="padLedCount" min="0" max="16" value="0">
-                    </div>
-
                     <h3 style="margin-top: 12px; margin-bottom: 8px;">Speaker</h3>
                     <div class="pad-form-row">
                         <span class="label">Speaker Pin</span>
@@ -312,10 +302,6 @@ export class PadConfigCard {
             this.el.querySelector('#padDeadzone').value = config.deadzone || 10;
             this.el.querySelector('#padDeadzoneValue').textContent = config.deadzone || 10;
 
-            // LED
-            this.el.querySelector('#padLedPin').value = config.led_pin !== undefined ? config.led_pin : -1;
-            this.el.querySelector('#padLedCount').value = config.led_count || 0;
-
             // Speaker
             this.el.querySelector('#padSpeakerPin').value = config.speaker_pin !== undefined ? config.speaker_pin : -1;
             this.el.querySelector('#padSpeakerEnablePin').value = config.speaker_enable_pin !== undefined ? config.speaker_enable_pin : -1;
@@ -340,6 +326,7 @@ export class PadConfigCard {
             container.addEventListener('change', () => this.checkConflicts());
             this.checkConflicts();
 
+            this.currentConfig = config;
             this.log(`Pad config loaded: ${config.name} (${config.source})`);
         } catch (e) {
             card.style.display = 'none';
@@ -434,8 +421,8 @@ export class PadConfigCard {
                 parseInt(this.el.querySelector('#padAdcLT').value),
                 parseInt(this.el.querySelector('#padAdcRT').value),
             ],
-            led_pin: parseInt(this.el.querySelector('#padLedPin').value),
-            led_count: parseInt(this.el.querySelector('#padLedCount').value),
+            led_pin: this.currentConfig?.led_pin !== undefined ? this.currentConfig.led_pin : -1,
+            led_count: this.currentConfig?.led_count || 0,
             speaker_pin: parseInt(this.el.querySelector('#padSpeakerPin').value),
             speaker_enable_pin: parseInt(this.el.querySelector('#padSpeakerEnablePin').value),
             ...(() => {

@@ -6,6 +6,7 @@ import { PadConfigCard } from './components/pad-config.js';
 import { ProfilesCard, BUTTON_NAMES, BUTTON_LABELS, REMAPPABLE_COUNT } from './components/profiles.js';
 import { InputTestCard } from './components/input-test.js';
 import { UsbHostCard } from './components/usb-host.js';
+import { LedsCard } from './components/leds.js';
 import { BtHostCard } from './components/bt-host.js';
 import { AdvancedCard } from './components/advanced.js';
 
@@ -20,6 +21,7 @@ const PAGE_GROUPS = {
     'profiles':    'core',
     'usb':         'output',
     'bluetooth':   'output',
+    'leds':        'output',
     'gpio':        'input',
     'usb-host':    'input',
     'bt-host':     'input',
@@ -59,6 +61,7 @@ class JoypadConfigApp {
         this.usbOutput = new UsbOutputCard(document.getElementById('cardUsbOutput'), this.protocol, log);
         this.btOutput = new BtOutputCard(document.getElementById('cardBtOutput'), this.protocol, log);
         this.padConfig = new PadConfigCard(document.getElementById('cardPadConfig'), this.protocol, log);
+        this.leds = new LedsCard(document.getElementById('cardLeds'), this.protocol, log);
         this.usbHost = new UsbHostCard(document.getElementById('cardUsbHost'), this.protocol, log);
         this.btHost = new BtHostCard(document.getElementById('cardBtHost'), this.protocol, log);
         this.profiles = new ProfilesCard(document.getElementById('cardProfiles'), this.protocol, log);
@@ -70,6 +73,7 @@ class JoypadConfigApp {
         this.usbOutput.render();
         this.btOutput.render();
         this.padConfig.render();
+        this.leds.render();
         this.usbHost.render();
         this.btHost.render();
         this.profiles.render();
@@ -208,6 +212,12 @@ class JoypadConfigApp {
             usbHostLink.style.display = this.usbHost.isAvailable() ? '' : 'none';
         }
 
+        // Hide LEDs nav link if device doesn't support pad config
+        const ledsLink = document.getElementById('navLeds');
+        if (ledsLink) {
+            ledsLink.style.display = this.leds.isAvailable() ? '' : 'none';
+        }
+
         // Hide Bluetooth output nav link if device has no BLE output
         const btLink = document.getElementById('navBluetooth');
         if (btLink) {
@@ -316,6 +326,7 @@ class JoypadConfigApp {
         await this.usbOutput.load();
         await this.btOutput.load();
         await this.padConfig.load();
+        await this.leds.load();
         await this.usbHost.load();
         await this.btHost.load();
         // Check if pad config card is visible to determine nav visibility
