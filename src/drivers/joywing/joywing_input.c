@@ -31,13 +31,70 @@
                           (1u << JOYWING_BTN_SELECT))
 
 // Device address — 0xE0 range for standalone, 0xF0 when merged with pad
+#define JOYWING_MAX_INSTANCES 2
+
+// Auto-calibrating ADC scaling — tracks min/max per axis
+// Starts with a narrow assumed range and widens as extremes are seen
+typedef struct {
+    uint16_t min;
+    uint16_t max;
+    uint16_t center;
+    bool calibrated;
+} jw_adc_cal_t;
+
+// 2 instances × 2 axes (X, Y)
+static jw_adc_cal_t jw_cal[JOYWING_MAX_INSTANCES][2];
+
+static void jw_cal_init(void) {
+    for (int i = 0; i < JOYWING_MAX_INSTANCES; i++) {
+        for (int a = 0; a < 2; a++) {
+            jw_cal[i][a].min = 512;
+            jw_cal[i][a].max = 512;
+            jw_cal[i][a].center = 512;
+            jw_cal[i][a].calibrated = false;
+        }
+    }
+}
+
+static uint8_t jw_scale_adc(uint8_t inst, uint8_t axis, uint16_t raw) {
+    jw_adc_cal_t* cal = &jw_cal[inst][axis];
+
+    // First reading: set center, start with narrow range
+    if (!cal->calibrated) {
+        cal->center = raw;
+        cal->min = raw;
+        cal->max = raw;
+        cal->calibrated = true;
+    }
+
+    // Track actual min/max seen
+    if (raw < cal->min) cal->min = raw;
+    if (raw > cal->max) cal->max = raw;
+
+    // Scale using tracked range, with margin expansion
+    // Add 5% margin beyond observed extremes for smoother edge hitting
+    uint16_t range = cal->max - cal->min;
+    if (range < 50) {
+        // Not enough data yet — use simple center-based scaling
+        return 128;
+    }
+
+    int32_t margin = range / 20;  // 5% margin
+    int32_t eff_min = (int32_t)cal->min + margin;
+    int32_t eff_max = (int32_t)cal->max - margin;
+    int32_t eff_range = eff_max - eff_min;
+    if (eff_range < 50) eff_range = 50;
+
+    if (raw <= eff_min) return 0;
+    if (raw >= eff_max) return 255;
+    return (uint8_t)(((int32_t)(raw - eff_min) * 255) / eff_range);
+}
+
 #define JOYWING_DEV_ADDR_STANDALONE 0xE0
 #define JOYWING_DEV_ADDR_MERGED    0xF0
 
 // When true, joywing_task skips router_submit_input (pad_input merges us)
 static bool merge_with_pad = false;
-
-#define JOYWING_MAX_INSTANCES 2
 
 // Per-instance hardware state
 typedef struct {
@@ -102,6 +159,9 @@ static void joywing_init_instance(uint8_t idx)
 
 static void joywing_init(void)
 {
+    // Initialize ADC calibration
+    jw_cal_init();
+
     // Initialize merged event (shared by all instances)
     init_input_event(&joywing_event);
     joywing_event.dev_addr = merge_with_pad ? JOYWING_DEV_ADDR_MERGED : JOYWING_DEV_ADDR_STANDALONE;
@@ -157,11 +217,11 @@ static void joywing_poll_instance(uint8_t idx)
         uint16_t raw_y = seesaw_adc_read(&jw->seesaw, JOYWING_ADC_Y);
         if (raw_y != SEESAW_ADC_ERROR) {
             if (idx == 0) {
-                joywing_event.analog[ANALOG_LX] = (uint8_t)(raw_x >> 2);
-                joywing_event.analog[ANALOG_LY] = (uint8_t)(raw_y >> 2);
+                joywing_event.analog[ANALOG_LX] = jw_scale_adc(idx, 0, raw_x);
+                joywing_event.analog[ANALOG_LY] = jw_scale_adc(idx, 1, raw_y);
             } else {
-                joywing_event.analog[ANALOG_RX] = (uint8_t)(raw_x >> 2);
-                joywing_event.analog[ANALOG_RY] = (uint8_t)(raw_y >> 2);
+                joywing_event.analog[ANALOG_RX] = jw_scale_adc(idx, 0, raw_x);
+                joywing_event.analog[ANALOG_RY] = jw_scale_adc(idx, 1, raw_y);
             }
         }
     }

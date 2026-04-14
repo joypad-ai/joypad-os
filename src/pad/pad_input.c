@@ -406,7 +406,7 @@ static void pad_poll_device(uint8_t device_index) {
     // Check toggle switches for d-pad remap functions
     for (int t = 0; t < 2; t++) {
         int16_t pin = config->toggle[t].pin;
-        if (pin < 0 || pin > 29) continue;
+        if (pin < 0 || pin > 48) continue;
         if (config->toggle[t].function == 0) continue;  // No function assigned
 
         bool toggle_state = platform_gpio_get(pin);

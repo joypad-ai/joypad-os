@@ -154,17 +154,17 @@ export class PadConfigCard {
                     <h3 style="margin-top: 12px; margin-bottom: 8px;">I2C Expander</h3>
                     <div class="pad-form-row">
                         <span class="label">SDA Pin</span>
-                        <input type="number" id="padI2cSda" min="-1" max="29" value="-1">
+                        <input type="number" id="padI2cSda" min="-1" max="47" value="-1">
                     </div>
                     <div class="pad-form-row">
                         <span class="label">SCL Pin</span>
-                        <input type="number" id="padI2cScl" min="-1" max="29" value="-1">
+                        <input type="number" id="padI2cScl" min="-1" max="47" value="-1">
                     </div>
 
                     <h3 style="margin-top: 12px; margin-bottom: 8px;">NeoPixel LEDs</h3>
                     <div class="pad-form-row">
                         <span class="label">LED Pin</span>
-                        <input type="number" id="padLedPin" min="-1" max="29" value="-1">
+                        <input type="number" id="padLedPin" min="-1" max="47" value="-1">
                     </div>
                     <div class="pad-form-row">
                         <span class="label">LED Count</span>
@@ -174,11 +174,11 @@ export class PadConfigCard {
                     <h3 style="margin-top: 12px; margin-bottom: 8px;">Speaker</h3>
                     <div class="pad-form-row">
                         <span class="label">Speaker Pin</span>
-                        <input type="number" id="padSpeakerPin" min="-1" max="29" value="-1">
+                        <input type="number" id="padSpeakerPin" min="-1" max="47" value="-1">
                     </div>
                     <div class="pad-form-row">
                         <span class="label">Enable Pin</span>
-                        <input type="number" id="padSpeakerEnablePin" min="-1" max="29" value="-1">
+                        <input type="number" id="padSpeakerEnablePin" min="-1" max="47" value="-1">
                     </div>
                 </div>
 
@@ -227,7 +227,7 @@ export class PadConfigCard {
     buildPinSelect(id, value, includeI2C) {
         let html = `<select id="${id}" class="pad-pin-select">`;
         html += `<option value="-1"${value < 0 ? ' selected' : ''}>Disabled</option>`;
-        for (let i = 0; i <= 29; i++) html += `<option value="${i}"${value === i ? ' selected' : ''}>GPIO ${i}</option>`;
+        for (let i = 0; i <= 47; i++) html += `<option value="${i}"${value === i ? ' selected' : ''}>GPIO ${i}</option>`;
         if (includeI2C) {
             for (let i = 100; i <= 115; i++) html += `<option value="${i}"${value === i ? ' selected' : ''}>I2C0 P${i - 100}</option>`;
             for (let i = 200; i <= 215; i++) html += `<option value="${i}"${value === i ? ' selected' : ''}>I2C1 P${i - 200}</option>`;
