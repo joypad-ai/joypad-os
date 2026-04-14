@@ -40,6 +40,8 @@ export class InputTestCard {
         this.el = container;
         this.streaming = false;
         this.players = {};  // keyed by player index
+        this.pendingUpdates = {};  // buffered display updates keyed by prefix
+        this.rafScheduled = false;
     }
 
     render() {
@@ -67,16 +69,30 @@ export class InputTestCard {
             const addr = event.addr !== undefined ? event.addr : 0;
             this.ensurePlayerGroup(player);
             this.ensureInputSource(player, addr, event.name || 'Unknown', event.src || '');
-            this.updateDisplay(`p${player}a${addr}`, event.buttons, event.axes);
+            this.scheduleUpdate(`p${player}a${addr}`, event.buttons, event.axes);
         } else if (event.type === 'output') {
             const player = event.player !== undefined ? event.player : 0;
             this.ensurePlayerGroup(player);
-            this.updateDisplay(`p${player}out`, event.buttons, event.axes);
+            this.scheduleUpdate(`p${player}out`, event.buttons, event.axes);
         } else if (event.type === 'connect') {
             this.log(`Controller connected: ${event.name} (${event.vid}:${event.pid})`);
         } else if (event.type === 'disconnect') {
             this.log(`Controller disconnected: port ${event.port}`);
             this.removePlayerGroup(event.port);
+        }
+    }
+
+    scheduleUpdate(prefix, buttons, axes) {
+        this.pendingUpdates[prefix] = { buttons, axes };
+        if (!this.rafScheduled) {
+            this.rafScheduled = true;
+            requestAnimationFrame(() => {
+                for (const [pfx, data] of Object.entries(this.pendingUpdates)) {
+                    this.updateDisplay(pfx, data.buttons, data.axes);
+                }
+                this.pendingUpdates = {};
+                this.rafScheduled = false;
+            });
         }
     }
 

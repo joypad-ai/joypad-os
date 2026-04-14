@@ -407,7 +407,14 @@ input[type="text"]:focus { outline: none; border-color: var(--accent); }
     margin-bottom: 6px;
 }
 
-.player-output { margin-top: 4px; padding-top: 8px; border-top: 1px solid var(--border); }
+.player-output {
+    margin-top: 4px;
+    padding: 10px;
+    border-radius: 6px;
+    background: rgba(78, 204, 163, 0.06);
+    border: 1px solid rgba(78, 204, 163, 0.15);
+}
+.player-output .source-label { color: var(--success); }
 
 .input-display.compact { padding: 10px; }
 .input-display.compact .buttons { margin-bottom: 8px; }
