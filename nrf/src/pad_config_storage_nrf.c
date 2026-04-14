@@ -8,7 +8,7 @@
 #include <stdio.h>
 
 // NVS key for pad config (must not collide with flash_nrf.c key=1 or btstack TLV keys)
-#define NVS_PAD_CONFIG_KEY 2
+#define NVS_PAD_CONFIG_KEY 0x50  // High key to avoid collision with flash_nrf (1) and btstack TLV
 
 // Get shared NVS instance from flash_nrf.c
 extern struct nvs_fs* flash_nrf_get_nvs(void);
@@ -20,13 +20,16 @@ void pad_config_storage_init(void) {
 
 bool pad_config_storage_load(pad_config_flash_t* out) {
     struct nvs_fs* nvs = flash_nrf_get_nvs();
-    if (!nvs) return false;
+    if (!nvs) {
+        printf("[pad_config] NVS not available for load\n");
+        return false;
+    }
 
     int rc = nvs_read(nvs, NVS_PAD_CONFIG_KEY, out, sizeof(pad_config_flash_t));
-    if (rc != sizeof(pad_config_flash_t)) return false;
+    if (rc < 0) return false;  // Key not found or error
+    if ((size_t)rc != sizeof(pad_config_flash_t)) return false;
     if (out->magic != PAD_CONFIG_MAGIC) return false;
 
-    printf("[pad_config] Loaded from NVS (seq=%lu)\n", (unsigned long)out->sequence);
     return true;
 }
 
