@@ -42,6 +42,20 @@
 
 /* 资源可调 */
 #define MBEDTLS_SSL_MAX_CONTENT_LEN 4096
+// 只保留你真的要用的，比如 SHA256
+#define MBEDTLS_SHA256_C
+#define MBEDTLS_SHA256_ALT
+
+// 关闭所有你没用到的高级功能
+#undef MBEDTLS_ECDSA_C
+#undef MBEDTLS_ENTROPY_C
+#undef MBEDTLS_GCM_C
+#undef MBEDTLS_PK_C
+#undef MBEDTLS_PK_PARSE_C
+#undef MBEDTLS_SSL_TLS_C
+#undef MBEDTLS_X509_USE_C
+#undef MBEDTLS_TLS_CLIENT
+#undef MBEDTLS_TLS_SERVER
 
 #include "mbedtls/check_config.h"
 #endif
