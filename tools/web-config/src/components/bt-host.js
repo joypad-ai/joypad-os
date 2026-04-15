@@ -12,10 +12,12 @@ export class BtHostCard {
             <div class="card" id="btHostCard" style="display:none;">
                 <h2>Bluetooth Host</h2>
                 <div class="card-content">
-                    <div class="pad-form-row">
-                        <span class="label">Enable</span>
-                        <label class="toggle"><input type="checkbox" id="btInputEnable"><span class="toggle-slider"></span></label>
-                        <span class="hint">Scan for BT/BLE controllers</span>
+                    <div class="toggle-row" style="margin-bottom: 12px;">
+                        <label class="toggle">
+                            <input type="checkbox" id="btInputEnable">
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <span>Enable Bluetooth Host</span>
                     </div>
                     <div class="pad-form-row">
                         <span class="label">Wiimote Orientation</span>
