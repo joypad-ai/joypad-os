@@ -72,9 +72,10 @@ typedef struct {
     uint8_t routing_mode;        // Router mode (0=simple, 1=merge, 2=broadcast)
     uint8_t merge_mode;          // Merge mode (0=priority, 1=blend, 2=all)
     uint8_t dpad_mode;           // D-pad mode (0=dpad, 1=left stick, 2=right stick)
+    uint8_t bt_input_enabled;    // BT Central scanning (0=off, 1=on)
 
-    // Reserved for future global settings (15 bytes)
-    uint8_t reserved[15];
+    // Reserved for future global settings (14 bytes)
+    uint8_t reserved[14];
 
     // Custom profiles (4 x 56 = 224 bytes)
     custom_profile_t profiles[CUSTOM_PROFILE_MAX_COUNT];

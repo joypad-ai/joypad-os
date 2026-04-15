@@ -1563,6 +1563,7 @@ target_compile_definitions(joypad_controller_btusb_rp2040_abb PRIVATE
     CONFIG_PAD_INPUT=1
     USE_BOOTSEL_BUTTON=1
     REQUIRE_BLE_OUTPUT=0
+    REQUIRE_BT_INPUT=1
     SENSOR_PAD=1
     PAD_CONFIG_ABB=1
     SENSOR_JOYWING=1
@@ -1587,6 +1588,9 @@ target_include_directories(joypad_controller_btusb_rp2040_abb PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/controller_btusb
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd
     ${CMAKE_CURRENT_SOURCE_DIR}/pad
+    ${CMAKE_CURRENT_SOURCE_DIR}/bt
+    ${CMAKE_CURRENT_SOURCE_DIR}/bt/btstack
+    ${CMAKE_CURRENT_SOURCE_DIR}/bt/bthid
 )
 target_link_libraries(joypad_controller_btusb_rp2040_abb PRIVATE
     pico_stdlib
@@ -1603,6 +1607,7 @@ target_link_libraries(joypad_controller_btusb_rp2040_abb PRIVATE
     tinyusb_pico_pio_usb
     xinput_host
 )
+joypad_add_btstack(joypad_controller_btusb_rp2040_abb)
 joypad_target_common(joypad_controller_btusb_rp2040_abb)
 pico_enable_stdio_usb(joypad_controller_btusb_rp2040_abb 0)
 pico_enable_stdio_uart(joypad_controller_btusb_rp2040_abb 1)

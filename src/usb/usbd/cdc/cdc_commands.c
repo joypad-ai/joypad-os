@@ -1044,16 +1044,19 @@ static void cmd_router_get(const char* json)
 #endif
 
     flash_t flash_data;
-    uint8_t rm = ROUTING_MODE, mm = MERGE_MODE, dm = 0;
+    uint8_t rm = ROUTING_MODE, mm = MERGE_MODE, dm = 0, bti = 0;
     if (flash_load(&flash_data) && flash_data.router_saved) {
         if (flash_data.routing_mode <= 2) rm = flash_data.routing_mode;
         if (flash_data.merge_mode <= 2) mm = flash_data.merge_mode;
         if (flash_data.dpad_mode <= 2) dm = flash_data.dpad_mode;
+        bti = flash_data.bt_input_enabled;
     }
     snprintf(response_buf, sizeof(response_buf),
              "{\"ok\":true,\"routing_mode\":%d,\"merge_mode\":%d,\"dpad_mode\":%d,"
+             "\"bt_input\":%s,"
              "\"default_routing_mode\":%d,\"default_merge_mode\":%d}",
-             rm, mm, dm, (int)ROUTING_MODE, (int)MERGE_MODE);
+             rm, mm, dm, bti ? "true" : "false",
+             (int)ROUTING_MODE, (int)MERGE_MODE);
     send_json(response_buf);
 }
 
@@ -1068,6 +1071,8 @@ static void cmd_router_set(const char* json)
     if (json_get_int(json, "routing_mode", &ival)) flash_data.routing_mode = (uint8_t)ival;
     if (json_get_int(json, "merge_mode", &ival)) flash_data.merge_mode = (uint8_t)ival;
     if (json_get_int(json, "dpad_mode", &ival)) flash_data.dpad_mode = (uint8_t)ival;
+    bool bval;
+    if (json_get_bool(json, "bt_input", &bval)) flash_data.bt_input_enabled = bval ? 1 : 0;
     flash_data.router_saved = 1;
 
     flash_save_force(&flash_data);

@@ -16,7 +16,7 @@ export class RouterCard {
                         <select id="routingMode">
                             <option value="0">Simple (1:1)</option>
                             <option value="1">Merge (N:1)</option>
-                            <option value="2">Broadcast (1:N)</option>
+                            <option value="2" disabled>Broadcast (1:N)</option>
                         </select>
                     </div>
                     <div class="pad-form-row" id="mergeModeRow">
@@ -34,6 +34,11 @@ export class RouterCard {
                             <option value="1">Left Stick</option>
                             <option value="2">Right Stick</option>
                         </select>
+                    </div>
+                    <div class="pad-form-row">
+                        <span class="label">Bluetooth Input</span>
+                        <label class="toggle"><input type="checkbox" id="btInput"><span class="toggle-slider"></span></label>
+                        <span class="hint">Scan for BT/BLE controllers</span>
                     </div>
                     <div class="buttons" style="margin-top: 12px;">
                         <button id="routerSaveBtn">Save &amp; Reboot</button>
@@ -54,6 +59,7 @@ export class RouterCard {
             this.el.querySelector('#routingMode').value = config.routing_mode || 0;
             this.el.querySelector('#mergeMode').value = config.merge_mode || 0;
             this.el.querySelector('#dpadMode').value = config.dpad_mode || 0;
+            this.el.querySelector('#btInput').checked = config.bt_input || false;
             this.el.querySelector('#mergeModeRow').style.display =
                 (config.routing_mode || 0) === 1 ? '' : 'none';
         } catch (e) {
@@ -68,6 +74,7 @@ export class RouterCard {
             routing_mode: parseInt(this.el.querySelector('#routingMode').value),
             merge_mode: parseInt(this.el.querySelector('#mergeMode').value),
             dpad_mode: parseInt(this.el.querySelector('#dpadMode').value),
+            bt_input: this.el.querySelector('#btInput').checked,
         };
 
         try {

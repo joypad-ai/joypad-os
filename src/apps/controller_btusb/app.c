@@ -54,6 +54,12 @@ extern void le_device_db_remove(int index);
 
 #if REQUIRE_BT_INPUT
 #include "bt/btstack/btstack_host.h"
+#if !REQUIRE_BLE_OUTPUT
+// Need gap APIs even without BLE output for bond management
+extern void gap_delete_all_link_keys(void);
+extern int le_device_db_max_count(void);
+extern void le_device_db_remove(int index);
+#endif
 #endif
 
 // USB host input (conditional)
@@ -86,6 +92,10 @@ extern void le_device_db_remove(int index);
 // BUTTON EVENT HANDLER
 // ============================================================================
 
+#if REQUIRE_BT_INPUT
+static bool bt_input_enabled = false;
+#endif
+
 // Check if USB is actively connected as a gamepad (mounted + not in CDC config mode)
 static bool usb_gamepad_active(void)
 {
@@ -97,8 +107,10 @@ static void on_button_event(button_event_t event)
     switch (event) {
         case BUTTON_EVENT_CLICK:
 #if REQUIRE_BT_INPUT
-            printf("[app:controller_btusb] Starting 60s BT scan...\n");
-            btstack_host_start_timed_scan(60000);
+            if (bt_input_enabled) {
+                printf("[app:controller_btusb] Starting 60s BT scan...\n");
+                btstack_host_start_timed_scan(60000);
+            }
 #endif
 #if REQUIRE_BLE_OUTPUT
             printf("[app:controller_btusb] BLE: %s (%s), USB: %s (%s)\n",
@@ -167,15 +179,20 @@ static void on_button_event(button_event_t event)
 // SInput RGB LED override: when true, host-sent RGB commands control NeoPixel
 static bool sinput_rgb_override = false;
 
-#if REQUIRE_BLE_OUTPUT && REQUIRE_BT_INPUT
-// Post-init callback: set up both BLE Peripheral (output) and BLE Central (input)
-static void bt_post_init(void)
+#if REQUIRE_BT_INPUT
+// Post-init callback: set up BLE Central (input scanning)
+static void bt_central_post_init(void)
 {
+#if REQUIRE_BLE_OUTPUT
     ble_output_late_init();
+#endif
     btstack_host_init_hid_handlers();
-    // Start scanning for BLE controllers
-    btstack_host_start_timed_scan(60000);
-    printf("[app:controller_btusb] BLE dual role: Peripheral + Central\n");
+    if (bt_input_enabled) {
+        btstack_host_start_timed_scan(60000);
+        printf("[app:controller_btusb] BT scanning enabled\n");
+    } else {
+        printf("[app:controller_btusb] BT scanning disabled (enable in web config)\n");
+    }
 }
 #endif
 
@@ -343,6 +360,7 @@ void app_init(void)
             if (flash_data.routing_mode <= 2) router_cfg.mode = flash_data.routing_mode;
             if (flash_data.merge_mode <= 2) router_cfg.merge_mode = flash_data.merge_mode;
             if (flash_data.dpad_mode <= 2) router_set_dpad_mode(flash_data.dpad_mode);
+            bt_input_enabled = flash_data.bt_input_enabled != 0;
         }
     }
 
@@ -401,13 +419,11 @@ void app_init(void)
     ble_output_init();  // Load BLE mode from flash before BTstack starts
 #endif
 
-    // Select post-init: dual role (Peripheral + Central) or single role
-#if REQUIRE_BLE_OUTPUT && REQUIRE_BT_INPUT
-    #define BT_POST_INIT bt_post_init
+    // Select post-init callback
+#if REQUIRE_BT_INPUT
+    #define BT_POST_INIT bt_central_post_init
 #elif REQUIRE_BLE_OUTPUT
     #define BT_POST_INIT ble_output_late_init
-#else
-    #define BT_POST_INIT btstack_host_init_hid_handlers
 #endif
 
 #ifdef BTSTACK_USE_CYW43
