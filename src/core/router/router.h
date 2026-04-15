@@ -138,6 +138,12 @@ void router_submit_input(const input_event_t* event);
 // 0=d-pad, 1=left stick, 2=right stick
 void router_set_dpad_mode(uint8_t mode);
 
+// Set button combo hotkeys (up to 4)
+// input_mask: buttons that must all be held (0 = disabled)
+// output_mask: upper byte = action, lower 22 bits = output buttons
+#define ROUTER_COMBO_MAX 4
+void router_set_combo(uint8_t index, uint32_t input_mask, uint32_t output_mask);
+
 // ============================================================================
 // OUTPUT RETRIEVAL (Core 1 - Poll or Event Driven)
 // ============================================================================

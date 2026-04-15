@@ -322,6 +322,20 @@ void app_init(void)
 
     router_init(&router_cfg);
 
+    // Load combo hotkeys from pad config into router
+#ifdef CONFIG_PAD_INPUT
+    {
+        const pad_device_config_t* cfg = pad_config_load_runtime();
+        if (cfg) {
+            for (int c = 0; c < PAD_COMBO_MAX && c < ROUTER_COMBO_MAX; c++) {
+                if (cfg->combo[c].input_mask) {
+                    router_set_combo(c, cfg->combo[c].input_mask, cfg->combo[c].output_mask);
+                }
+            }
+        }
+    }
+#endif
+
 #if REQUIRE_BLE_OUTPUT
     // Route: GPIO (sensors) → BLE Peripheral
     router_add_route(INPUT_SOURCE_GPIO, OUTPUT_TARGET_BLE_PERIPHERAL, 0);

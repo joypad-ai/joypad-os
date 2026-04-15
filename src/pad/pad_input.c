@@ -580,44 +580,7 @@ static void pad_input_task(void) {
         }
 #endif
 
-        // Apply button combo hotkeys from config
-        for (int c = 0; c < PAD_COMBO_MAX; c++) {
-            uint32_t in = pad_devices[i]->combo[c].input_mask;
-            uint32_t out = pad_devices[i]->combo[c].output_mask;
-            if (!in) continue;
-
-            bool held = (pad_events[i].buttons & in) == in;
-            if (!held) {
-                combo_fired[c] = false;
-                continue;
-            }
-
-            uint8_t action = (out >> PAD_COMBO_ACTION_SHIFT) & 0xFF;
-            switch (action) {
-                case PAD_COMBO_ACTION_REMAP:
-                    pad_events[i].buttons = (pad_events[i].buttons & ~in) | (out & PAD_COMBO_BUTTON_MASK);
-                    break;
-                case PAD_COMBO_ACTION_DPAD_DPAD:
-                case PAD_COMBO_ACTION_DPAD_LSTICK:
-                case PAD_COMBO_ACTION_DPAD_RSTICK:
-                    if (!combo_fired[c]) {
-                        router_set_dpad_mode(action - PAD_COMBO_ACTION_DPAD_DPAD);
-                        combo_fired[c] = true;
-                    }
-                    pad_events[i].buttons &= ~in;
-                    break;
-                case PAD_COMBO_ACTION_PROFILE_NEXT:
-                    if (!combo_fired[c]) {
-                        extern void profile_cycle_next(uint8_t output);
-                        profile_cycle_next(0);  // Cycle profile for first output
-                        combo_fired[c] = true;
-                    }
-                    pad_events[i].buttons &= ~in;
-                    break;
-            }
-        }
-
-        // Submit to router
+        // Submit to router (combo hotkeys applied there for all input sources)
         router_submit_input(&pad_events[i]);
     }
 }

@@ -166,6 +166,13 @@ static router_config_t router_config;
 // Global d-pad mode (0=dpad, 1=left stick, 2=right stick)
 static uint8_t global_dpad_mode = 0;
 
+// Global button combo hotkeys
+static struct {
+    uint32_t input_mask;
+    uint32_t output_mask;
+    bool fired;
+} router_combos[ROUTER_COMBO_MAX];
+
 // Active output count (for broadcast mode)
 static output_target_t active_outputs[MAX_OUTPUTS];
 static uint8_t active_output_count = 0;
@@ -761,10 +768,54 @@ void router_submit_input(const input_event_t* event) {
     }
 #endif
 
-    // Apply global d-pad mode remap (d-pad buttons → analog stick)
+    // Apply button combo hotkeys
     input_event_t remapped;
+    bool did_remap = false;
+    for (int c = 0; c < ROUTER_COMBO_MAX; c++) {
+        uint32_t in = router_combos[c].input_mask;
+        if (!in) continue;
+
+        bool held = (event->buttons & in) == in;
+        if (!held) {
+            router_combos[c].fired = false;
+            continue;
+        }
+
+        if (!did_remap) {
+            remapped = *event;
+            did_remap = true;
+        }
+
+        uint32_t out = router_combos[c].output_mask;
+        uint8_t action = (out >> 24) & 0xFF;
+        switch (action) {
+            case 0:  // Button remap
+                remapped.buttons = (remapped.buttons & ~in) | (out & 0x003FFFFF);
+                break;
+            case 1:  // D-Pad → D-Pad
+            case 2:  // D-Pad → Left Stick
+            case 3:  // D-Pad → Right Stick
+                if (!router_combos[c].fired) {
+                    router_set_dpad_mode(action - 1);
+                    router_combos[c].fired = true;
+                }
+                remapped.buttons &= ~in;
+                break;
+            case 4:  // Next Profile
+                if (!router_combos[c].fired) {
+                    extern void profile_cycle_next(uint8_t output);
+                    profile_cycle_next(0);
+                    router_combos[c].fired = true;
+                }
+                remapped.buttons &= ~in;
+                break;
+        }
+    }
+    if (did_remap) event = &remapped;
+
+    // Apply global d-pad mode remap (d-pad buttons → analog stick)
     if (global_dpad_mode > 0) {
-        remapped = *event;
+        if (!did_remap) { remapped = *event; did_remap = true; }
         uint32_t dpad_bits = remapped.buttons & (JP_BUTTON_DU | JP_BUTTON_DD | JP_BUTTON_DL | JP_BUTTON_DR);
         if (dpad_bits) {
             remapped.buttons &= ~(JP_BUTTON_DU | JP_BUTTON_DD | JP_BUTTON_DL | JP_BUTTON_DR);
@@ -774,11 +825,11 @@ void router_submit_input(const input_event_t* event) {
             if (dpad_bits & JP_BUTTON_DU) ay = 0;
             else if (dpad_bits & JP_BUTTON_DD) ay = 255;
             if (global_dpad_mode == 1) {
-                remapped.analog[0] = ax;  // LX
-                remapped.analog[1] = ay;  // LY
+                remapped.analog[0] = ax;
+                remapped.analog[1] = ay;
             } else {
-                remapped.analog[2] = ax;  // RX
-                remapped.analog[3] = ay;  // RY
+                remapped.analog[2] = ax;
+                remapped.analog[3] = ay;
             }
         }
         event = &remapped;
@@ -1112,4 +1163,11 @@ void router_set_dpad_mode(uint8_t mode) {
         static const char* names[] = {"D-PAD", "LEFT STICK", "RIGHT STICK"};
         printf(LOG_TAG "D-pad mode: %s\n", names[mode]);
     }
+}
+
+void router_set_combo(uint8_t index, uint32_t input_mask, uint32_t output_mask) {
+    if (index >= ROUTER_COMBO_MAX) return;
+    router_combos[index].input_mask = input_mask;
+    router_combos[index].output_mask = output_mask;
+    router_combos[index].fired = false;
 }
