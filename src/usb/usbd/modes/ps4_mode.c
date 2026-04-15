@@ -53,6 +53,8 @@ static ps4_out_report_t ps4_output;
 static bool ps4_output_available = false;
 static uint8_t ps4_report_counter = 0;
 
+uint32_t pico_rand(void) { return get_rand_32(); }
+
 // CRC32实现 (IEEE 802.3标准)
 static uint32_t ps4_crc32(uint32_t crc, const void *buf, size_t size) {
     static const uint32_t crc32_table[256] = {
