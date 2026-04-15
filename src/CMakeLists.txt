@@ -337,10 +337,6 @@ endfunction()
 # Common libraries for USB host apps
 set(COMMON_LIBRARIES pico_stdlib pico_multicore hardware_pio pico_rand tinyusb_host tinyusb_board xinput_host pico_mbedtls)
 
-if(NOT DEFINED DISABLE_CRYPTO)
-    list(APPEND COMMON_LIBRARIES mbedcrypto)
-endif()
-
 # Add pico_rand to the main executable
 if(NOT DEFINED DISABLE_PICO_RAND)
     list(APPEND COMMON_LIBRARIES pico_rand)
