@@ -158,8 +158,9 @@ export class ProfilesCard {
 
             const info = document.createElement('div');
             info.className = 'profile-item-info';
+            const detail = profile.builtin ? (profile.index === 0 ? 'Passthrough' : 'Built-in') : 'Custom';
             info.innerHTML = `<div class="profile-item-name">${profile.name}</div>
-                              <div class="profile-item-details">${profile.builtin ? 'Built-in' : 'Custom'}</div>`;
+                              <div class="profile-item-details">${detail}</div>`;
             item.appendChild(info);
 
             const actions = document.createElement('div');
