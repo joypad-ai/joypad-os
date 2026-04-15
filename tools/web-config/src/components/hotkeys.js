@@ -5,6 +5,7 @@ const COMBO_ACTION_SHIFT = 24;
 const COMBO_BUTTON_MASK = 0x003FFFFF;
 
 const ACTIONS = [
+    { id: -1, name: 'Disabled' },
     { id: 0, name: 'Button Remap' },
     { id: 1, name: 'D-Pad → D-Pad' },
     { id: 2, name: 'D-Pad → Left Stick' },
@@ -30,16 +31,18 @@ export class HotkeysCard {
                         ${ACTIONS.map(a => `<option value="${a.id}">${a.name}</option>`).join('')}
                     </select>
                 </div>
-                <div style="margin-bottom: 4px;">
-                    <div class="hint" style="margin-bottom: 4px;">Input (hold together)</div>
-                    <div class="combo-buttons" id="comboIn${i}">
-                        ${this.buildCheckboxes(`ci${i}`)}
+                <div id="comboFields${i}" style="display:none;">
+                    <div style="margin-bottom: 4px;">
+                        <div class="hint" style="margin-bottom: 4px;">Input (hold together)</div>
+                        <div class="combo-buttons" id="comboIn${i}">
+                            ${this.buildCheckboxes(`ci${i}`)}
+                        </div>
                     </div>
-                </div>
-                <div id="comboOutWrap${i}">
-                    <div class="hint" style="margin-bottom: 4px; margin-top: 8px;">Output</div>
-                    <div class="combo-buttons" id="comboOut${i}">
-                        ${this.buildCheckboxes(`co${i}`)}
+                    <div id="comboOutWrap${i}">
+                        <div class="hint" style="margin-bottom: 4px; margin-top: 8px;">Output</div>
+                        <div class="combo-buttons" id="comboOut${i}">
+                            ${this.buildCheckboxes(`co${i}`)}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -58,11 +61,12 @@ export class HotkeysCard {
                 </div>
             </div>`;
 
-        // Wire up action select to show/hide output buttons
+        // Wire up action select to show/hide fields
         for (let i = 0; i < 4; i++) {
             this.el.querySelector(`#comboAction${i}`).addEventListener('change', (e) => {
-                const showOutput = parseInt(e.target.value) === 0;
-                this.el.querySelector(`#comboOutWrap${i}`).style.display = showOutput ? '' : 'none';
+                const val = parseInt(e.target.value);
+                this.el.querySelector(`#comboFields${i}`).style.display = val >= 0 ? '' : 'none';
+                this.el.querySelector(`#comboOutWrap${i}`).style.display = val === 0 ? '' : 'none';
             });
         }
         this.el.querySelector('#hotkeysSaveBtn').addEventListener('click', () => this.save());
@@ -112,12 +116,13 @@ export class HotkeysCard {
                 const combo = combos[i] || [0, 0];
                 const inputMask = combo[0];
                 const outputRaw = combo[1];
-                const action = (outputRaw >>> COMBO_ACTION_SHIFT) & 0xFF;
+                const action = inputMask === 0 ? -1 : ((outputRaw >>> COMBO_ACTION_SHIFT) & 0xFF);
                 const outputButtons = outputRaw & COMBO_BUTTON_MASK;
 
-                this.maskToChecks(`ci${i}`, inputMask);
                 this.el.querySelector(`#comboAction${i}`).value = action;
+                this.maskToChecks(`ci${i}`, inputMask);
                 this.maskToChecks(`co${i}`, outputButtons);
+                this.el.querySelector(`#comboFields${i}`).style.display = action >= 0 ? '' : 'none';
                 this.el.querySelector(`#comboOutWrap${i}`).style.display = action === 0 ? '' : 'none';
             }
         } catch (e) {
@@ -177,9 +182,14 @@ export class HotkeysCard {
         // Add combo hotkeys
         for (let i = 0; i < 4; i++) {
             const action = parseInt(this.el.querySelector(`#comboAction${i}`).value);
-            const outputButtons = this.checksToMask(`co${i}`);
-            config[`combo${i}_in`] = this.checksToMask(`ci${i}`);
-            config[`combo${i}_out`] = (action << COMBO_ACTION_SHIFT) | (outputButtons & COMBO_BUTTON_MASK);
+            if (action < 0) {
+                config[`combo${i}_in`] = 0;
+                config[`combo${i}_out`] = 0;
+            } else {
+                const outputButtons = this.checksToMask(`co${i}`);
+                config[`combo${i}_in`] = this.checksToMask(`ci${i}`);
+                config[`combo${i}_out`] = (action << COMBO_ACTION_SHIFT) | (outputButtons & COMBO_BUTTON_MASK);
+            }
         }
 
         try {
