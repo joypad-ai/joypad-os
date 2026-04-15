@@ -337,6 +337,15 @@ endfunction()
 # Common libraries for USB host apps
 set(COMMON_LIBRARIES pico_stdlib pico_multicore hardware_pio pico_rand tinyusb_host tinyusb_board xinput_host pico_mbedtls)
 
+if(NOT DEFINED DISABLE_CRYPTO)
+    list(APPEND COMMON_LIBRARIES mbedcrypto)
+endif()
+
+# Add pico_rand to the main executable
+if(NOT DEFINED DISABLE_PICO_RAND)
+    list(APPEND COMMON_LIBRARIES pico_rand)
+endif()
+
 # BTstack compile definitions (shared by all USB host apps)
 # Note: Most BTstack feature flags are in bt/btstack/btstack_config.h
 # Only ENABLE_BTSTACK is needed here to enable CFG_TUH_BTD in tusb_config.h
