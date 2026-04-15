@@ -1351,3 +1351,15 @@ config:
 	@echo "  PICO_SDK_PATH:       $(PICO_SDK_PATH)"
 	@echo "  PICO_TOOLCHAIN_PATH: $(PICO_TOOLCHAIN_PATH)"
 	@echo ""
+
+# Serve docs locally (MkDocs)
+DOCS_VENV := .venv-docs
+.PHONY: serve-docs
+serve-docs:
+	@if [ ! -d "$(DOCS_VENV)" ]; then \
+		echo "Setting up docs environment..."; \
+		python3 -m venv $(DOCS_VENV) && \
+		$(DOCS_VENV)/bin/pip install mkdocs mkdocs-material; \
+	fi
+	@echo "Serving docs at http://127.0.0.1:8000"
+	@$(DOCS_VENV)/bin/mkdocs serve

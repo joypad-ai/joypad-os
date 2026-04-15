@@ -27,7 +27,7 @@ theme:
     - search.suggest
     - content.code.copy
   logo: images/logo_solid.svg
-  favicon: images/logo_solid.svg
+  favicon: images/favicon.svg
 
 nav:
   - Home: index.md
