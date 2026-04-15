@@ -371,9 +371,10 @@ function(embed_ds4_auth_resources_global target)
         target_link_libraries(${target} PRIVATE key_pem_obj_${target})
         
         # Create symbol aliases for PS4 mode compatibility using linker options
+        # objcopy creates symbols like _binary_key_pem_joypad_usb_pico_o_start, map to _binary_key_pem_start
         target_link_options(${target} PRIVATE
-            "LINKER:--defsym,_binary_key_pem_start=key_pem_${target}_start"
-            "LINKER:--defsym,_binary_key_pem_end=key_pem_${target}_end"
+            "LINKER:--defsym,_binary_key_pem_start=_binary_key_pem_${target}_o_start"
+            "LINKER:--defsym,_binary_key_pem_end=_binary_key_pem_${target}_o_end"
         )
         message(STATUS "Added key.pem for PS4 auth")
     else()
@@ -395,8 +396,8 @@ function(embed_ds4_auth_resources_global target)
         
         # Create symbol aliases for PS4 mode compatibility using linker options
         target_link_options(${target} PRIVATE
-            "LINKER:--defsym,_binary_serial_txt_start=serial_txt_${target}_start"
-            "LINKER:--defsym,_binary_serial_txt_end=serial_txt_${target}_end"
+            "LINKER:--defsym,_binary_serial_txt_start=_binary_serial_txt_${target}_o_start"
+            "LINKER:--defsym,_binary_serial_txt_end=_binary_serial_txt_${target}_o_end"
         )
         message(STATUS "Added serial.txt for PS4 auth")
     else()
@@ -418,8 +419,8 @@ function(embed_ds4_auth_resources_global target)
         
         # Create symbol aliases for PS4 mode compatibility using linker options
         target_link_options(${target} PRIVATE
-            "LINKER:--defsym,_binary_sig_bin_start=sig_bin_${target}_start"
-            "LINKER:--defsym,_binary_sig_bin_end=sig_bin_${target}_end"
+            "LINKER:--defsym,_binary_sig_bin_start=_binary_sig_bin_${target}_o_start"
+            "LINKER:--defsym,_binary_sig_bin_end=_binary_sig_bin_${target}_o_end"
         )
         message(STATUS "Added sig.bin for PS4 auth")
     else()
