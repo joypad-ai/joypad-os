@@ -150,6 +150,17 @@ class WebSerialTransport {
                 break;
             }
         }
+        // Device disconnected (reboot, unplug, etc.)
+        if (this.readLoopRunning && this.onDisconnect) {
+            this.readLoopRunning = false;
+            try { this.reader?.releaseLock(); } catch (e) {}
+            try { this.writer?.releaseLock(); } catch (e) {}
+            try { await this.port?.close(); } catch (e) {}
+            this.reader = null;
+            this.writer = null;
+            this.port = null;
+            this.onDisconnect();
+        }
     }
 }
 

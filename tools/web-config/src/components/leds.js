@@ -28,6 +28,11 @@ export class LedsCard {
                             <span class="label">LED Count</span>
                             <input type="number" id="ledCount" min="1" max="16" value="1">
                         </div>
+                        <div class="pad-form-row">
+                            <span class="label">SInput RGB</span>
+                            <label class="toggle"><input type="checkbox" id="sinputRgb"><span class="toggle-slider"></span></label>
+                            <span class="hint">Host app controls LED color</span>
+                        </div>
                     </div>
                     <div class="buttons" style="margin-top: 12px;">
                         <button id="ledsSaveBtn">Save &amp; Reboot</button>
@@ -87,6 +92,9 @@ export class LedsCard {
                 settings.style.display = 'none';
             }
 
+            // SInput RGB toggle
+            this.el.querySelector('#sinputRgb').checked = config.sinput_rgb || false;
+
             // Show default hint
             if (sysPin >= 0) {
                 this.el.querySelector('#ledPinHint').textContent = `Default: GPIO ${sysPin}`;
@@ -113,6 +121,7 @@ export class LedsCard {
             invert_ly: this.currentConfig.invert_ly || false,
             invert_rx: this.currentConfig.invert_rx || false,
             invert_ry: this.currentConfig.invert_ry || false,
+            sinput_rgb: this.el.querySelector('#sinputRgb').checked,
             led_pin: this.el.querySelector('#ledEnable').checked ? parseInt(this.el.querySelector('#ledPin').value) : -1,
             led_count: this.el.querySelector('#ledEnable').checked ? parseInt(this.el.querySelector('#ledCount').value) : 0,
             speaker_pin: this.currentConfig.speaker_pin !== undefined ? this.currentConfig.speaker_pin : -1,

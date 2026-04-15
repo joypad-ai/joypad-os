@@ -149,6 +149,9 @@ static void on_button_event(button_event_t event)
     }
 }
 
+// SInput RGB LED override: when true, host-sent RGB commands control NeoPixel
+static bool sinput_rgb_override = false;
+
 // ============================================================================
 // APP INPUT INTERFACES
 // ============================================================================
@@ -204,7 +207,7 @@ void app_init(void)
 #ifdef CONFIG_PAD_INPUT
     pad_config_flash_init();
     {
-        // Apply LED config from pad config (before pad device init)
+        // Apply LED config and settings from pad config
         const pad_device_config_t* led_cfg = pad_config_load_runtime();
         if (led_cfg) {
             if (led_cfg->led_pin >= 0) {
@@ -213,6 +216,7 @@ void app_init(void)
             } else if (led_cfg->led_pin == -1) {
                 neopixel_disable();
             }
+            sinput_rgb_override = led_cfg->sinput_rgb;
         }
     }
 #endif
@@ -431,6 +435,16 @@ void app_task(void)
         }
         leds_set_color(r, g, b);
     }
+
+    // SInput RGB LED override: host-sent RGB overrides mode color
+    if (sinput_rgb_override) {
+        output_feedback_t fb = {0};
+        if (usbd_output_interface.get_feedback && usbd_output_interface.get_feedback(&fb)) {
+            if (fb.led_r || fb.led_g || fb.led_b) {
+                leds_set_color(fb.led_r, fb.led_g, fb.led_b);
+            }
+        }
+    }
 #else
     // USB-only: show USB mode color
     bool usb_active = usb_gamepad_active();
@@ -447,6 +461,16 @@ void app_task(void)
         uint8_t r, g, b;
         usbd_get_mode_color(usb_mode, &r, &g, &b);
         leds_set_color(r, g, b);
+    }
+
+    // SInput RGB LED override: host-sent RGB overrides mode color
+    if (sinput_rgb_override) {
+        output_feedback_t fb = {0};
+        if (usbd_output_interface.get_feedback && usbd_output_interface.get_feedback(&fb)) {
+            if (fb.led_r || fb.led_g || fb.led_b) {
+                leds_set_color(fb.led_r, fb.led_g, fb.led_b);
+            }
+        }
     }
 #endif
 

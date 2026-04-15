@@ -150,6 +150,7 @@ _Static_assert(sizeof(pad_config_flash_t) == 256, "pad_config_flash_t must be ex
 #define PAD_FLAG_INVERT_LY          (1 << 3)
 #define PAD_FLAG_INVERT_RX          (1 << 4)
 #define PAD_FLAG_INVERT_RY          (1 << 5)
+#define PAD_FLAG_SINPUT_RGB         (1 << 6)  // SInput RGB LED overrides NeoPixel
 
 // ============================================================================
 // API

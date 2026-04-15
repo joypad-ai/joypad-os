@@ -34,6 +34,7 @@ void pad_config_to_flash(const pad_device_config_t* config, pad_config_flash_t* 
     if (config->invert_ly)          flash->flags |= PAD_FLAG_INVERT_LY;
     if (config->invert_rx)          flash->flags |= PAD_FLAG_INVERT_RX;
     if (config->invert_ry)          flash->flags |= PAD_FLAG_INVERT_RY;
+    if (config->sinput_rgb)         flash->flags |= PAD_FLAG_SINPUT_RGB;
 
     flash->i2c_sda = config->i2c_sda;
     flash->i2c_scl = config->i2c_scl;
@@ -115,6 +116,7 @@ const pad_device_config_t* pad_config_from_flash(const pad_config_flash_t* flash
     runtime_config.invert_ly          = (flash->flags & PAD_FLAG_INVERT_LY) != 0;
     runtime_config.invert_rx          = (flash->flags & PAD_FLAG_INVERT_RX) != 0;
     runtime_config.invert_ry          = (flash->flags & PAD_FLAG_INVERT_RY) != 0;
+    runtime_config.sinput_rgb         = (flash->flags & PAD_FLAG_SINPUT_RGB) != 0;
 
     runtime_config.i2c_sda = flash->i2c_sda;
     runtime_config.i2c_scl = flash->i2c_scl;

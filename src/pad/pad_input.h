@@ -104,6 +104,7 @@ typedef struct {
     bool invert_ly;             // Invert left Y axis
     bool invert_rx;             // Invert right X axis
     bool invert_ry;             // Invert right Y axis
+    bool sinput_rgb;            // SInput RGB LED overrides NeoPixel color
 
     // Analog stick deadzone (0-127, applied to center)
     uint8_t deadzone;

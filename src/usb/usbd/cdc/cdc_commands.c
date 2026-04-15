@@ -1489,11 +1489,13 @@ static void cmd_pad_config_get(const char* json)
 
     // ADC invert flags
     pos += snprintf(response_buf + pos, sizeof(response_buf) - pos,
-                    ",\"invert_lx\":%s,\"invert_ly\":%s,\"invert_rx\":%s,\"invert_ry\":%s",
+                    ",\"invert_lx\":%s,\"invert_ly\":%s,\"invert_rx\":%s,\"invert_ry\":%s"
+                    ",\"sinput_rgb\":%s",
                     (flash_data.flags & PAD_FLAG_INVERT_LX) ? "true" : "false",
                     (flash_data.flags & PAD_FLAG_INVERT_LY) ? "true" : "false",
                     (flash_data.flags & PAD_FLAG_INVERT_RX) ? "true" : "false",
-                    (flash_data.flags & PAD_FLAG_INVERT_RY) ? "true" : "false");
+                    (flash_data.flags & PAD_FLAG_INVERT_RY) ? "true" : "false",
+                    (flash_data.flags & PAD_FLAG_SINPUT_RGB) ? "true" : "false");
 
     // LED (raw pad config + system defaults)
     {
@@ -1551,6 +1553,7 @@ static void cmd_pad_config_set(const char* json)
     if (json_get_bool(json, "invert_ly", &bval)) config.invert_ly = bval;
     if (json_get_bool(json, "invert_rx", &bval)) config.invert_rx = bval;
     if (json_get_bool(json, "invert_ry", &bval)) config.invert_ry = bval;
+    if (json_get_bool(json, "sinput_rgb", &bval)) config.sinput_rgb = bval;
 
     // I2C
     int ival;

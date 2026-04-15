@@ -109,9 +109,12 @@ class JoypadConfigApp {
         // Protocol events
         this.protocol.onEvent((event) => this.handleEvent(event));
         this.protocol.onDisconnect(() => {
+            const lastTransport = this.protocol.transportName || this._lastTransport;
             this.log('Device disconnected');
             this.debugStreaming = false;
             this.updateConnectionUI(false);
+            // Auto-reconnect after reboot
+            this._tryReconnect(0, lastTransport);
         });
 
         // Check transport support
@@ -138,6 +141,7 @@ class JoypadConfigApp {
         try {
             const ok = await this.protocol.tryAutoConnect();
             if (ok) {
+                this._lastTransport = 'USB';
                 this.log('Auto-reconnected via USB', 'success');
                 this.updateConnectionUI(true);
                 await this.loadAll();
@@ -145,6 +149,36 @@ class JoypadConfigApp {
         } catch (e) {
             // Silently fail — user can connect manually
         }
+    }
+
+    async _tryReconnect(attempt = 0, transport = 'USB') {
+        if (attempt >= 10) {
+            this.log('Auto-reconnect failed. Please reconnect manually.', 'error');
+            return;
+        }
+        if (attempt === 0) {
+            this.log('Reconnecting...');
+        }
+        const delay = attempt < 3 ? 1500 : 3000;
+        await new Promise(r => setTimeout(r, delay));
+        if (this.protocol.connected) return;
+        try {
+            let ok = false;
+            if (transport === 'BLE') {
+                await this.protocol.connectBluetooth();
+                ok = true;
+            } else {
+                ok = await this.protocol.tryAutoConnect();
+            }
+            if (ok) {
+                this._lastTransport = transport;
+                this.log('Reconnected', 'success');
+                this.updateConnectionUI(true);
+                await this.loadAll();
+                return;
+            }
+        } catch (e) {}
+        this._tryReconnect(attempt + 1, transport);
     }
 
     // ================================================================
@@ -282,6 +316,7 @@ class JoypadConfigApp {
         try {
             this.log('Connecting via USB...');
             await this.protocol.connectSerial();
+            this._lastTransport = 'USB';
             this.log('Connected via USB!', 'success');
             this.updateConnectionUI(true);
             await this.loadAll();
@@ -295,6 +330,7 @@ class JoypadConfigApp {
         try {
             this.log('Connecting via BLE...');
             await this.protocol.connectBluetooth();
+            this._lastTransport = 'BLE';
             this.log('Connected via BLE!', 'success');
             this.updateConnectionUI(true);
             await this.loadAll();
