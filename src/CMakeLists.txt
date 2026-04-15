@@ -337,10 +337,6 @@ endfunction()
 # Common libraries for USB host apps
 set(COMMON_LIBRARIES pico_stdlib pico_multicore hardware_pio pico_rand tinyusb_host tinyusb_board xinput_host pico_mbedtls)
 
-# Add pico_rand to the main executable
-if(NOT DEFINED DISABLE_PICO_RAND)
-    list(APPEND COMMON_LIBRARIES pico_rand)
-endif()
 
 # BTstack compile definitions (shared by all USB host apps)
 # Note: Most BTstack feature flags are in bt/btstack/btstack_config.h
@@ -1015,7 +1011,7 @@ target_include_directories(joypad_usb_pico PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd
     ${CMAKE_CURRENT_SOURCE_DIR}/h
 )
-target_link_libraries(joypad_usb_pico PRIVATE ${COMMON_LIBRARIES} tinyusb_device tinyusb_pico_pio_usb)
+target_link_libraries(joypad_usb_pico PRIVATE ${COMMON_LIBRARIES} tinyusb_device tinyusb_pico_pio_usb pico_rand)
 joypad_target_common(joypad_usb_pico)
 joypad_add_btstack(joypad_usb_pico)
 embed_ds4_auth_resources(joypad_usb_pico)
