@@ -152,8 +152,8 @@ static void ps4_sign_nonce(void) {
         unsigned char d_buf[256] = {0};
         unsigned char e_buf[256] = {0};
         
-        int ret = mbedtls_rsa_export_raw(rsa, NULL, 0, NULL, 0, NULL, 0, d_buf, 256, e_buf, 256);
-        if (ret == 0) {
+        int export_ret = mbedtls_rsa_export_raw(rsa, NULL, 0, NULL, 0, NULL, 0, d_buf, 256, e_buf, 256);
+        if (export_ret == 0) {
             memcpy(&ps4_auth_buffer[offset], d_buf, 256);
             offset += 256;
             memcpy(&ps4_auth_buffer[offset], e_buf, 256);
@@ -164,7 +164,7 @@ static void ps4_sign_nonce(void) {
             offset += 256;
             memset(&ps4_auth_buffer[offset], 0, 256);
             offset += 256;
-            printf("PS4: RSA export failed: %d\n", ret);
+            printf("PS4: RSA export failed: %d\n", export_ret);
         }
         memcpy(&ps4_auth_buffer[offset], ps4_signature_start, 256);
         offset += 256;
