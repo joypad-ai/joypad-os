@@ -1637,6 +1637,37 @@ target_include_directories(joypad_snes2usb PUBLIC
 target_link_libraries(joypad_snes2usb PRIVATE pico_stdlib pico_multicore hardware_pio pico_rand tinyusb_device tinyusb_board)
 joypad_target_common(joypad_snes2usb)
 
+# --- WII2N64 (Wii extension -> N64) — Pi Pico target ---
+# Pico has no NeoPixel or STEMMA QT. I2C0 on GP4/GP5, N64 data on GP2.
+add_executable(joypad_wii2n64)
+target_compile_definitions(joypad_wii2n64 PRIVATE
+    CONFIG_WII2N64=1 CONFIG_USB=1 DISABLE_USB_HOST=1
+    CONFIG_NO_NEOPIXEL=1
+    N64_DATA_PIN=2
+    N64_PIN_DATA=2
+    PICO_DEFAULT_UART=0
+    PICO_DEFAULT_UART_TX_PIN=0
+    PICO_DEFAULT_UART_RX_PIN=1
+)
+target_sources(joypad_wii2n64 PUBLIC ${CORE_SOURCES} ${USB_DEVICE_SOURCES}
+    ${WII_HOST_SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/device/n64/n64_device.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/lib/joybus-pio/src/joybus.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/lib/joybus-pio/src/N64Console.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/wii2n64/app.c
+)
+target_include_directories(joypad_wii2n64 PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/wii2n64
+    ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/host/wii
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/device/n64
+    ${CMAKE_CURRENT_SOURCE_DIR}/lib/wii_ext
+    ${CMAKE_CURRENT_SOURCE_DIR}/lib/joybus-pio/include
+)
+target_link_libraries(joypad_wii2n64 PRIVATE pico_stdlib pico_multicore hardware_pio hardware_i2c hardware_flash pico_rand tinyusb_device tinyusb_board)
+joypad_target_common(joypad_wii2n64)
+pico_generate_pio_header(joypad_wii2n64 ${CMAKE_CURRENT_LIST_DIR}/lib/joybus-pio/src/joybus.pio)
+
 # --- WII2GC (Wii extension -> GameCube) ---
 add_executable(joypad_wii2gc)
 target_compile_definitions(joypad_wii2gc PRIVATE CONFIG_WII2GC=1 CONFIG_USB=1 DISABLE_USB_HOST=1
