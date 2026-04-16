@@ -597,9 +597,12 @@ static void cmd_profile_get(const char* json)
         snprintf(response_buf, sizeof(response_buf),
                  "{\"ok\":true,\"index\":%d,\"name\":\"%.11s\",\"builtin\":false,\"editable\":true,"
                  "\"button_map\":[%s],"
-                 "\"left_stick_sens\":%d,\"right_stick_sens\":%d,\"flags\":%d,\"socd_mode\":%d}",
+                 "\"left_stick_sens\":%d,\"right_stick_sens\":%d,\"flags\":%d,\"socd_mode\":%d,"
+                 "\"left_deadzone\":%d,\"right_deadzone\":%d}",
                  index, p->name, map_str,
-                 p->left_stick_sens, p->right_stick_sens, p->flags, p->socd_mode);
+                 p->left_stick_sens, p->right_stick_sens, p->flags, p->socd_mode,
+                 get_effective_deadzone(p->left_deadzone),
+                 get_effective_deadzone(p->right_deadzone));
     }
     send_json(response_buf);
 }
@@ -792,6 +795,19 @@ static void cmd_profile_save(const char* json)
         p->socd_mode = (uint8_t)(socd > 3 ? 0 : (socd < 0 ? 0 : socd));
     } else if (is_new) {
         p->socd_mode = 0;  // Default to passthrough
+    }
+
+    // Get deadzone values
+    int dz;
+    if (json_get_int(json, "left_deadzone", &dz)) {
+        p->left_deadzone = (uint8_t)(dz > 127 ? 127 : (dz < 0 ? 0 : dz));
+    } else if (is_new) {
+        p->left_deadzone = 0;
+    }
+    if (json_get_int(json, "right_deadzone", &dz)) {
+        p->right_deadzone = (uint8_t)(dz > 127 ? 127 : (dz < 0 ? 0 : dz));
+    } else if (is_new) {
+        p->right_deadzone = 0;
     }
 
     // Save to flash (runtime settings are already updated)
@@ -1100,6 +1116,85 @@ static void cmd_wiimote_orient_set(const char* json)
 #endif
 
 // ============================================================================
+// DEADZONE COMMANDS
+// ============================================================================
+
+// DEADZONE.GET - Get current deadzone settings from active profile
+static void cmd_deadzone_get(const char* json)
+{
+    (void)json;
+    flash_t* settings = flash_get_settings();
+    if (!settings) {
+        send_error("flash not initialized");
+        return;
+    }
+
+    uint8_t left = 0, right = 0;
+
+    // Read from active custom profile (index 0 = default/passthrough, no custom profile)
+    if (settings->active_profile_index > 0 &&
+        settings->active_profile_index <= settings->custom_profile_count) {
+        const custom_profile_t* p = &settings->profiles[settings->active_profile_index - 1];
+        left = get_effective_deadzone(p->left_deadzone);
+        right = get_effective_deadzone(p->right_deadzone);
+    }
+
+    snprintf(response_buf, sizeof(response_buf),
+             "{\"ok\":true,\"left\":%d,\"right\":%d}", left, right);
+    send_json(response_buf);
+}
+
+// DEADZONE.SET - Set deadzone values on active custom profile
+// {"cmd":"DEADZONE.SET","left":10,"right":10}
+static void cmd_deadzone_set(const char* json)
+{
+    flash_t* settings = flash_get_settings();
+    if (!settings) {
+        send_error("flash not initialized");
+        return;
+    }
+
+    // Must have an active custom profile (not default/passthrough)
+    if (settings->active_profile_index == 0 ||
+        settings->active_profile_index > settings->custom_profile_count) {
+        send_error("no active custom profile");
+        return;
+    }
+
+    custom_profile_t* p = &settings->profiles[settings->active_profile_index - 1];
+
+    int left, right;
+    bool has_left = json_get_int(json, "left", &left);
+    bool has_right = json_get_int(json, "right", &right);
+
+    if (!has_left && !has_right) {
+        send_error("missing left or right");
+        return;
+    }
+
+    if (has_left) {
+        if (left < 0) left = 0;
+        if (left > 127) left = 127;
+        p->left_deadzone = (uint8_t)left;
+    }
+
+    if (has_right) {
+        if (right < 0) right = 0;
+        if (right > 127) right = 127;
+        p->right_deadzone = (uint8_t)right;
+    }
+
+    // Save to flash
+    flash_save(settings);
+
+    snprintf(response_buf, sizeof(response_buf),
+             "{\"ok\":true,\"left\":%d,\"right\":%d}",
+             get_effective_deadzone(p->left_deadzone),
+             get_effective_deadzone(p->right_deadzone));
+    send_json(response_buf);
+}
+
+// ============================================================================
 // MAX3421E DIAGNOSTICS
 // ============================================================================
 
@@ -1405,6 +1500,9 @@ static const cmd_entry_t commands[] = {
     // Rumble testing
     {"RUMBLE.TEST", cmd_rumble_test},
     {"RUMBLE.STOP", cmd_rumble_stop},
+    // Deadzone configuration
+    {"DEADZONE.GET", cmd_deadzone_get},
+    {"DEADZONE.SET", cmd_deadzone_set},
 #if defined(CONFIG_MAX3421) && CFG_TUH_MAX3421
     {"MAX3421.STATUS", cmd_max3421_status},
 #endif
