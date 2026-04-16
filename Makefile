@@ -111,6 +111,7 @@ CONSOLE_controller_fisherprice_v2 := joypad_controller_fisherprice_v2
 CONSOLE_controller_alpakka := joypad_controller_alpakka
 CONSOLE_controller_macropad := joypad_controller_macropad
 CONSOLE_bt2gc := joypad_bt2gc
+CONSOLE_bt2wii := joypad_bt2wii
 CONSOLE_controller_btusb := joypad_controller_btusb
 CONSOLE_controller_btusb_rp2040_abb := joypad_controller_btusb_rp2040_abb
 CONSOLE_controller_btusb_feather_rp2040 := joypad_controller_btusb_feather_rp2040
@@ -156,6 +157,7 @@ APP_bt2n64_pico_w := pico_w bt2n64 bt2n64_pico_w Bluetooth N64
 APP_bt2n64_pico2_w := pico2_w bt2n64 bt2n64_pico2_w Bluetooth N64
 APP_bt2gc_pico_w := pico_w bt2gc bt2gc_pico_w Bluetooth GameCube
 APP_bt2gc_pico2_w := pico2_w bt2gc bt2gc_pico2_w Bluetooth GameCube
+APP_bt2wii_pico_w := pico_w bt2wii bt2wii_pico_w Bluetooth Wii
 APP_btusb2usb_pico_w := pico_w btusb2usb btusb2usb_pico_w USB/BT+CYW43 USB
 APP_btusb2usb_pico2_w := pico2_w btusb2usb btusb2usb_pico2_w USB/BT+CYW43 USB
 APP_usb2ble_pico_w := pico_w usb2ble usb2ble_pico_w USB BLE
@@ -528,6 +530,10 @@ bt2n64_pico_w:
 .PHONY: bt2n64_pico2_w
 bt2n64_pico2_w:
 	$(call build_app,bt2n64_pico2_w)
+
+.PHONY: bt2wii_pico_w
+bt2wii_pico_w:
+	$(call build_app,bt2wii_pico_w)
 
 .PHONY: bt2gc_pico_w
 bt2gc_pico_w:
@@ -1170,6 +1176,10 @@ flash-bt2n64_pico_w:
 .PHONY: flash-bt2n64_pico2_w
 flash-bt2n64_pico2_w:
 	@$(MAKE) --no-print-directory _flash_app APP_NAME=bt2n64_pico2_w
+
+.PHONY: flash-bt2wii_pico_w
+flash-bt2wii_pico_w:
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=bt2wii_pico_w
 
 .PHONY: flash-bt2gc_pico_w
 flash-bt2gc_pico_w:
