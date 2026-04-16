@@ -16,6 +16,7 @@
 #include "core/services/players/manager.h"
 #include "core/services/codes/codes.h"
 #include "core/router/router.h"
+#include "platform/platform.h"
 
 // Defined in N64Console.c
 extern n64_report_t default_n64_report;
@@ -284,6 +285,69 @@ void __not_in_flash_func(update_output)(void)
 }
 
 // ============================================================================
+// NATIVE OUTPUT CONFIG (web config: Output > Joybus page)
+// ============================================================================
+// Mirrors gamecube_device.c — both consoles share the same joybus protocol
+// and the same flash_t.joybus_data_pin override field. Currently dead code
+// for bt2n64 (no web config transport) and usb2n64 (no CDC config mode);
+// becomes live as soon as either of those grows a CDC/NUS transport.
+
+static bool n64_json_get_int(const char* json, const char* key, int* out_val) {
+    char search[32];
+    snprintf(search, sizeof(search), "\"%s\":", key);
+    const char* start = strstr(json, search);
+    if (!start) return false;
+    start += strlen(search);
+    while (*start == ' ' || *start == '\t') start++;
+    if (*start == '-' || (*start >= '0' && *start <= '9')) {
+        *out_val = atoi(start);
+        return true;
+    }
+    return false;
+}
+
+static uint16_t n64_get_native_config(char* buf, uint16_t buf_size) {
+    flash_t* settings = flash_get_settings();
+    int current_pin = N64_DATA_PIN;
+    if (settings && settings->joybus_data_pin > 0 && settings->joybus_data_pin <= 28) {
+        current_pin = settings->joybus_data_pin;
+    }
+    int n = snprintf(buf, buf_size,
+        "\"type\":\"joybus\","
+        "\"modes\":[\"nintendo64\"],"
+        "\"current_mode\":\"nintendo64\","
+        "\"pins\":{"
+            "\"data\":{\"label\":\"Data\",\"value\":%d,\"min\":0,\"max\":28,\"default\":%d}"
+        "}",
+        current_pin, N64_DATA_PIN);
+    return (n > 0 && n < buf_size) ? (uint16_t)n : 0;
+}
+
+static bool n64_set_native_config(const char* json, char* response_buf, uint16_t response_size) {
+    int pin = -1;
+    if (!n64_json_get_int(json, "data", &pin)) {
+        snprintf(response_buf, response_size, "{\"ok\":false,\"err\":\"missing pins.data\"}");
+        return false;
+    }
+    if (pin < 0 || pin > 28) {
+        snprintf(response_buf, response_size, "{\"ok\":false,\"err\":\"pin out of range\"}");
+        return false;
+    }
+    flash_t* settings = flash_get_settings();
+    if (!settings) {
+        snprintf(response_buf, response_size, "{\"ok\":false,\"err\":\"flash not initialized\"}");
+        return false;
+    }
+    settings->joybus_data_pin = (uint8_t)pin;
+    flash_save_force(settings);
+    snprintf(response_buf, response_size, "{\"ok\":true,\"reboot\":true}");
+
+    sleep_ms(150);
+    platform_reboot();
+    return true;
+}
+
+// ============================================================================
 // OUTPUT INTERFACE
 // ============================================================================
 
@@ -302,4 +366,6 @@ const OutputInterface n64_output_interface = {
     .set_active_profile = n64_set_active_profile,
     .get_profile_name = n64_get_profile_name,
     .get_trigger_threshold = NULL,
+    .get_native_config = n64_get_native_config,
+    .set_native_config = n64_set_native_config,
 };
