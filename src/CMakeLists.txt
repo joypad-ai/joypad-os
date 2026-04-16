@@ -269,6 +269,15 @@ set(LODGENET_HOST_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/native/host/lodgenet/lodgenet_host.c
 )
 
+# Wii extension host sources (hardware I2C via platform HAL + protocol lib)
+set(WII_HOST_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/host/wii/wii_host.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/platform/rp2040/platform_i2c_rp2040.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/lib/wii_ext/wii_ext.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/lib/wii_ext/ext_nunchuck.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/lib/wii_ext/ext_classic.c
+)
+
 # Nuon host sources (polyface master)
 # TODO: uncomment when nuon_host.c is implemented
 # set(NUON_HOST_SOURCES
@@ -1627,6 +1636,26 @@ target_include_directories(joypad_snes2usb PUBLIC
 )
 target_link_libraries(joypad_snes2usb PRIVATE pico_stdlib pico_multicore hardware_pio pico_rand tinyusb_device tinyusb_board)
 joypad_target_common(joypad_snes2usb)
+
+# --- WII2USB (Wii extension -> USB HID) ---
+add_executable(joypad_wii2usb)
+target_compile_definitions(joypad_wii2usb PRIVATE CONFIG_WII2USB=1 CONFIG_USB=1 DISABLE_USB_HOST=1
+    PICO_DEFAULT_UART=0
+    PICO_DEFAULT_UART_TX_PIN=0
+    PICO_DEFAULT_UART_RX_PIN=1
+)
+target_sources(joypad_wii2usb PUBLIC ${CORE_SOURCES} ${USB_DEVICE_SOURCES}
+    ${WII_HOST_SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/wii2usb/app.c
+)
+target_include_directories(joypad_wii2usb PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/wii2usb
+    ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/host/wii
+    ${CMAKE_CURRENT_SOURCE_DIR}/lib/wii_ext
+)
+target_link_libraries(joypad_wii2usb PRIVATE pico_stdlib pico_multicore hardware_pio hardware_i2c pico_rand tinyusb_device tinyusb_board)
+joypad_target_common(joypad_wii2usb)
 
 # --- N642USB (N64 -> USB HID) ---
 add_executable(joypad_n642usb)

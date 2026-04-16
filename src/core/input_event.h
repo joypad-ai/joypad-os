@@ -65,6 +65,9 @@ typedef enum {
     LAYOUT_PCE_6BUTTON,         // PCEngine Avenue Pad: Bottom [III][II][I], Top [IV][V][VI]
     LAYOUT_ASTROCITY,           // Astrocity: Bottom [D][E][F], Top [A][B][C]
     LAYOUT_3DO_3BUTTON,         // 3DO: Single row [A][B][C] (maps to bottom row only)
+    LAYOUT_WII_NUNCHUCK,        // Wii Nunchuck: C/Z + stick + accel
+    LAYOUT_WII_CLASSIC,         // Wii Classic: SNES-like faces + 2 sticks + analog L/R
+    LAYOUT_WII_CLASSIC_PRO,     // Wii Classic Pro: same as Classic but digital L/R only
 } controller_layout_t;
 
 // ============================================================================

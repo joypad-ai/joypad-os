@@ -132,7 +132,21 @@ static const char* get_device_name(const input_event_t* event) {
         }
 #endif
         case INPUT_TRANSPORT_NATIVE:
-            return "Native";
+            // Resolve a human-readable controller name from the layout hint
+            // that the native host set when submitting the event.
+            switch (event->layout) {
+                case LAYOUT_NINTENDO_4FACE:   return "SNES";
+                case LAYOUT_NINTENDO_N64:     return "N64";
+                case LAYOUT_GAMECUBE:         return "GameCube";
+                case LAYOUT_3DO_3BUTTON:      return "3DO";
+                case LAYOUT_SEGA_6BUTTON:     return "Sega 6-Button";
+                case LAYOUT_PCE_6BUTTON:      return "PCEngine 6-Button";
+                case LAYOUT_ASTROCITY:        return "Astro City";
+                case LAYOUT_WII_NUNCHUCK:     return "Wii Nunchuck";
+                case LAYOUT_WII_CLASSIC:      return "Wii Classic";
+                case LAYOUT_WII_CLASSIC_PRO:  return "Wii Classic Pro";
+                default:                      return "Native";
+            }
 #ifdef I2C_PEER_ENABLED
         case INPUT_TRANSPORT_I2C:
             return i2c_peer_get_device_name();
@@ -518,10 +532,15 @@ static inline void router_simple_mode(const input_event_t* event, output_target_
     int player_index = find_player_index(event->dev_addr, event->instance);
 
     if (player_index < 0) {
-        // Check if any button pressed or analog stick moved beyond threshold
+        // Check if any button pressed or analog stick moved beyond threshold.
+        // Native and GPIO devices are physically attached — register as soon
+        // as they submit any event, without waiting for input activity, so
+        // the web-config player list reflects them immediately on connect.
         uint32_t buttons_pressed = event->buttons | event->keys;
         bool analog_active = analog_beyond_threshold(event);
-        if (buttons_pressed || analog_active) {
+        bool physically_attached = (event->transport == INPUT_TRANSPORT_NATIVE ||
+                                    event->transport == INPUT_TRANSPORT_GPIO);
+        if (buttons_pressed || analog_active || physically_attached) {
             const char* device_name = get_device_name(event);
             player_index = add_player(event->dev_addr, event->instance, event->transport, device_name);
             if (player_index >= 0) {
