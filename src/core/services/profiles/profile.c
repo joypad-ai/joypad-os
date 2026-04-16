@@ -188,6 +188,15 @@ const char* profile_get_name(output_target_t output, uint8_t index)
     return set->profiles[index].name;
 }
 
+const profile_t* profile_get_by_index(output_target_t output, uint8_t index)
+{
+    const profile_set_t* set = get_profile_set(output);
+    if (!set || index >= set->profile_count) {
+        return NULL;
+    }
+    return &set->profiles[index];
+}
+
 // ============================================================================
 // PROFILE SWITCHING
 // ============================================================================

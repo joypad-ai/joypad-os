@@ -44,6 +44,11 @@ static uint8_t input_count = 0;
 // Active/primary output interface (accessible from other modules)
 const OutputInterface* active_output = NULL;
 
+// Native console output (e.g. gamecube_output_interface). Apps with a
+// native console output set this so the web config can configure pins/modes
+// even when running in CDC config mode (no console plugged in).
+const OutputInterface* native_output = NULL;
+
 // Store core1 task for wrapper - can be set after Core 1 launch
 static volatile void (*core1_actual_task)(void) = NULL;
 static volatile bool core1_task_ready = false;
@@ -132,6 +137,15 @@ int main(void)
   outputs = app_get_output_interfaces(&output_count);
   if (output_count > 0 && outputs[0]) {
     active_output = outputs[0];
+  }
+  // Auto-discover native console output if any active output has the
+  // get/set_native_config callbacks. Apps that hide their console output
+  // in CDC config mode override this directly in app_init().
+  for (uint8_t i = 0; i < output_count; i++) {
+    if (outputs[i] && (outputs[i]->get_native_config || outputs[i]->set_native_config)) {
+      native_output = outputs[i];
+      break;
+    }
   }
   for (uint8_t i = 0; i < output_count; i++) {
     if (outputs[i] && outputs[i]->init) {

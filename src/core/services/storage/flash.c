@@ -172,6 +172,9 @@ static uint8_t get_slot_sector(uint8_t slot_index)
 
 void flash_init(void)
 {
+    // Idempotent: safe to call from early detection paths AND later setup.
+    if (runtime_settings_loaded) return;
+
     save_pending = false;
 
     // Find current sequence number from flash (searches both sectors)

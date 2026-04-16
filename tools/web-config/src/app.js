@@ -2,6 +2,7 @@ import { CDCProtocol, WebSerialTransport, WebBluetoothTransport } from './cdc-pr
 import { DeviceInfoCard } from './components/device-info.js';
 import { UsbOutputCard } from './components/usb-output.js';
 import { BtOutputCard } from './components/bt-output.js';
+import { NativeOutputCard } from './components/native-output.js';
 import { PadConfigCard } from './components/pad-config.js';
 import { ProfilesCard, BUTTON_NAMES, BUTTON_LABELS, REMAPPABLE_COUNT } from './components/profiles.js';
 import { InputTestCard } from './components/input-test.js';
@@ -19,21 +20,22 @@ import { AdvancedCard } from './components/advanced.js';
 
 // Page registry: maps page IDs to sidebar groups
 const PAGE_GROUPS = {
-    'device-info': 'core',
-    'router':      'core',
-    'profiles':    'core',
-    'hotkeys':     'core',
-    'usb':         'output',
-    'bluetooth':   'output',
-    'leds':        'output',
-    'feedback':    'output',
-    'audio':       'output',
-    'gpio':        'input',
-    'usb-host':    'input',
-    'bt-host':     'input',
-    'input-test':  'debug',
-    'log':         'debug',
-    'advanced':    'system',
+    'device-info':   'core',
+    'router':        'core',
+    'profiles':      'core',
+    'hotkeys':       'core',
+    'usb':           'output',
+    'bluetooth':     'output',
+    'native-output': 'output',
+    'leds':          'output',
+    'feedback':      'output',
+    'audio':         'output',
+    'gpio':          'input',
+    'usb-host':      'input',
+    'bt-host':       'input',
+    'input-test':    'debug',
+    'log':           'debug',
+    'advanced':      'system',
 };
 
 // First page in each group (for mobile tab navigation)
@@ -66,6 +68,7 @@ class JoypadConfigApp {
         this.deviceInfo = new DeviceInfoCard(document.getElementById('headerInfo'), document.getElementById('cardDeviceInfo'), this.protocol, log);
         this.usbOutput = new UsbOutputCard(document.getElementById('cardUsbOutput'), this.protocol, log);
         this.btOutput = new BtOutputCard(document.getElementById('cardBtOutput'), this.protocol, log);
+        this.nativeOutput = new NativeOutputCard(document.getElementById('cardNativeOutput'), this.protocol, log);
         this.padConfig = new PadConfigCard(document.getElementById('cardPadConfig'), this.protocol, log);
         this.feedback = new FeedbackCard(document.getElementById('cardFeedback'), this.protocol, log);
         this.router = new RouterCard(document.getElementById('cardRouter'), this.protocol, log);
@@ -80,6 +83,7 @@ class JoypadConfigApp {
         this.deviceInfo.render();
         this.usbOutput.render();
         this.btOutput.render();
+        this.nativeOutput.render();
         this.padConfig.render();
         this.feedback.render();
         this.router.render();
@@ -272,6 +276,12 @@ class JoypadConfigApp {
             btLink.style.display = this.btOutput.isAvailable() ? '' : 'none';
         }
 
+        // Hide Native Output nav link if device has no native console output
+        const nativeLink = document.getElementById('navNativeOutput');
+        if (nativeLink) {
+            nativeLink.style.display = this.nativeOutput.isAvailable() ? '' : 'none';
+        }
+
         // Hide Bluetooth host nav link if device has no BT host features
         const btHostLink = document.getElementById('navBtHost');
         if (btHostLink) {
@@ -286,6 +296,9 @@ class JoypadConfigApp {
             this.navigateTo('usb');
         }
         if (this.currentPage === 'bluetooth' && !this.btOutput.isAvailable()) {
+            this.navigateTo('usb');
+        }
+        if (this.currentPage === 'native-output' && !this.nativeOutput.isAvailable()) {
             this.navigateTo('usb');
         }
     }
@@ -375,6 +388,7 @@ class JoypadConfigApp {
         await this.deviceInfo.load();
         await this.usbOutput.load();
         await this.btOutput.load();
+        await this.nativeOutput.load();
         await this.padConfig.load();
         await this.feedback.load();
         await this.router.load();

@@ -642,6 +642,14 @@ class CDCProtocol {
         return this.sendCommand('SETTINGS.RESET');
     }
 
+    async getNativeOutput() {
+        return this.sendCommand('OUTPUT.NATIVE.GET');
+    }
+
+    async setNativeOutput(payload) {
+        return this.sendCommand('OUTPUT.NATIVE.SET', payload);
+    }
+
     async enableInputStream(enable = true) {
         return this.sendCommand('INPUT.STREAM', { enable });
     }

@@ -76,8 +76,11 @@ typedef struct {
     uint8_t dpad_mode;           // D-pad mode (0=dpad, 1=left stick, 2=right stick)
     uint8_t bt_input_enabled;    // BT Central scanning (0=off, 1=on)
 
-    // Reserved for future global settings (14 bytes)
-    uint8_t reserved[14];
+    // Native output pin overrides
+    uint8_t joybus_data_pin;     // 0 = compile-time default, 1-28 = override GPIO
+
+    // Reserved for future global settings (13 bytes)
+    uint8_t reserved[13];
 
     // Custom profiles (4 x 56 = 224 bytes)
     custom_profile_t profiles[CUSTOM_PROFILE_MAX_COUNT];

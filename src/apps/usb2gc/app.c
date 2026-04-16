@@ -20,6 +20,7 @@
 #include "core/services/players/manager.h"
 #include "core/services/players/feedback.h"
 #include "core/services/profiles/profile.h"
+#include "core/services/storage/flash.h"
 #include "core/input_interface.h"
 #include "core/output_interface.h"
 #include "core/services/leds/leds.h"
@@ -83,12 +84,22 @@ const OutputInterface** app_get_output_interfaces(uint8_t* count)
     //
     // Same pattern can be reused on usb2n64 (joybus) and any other adapter
     // whose console output line idles HIGH when powered.
-    gpio_init(GC_DATA_PIN);
-    gpio_set_dir(GC_DATA_PIN, GPIO_IN);
-    gpio_pull_down(GC_DATA_PIN);
+    //
+    // Honor runtime pin override from web config so detection lines up with
+    // the same pin joybus init will use later.
+    flash_init();  // idempotent — needed early to read pin override
+    flash_t* settings = flash_get_settings();
+    uint detect_pin = GC_DATA_PIN;
+    if (settings && settings->joybus_data_pin > 0 && settings->joybus_data_pin <= 28) {
+        detect_pin = settings->joybus_data_pin;
+    }
+
+    gpio_init(detect_pin);
+    gpio_set_dir(detect_pin, GPIO_IN);
+    gpio_pull_down(detect_pin);
     sleep_ms(200);  // Allow line to settle / console power to stabilize
 
-    if (!gpio_get(GC_DATA_PIN)) {
+    if (!gpio_get(detect_pin)) {
         // No console signal → config mode (USB device with CDC)
         gc_config_mode = true;
         *count = 1;
@@ -108,6 +119,11 @@ const OutputInterface** app_get_output_interfaces(uint8_t* count)
 
 void app_init(void)
 {
+    // Expose the GameCube output to the web config in BOTH modes so the
+    // user can configure the joybus pin even when no console is connected.
+    // (In play mode main.c auto-discovers it; this overrides for config mode.)
+    native_output = &gamecube_output_interface;
+
     if (gc_config_mode) {
         printf("[app:usb2gc] Config mode - CDC serial for web configuration\n");
 

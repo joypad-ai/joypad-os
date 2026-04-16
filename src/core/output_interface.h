@@ -43,6 +43,19 @@ typedef struct {
 
     // Input device feedback (from current profile)
     uint8_t (*get_trigger_threshold)(void);                // Get L2/R2 threshold for adaptive triggers, NULL = 0
+
+    // Native output configuration (web config: Output > <type> page)
+    // Each device implements its own type/modes/pins schema. Returns
+    // strlen of JSON written to buf, or 0 if not supported (NULL also OK).
+    // Example response (JSON object body, no surrounding {} expected from caller):
+    //   "type":"joybus","modes":["gamecube"],"current_mode":"gamecube",
+    //   "pins":{"data":{"label":"Data","value":7,"min":0,"max":28}}
+    uint16_t (*get_native_config)(char* buf, uint16_t buf_size);
+
+    // Apply new native config (JSON body). Writes status JSON to response_buf.
+    // Returns true on success. Implementer is responsible for persisting to
+    // flash and (typically) requesting a reboot.
+    bool (*set_native_config)(const char* json, char* response_buf, uint16_t response_size);
 } OutputInterface;
 
 // Maximum outputs per app (native console + USB device + BLE + UART)
@@ -50,5 +63,12 @@ typedef struct {
 
 // Active output interface (set at compile-time, selected in common/output.c)
 extern const OutputInterface* active_output;
+
+// Native console output for web config queries. Set by apps that have a
+// console output (e.g. gamecube_output_interface for usb2gc) so the web
+// config can read/write its native config (pins, modes) even in CDC config
+// mode where the native output isn't actually active. NULL if the app has
+// no native console output.
+extern const OutputInterface* native_output;
 
 #endif // OUTPUT_INTERFACE_H

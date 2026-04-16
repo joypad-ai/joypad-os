@@ -257,6 +257,9 @@ uint8_t profile_get_active_index(output_target_t output);
 uint8_t profile_get_count(output_target_t output);
 const char* profile_get_name(output_target_t output, uint8_t index);
 
+// Get a specific built-in profile by index (NULL if out of range)
+const profile_t* profile_get_by_index(output_target_t output, uint8_t index);
+
 // Switch profiles (legacy - affects player 0, with feedback)
 void profile_set_active(output_target_t output, uint8_t index);
 void profile_cycle_next(output_target_t output);

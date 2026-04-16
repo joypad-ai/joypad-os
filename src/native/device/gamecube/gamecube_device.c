@@ -16,6 +16,7 @@
 #include "core/services/players/manager.h"
 #include "core/services/codes/codes.h"
 #include "core/router/router.h"
+#include "platform/platform.h"
 
 // Declaration of global variables
 GamecubeConsole gc;
@@ -230,7 +231,17 @@ void ngc_init()
   int sm = -1;
   int offset = -1;
   gc_kb_key_lookup_init();
-  GamecubeConsole_init(&gc, GC_DATA_PIN, pio, sm, offset);
+
+  // Allow runtime override of GC_DATA pin from flash settings (web config).
+  // 0 = "use compile-time default" (also matches blank/legacy reserved bytes).
+  uint8_t data_pin = GC_DATA_PIN;
+  flash_t* settings = flash_get_settings();
+  if (settings && settings->joybus_data_pin > 0 && settings->joybus_data_pin <= 28) {
+    data_pin = settings->joybus_data_pin;
+  }
+  printf("[gc] joybus DATA pin: GPIO %d%s\n", data_pin,
+         (data_pin != GC_DATA_PIN) ? " (override)" : "");
+  GamecubeConsole_init(&gc, data_pin, pio, sm, offset);
   gc_report = default_gc_report;
 
   const profile_t* profile = profile_get_active(OUTPUT_TARGET_GAMECUBE);
@@ -447,6 +458,67 @@ void __not_in_flash_func(update_output)(void)
 }
 
 // ============================================================================
+// NATIVE OUTPUT CONFIG (web config: Output > Joybus page)
+// ============================================================================
+
+// Minimal JSON int extractor — kept inline to avoid pulling in cdc_commands' static helpers.
+static bool gc_json_get_int(const char* json, const char* key, int* out_val) {
+    char search[32];
+    snprintf(search, sizeof(search), "\"%s\":", key);
+    const char* start = strstr(json, search);
+    if (!start) return false;
+    start += strlen(search);
+    while (*start == ' ' || *start == '\t') start++;
+    if (*start == '-' || (*start >= '0' && *start <= '9')) {
+        *out_val = atoi(start);
+        return true;
+    }
+    return false;
+}
+
+static uint16_t gc_get_native_config(char* buf, uint16_t buf_size) {
+    flash_t* settings = flash_get_settings();
+    int current_pin = GC_DATA_PIN;
+    if (settings && settings->joybus_data_pin > 0 && settings->joybus_data_pin <= 28) {
+        current_pin = settings->joybus_data_pin;
+    }
+    int n = snprintf(buf, buf_size,
+        "\"type\":\"joybus\","
+        "\"modes\":[\"gamecube\"],"
+        "\"current_mode\":\"gamecube\","
+        "\"pins\":{"
+            "\"data\":{\"label\":\"Data\",\"value\":%d,\"min\":0,\"max\":28,\"default\":%d}"
+        "}",
+        current_pin, GC_DATA_PIN);
+    return (n > 0 && n < buf_size) ? (uint16_t)n : 0;
+}
+
+static bool gc_set_native_config(const char* json, char* response_buf, uint16_t response_size) {
+    int pin = -1;
+    if (!gc_json_get_int(json, "data", &pin)) {
+        snprintf(response_buf, response_size, "{\"ok\":false,\"err\":\"missing pins.data\"}");
+        return false;
+    }
+    if (pin < 0 || pin > 28) {
+        snprintf(response_buf, response_size, "{\"ok\":false,\"err\":\"pin out of range\"}");
+        return false;
+    }
+    flash_t* settings = flash_get_settings();
+    if (!settings) {
+        snprintf(response_buf, response_size, "{\"ok\":false,\"err\":\"flash not initialized\"}");
+        return false;
+    }
+    settings->joybus_data_pin = (uint8_t)pin;
+    flash_save_force(settings);
+    snprintf(response_buf, response_size, "{\"ok\":true,\"reboot\":true}");
+
+    // Schedule reboot after the response has had a chance to send.
+    sleep_ms(150);
+    platform_reboot();
+    return true;
+}
+
+// ============================================================================
 // OUTPUT INTERFACE
 // ============================================================================
 
@@ -465,4 +537,6 @@ const OutputInterface gamecube_output_interface = {
     .set_active_profile = gc_set_active_profile,
     .get_profile_name = gc_get_profile_name,
     .get_trigger_threshold = gc_get_trigger_threshold,
+    .get_native_config = gc_get_native_config,
+    .set_native_config = gc_set_native_config,
 };

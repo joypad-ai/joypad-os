@@ -914,21 +914,65 @@ static void cmd_profile_clone(const char* json)
         }
     }
 
-    // Initialize the new profile with the generated name
+    // Initialize the new profile with the generated name (sets passthrough defaults)
     custom_profile_init(new_profile, new_name);
 
-    // Copy settings from source if it's a custom profile
-    if (!is_builtin_profile(source_index)) {
+    if (is_builtin_profile(source_index)) {
+        // Convert built-in profile_t (sparse button_map_entry_t list with bitmasks)
+        // → custom_profile_t (indexed button_map[18] with 1-based remap targets).
+        // Only single-input → single-output remaps fit the custom format; multi-bit
+        // outputs, analog targets, and combos are skipped.
+        const profile_t* src = profile_get_by_index(get_profile_target(), source_index);
+        if (src) {
+            for (uint8_t i = 0; i < src->button_map_count; i++) {
+                const button_map_entry_t* entry = &src->button_map[i];
+                uint32_t in  = entry->input;
+                uint32_t out = entry->output;
+
+                // Skip non-single-bit input or output (custom format is 1:1)
+                if (in == 0 || (in & (in - 1)) != 0) continue;
+                if (out == 0 || (out & (out - 1)) != 0) continue;
+                // Skip entries with analog target (custom format has no analog map)
+                if (entry->analog != ANALOG_TARGET_NONE) continue;
+
+                uint8_t in_bit  = (uint8_t)__builtin_ctz(in);
+                uint8_t out_bit = (uint8_t)__builtin_ctz(out);
+
+                // Custom map covers input slots 0..17 (B1..A2)
+                if (in_bit >= CUSTOM_PROFILE_BUTTON_COUNT) continue;
+                // Output target is 1-based; max value is BUTTON_MAP_MAX_TARGET (24)
+                if ((uint32_t)out_bit + 1u > BUTTON_MAP_MAX_TARGET) continue;
+
+                new_profile->button_map[in_bit] = (uint8_t)(out_bit + 1);
+            }
+
+            // Stick sensitivities: built-in float (1.0 = 100%) → custom int 0-200
+            int ls = (int)(src->left_stick_sensitivity  * 100.0f + 0.5f);
+            int rs = (int)(src->right_stick_sensitivity * 100.0f + 0.5f);
+            if (ls < 0) ls = 0; else if (ls > 200) ls = 200;
+            if (rs < 0) rs = 0; else if (rs > 200) rs = 200;
+            new_profile->left_stick_sens  = (uint8_t)ls;
+            new_profile->right_stick_sens = (uint8_t)rs;
+
+            // SOCD and trigger thresholds carry over directly
+            new_profile->socd_mode    = (uint8_t)src->socd_mode;
+            new_profile->l2_threshold = src->l2_threshold;
+            new_profile->r2_threshold = src->r2_threshold;
+        }
+    } else {
+        // Custom → custom: byte-for-byte copy of the supported fields
         int src_custom_idx = unified_to_custom_index(source_index);
         if (src_custom_idx >= 0 && src_custom_idx < settings->custom_profile_count - 1) {
             const custom_profile_t* src = &settings->profiles[src_custom_idx];
             memcpy(new_profile->button_map, src->button_map, CUSTOM_PROFILE_BUTTON_COUNT);
-            new_profile->left_stick_sens = src->left_stick_sens;
+            new_profile->left_stick_sens  = src->left_stick_sens;
             new_profile->right_stick_sens = src->right_stick_sens;
-            new_profile->flags = src->flags;
+            new_profile->flags            = src->flags;
+            new_profile->socd_mode        = src->socd_mode;
+            new_profile->l2_threshold     = src->l2_threshold;
+            new_profile->r2_threshold     = src->r2_threshold;
         }
     }
-    // For built-in profiles, keep passthrough settings (already initialized)
 
     // Save to flash
     flash_save(settings);
@@ -1101,6 +1145,68 @@ static void cmd_router_set(const char* json)
 
     pending_reboot = PENDING_REBOOT;
     pending_reboot_time = platform_time_ms();
+}
+
+// ----------------------------------------------------------------------------
+// OUTPUT.NATIVE.GET / SET — generic native-output config dispatcher
+//
+// Each OutputInterface (gamecube, pcengine, maple, ...) implements its own
+// get/set_native_config callbacks that fill in the type/modes/pins schema.
+// The schema is opaque to this dispatcher — the web config renders it
+// generically. Adds a new console-output app means adding callbacks to that
+// app's OutputInterface, not editing this file.
+// ----------------------------------------------------------------------------
+
+// Find the OutputInterface that owns the native console config for this app.
+// Prefer native_output (exposed by apps even when their console output isn't
+// the active one — e.g. usb2gc in CDC config mode) and fall back to active_output.
+static const OutputInterface* find_native_output(void)
+{
+    extern const OutputInterface* native_output;
+    extern const OutputInterface* active_output;
+    if (native_output && (native_output->get_native_config || native_output->set_native_config)) {
+        return native_output;
+    }
+    if (active_output && (active_output->get_native_config || active_output->set_native_config)) {
+        return active_output;
+    }
+    return NULL;
+}
+
+static void cmd_output_native_get(const char* json)
+{
+    (void)json;
+    const OutputInterface* out = find_native_output();
+    if (!out || !out->get_native_config) {
+        snprintf(response_buf, sizeof(response_buf), "{\"ok\":true,\"available\":false}");
+        send_json(response_buf);
+        return;
+    }
+    char body[512];
+    uint16_t len = out->get_native_config(body, sizeof(body));
+    if (len == 0) {
+        snprintf(response_buf, sizeof(response_buf), "{\"ok\":true,\"available\":false}");
+        send_json(response_buf);
+        return;
+    }
+    snprintf(response_buf, sizeof(response_buf), "{\"ok\":true,\"available\":true,%.*s}", (int)len, body);
+    send_json(response_buf);
+}
+
+static void cmd_output_native_set(const char* json)
+{
+    const OutputInterface* out = find_native_output();
+    if (!out || !out->set_native_config) {
+        send_error("not available");
+        return;
+    }
+    char resp[256] = {0};
+    bool ok = out->set_native_config(json, resp, sizeof(resp));
+    if (resp[0]) {
+        send_json(resp);
+    } else {
+        if (ok) send_ok(); else send_error("set failed");
+    }
 }
 
 static void cmd_settings_reset(const char* json)
@@ -1966,6 +2072,8 @@ static const cmd_entry_t commands[] = {
     {"ROUTER.GET", cmd_router_get},
     {"ROUTER.SET", cmd_router_set},
     {"ROUTER.DPAD.SET", cmd_router_dpad_set},
+    {"OUTPUT.NATIVE.GET", cmd_output_native_get},
+    {"OUTPUT.NATIVE.SET", cmd_output_native_set},
     // Player management
     {"PLAYERS.LIST", cmd_players_list},
     // Rumble testing
