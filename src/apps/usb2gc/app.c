@@ -5,8 +5,14 @@
 // The firmware calls app_init() after core system initialization.
 //
 // Mode detection:
-//   GC 3.3V on GPIO 6 → Play mode (USB host → GameCube joybus output)
-//   No 3.3V           → Config mode (USB device with CDC for web configuration)
+//   GC_DATA pin HIGH (joybus pull-up from powered console) → Play mode
+//                                                            (USB host → GameCube joybus output)
+//   GC_DATA pin LOW  (no console: our pull-down dominates) → Config mode
+//                                                            (USB device with CDC for web configuration)
+//
+// Detect happens BEFORE joybus PIO init claims the pin. In play mode the
+// joybus init reconfigures the pin (pull-up + PIO function), overwriting
+// the pull-down used here.
 
 #include "app.h"
 #include "profiles.h"
@@ -69,21 +75,28 @@ static const OutputInterface* cdc_output_interfaces[] = {
 
 const OutputInterface** app_get_output_interfaces(uint8_t* count)
 {
-    // Detect mode by checking GC 3.3V on GPIO 6
-    // This runs before any output init, so we can select the right interface
-    gpio_init(GC_3V3_PIN);
-    gpio_set_dir(GC_3V3_PIN, GPIO_IN);
-    gpio_pull_down(GC_3V3_PIN);
-    sleep_ms(200);  // Allow GC console power to stabilize
+    // Detect mode by checking GC_DATA joybus signal pin.
+    // Joybus convention: console-side pull-up to 3.3V keeps the line HIGH
+    // when the console is powered. With our internal pull-down (~50kΩ) the
+    // ~1kΩ console pull-up easily wins → reads HIGH. With no console (or
+    // console off), our pull-down dominates → reads LOW.
+    //
+    // Same pattern can be reused on usb2n64 (joybus) and any other adapter
+    // whose console output line idles HIGH when powered.
+    gpio_init(GC_DATA_PIN);
+    gpio_set_dir(GC_DATA_PIN, GPIO_IN);
+    gpio_pull_down(GC_DATA_PIN);
+    sleep_ms(200);  // Allow line to settle / console power to stabilize
 
-    if (!gpio_get(GC_3V3_PIN)) {
-        // No GameCube 3.3V detected → config mode (USB device with CDC)
+    if (!gpio_get(GC_DATA_PIN)) {
+        // No console signal → config mode (USB device with CDC)
         gc_config_mode = true;
         *count = 1;
         return cdc_output_interfaces;
     }
 
-    // GameCube 3.3V detected → play mode (USB host → GC output)
+    // GameCube signal detected → play mode (USB host → GC output).
+    // joybus init will reconfigure GC_DATA_PIN (pull-up + PIO function).
     gc_config_mode = false;
     *count = sizeof(gc_output_interfaces) / sizeof(gc_output_interfaces[0]);
     return gc_output_interfaces;
