@@ -1,4 +1,4 @@
-/** Bluetooth Host (Input) — Wiimote orientation + BT bonds */
+/** Bluetooth Host (Input) — scan, status, bonds, Wiimote orientation */
 export class BtHostCard {
     constructor(container, protocol, log) {
         this.protocol = protocol;
@@ -17,19 +17,38 @@ export class BtHostCard {
                             <input type="checkbox" id="btInputEnable">
                             <span class="toggle-slider"></span>
                         </label>
-                        <span>Enable Bluetooth Host</span>
+                        <span>Enable Onboard Bluetooth Host</span>
                     </div>
-                    <p class="hint" style="margin-bottom: 12px;">Scans for BT/BLE controllers using onboard radio or USB dongle.</p>
-                    <div class="row" id="btStatusRow" style="display:none; margin-bottom: 12px;">
-                        <span class="label">Status</span>
-                        <span class="value" style="display: flex; align-items: center; gap: 8px;">
-                            <span class="bt-status-dot" id="btStatusDot"></span>
-                            <span id="btStatusText">—</span>
-                        </span>
+                    <p class="hint">Use onboard BT radio to scan for controllers. USB BT dongles work independently when plugged in.</p>
+                    <div class="buttons" style="margin-top: 12px;">
+                        <button id="btHostSaveBtn">Save &amp; Reboot</button>
                     </div>
-                    <div id="btDevicesList" style="display:none; margin-bottom: 12px;"></div>
-                    <div class="pad-form-row">
-                        <span class="label">Wiimote Orientation</span>
+                    <p class="hint" style="margin-top: 8px;">Device will reboot to apply changes.</p>
+                </div>
+            </div>
+
+            <div class="card" id="btScanCard" style="display:none;">
+                <h2 style="display: flex; align-items: center; justify-content: space-between;">
+                    <span>Status</span>
+                    <span style="display: flex; align-items: center; gap: 8px;">
+                        <span id="btStatusText">—</span>
+                        <span class="bt-status-dot" id="btStatusDot"></span>
+                    </span>
+                </h2>
+                <div class="card-content">
+                    <div class="row" id="btTransportRow">
+                        <span class="label">Transport</span>
+                        <span class="value" id="btTransportText">—</span>
+                    </div>
+                    <div id="btDevicesList" style="display:none;"></div>
+                </div>
+            </div>
+
+            <div class="card" id="btWiimoteCard" style="display:none;">
+                <h2>Wiimote</h2>
+                <div class="card-content">
+                    <div class="row">
+                        <span class="label">Orientation</span>
                         <select id="wiimoteOrientSelect">
                             <option value="0">Auto</option>
                             <option value="1">Horizontal</option>
@@ -37,12 +56,9 @@ export class BtHostCard {
                         </select>
                     </div>
                     <p class="hint">Controls D-pad mapping when using Wiimote alone (no extension).</p>
-                    <div class="buttons" style="margin-top: 12px;">
-                        <button id="btHostSaveBtn">Save &amp; Reboot</button>
-                    </div>
-                    <p class="hint" style="margin-top: 8px;">Device will reboot to apply changes.</p>
                 </div>
             </div>
+
             <div class="card" id="btBondsCard" style="display:none;">
                 <h2>Bluetooth Bonds</h2>
                 <div class="card-content">
@@ -53,7 +69,8 @@ export class BtHostCard {
                 </div>
             </div>`;
 
-        this.el.querySelector('#btHostSaveBtn').addEventListener('click', () => this.save());
+        this.el.querySelector('#btHostSaveBtn').addEventListener('click', () => this.saveBtHost());
+        this.el.querySelector('#wiimoteOrientSelect').addEventListener('change', (e) => this.setWiimoteOrient(e.target.value));
         this.el.querySelector('#clearBtBtn').addEventListener('click', () => this.clearBtBonds());
     }
 
@@ -63,45 +80,46 @@ export class BtHostCard {
     }
 
     async loadWiimoteOrient() {
-        const card = this.el.querySelector('#btHostCard');
+        const card = this.el.querySelector('#btWiimoteCard');
         try {
             const result = await this.protocol.getWiimoteOrient();
             this.el.querySelector('#wiimoteOrientSelect').value = result.mode;
             card.style.display = '';
-            this.visible = true;
-
-            // Load BT input toggle from router settings
-            try {
-                const router = await this.protocol.getRouter();
-                this.el.querySelector('#btInputEnable').checked = router.bt_input || false;
-            } catch (e) {}
         } catch (e) {
             card.style.display = 'none';
         }
     }
 
     async loadBtStatus() {
-        const card = this.el.querySelector('#btBondsCard');
+        const hostCard = this.el.querySelector('#btHostCard');
+        const scanCard = this.el.querySelector('#btScanCard');
+        const bondsCard = this.el.querySelector('#btBondsCard');
         try {
             const status = await this.protocol.getBtStatus();
-            card.style.display = '';
+            hostCard.style.display = '';
+            bondsCard.style.display = '';
             this.visible = true;
 
-            const statusRow = this.el.querySelector('#btStatusRow');
+            // Load BT input toggle from router settings (only once on first load)
+            if (!this._toggleLoaded) {
+                try {
+                    const router = await this.protocol.getRouter();
+                    this.el.querySelector('#btInputEnable').checked = router.bt_input || false;
+                } catch (e) {}
+                this._toggleLoaded = true;
+            }
+
+            // Scanning card only shown when BT is active
+            if (!status.enabled) {
+                scanCard.style.display = 'none';
+                return;
+            }
+            scanCard.style.display = '';
+
             const statusText = this.el.querySelector('#btStatusText');
             const statusDot = this.el.querySelector('#btStatusDot');
             const devicesList = this.el.querySelector('#btDevicesList');
 
-            if (!status.enabled) {
-                statusRow.style.display = 'none';
-                devicesList.style.display = 'none';
-                return;
-            }
-
-            statusRow.style.display = '';
-
-            // Color and label based on state
-            // Dual-role BLE time-slices scan/advertise — show "Scanning" if enabled with no connections
             statusDot.className = 'bt-status-dot';
             if (status.connections > 0) {
                 statusDot.classList.add('connected');
@@ -111,7 +129,9 @@ export class BtHostCard {
                 statusText.textContent = 'Scanning';
             }
 
-            // Render device list
+            // Show transport
+            this.el.querySelector('#btTransportText').textContent = status.transport || '—';
+
             const devices = status.devices || [];
             if (devices.length > 0) {
                 devicesList.style.display = '';
@@ -130,8 +150,6 @@ export class BtHostCard {
                         </div>
                     `;
                 }).join('');
-
-                // Wire up forget buttons
                 devicesList.querySelectorAll('.bt-forget-btn').forEach(btn => {
                     btn.addEventListener('click', () => this.forgetDevice(btn.dataset.addr));
                 });
@@ -139,23 +157,18 @@ export class BtHostCard {
                 devicesList.style.display = 'none';
             }
 
-            // Auto-refresh while page is visible
             if (!this._statusInterval) {
                 this._statusInterval = setInterval(() => this.loadBtStatus(), 2000);
             }
         } catch (e) {
-            card.style.display = 'none';
+            hostCard.style.display = 'none';
+            bondsCard.style.display = 'none';
         }
     }
 
-    async save() {
-        if (!confirm('Save Bluetooth host configuration? The device will reboot.')) return;
+    async saveBtHost() {
+        if (!confirm('Save Bluetooth Host configuration? The device will reboot.')) return;
         try {
-            // Save Wiimote orientation
-            const mode = parseInt(this.el.querySelector('#wiimoteOrientSelect').value);
-            await this.protocol.setWiimoteOrient(mode);
-
-            // Save BT input toggle via router settings
             const router = await this.protocol.getRouter();
             await this.protocol.setRouter({
                 routing_mode: router.routing_mode || 0,
@@ -168,11 +181,21 @@ export class BtHostCard {
         }
     }
 
+    async setWiimoteOrient(mode) {
+        try {
+            const result = await this.protocol.setWiimoteOrient(parseInt(mode));
+            this.log(`Wiimote orientation: ${result.name}`, 'success');
+        } catch (e) {
+            this.log(`Failed to set orientation: ${e.message}`, 'error');
+        }
+    }
+
     async clearBtBonds() {
         if (!confirm('Clear all Bluetooth bonds? Devices will need to re-pair.')) return;
         try {
             await this.protocol.clearBtBonds();
             this.log('Bluetooth bonds cleared', 'success');
+            await this.loadBtStatus();
         } catch (e) {
             this.log(`Failed to clear bonds: ${e.message}`, 'error');
         }

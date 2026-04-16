@@ -1108,11 +1108,25 @@ static void cmd_settings_reset(const char* json)
 static void cmd_bt_status(const char* json)
 {
     (void)json;
+    // Determine transport at compile time
+#if defined(BTSTACK_USE_CYW43)
+    const char* transport = "Onboard (CYW43, Classic + BLE)";
+#elif defined(BTSTACK_USE_NRF)
+    const char* transport = "Onboard (nRF, BLE only)";
+#elif defined(BTSTACK_USE_ESP32)
+    const char* transport = "Onboard (ESP32, BLE only)";
+#elif defined(ENABLE_BTSTACK)
+    const char* transport = "USB Dongle (Classic + BLE)";
+#else
+    const char* transport = "None";
+#endif
+
     int pos = snprintf(response_buf, sizeof(response_buf),
-             "{\"enabled\":%s,\"scanning\":%s,\"connections\":%d,\"devices\":[",
+             "{\"enabled\":%s,\"scanning\":%s,\"connections\":%d,\"transport\":\"%s\",\"devices\":[",
              btstack_host_is_initialized() ? "true" : "false",
              btstack_host_is_scanning() ? "true" : "false",
-             btstack_classic_get_connection_count());
+             btstack_classic_get_connection_count(),
+             transport);
 
     // Track which bonded addresses are currently connected
     uint8_t connected_addrs[8][6];
