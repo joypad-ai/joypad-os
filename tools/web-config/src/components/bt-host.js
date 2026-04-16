@@ -12,12 +12,17 @@ export class BtHostCard {
             <div class="card" id="btHostCard" style="display:none;">
                 <h2>Bluetooth Host</h2>
                 <div class="card-content">
-                    <div class="toggle-row" style="margin-bottom: 12px;">
+                    <div class="toggle-row" style="margin-bottom: 4px;">
                         <label class="toggle">
                             <input type="checkbox" id="btInputEnable">
                             <span class="toggle-slider"></span>
                         </label>
                         <span>Enable Bluetooth Host</span>
+                    </div>
+                    <p class="hint" style="margin-bottom: 12px;">Scans for BT/BLE controllers using onboard radio or USB dongle.</p>
+                    <div class="row" id="btStatusRow" style="display:none; margin-bottom: 12px;">
+                        <span class="label">Status</span>
+                        <span class="value" id="btStatusText">—</span>
                     </div>
                     <div class="pad-form-row">
                         <span class="label">Wiimote Orientation</span>
@@ -74,9 +79,23 @@ export class BtHostCard {
     async loadBtStatus() {
         const card = this.el.querySelector('#btBondsCard');
         try {
-            await this.protocol.getBtStatus();
+            const status = await this.protocol.getBtStatus();
             card.style.display = '';
             this.visible = true;
+
+            // Show scanning state
+            const statusRow = this.el.querySelector('#btStatusRow');
+            const statusText = this.el.querySelector('#btStatusText');
+            if (status.enabled) {
+                statusRow.style.display = '';
+                if (status.scanning) {
+                    statusText.textContent = `Scanning (${status.connections} connected)`;
+                } else if (status.connections > 0) {
+                    statusText.textContent = `${status.connections} connected`;
+                } else {
+                    statusText.textContent = 'Idle';
+                }
+            }
         } catch (e) {
             card.style.display = 'none';
         }
