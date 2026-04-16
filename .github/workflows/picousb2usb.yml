@@ -16,24 +16,26 @@ jobs:
           submodules: recursive
           fetch-depth: 1
 
-      - name: Cache APT packages
+      - name: Cache Pico SDK and submodules
         uses: actions/cache@v4
         with:
-          path: /var/cache/apt/archives
-          key: ${{ runner.os }}-apt-${{ hashFiles('/etc/apt/sources.list') }}
+          path: |
+            src/lib/pico-sdk
+            src/lib/Pico-PIO-USB
+            src/lib/btstack
+          key: ${{ runner.os }}-submodules-${{ hashFiles('.gitmodules') }}
           restore-keys: |
-            ${{ runner.os }}-apt-
+            ${{ runner.os }}-submodules-
 
-      - name: Install ARM GCC Toolchain
+      - name: Install build dependencies
         run: |
           sudo apt update
-          sudo apt install -y \
-            cmake \
-            gcc-arm-none-eabi \
-            libnewlib-arm-none-eabi \
-            build-essential \
-            git \
-            python3
+          sudo apt install -y cmake build-essential
+
+      - name: Setup ARM GCC Toolchain
+        uses: carlosperate/arm-none-eabi-gcc-action@v1
+        with:
+          release: '14.2.Rel1'
 
       - name: Verify toolchain installation
         run: |
@@ -53,15 +55,14 @@ jobs:
           echo "${{ secrets.KEY }}" | base64 --decode > src/usb/usbd/modes/key.pem
           echo "${{ secrets.SN }}" > src/usb/usbd/modes/serial.txt
 
-      - name: Cache CMake build
+      - name: Cache CMake build artifacts
         uses: actions/cache@v4
         with:
           path: |
-            build/
-            src/build/
-          key: ${{ runner.os }}-cmake-build-${{ hashFiles('**/CMakeLists.txt', '**/*.c', '**/*.h') }}
+            build
+          key: ${{ runner.os }}-build-${{ hashFiles('src/CMakeLists.txt', 'CMakeLists.txt') }}
           restore-keys: |
-            ${{ runner.os }}-cmake-build-
+            ${{ runner.os }}-build-
 
       - name: Build usb2usb_pico
         id: build
