@@ -165,6 +165,9 @@ typedef struct {
 
     // D-pad mode: 0=dpad, 1=left stick, 2=right stick
     uint8_t dpad_mode;
+
+    // Onboard LED: 0=default(enabled), 1=enabled, 2=disabled
+    uint8_t onboard_led;
 } pad_device_config_t;
 
 // ============================================================================
@@ -261,6 +264,7 @@ extern const InputInterface pad_input_interface;
         { .i2c_bus = 0, .sda = PAD_PIN_DISABLED, .scl = PAD_PIN_DISABLED, .addr = 0x49 }, \
         { .i2c_bus = 0, .sda = PAD_PIN_DISABLED, .scl = PAD_PIN_DISABLED, .addr = 0x49 }, \
     }, \
+    .onboard_led = PAD_ONBOARD_LED_DEFAULT, \
 }
 
 #endif // PAD_INPUT_H

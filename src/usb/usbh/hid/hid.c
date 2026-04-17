@@ -37,6 +37,13 @@ static void process_generic_report(uint8_t dev_addr, uint8_t instance, uint8_t c
 
 void hid_init()
 {
+  // Init all device types to -1 so XInput devices (which bypass HID)
+  // don't accidentally match index 0 (CONTROLLER_DUALSHOCK3).
+  for (int d = 0; d < MAX_DEVICES; d++) {
+    for (int i = 0; i < CFG_TUH_HID; i++) {
+      devices[d].instances[i].type = -1;
+    }
+  }
   register_devices();
 }
 
@@ -380,7 +387,7 @@ int hid_get_ctrl_type(uint8_t dev_addr, uint8_t instance)
   return devices[dev_addr].instances[instance].type;
 }
 
-// Get USB product string (fetched at mount time)
+// Get USB product string (fetched at mount time, or set by XInput)
 // Returns NULL if not available
 const char* hid_get_product_name(uint8_t dev_addr)
 {
@@ -388,4 +395,12 @@ const char* hid_get_product_name(uint8_t dev_addr)
     return NULL;
   }
   return devices[dev_addr].product_name[0] ? devices[dev_addr].product_name : NULL;
+}
+
+// Set product name for non-HID devices (XInput, etc.)
+void hid_set_product_name(uint8_t dev_addr, const char* name)
+{
+  if (dev_addr >= MAX_DEVICES || !name) return;
+  strncpy(devices[dev_addr].product_name, name, PRODUCT_NAME_LEN - 1);
+  devices[dev_addr].product_name[PRODUCT_NAME_LEN - 1] = '\0';
 }

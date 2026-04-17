@@ -149,6 +149,18 @@ void tuh_xinput_mount_cb(uint8_t dev_addr, uint8_t instance, const xinputh_inter
 {
   printf("XINPUT MOUNTED %02x %d type=%d\n", dev_addr, instance, xinput_itf->type);
 
+  // Set product name for device name display (XInput bypasses HID registry)
+  extern void hid_set_product_name(uint8_t dev_addr, const char* name);
+  const char* xname;
+  switch (xinput_itf->type) {
+    case XBOXONE:         xname = "Xbox One";          break;
+    case XBOX360_WIRELESS: xname = "Xbox 360 Wireless"; break;
+    case XBOX360_WIRED:   xname = "Xbox 360";          break;
+    case XBOXOG:          xname = "Xbox OG";           break;
+    default:              xname = "Xbox Controller";   break;
+  }
+  hid_set_product_name(dev_addr, xname);
+
   // Register Xbox One controllers for auth passthrough
   if (xinput_itf->type == XBOXONE)
   {

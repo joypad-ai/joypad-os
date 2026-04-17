@@ -67,9 +67,10 @@ export class UsbHostCard {
             card.style.display = '';
             this.visible = true;
             const dp = config.usb_host_dp !== undefined ? config.usb_host_dp : -1;
+            const sysDp = config.sys_usb_host_dp !== undefined ? config.sys_usb_host_dp : 0;
             const enabled = dp >= 0;
             this.el.querySelector('#usbHostEnabled').checked = enabled;
-            this.el.querySelector('#usbHostDp').value = enabled ? dp : 0;
+            this.el.querySelector('#usbHostDp').value = enabled ? dp : (sysDp >= 0 ? sysDp : 0);
             this.togglePins();
             this.updateDm();
             this.currentConfig = config;

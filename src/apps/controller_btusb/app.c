@@ -615,11 +615,11 @@ void app_task(void)
     // ----------------------------------------------------------------
     // CYW43 onboard LED status (Pico W only — no regular GPIO LED)
     //
-    // Blink:  something is actively searching (BLE advertising without
-    //         peer, BT Central scanning without device, USB host enabled
-    //         without device)
-    // Solid:  all enabled host/wireless features have connections
-    // Off:    nothing wireless or host-related enabled
+    // Blink:  scanning OR no BT/BLE devices connected
+    // Solid:  device(s) connected, not scanning
+    // Off:    BT host disabled + no connections, or onboard LED disabled
+    //
+    // Configurable via web config Feedback > Onboard LED toggle.
     // ----------------------------------------------------------------
 #ifdef BTSTACK_USE_CYW43
     {
@@ -627,45 +627,70 @@ void app_task(void)
         static bool cyw43_led_state = false;
         uint32_t now = platform_time_ms();
 
-        bool anything_enabled = false;
-        bool anything_waiting = false;
-        bool anything_connected = false;
-
-#if REQUIRE_BLE_OUTPUT
-        // BLE peripheral advertising is passive — don't count "no peer" as waiting.
-        // But a connected BLE output peer does count as a connection.
-        if (ble_output_is_connected()) anything_connected = true;
-#endif
-#if REQUIRE_BT_INPUT
-        if (bt_input_enabled) {
-            anything_enabled = true;
-            // Use actual BT connection count (Classic + BLE Central),
-            // not playersCount which requires a button press to assign.
-            extern uint8_t btstack_classic_get_connection_count(void);
-            uint8_t bt_count = btstack_classic_get_connection_count();
-            if (bt_count > 0) anything_connected = true;
-            else anything_waiting = true;
+        // Check if onboard LED is disabled via pad config
+        static bool onboard_led_checked = false;
+        static bool onboard_led_disabled = false;
+        if (!onboard_led_checked) {
+            const pad_device_config_t* cfg = pad_config_load_runtime();
+            if (cfg && cfg->onboard_led == PAD_ONBOARD_LED_DISABLED) {
+                onboard_led_disabled = true;
+            }
+            onboard_led_checked = true;
         }
-#endif
 
-        if (anything_connected) {
-            // Solid — at least one BT/BLE device connected
-            if (!cyw43_led_state) {
-                cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
-                cyw43_led_state = true;
-            }
-        } else if (anything_waiting) {
-            // Blink (500ms) — BT scanning, no device yet
-            if (now - cyw43_led_last_toggle >= 500) {
-                cyw43_led_state = !cyw43_led_state;
-                cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, cyw43_led_state ? 1 : 0);
-                cyw43_led_last_toggle = now;
-            }
-        } else {
-            // Off — nothing wireless enabled
+        if (onboard_led_disabled) {
             if (cyw43_led_state) {
                 cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 0);
                 cyw43_led_state = false;
+            }
+        } else {
+            bool any_connected = false;
+            bool any_searching = false;
+            bool any_host_enabled = false;
+
+#if REQUIRE_BLE_OUTPUT
+            if (ble_output_is_connected()) any_connected = true;
+#endif
+#if REQUIRE_BT_INPUT
+            if (bt_input_enabled) {
+                any_host_enabled = true;
+                extern uint8_t btstack_classic_get_connection_count(void);
+                extern bool btstack_host_is_scanning(void);
+                if (btstack_classic_get_connection_count() > 0) any_connected = true;
+                if (btstack_host_is_scanning()) any_searching = true;
+            }
+#endif
+#ifndef DISABLE_USB_HOST
+            {
+                extern uint8_t usbh_get_device_count(void);
+                const pad_device_config_t* ucfg = pad_config_load_runtime();
+                if (ucfg && ucfg->usb_host_dp >= 0) {
+                    any_host_enabled = true;
+                    if (usbh_get_device_count() > 0) any_connected = true;
+                    else any_searching = true;
+                }
+            }
+#endif
+
+            if (!any_host_enabled && !any_connected) {
+                // Off — no host features enabled, nothing connected
+                if (cyw43_led_state) {
+                    cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 0);
+                    cyw43_led_state = false;
+                }
+            } else if (any_connected && !any_searching) {
+                // Solid — device(s) connected, not searching
+                if (!cyw43_led_state) {
+                    cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
+                    cyw43_led_state = true;
+                }
+            } else {
+                // Blink — searching (BT scanning or USB host waiting)
+                if (now - cyw43_led_last_toggle >= 500) {
+                    cyw43_led_state = !cyw43_led_state;
+                    cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, cyw43_led_state ? 1 : 0);
+                    cyw43_led_last_toggle = now;
+                }
             }
         }
     }

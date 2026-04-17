@@ -122,8 +122,16 @@ typedef struct {
     // D-pad mode (1 byte): 0=dpad, 1=left stick, 2=right stick
     uint8_t dpad_mode;
 
+    // Onboard LED enable (1 byte): CYW43 LED on Pico W, BOARD_LED_PIN on others
+    // 0 = use default (enabled), 1 = enabled, 2 = disabled
+    // Legacy flash reads 0x00 → "use default" = enabled
+    #define PAD_ONBOARD_LED_DEFAULT  0
+    #define PAD_ONBOARD_LED_ENABLED  1
+    #define PAD_ONBOARD_LED_DISABLED 2
+    uint8_t onboard_led;
+
     // Reserved for future use (pad to 256 bytes)
-    uint8_t reserved[95];
+    uint8_t reserved[94];
 } pad_config_flash_t;
 
 _Static_assert(sizeof(pad_config_flash_t) == 256, "pad_config_flash_t size mismatch");

@@ -8,6 +8,7 @@ export class FeedbackCard {
         this.el = container;
         this.visible = false;
         this.currentConfig = null;
+        this.hasOnboardLed = false;
     }
 
     render() {
@@ -15,15 +16,24 @@ export class FeedbackCard {
             <div class="card" id="feedbackCard" style="display:none;">
                 <h2>Feedback</h2>
                 <div class="card-content">
-                    <h3>LED</h3>
-                    <p class="hint">Controls onboard LED (NeoPixel, RGB, or single-color).</p>
+                    <div id="onboardLedSection" style="display:none;">
+                        <h3>Onboard LED</h3>
+                        <p class="hint">Board's built-in status LED (BT connection indicator).</p>
+                        <div class="pad-form-row">
+                            <span class="label">Enable</span>
+                            <label class="toggle"><input type="checkbox" id="onboardLedEnable"><span class="toggle-slider"></span></label>
+                        </div>
+                    </div>
+
+                    <h3>NeoPixel</h3>
+                    <p class="hint">Addressable RGB LED for status and profile color feedback.</p>
                     <div class="pad-form-row">
                         <span class="label">Enable</span>
                         <label class="toggle"><input type="checkbox" id="ledEnable"><span class="toggle-slider"></span></label>
                     </div>
                     <div id="ledSettings" style="display:none;">
                         <div class="pad-form-row">
-                            <span class="label">LED Pin</span>
+                            <span class="label">GPIO Pin</span>
                             <input type="number" id="ledPin" min="0" max="47" value="0">
                             <span class="hint" id="ledPinHint"></span>
                         </div>
@@ -75,6 +85,10 @@ export class FeedbackCard {
     async load() {
         const card = this.el.querySelector('#feedbackCard');
         try {
+            // Check device features for onboard LED support
+            const info = await this.protocol.getInfo();
+            this.hasOnboardLed = info?.features?.onboard_led || false;
+
             const config = await this.protocol.getPadConfig();
             if (!config.ok) {
                 card.style.display = 'none';
@@ -85,7 +99,18 @@ export class FeedbackCard {
             this.visible = true;
             this.currentConfig = config;
 
-            // LED
+            // Onboard LED (CYW43 on Pico W, or BOARD_LED_PIN on others)
+            const onboardSection = this.el.querySelector('#onboardLedSection');
+            if (this.hasOnboardLed) {
+                onboardSection.style.display = '';
+                const onboardVal = config.onboard_led !== undefined ? config.onboard_led : 0;
+                // 0 = default (enabled), 1 = enabled, 2 = disabled
+                this.el.querySelector('#onboardLedEnable').checked = (onboardVal !== 2);
+            } else {
+                onboardSection.style.display = 'none';
+            }
+
+            // NeoPixel
             const sysPin = config.sys_led_pin;
             const sysCount = config.sys_led_count;
             const savedPin = config.led_pin;
@@ -140,6 +165,11 @@ export class FeedbackCard {
         if (!confirm('Save feedback configuration? The device will reboot.')) return;
         if (!this.currentConfig) return;
 
+        // Onboard LED: checked = enabled (1), unchecked = disabled (2)
+        const onboardLedVal = this.hasOnboardLed
+            ? (this.el.querySelector('#onboardLedEnable').checked ? 1 : 2)
+            : 0;
+
         const config = {
             name: this.currentConfig.name || 'Custom',
             active_high: this.currentConfig.active_high || false,
@@ -156,6 +186,7 @@ export class FeedbackCard {
             sinput_rgb: this.el.querySelector('#sinputRgb').checked,
             led_pin: this.el.querySelector('#ledEnable').checked ? parseInt(this.el.querySelector('#ledPin').value) : -1,
             led_count: this.el.querySelector('#ledEnable').checked ? parseInt(this.el.querySelector('#ledCount').value) : 0,
+            onboard_led: onboardLedVal,
             speaker_pin: this.el.querySelector('#speakerEnable').checked ? parseInt(this.el.querySelector('#speakerPin').value) : -1,
             speaker_enable_pin: this.el.querySelector('#speakerEnable').checked ? parseInt(this.el.querySelector('#speakerEnablePin').value) : -1,
             usb_host_dp: this.currentConfig.usb_host_dp !== undefined ? this.currentConfig.usb_host_dp : -1,

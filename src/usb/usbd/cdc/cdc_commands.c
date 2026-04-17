@@ -236,8 +236,18 @@ static void cmd_info(const char* json)
     platform_get_serial(serial, sizeof(serial));
 
     snprintf(response_buf, sizeof(response_buf),
-             "{\"app\":\"%s\",\"version\":\"%s\",\"board\":\"%s\",\"serial\":\"%s\",\"commit\":\"%s\",\"build\":\"%s\"}",
-             APP_NAME, JOYPAD_VERSION, BOARD_NAME, serial, GIT_COMMIT, BUILD_TIME);
+             "{\"app\":\"%s\",\"version\":\"%s\",\"board\":\"%s\",\"serial\":\"%s\",\"commit\":\"%s\",\"build\":\"%s\""
+             ",\"features\":{\"onboard_led\":%s}}"
+             ,
+             APP_NAME, JOYPAD_VERSION, BOARD_NAME, serial, GIT_COMMIT, BUILD_TIME,
+#ifdef BTSTACK_USE_CYW43
+             "true"
+#elif defined(BOARD_LED_PIN)
+             "true"
+#else
+             "false"
+#endif
+             );
     printf("[CDC] INFO response: %s\n", response_buf);
     send_json(response_buf);
 }
@@ -653,6 +663,8 @@ static void cmd_profile_set(const char* json)
     send_json(response_buf);
 }
 
+static void stream_throttle_reset(void);  // forward decl
+
 static void cmd_input_stream(const char* json)
 {
     bool enable;
@@ -664,6 +676,8 @@ static void cmd_input_stream(const char* json)
     active_ctx->input_streaming = enable;
     if (enable) {
         stream_ctx = active_ctx;
+        // Reset throttle so the first event per device re-sends the name
+        stream_throttle_reset();
     } else if (stream_ctx == active_ctx) {
         stream_ctx = NULL;
     }
@@ -1764,8 +1778,10 @@ static void cmd_pad_config_get(const char* json)
 #define WS2812_PIN -1
 #endif
         pos += snprintf(response_buf + pos, sizeof(response_buf) - pos,
-                        ",\"led_pin\":%d,\"led_count\":%d,\"sys_led_pin\":%d,\"sys_led_count\":%d",
-                        flash_data.led_pin, flash_data.led_count, WS2812_PIN, WS2812_NUM_PIXELS);
+                        ",\"led_pin\":%d,\"led_count\":%d,\"sys_led_pin\":%d,\"sys_led_count\":%d"
+                        ",\"onboard_led\":%d",
+                        flash_data.led_pin, flash_data.led_count, WS2812_PIN, WS2812_NUM_PIXELS,
+                        flash_data.onboard_led);
     }
 
     // Speaker
@@ -1774,10 +1790,13 @@ static void cmd_pad_config_get(const char* json)
                     flash_data.speaker_pin, flash_data.speaker_enable_pin);
 
     // USB host
+#ifndef PIO_USB_DP_PIN_DEFAULT
+#define PIO_USB_DP_PIN_DEFAULT -1
+#endif
     pos += snprintf(response_buf + pos, sizeof(response_buf) - pos,
-                    ",\"usb_host_dp\":%d"
+                    ",\"usb_host_dp\":%d,\"sys_usb_host_dp\":%d"
                     ",\"joywing\":[[%d,%d,%d,%d],[%d,%d,%d,%d]]",
-                    flash_data.usb_host_dp,
+                    flash_data.usb_host_dp, PIO_USB_DP_PIN_DEFAULT,
                     flash_data.joywing[0].i2c_bus, flash_data.joywing[0].sda, flash_data.joywing[0].scl, flash_data.joywing[0].addr,
                     flash_data.joywing[1].i2c_bus, flash_data.joywing[1].sda, flash_data.joywing[1].scl, flash_data.joywing[1].addr);
 
@@ -1903,8 +1922,10 @@ static void cmd_pad_config_set(const char* json)
     // LED
     config.led_pin = PAD_PIN_DISABLED;
     config.led_count = 0;
+    config.onboard_led = PAD_ONBOARD_LED_DEFAULT;
     if (json_get_int(json, "led_pin", &ival)) config.led_pin = (int8_t)ival;
     if (json_get_int(json, "led_count", &ival)) config.led_count = (uint8_t)ival;
+    if (json_get_int(json, "onboard_led", &ival)) config.onboard_led = (uint8_t)ival;
 
     // Speaker
     config.speaker_pin = PAD_PIN_DISABLED;

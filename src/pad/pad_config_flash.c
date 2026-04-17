@@ -110,6 +110,7 @@ void pad_config_to_flash(const pad_device_config_t* config, pad_config_flash_t* 
     }
 
     flash->dpad_mode = config->dpad_mode;
+    flash->onboard_led = config->onboard_led;
 }
 
 const pad_device_config_t* pad_config_from_flash(const pad_config_flash_t* flash)
@@ -201,6 +202,7 @@ const pad_device_config_t* pad_config_from_flash(const pad_config_flash_t* flash
     }
 
     runtime_config.dpad_mode = flash->dpad_mode;
+    runtime_config.onboard_led = flash->onboard_led;
 
     return &runtime_config;
 }

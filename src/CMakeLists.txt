@@ -1524,9 +1524,9 @@ if (PICO_BOARD STREQUAL "pico_w" OR PICO_BOARD STREQUAL "pico2_w")
         REQUIRE_BT_INPUT=1
         SENSOR_PAD=1
         SENSOR_JOYWING=1
+        PICO_DEFAULT_PIO_USB_DP_PIN=16
+        PIO_USB_DP_PIN_DEFAULT=16
         BOARD_TUH_RHPORT=1
-        PICO_DEFAULT_PIO_USB_DP_PIN=2
-        PIO_USB_DP_PIN_DEFAULT=2
     )
     target_sources(joypad_controller_btusb PUBLIC
         ${CORE_SOURCES}

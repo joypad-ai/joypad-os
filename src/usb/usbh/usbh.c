@@ -197,14 +197,20 @@ void usbh_task(void)
 // TinyUSB Callbacks
 //--------------------------------------------------------------------+
 
+static uint8_t usb_host_device_count = 0;
+
+uint8_t usbh_get_device_count(void) { return usb_host_device_count; }
+
 void tuh_mount_cb(uint8_t dev_addr)
 {
     printf("A device with address %d is mounted\r\n", dev_addr);
+    usb_host_device_count++;
 }
 
 void tuh_umount_cb(uint8_t dev_addr)
 {
     printf("A device with address %d is unmounted\r\n", dev_addr);
+    if (usb_host_device_count > 0) usb_host_device_count--;
 
     remove_players_by_address(dev_addr, -1);
 
