@@ -846,8 +846,8 @@ void profile_apply(const profile_t* profile,
     // digital button bit for output modes that read JP_BUTTON_L2/R2.
     // Custom profiles may override this post-hoc (see usbd/ble output
     // paths) using their own per-profile threshold fields.
-    uint8_t eff_l2_thresh = profile ? profile->l2_threshold : 128;
-    uint8_t eff_r2_thresh = profile ? profile->r2_threshold : 128;
+    uint8_t eff_l2_thresh = profile ? profile->l2_threshold : 1;
+    uint8_t eff_r2_thresh = profile ? profile->r2_threshold : 1;
     if (eff_l2_thresh > 0) {
         output->buttons &= ~JP_BUTTON_L2;
         if (l2 >= eff_l2_thresh) output->buttons |= JP_BUTTON_L2;

@@ -393,8 +393,8 @@ uint32_t profile_apply_button_map(const profile_t* profile, uint32_t input_butto
 #define PROFILE_TRIGGERS_DEFAULT \
     .l2_behavior = TRIGGER_PASSTHROUGH, \
     .r2_behavior = TRIGGER_PASSTHROUGH, \
-    .l2_threshold = 128, \
-    .r2_threshold = 128, \
+    .l2_threshold = 1, \
+    .r2_threshold = 1, \
     .l2_analog_value = 0, \
     .r2_analog_value = 0
 

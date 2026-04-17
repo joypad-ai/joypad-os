@@ -190,8 +190,10 @@ static void bt_central_post_init(void)
 #if REQUIRE_BLE_OUTPUT
     ble_output_late_init();
 #endif
+    // Always init HID handlers so bond management (forget, status) works
+    // even when BT scanning is disabled. Only start scanning if enabled.
+    btstack_host_init_hid_handlers();
     if (bt_input_enabled) {
-        btstack_host_init_hid_handlers();
         btstack_host_start_timed_scan(60000);
         printf("[app:controller_btusb] BT Central enabled, scanning...\n");
     } else {
@@ -612,9 +614,12 @@ void app_task(void)
 
     // ----------------------------------------------------------------
     // CYW43 onboard LED status (Pico W only — no regular GPIO LED)
-    // Solid:      any input connected (BT, USB host, or GPIO pad active)
-    // Slow blink: BT scanning, no connection yet
-    // Off:        idle (no scanning, no connections)
+    //
+    // Blink:  something is actively searching (BLE advertising without
+    //         peer, BT Central scanning without device, USB host enabled
+    //         without device)
+    // Solid:  all enabled host/wireless features have connections
+    // Off:    nothing wireless or host-related enabled
     // ----------------------------------------------------------------
 #ifdef BTSTACK_USE_CYW43
     {
@@ -622,30 +627,40 @@ void app_task(void)
         static bool cyw43_led_state = false;
         uint32_t now = platform_time_ms();
 
-        bool any_connected = (playersCount > 0);
-#if REQUIRE_BLE_OUTPUT
-        any_connected = any_connected || ble_output_is_connected();
-#endif
-        any_connected = any_connected || usb_gamepad_active();
+        bool anything_enabled = false;
+        bool anything_waiting = false;
 
-        if (any_connected) {
-            // Solid on
-            if (!cyw43_led_state) {
-                cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
-                cyw43_led_state = true;
+#if REQUIRE_BLE_OUTPUT
+        // BLE peripheral is always advertising when not connected
+        anything_enabled = true;
+        if (!ble_output_is_connected()) anything_waiting = true;
+#endif
+#if REQUIRE_BT_INPUT
+        if (bt_input_enabled) {
+            anything_enabled = true;
+            // playersCount includes both BT and USB host devices
+            if (playersCount == 0) anything_waiting = true;
+        }
+#endif
+
+        if (!anything_enabled) {
+            // Off — nothing wireless/host enabled
+            if (cyw43_led_state) {
+                cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 0);
+                cyw43_led_state = false;
             }
-        } else if (bt_input_enabled) {
-            // Slow blink (500ms) — scanning for controllers
+        } else if (anything_waiting) {
+            // Blink (500ms) — at least one feature still searching
             if (now - cyw43_led_last_toggle >= 500) {
                 cyw43_led_state = !cyw43_led_state;
                 cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, cyw43_led_state ? 1 : 0);
                 cyw43_led_last_toggle = now;
             }
         } else {
-            // Off
-            if (cyw43_led_state) {
-                cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 0);
-                cyw43_led_state = false;
+            // Solid — everything that's enabled has a connection
+            if (!cyw43_led_state) {
+                cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
+                cyw43_led_state = true;
             }
         }
     }
