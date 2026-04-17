@@ -170,6 +170,7 @@ APP_n642usb_kb2040 := kb2040 n642usb n642usb_kb2040 N64 USB
 APP_nuon2usb_kb2040 := kb2040 nuon2usb nuon2usb_kb2040 Nuon USB
 APP_nuon2usb_pico_w := pico_w nuon2usb nuon2usb_pico_w Nuon USB
 APP_gc2usb_kb2040 := kb2040 gc2usb gc2usb_kb2040 GameCube USB
+APP_gc2usb_rp2040zero := rp2040zero gc2usb gc2usb_rp2040zero GameCube USB
 APP_wii2usb_kb2040 := kb2040 wii2usb wii2usb_kb2040 Wii USB
 APP_wii2gc_kb2040 := kb2040 wii2gc wii2gc_kb2040 Wii GameCube
 APP_wii2n64_pico := pico wii2n64 wii2n64_pico Wii N64
@@ -192,7 +193,7 @@ APP_controller_btusb_feather_rp2040 := feather controller_btusb_feather_rp2040 c
 
 # All apps (note: controller_macropad not included - build explicitly with 'make controller_macropad')
 # Note: usb2loopy_kb2040, snes23do_rp2040zero excluded until more mature
-APPS := usb2pce_kb2040 usb2gc_kb2040 usb2gc_rp2040zero usb2nuon_kb2040 usb2n64_kb2040 usb2dc_kb2040 usb2dc_rp2040zero usb2neogeo_kb2040 usb2neogeo_pico usb2neogeo_rp2040zero n642dc_kb2040 n642dc_pico2_w n642nuon_pico usb23do_rp2040zero usb2uart_kb2040 usb2usb_pico usb2usb_pico_w usb2usb_pico2_w usb2usb_feather_rp2040 usb2usb_feather_rp2040_usb_host usb2usb_feather_rp2040_max3421 usb2usb_feather_rp2040_usb_host_max3421 usb2usb_rp2040zero usb2usb_rp2350usba bt2usb_pico_w bt2usb_pico2_w btusb2usb_pico_w btusb2usb_pico2_w usb2ble_pico_w usb2ble_pico2_w bt2nuon_pico_w bt2nuon_pico2_w bt2n64_pico_w bt2n64_pico2_w snes2usb_kb2040 n642usb_kb2040 gc2usb_kb2040 nes2usb_kb2040 nes2usb_pico_w controller_fisherprice_v1_kb2040 controller_fisherprice_v2_kb2040 controller_alpakka_pico
+APPS := usb2pce_kb2040 usb2gc_kb2040 usb2gc_rp2040zero usb2nuon_kb2040 usb2n64_kb2040 usb2dc_kb2040 usb2dc_rp2040zero usb2neogeo_kb2040 usb2neogeo_pico usb2neogeo_rp2040zero n642dc_kb2040 n642dc_pico2_w n642nuon_pico usb23do_rp2040zero usb2uart_kb2040 usb2usb_pico usb2usb_pico_w usb2usb_pico2_w usb2usb_feather_rp2040 usb2usb_feather_rp2040_usb_host usb2usb_feather_rp2040_max3421 usb2usb_feather_rp2040_usb_host_max3421 usb2usb_rp2040zero usb2usb_rp2350usba bt2usb_pico_w bt2usb_pico2_w btusb2usb_pico_w btusb2usb_pico2_w usb2ble_pico_w usb2ble_pico2_w bt2nuon_pico_w bt2nuon_pico2_w bt2n64_pico_w bt2n64_pico2_w snes2usb_kb2040 n642usb_kb2040 gc2usb_kb2040 gc2usb_rp2040zero nes2usb_kb2040 nes2usb_pico_w controller_fisherprice_v1_kb2040 controller_fisherprice_v2_kb2040 controller_alpakka_pico
 
 # Stable apps for release
 # Note: usb2loopy_kb2040, snes23do_rp2040zero excluded until more mature
@@ -285,6 +286,7 @@ help:
 	@echo "  make n642usb_kb2040     - N64 -> USB HID (KB2040)"
 	@echo "  make nuon2usb_kb2040    - Nuon -> USB HID (KB2040)"
 	@echo "  make gc2usb_kb2040      - GameCube -> USB HID (KB2040)"
+	@echo "  make gc2usb_rp2040zero  - GameCube -> USB HID (RP2040-Zero)"
 	@echo "  make neogeo2usb_kb2040  - NEOGEO -> USB HID (KB2040)"
 	@echo "  make neogeo2usb_rp2040zero - NEOGEO -> USB HID (RP2040-Zero)"
 	@echo "  make jvs2usb_rp2040zero - JVS -> USB HID (RP2040-Zero)"
@@ -850,6 +852,10 @@ nuon2usb_pico_w:
 .PHONY: gc2usb_kb2040
 gc2usb_kb2040:
 	$(call build_app,gc2usb_kb2040)
+
+.PHONY: gc2usb_rp2040zero
+gc2usb_rp2040zero:
+	$(call build_app,gc2usb_rp2040zero)
 
 .PHONY: wii2usb_kb2040
 wii2usb_kb2040:
