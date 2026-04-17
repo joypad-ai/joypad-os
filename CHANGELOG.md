@@ -6,6 +6,80 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [2.0.0] — 2026-04-17
+
+### Added
+
+#### New Apps
+- **bt2wii** — Bluetooth controllers → Wii extension port (I2C slave emulation)
+- **wii2usb / wii2gc / wii2n64** — Wii extension accessories (Nunchuck, Classic, Classic Pro) → USB HID, GameCube, or N64
+- **bt2gc / bt2nuon / bt2loopy** — Bluetooth → GameCube, Nuon, and Casio Loopy output (Pico W)
+- **nuon2usb** — Read Nuon controllers as USB HID input
+- **nuonserial** — Polyface serial adapter for Nuon homebrew development
+- **lodgenet2gc / lodgenet2n64** — LodgeNet hotel controllers → GameCube or N64
+- **nes2usb** — NES controller → USB HID via PIO (community contribution)
+- **jvs2usb** — JVS arcade I/O board → USB HID (community contribution)
+- **controller_btusb** — Universal GPIO/JoyWing controller app with simultaneous BLE + USB HID output
+- **usb2ble** — USB controllers → BLE gamepad output
+- **btusb2usb** — Combined PIO-USB host + CYW43 Bluetooth + USB device on a single Pico W
+
+#### New Platforms
+- **Seeed XIAO nRF52840** and **Adafruit Feather nRF52840** — bt2usb and usb2usb targets
+- **MAX3421E SPI USB host** — Feather RP2040 + USB Host FeatherWing support
+- **Pico 2 W** — bt2n64 and n642dc targets
+
+#### Web Config
+- Complete UI redesign with sidebar navigation and dark theme
+- **BT Host page** — live scan status, paired device list, per-device forget, transport details
+- **USB Host page** — runtime D+ pin configuration for PIO-USB
+- **Router page** — routing mode, merge mode, and D-Pad mode adjustable at runtime
+- **Profiles page** — create, edit, clone, and delete custom profiles; clone from built-in profiles
+- **Hotkeys page** — configure button combo actions
+- **Feedback page** — onboard LED toggle, RGB LED pin/count, SInput RGB, buzzer settings
+- **Native Output page** — runtime Joybus pin configuration (usb2gc, extensible to other consoles)
+- **Device Info** — firmware version check and one-click OTA update via File System Access API
+- BLE NUS (Web Bluetooth) wireless configuration transport — configure over Bluetooth without USB
+- Dirty-state tracking for save buttons; auto-reconnect after device reboot
+- **Input test** — per-player live input stream with device names and smooth RAF batching
+
+#### Controller & Input
+- F1/F2 function keys available for hotkey combos
+- Configurable hotkey combos: button remap, D-Pad mode cycle, profile next/previous
+- Custom profiles now apply uniformly in the router across all outputs
+- BLE Central scanning for Bluetooth controllers on Pico W, nRF52840, and ESP32-S3
+- Synthesize digital L2/R2 from analog triggers when no built-in profile is present
+
+#### Output & Device
+- BLE gamepad output as composite HID device (gamepad + keyboard + mouse)
+- Xbox BLE gamepad mode with dual GATT service support
+- Generic native-output configuration API (OUTPUT.NATIVE.GET/SET)
+- CYW43 onboard LED status patterns: blinking = scanning, solid = connected, off = idle
+
+### Changed
+- **usb2gc** — automatic console detection via GC_DATA pin; Joybus pin overridable at runtime via web config
+- **Trigger threshold** — default changed from 128 (50% travel) to 1 (any press)
+- libxsm3 converted to a maintained fork (RobertDaleSmith/libxsm3) as a submodule
+- Platform HAL extended with GPIO and ADC abstractions for cross-platform pad input
+- Flash initialization made idempotent to support early hardware detection paths
+- BT scan now suppressed when a USB device is connected; scan duration is timed or indefinite based on context
+- Stream throttle state resets on web config page refresh (device names persist)
+
+### Fixed
+- N64 pak compatibility with Everdrive, PixelFX Game ID detection, and Cruisin' USA
+- N64 cold-boot detection and Core 1 flash-safety hang on Pico 2 W (RP2350)
+- Bluetooth generic gamepad analog axis scaling (was 1–255, corrected to 0–255)
+- Profile clone from built-in now copies actual button mappings (was copying passthrough for all buttons)
+- Custom profile chaining bug where L1→B1 + B1→R3 incorrectly produced L1→R3
+- XInput device naming showing "Sony DualShock 3" for Xbox controllers
+- nRF52840: CDC serial hang caused by stack overflow; pad config NVS key conflict; GPIO HAL guard omissions
+- MAX3421E SPI hang on boards using SPI1
+- NeoPixel data loss on multi-LED chains
+- BOOTSEL button reads throttled to prevent blocking flash access and interrupts
+- Wii extension support extended to all accessories (Nunchuck, Classic, Classic Pro, and others)
+- PCEngine docs: added voltage level warning for 5V→3.3V level shifting
+
+---
+
 ## [1.9.0] — 2026-02-25
 
 ### Added
