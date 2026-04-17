@@ -171,80 +171,9 @@ static uint32_t apply_usbd_profile_player(const input_event_t* event, profile_ou
                   event->analog[ANALOG_RZ],
                   profile_out);
 
-    // If no built-in profile, apply custom profile button mapping (if active)
-    // Custom profiles work alongside built-in profiles: built-in first, then custom
-    // This allows usb2usb (no built-in profiles) to use custom profiles exclusively
-    if (!profile) {
-        const custom_profile_t* custom = flash_get_active_custom_profile();
-        if (custom) {
-            // Apply custom profile button mapping
-            uint32_t original_buttons = profile_out->buttons;
-            profile_out->buttons = custom_profile_apply_buttons(custom, profile_out->buttons);
-
-            // Debug: log button remapping (only when buttons change)
-            static uint32_t last_logged = 0;
-            if (original_buttons != profile_out->buttons && original_buttons != last_logged) {
-                printf("[usbd] Custom profile applied: 0x%08lX -> 0x%08lX\n",
-                       (unsigned long)original_buttons, (unsigned long)profile_out->buttons);
-                last_logged = original_buttons;
-            }
-
-            // Apply stick sensitivity
-            if (custom->left_stick_sens != 100) {
-                float sens = custom->left_stick_sens / 100.0f;
-                int16_t rel_x = (int16_t)profile_out->left_x - 128;
-                int16_t rel_y = (int16_t)profile_out->left_y - 128;
-                profile_out->left_x = (uint8_t)(128 + (int16_t)(rel_x * sens));
-                profile_out->left_y = (uint8_t)(128 + (int16_t)(rel_y * sens));
-            }
-            if (custom->right_stick_sens != 100) {
-                float sens = custom->right_stick_sens / 100.0f;
-                int16_t rel_x = (int16_t)profile_out->right_x - 128;
-                int16_t rel_y = (int16_t)profile_out->right_y - 128;
-                profile_out->right_x = (uint8_t)(128 + (int16_t)(rel_x * sens));
-                profile_out->right_y = (uint8_t)(128 + (int16_t)(rel_y * sens));
-            }
-
-            // Apply SOCD cleaning
-            if (custom->socd_mode > 0 && custom->socd_mode <= 3) {
-                profile_out->buttons = apply_socd(profile_out->buttons,
-                    (socd_mode_t)custom->socd_mode, 0);
-            }
-
-            // Apply profile flags
-            if (custom->flags & PROFILE_FLAG_SWAP_STICKS) {
-                uint8_t tmp_x = profile_out->left_x;
-                uint8_t tmp_y = profile_out->left_y;
-                profile_out->left_x = profile_out->right_x;
-                profile_out->left_y = profile_out->right_y;
-                profile_out->right_x = tmp_x;
-                profile_out->right_y = tmp_y;
-            }
-            if (custom->flags & PROFILE_FLAG_INVERT_LY) {
-                profile_out->left_y = 255 - profile_out->left_y;
-            }
-            if (custom->flags & PROFILE_FLAG_INVERT_RY) {
-                profile_out->right_y = 255 - profile_out->right_y;
-            }
-
-            // Apply custom L2/R2 analog→digital thresholds (overrides the
-            // default 128 that profile_apply() set when no built-in profile
-            // was active). A stored value of 0 means "keep the default" —
-            // matches the "uninitialized reserved byte" semantics.
-            if (custom->l2_threshold != 0 && custom->l2_threshold != 128) {
-                profile_out->buttons &= ~JP_BUTTON_L2;
-                if (profile_out->l2_analog >= custom->l2_threshold) {
-                    profile_out->buttons |= JP_BUTTON_L2;
-                }
-            }
-            if (custom->r2_threshold != 0 && custom->r2_threshold != 128) {
-                profile_out->buttons &= ~JP_BUTTON_R2;
-                if (profile_out->r2_analog >= custom->r2_threshold) {
-                    profile_out->buttons |= JP_BUTTON_R2;
-                }
-            }
-        }
-    }
+    // Custom profile (button remap, stick sensitivity, SOCD, axis inversion,
+    // thresholds) is applied in router_submit_input() so it works uniformly
+    // across all output interfaces.
 
     // Copy motion data through (no remapping)
     profile_out->has_motion = event->has_motion;

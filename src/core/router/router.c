@@ -7,6 +7,7 @@
 #include "router.h"
 #include "core/buttons.h"
 #include "core/services/storage/flash.h"
+#include "core/services/profiles/profile.h"
 #include "platform/platform.h"
 #include "core/services/players/manager.h"
 #include <string.h>
@@ -165,7 +166,7 @@ static const char* get_device_name(const input_event_t* event) {
             if (cfg && cfg->name) return cfg->name;
             // Fallback: check flash config name
             const char* flash_name = pad_config_get_name();
-            return flash_name ? flash_name : "Controller";
+            return flash_name ? flash_name : "Custom Pad";
         }
 #endif
         default:
@@ -794,19 +795,72 @@ void router_submit_input(const input_event_t* event) {
     }
 #endif
 
-    // Apply custom profile button remap (so Fn key remaps are visible to hotkeys)
+    // Apply custom profile (button remap, stick sens, SOCD, flags, thresholds).
+    // Done here in the router so it applies uniformly to ALL output interfaces.
     static input_event_t remapped;
     bool did_remap = false;
     {
         const custom_profile_t* cp = flash_get_active_custom_profile();
         if (cp) {
-            uint32_t mapped = custom_profile_apply_buttons(cp, event->buttons);
-            if (mapped != event->buttons) {
-                remapped = *event;
-                remapped.buttons = mapped;
-                did_remap = true;
-                event = &remapped;
+            remapped = *event;
+
+            // Button remap (so Fn key remaps are visible to hotkeys below)
+            remapped.buttons = custom_profile_apply_buttons(cp, event->buttons);
+
+            // Stick sensitivity
+            if (cp->left_stick_sens != 100) {
+                float sens = cp->left_stick_sens / 100.0f;
+                int16_t rx = (int16_t)remapped.analog[ANALOG_LX] - 128;
+                int16_t ry = (int16_t)remapped.analog[ANALOG_LY] - 128;
+                remapped.analog[ANALOG_LX] = (uint8_t)(128 + (int16_t)(rx * sens));
+                remapped.analog[ANALOG_LY] = (uint8_t)(128 + (int16_t)(ry * sens));
             }
+            if (cp->right_stick_sens != 100) {
+                float sens = cp->right_stick_sens / 100.0f;
+                int16_t rx = (int16_t)remapped.analog[ANALOG_RX] - 128;
+                int16_t ry = (int16_t)remapped.analog[ANALOG_RY] - 128;
+                remapped.analog[ANALOG_RX] = (uint8_t)(128 + (int16_t)(rx * sens));
+                remapped.analog[ANALOG_RY] = (uint8_t)(128 + (int16_t)(ry * sens));
+            }
+
+            // Swap sticks
+            if (cp->flags & PROFILE_FLAG_SWAP_STICKS) {
+                uint8_t tx = remapped.analog[ANALOG_LX], ty = remapped.analog[ANALOG_LY];
+                remapped.analog[ANALOG_LX] = remapped.analog[ANALOG_RX];
+                remapped.analog[ANALOG_LY] = remapped.analog[ANALOG_RY];
+                remapped.analog[ANALOG_RX] = tx;
+                remapped.analog[ANALOG_RY] = ty;
+            }
+            // Invert Y axes
+            if (cp->flags & PROFILE_FLAG_INVERT_LY) {
+                remapped.analog[ANALOG_LY] = 255 - remapped.analog[ANALOG_LY];
+            }
+            if (cp->flags & PROFILE_FLAG_INVERT_RY) {
+                remapped.analog[ANALOG_RY] = 255 - remapped.analog[ANALOG_RY];
+            }
+
+            // SOCD cleaning
+            if (cp->socd_mode > 0 && cp->socd_mode <= 3) {
+                remapped.buttons = apply_socd(remapped.buttons,
+                    (socd_mode_t)cp->socd_mode, 0);
+            }
+
+            // Custom L2/R2 analog→digital thresholds
+            if (cp->l2_threshold != 0) {
+                remapped.buttons &= ~JP_BUTTON_L2;
+                if (remapped.analog[ANALOG_L2] >= cp->l2_threshold) {
+                    remapped.buttons |= JP_BUTTON_L2;
+                }
+            }
+            if (cp->r2_threshold != 0) {
+                remapped.buttons &= ~JP_BUTTON_R2;
+                if (remapped.analog[ANALOG_R2] >= cp->r2_threshold) {
+                    remapped.buttons |= JP_BUTTON_R2;
+                }
+            }
+
+            did_remap = true;
+            event = &remapped;
         }
     }
 
@@ -850,7 +904,6 @@ void router_submit_input(const input_event_t* event) {
                 break;
             case 5:  // Next Profile
                 if (!router_combos[c].fired) {
-                    extern void profile_cycle_next(uint8_t output);
                     profile_cycle_next(0);
                     router_combos[c].fired = true;
                 }
@@ -858,7 +911,6 @@ void router_submit_input(const input_event_t* event) {
                 break;
             case 6:  // Previous Profile
                 if (!router_combos[c].fired) {
-                    extern void profile_cycle_prev(uint8_t output);
                     profile_cycle_prev(0);
                     router_combos[c].fired = true;
                 }

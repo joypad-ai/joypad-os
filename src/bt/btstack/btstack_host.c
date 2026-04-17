@@ -715,6 +715,7 @@ static void btstack_host_restore_last_connected(void)
 // ============================================================================
 
 static uint32_t scan_timeout_end = 0;  // 0 = no timeout (indefinite scan)
+static bool scan_suppressed = false;   // App can suppress auto-restart (e.g. USB device connected)
 
 // Pending BLE gamepad: when we see a gamepad appearance or HID UUID but no name in the
 // ADV packet, stash the address and wait for the scan response (which typically contains
@@ -797,9 +798,18 @@ void btstack_host_stop_scan(void)
 
 void btstack_host_start_timed_scan(uint32_t timeout_ms)
 {
+    scan_suppressed = false;  // Explicit scan request clears suppression
     scan_timeout_end = btstack_run_loop_get_time_ms() + timeout_ms;
     printf("[BTSTACK_HOST] Starting timed scan (%lums)\n", (unsigned long)timeout_ms);
     btstack_host_start_scan();
+}
+
+void btstack_host_suppress_scan(bool suppress)
+{
+    scan_suppressed = suppress;
+    if (suppress && btstack_host_is_scanning()) {
+        btstack_host_stop_scan();
+    }
 }
 
 // ============================================================================
@@ -954,10 +964,12 @@ void btstack_host_process(void)
     // This catches edge cases where the state machine gets stuck (e.g., gap_connect_cancel
     // doesn't generate an error event, or a disconnect handler didn't restart scanning).
     // Skip if:
+    //   - scan_suppressed (app paused scanning, e.g. USB device connected)
     //   - waiting for incoming Classic reconnection (outgoing HID failed)
     //   - Classic connection setup in progress (name request, HID connect pending)
 #ifndef CONFIG_USB2BLE
     if (hid_state.powered_on &&
+        !scan_suppressed &&
         hid_state.state == BLE_STATE_IDLE &&
         hid_state.reconnect_attempt_time == 0 &&
         !hid_state.scan_active &&

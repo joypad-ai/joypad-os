@@ -48,6 +48,10 @@ void btstack_host_stop_scan(void);
 // Start scanning with a timeout (auto-stops after timeout_ms)
 void btstack_host_start_timed_scan(uint32_t timeout_ms);
 
+// Suppress/unsuppress automatic scan restart (e.g. when USB device connected).
+// Explicit start_timed_scan clears suppression.
+void btstack_host_suppress_scan(bool suppress);
+
 // Connect to a BLE device
 void btstack_host_connect_ble(bd_addr_t addr, bd_addr_type_t addr_type);
 

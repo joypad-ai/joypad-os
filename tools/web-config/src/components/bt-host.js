@@ -128,9 +128,11 @@ export class BtHostCard {
             if (status.connections > 0) {
                 statusDot.classList.add('connected');
                 statusText.textContent = `Connected (${status.connections})`;
-            } else {
+            } else if (status.scanning) {
                 statusDot.classList.add('scanning');
                 statusText.textContent = 'Scanning';
+            } else {
+                statusText.textContent = 'Idle';
             }
 
             // Show transport

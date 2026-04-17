@@ -14,6 +14,7 @@
 #include "core/services/leds/leds.h"
 #include "core/services/leds/neopixel/ws2812.h"
 #include "core/services/storage/flash.h"
+#include "core/services/profiles/profile.h"
 #include "core/buttons.h"
 #include "platform/platform.h"
 
@@ -112,8 +113,23 @@ static void on_button_event(button_event_t event)
         case BUTTON_EVENT_CLICK:
 #if REQUIRE_BT_INPUT
             if (bt_input_enabled) {
-                printf("[app:controller_btusb] Starting 60s BT scan...\n");
-                btstack_host_start_timed_scan(60000);
+                // If a controller is already connected, scan for 60s then stop.
+                // If nothing connected, scan indefinitely until one is found.
+                extern uint8_t btstack_classic_get_connection_count(void);
+                bool has_device = (btstack_classic_get_connection_count() > 0);
+#ifndef DISABLE_USB_HOST
+                extern uint8_t usbh_get_device_count(void);
+                has_device = has_device || (usbh_get_device_count() > 0);
+#endif
+                if (has_device) {
+                    printf("[app:controller_btusb] Starting 60s BT scan...\n");
+                    btstack_host_start_timed_scan(60000);
+                } else {
+                    printf("[app:controller_btusb] No devices — scanning until connected...\n");
+                    extern void btstack_host_suppress_scan(bool suppress);
+                    btstack_host_suppress_scan(false);
+                    btstack_host_start_scan();
+                }
             }
 #endif
 #if REQUIRE_BLE_OUTPUT
@@ -468,6 +484,13 @@ void app_init(void)
     printf("[app:controller_btusb] OLED + Joy animation initialized (I2C)\n");
 #endif
 
+    // Initialize profile system (no built-in profiles, custom only)
+    static const profile_config_t profile_cfg = {
+        .output_profiles = { NULL },
+        .shared_profiles = NULL,
+    };
+    profile_init(&profile_cfg);
+
     printf("[app:controller_btusb] Initialization complete\n");
     printf("[app:controller_btusb]   Routing: Sensors → %sUSB Device\n",
            REQUIRE_BLE_OUTPUT ? "BLE Peripheral + " : "");
@@ -482,6 +505,27 @@ void app_task(void)
 {
     // Process button input
     button_task();
+
+    // Suppress BT scanning when a USB host device is connected (avoid
+    // unnecessary radio activity). Unsuppress when USB device disconnects
+    // so scanning resumes. User can always override via button press
+    // (start_timed_scan clears suppression).
+#if REQUIRE_BT_INPUT && !defined(DISABLE_USB_HOST)
+    {
+        extern uint8_t usbh_get_device_count(void);
+        extern void btstack_host_suppress_scan(bool suppress);
+        static uint8_t last_usb_host_count = 0;
+        uint8_t usb_count = usbh_get_device_count();
+        if (usb_count > 0 && last_usb_host_count == 0) {
+            btstack_host_suppress_scan(true);
+            printf("[app] USB device connected — suppressing BT scan\n");
+        } else if (usb_count == 0 && last_usb_host_count > 0) {
+            btstack_host_suppress_scan(false);
+            printf("[app] USB device disconnected — resuming BT scan\n");
+        }
+        last_usb_host_count = usb_count;
+    }
+#endif
 
 #if REQUIRE_BLE_OUTPUT
     // Process BLE transport
@@ -663,8 +707,15 @@ void app_task(void)
 #ifndef DISABLE_USB_HOST
             {
                 extern uint8_t usbh_get_device_count(void);
-                const pad_device_config_t* ucfg = pad_config_load_runtime();
-                if (ucfg && ucfg->usb_host_dp >= 0) {
+                // Cache pad config check — don't reload from flash every tick
+                static bool usb_host_pin_checked = false;
+                static bool usb_host_pin_valid = false;
+                if (!usb_host_pin_checked) {
+                    const pad_device_config_t* ucfg = pad_config_load_runtime();
+                    usb_host_pin_valid = ucfg && ucfg->usb_host_dp >= 0;
+                    usb_host_pin_checked = true;
+                }
+                if (usb_host_pin_valid) {
                     any_host_enabled = true;
                     if (usbh_get_device_count() > 0) any_connected = true;
                     else any_searching = true;

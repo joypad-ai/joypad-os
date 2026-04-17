@@ -1709,7 +1709,7 @@ static void cmd_pad_config_get(const char* json)
     if (!config) {
         // No config saved and no compile-time default — return empty defaults
         // so the web config page still shows (user can create a config)
-        static const pad_device_config_t empty_config = PAD_CONFIG_INIT("Default");
+        static const pad_device_config_t empty_config = PAD_CONFIG_INIT("Custom Pad");
         config = &empty_config;
         has_custom = false;
     }
