@@ -35,6 +35,59 @@ static uint8_t prev_l_analog[GC_MAX_PORTS] = {0};
 static uint8_t prev_r_analog[GC_MAX_PORTS] = {0};
 
 // ============================================================================
+// AUTO-CALIBRATING STICK RANGE
+// ============================================================================
+// GC sticks rarely reach the full 0-255 range. Track the min/max seen per
+// axis per session and scale the output to 0-255. Starts with a conservative
+// range (~30-225) and widens as the user moves the sticks to their physical
+// limits. Center (128) is preserved.
+//
+// TODO: make the initial range and dead zone configurable via web config
+//       (pad_config or a dedicated gc_host config section).
+
+#define GC_STICK_INIT_MIN  40   // Conservative initial min (widens on use)
+#define GC_STICK_INIT_MAX  215  // Conservative initial max (widens on use)
+#define GC_STICK_DEADZONE  3    // Ignore values within ±3 of center for calibration
+
+static struct {
+    uint8_t min;
+    uint8_t max;
+} stick_range[GC_MAX_PORTS][4];  // [port][0=LX, 1=LY, 2=RX, 3=RY]
+static bool stick_range_init = false;
+
+static void stick_range_reset(void)
+{
+    for (int p = 0; p < GC_MAX_PORTS; p++) {
+        for (int a = 0; a < 4; a++) {
+            stick_range[p][a].min = GC_STICK_INIT_MIN;
+            stick_range[p][a].max = GC_STICK_INIT_MAX;
+        }
+    }
+    stick_range_init = true;
+}
+
+// Scale raw value using tracked min/max → 0-255 with 128 center preserved
+static uint8_t stick_scale(uint8_t raw, uint8_t port, uint8_t axis)
+{
+    // Update tracked range (ignore values near center — stick rest noise)
+    if (raw < 128 - GC_STICK_DEADZONE || raw > 128 + GC_STICK_DEADZONE) {
+        if (raw < stick_range[port][axis].min) stick_range[port][axis].min = raw;
+        if (raw > stick_range[port][axis].max) stick_range[port][axis].max = raw;
+    }
+
+    uint8_t lo = stick_range[port][axis].min;
+    uint8_t hi = stick_range[port][axis].max;
+
+    // Avoid division by zero or degenerate range
+    if (hi <= lo || hi - lo < 20) return raw;
+
+    // Scale: map [lo..hi] → [0..255]
+    if (raw <= lo) return 0;
+    if (raw >= hi) return 255;
+    return (uint8_t)(((uint16_t)(raw - lo) * 255) / (hi - lo));
+}
+
+// ============================================================================
 // BUTTON MAPPING: GC -> JP
 // ============================================================================
 
@@ -180,6 +233,11 @@ void gc_host_task(void)
             disconnect_debounce[port] = 0;
             if (!was_connected[port]) {
                 was_connected[port] = true;
+                // Reset stick calibration for this port on fresh connect
+                for (int a = 0; a < 4; a++) {
+                    stick_range[port][a].min = GC_STICK_INIT_MIN;
+                    stick_range[port][a].max = GC_STICK_INIT_MAX;
+                }
                 printf("[gc_host] Port %d: connected\n", port);
             }
         }
@@ -192,12 +250,15 @@ void gc_host_task(void)
         // Map buttons
         uint32_t buttons = map_gc_to_jp(&report);
 
-        // GC sticks are already 0-255 with 128 center
-        // But Y-axis is inverted (0=up, 255=down on GC, we want 0=up standard HID)
-        uint8_t stick_x = report.stick_x;
-        uint8_t stick_y = 255 - report.stick_y;  // Invert Y
-        uint8_t cstick_x = report.cstick_x;
-        uint8_t cstick_y = 255 - report.cstick_y;  // Invert Y
+        // GC sticks rarely reach full 0-255. Auto-calibrate by tracking
+        // min/max per axis and scaling to full range.
+        // Y-axis is inverted (GC: 0=down, we want 0=up standard HID)
+        if (!stick_range_init) stick_range_reset();
+
+        uint8_t stick_x  = stick_scale(report.stick_x,           port, 0);
+        uint8_t stick_y  = stick_scale(255 - report.stick_y,     port, 1);
+        uint8_t cstick_x = stick_scale(report.cstick_x,          port, 2);
+        uint8_t cstick_y = stick_scale(255 - report.cstick_y,    port, 3);
 
         // Analog triggers (0-255)
         uint8_t l_analog = report.l_analog;
