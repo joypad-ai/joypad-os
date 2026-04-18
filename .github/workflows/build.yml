@@ -58,6 +58,8 @@ jobs:
           - gc2usb_rp2040zero
           - nes2usb_kb2040
           - jvs2usb_rp2040zero
+          - neogeo2usb_kb2040
+          - neogeo2usb_rp2040zero
           - wii2usb_kb2040
           - wii2gc_kb2040
           - bt2wii_pico_w
@@ -460,6 +462,13 @@ jobs:
         with:
           name: joypad_${{ steps.commit.outputs.hash }}_jvs2usb
           path: organized/jvs2usb/*.uf2
+          if-no-files-found: ignore
+
+      - name: Upload neogeo2usb
+        uses: actions/upload-artifact@v4
+        with:
+          name: joypad_${{ steps.commit.outputs.hash }}_neogeo2usb
+          path: organized/neogeo2usb/*.uf2
           if-no-files-found: ignore
 
       - name: Upload wii2usb
