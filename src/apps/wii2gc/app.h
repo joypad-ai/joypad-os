@@ -19,7 +19,7 @@
 // CORE DEPENDENCIES
 // ============================================================================
 #define REQUIRE_NATIVE_WII_HOST 1
-#define WII_MAX_CONTROLLERS 1
+#define WII_MAX_CONTROLLERS 2
 
 #define REQUIRE_NATIVE_GAMECUBE_OUTPUT 1
 #define GAMECUBE_OUTPUT_PORTS 1
@@ -36,6 +36,8 @@
 // ============================================================================
 #define WII_PIN_SDA     12
 #define WII_PIN_SCL     13
+#define WII_PIN_SDA2    2
+#define WII_PIN_SCL2    3
 #define WII_I2C_FREQ_HZ 50000
 
 // ============================================================================

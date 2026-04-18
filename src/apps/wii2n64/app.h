@@ -11,7 +11,7 @@
 
 // Input
 #define REQUIRE_NATIVE_WII_HOST 1
-#define WII_MAX_CONTROLLERS 1
+#define WII_MAX_CONTROLLERS 2
 
 // Output
 #define REQUIRE_NATIVE_N64_OUTPUT 1
@@ -27,6 +27,8 @@
 //   N64 joybus data on GP2 (matches bt2n64_pico_w convention).
 #define WII_PIN_SDA     4
 #define WII_PIN_SCL     5
+#define WII_PIN_SDA2    6
+#define WII_PIN_SCL2    7
 #define WII_I2C_FREQ_HZ 50000
 
 // Routing
