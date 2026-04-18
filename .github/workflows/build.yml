@@ -55,6 +55,14 @@ jobs:
           - n642nuon_pico
           - nes2usb_pico_w
           - gc2usb_kb2040
+          - gc2usb_rp2040zero
+          - nes2usb_kb2040
+          - jvs2usb_rp2040zero
+          - wii2usb_kb2040
+          - wii2gc_kb2040
+          - bt2wii_pico_w
+          - bt2gc_pico_w
+          - bt2gc_pico2_w
           - controller_fisherprice_v1_kb2040
           - controller_fisherprice_v2_kb2040
           - controller_alpakka_pico
@@ -438,6 +446,48 @@ jobs:
         with:
           name: joypad_${{ steps.commit.outputs.hash }}_lodgenet2gc
           path: organized/lodgenet2gc/*.uf2
+          if-no-files-found: ignore
+
+      - name: Upload nes2usb
+        uses: actions/upload-artifact@v4
+        with:
+          name: joypad_${{ steps.commit.outputs.hash }}_nes2usb
+          path: organized/nes2usb/*.uf2
+          if-no-files-found: ignore
+
+      - name: Upload jvs2usb
+        uses: actions/upload-artifact@v4
+        with:
+          name: joypad_${{ steps.commit.outputs.hash }}_jvs2usb
+          path: organized/jvs2usb/*.uf2
+          if-no-files-found: ignore
+
+      - name: Upload wii2usb
+        uses: actions/upload-artifact@v4
+        with:
+          name: joypad_${{ steps.commit.outputs.hash }}_wii2usb
+          path: organized/wii2usb/*.uf2
+          if-no-files-found: ignore
+
+      - name: Upload wii2gc
+        uses: actions/upload-artifact@v4
+        with:
+          name: joypad_${{ steps.commit.outputs.hash }}_wii2gc
+          path: organized/wii2gc/*.uf2
+          if-no-files-found: ignore
+
+      - name: Upload bt2wii
+        uses: actions/upload-artifact@v4
+        with:
+          name: joypad_${{ steps.commit.outputs.hash }}_bt2wii
+          path: organized/bt2wii/*.uf2
+          if-no-files-found: ignore
+
+      - name: Upload bt2gc
+        uses: actions/upload-artifact@v4
+        with:
+          name: joypad_${{ steps.commit.outputs.hash }}_bt2gc
+          path: organized/bt2gc/*.uf2
           if-no-files-found: ignore
 
       - name: Upload controllers
