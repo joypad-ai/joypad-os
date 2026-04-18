@@ -153,6 +153,7 @@ static const char* get_device_name(const input_event_t* event) {
                 case LAYOUT_WII_TAIKO:        return "Taiko Drum";
                 case LAYOUT_WII_UDRAW:        return "uDraw Tablet";
                 case LAYOUT_WII_MOTIONPLUS:   return "MotionPlus";
+                case LAYOUT_WII_DUAL_NUNCHUCK: return "Dual Nunchuck";
                 default:                      return "Native";
             }
 #ifdef I2C_PEER_ENABLED

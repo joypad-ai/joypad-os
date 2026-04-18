@@ -50,7 +50,12 @@ void app_init(void)
 {
     printf("[app:wii2usb] Initializing WII2USB v%s\n", APP_VERSION);
 
+#if defined(WII_PIN_SDA2) && WII_PIN_SDA2 != 255
+    wii_host_init_dual(WII_PIN_SDA, WII_PIN_SCL, WII_PIN_SDA2, WII_PIN_SCL2);
+    printf("[app:wii2usb]   Dual nunchuck: SDA2=%d SCL2=%d\n", WII_PIN_SDA2, WII_PIN_SCL2);
+#else
     wii_host_init_pins(WII_PIN_SDA, WII_PIN_SCL);
+#endif
 
     router_config_t router_cfg = {
         .mode = ROUTING_MODE,

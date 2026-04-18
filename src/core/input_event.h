@@ -74,6 +74,7 @@ typedef enum {
     LAYOUT_WII_TAIKO,           // Taiko no Tatsujin TaTaCon
     LAYOUT_WII_UDRAW,           // THQ uDraw tablet
     LAYOUT_WII_MOTIONPLUS,      // MotionPlus standalone (gyro only)
+    LAYOUT_WII_DUAL_NUNCHUCK,   // Two nunchucks: left C/Z+stick, right C/Z+stick
 } controller_layout_t;
 
 // ============================================================================

@@ -24,7 +24,7 @@
 // CORE DEPENDENCIES
 // ============================================================================
 #define REQUIRE_NATIVE_WII_HOST 1
-#define WII_MAX_CONTROLLERS 1
+#define WII_MAX_CONTROLLERS 2
 
 #define REQUIRE_USB_DEVICE 1
 #define USB_OUTPUT_PORTS 1
@@ -36,9 +36,14 @@
 // ============================================================================
 // KB2040 defaults: GP12/GP13 are the STEMMA QT / QWIIC connector pair,
 // so a Wii-extension-to-QWIIC adapter plugs in solderless. Since the
-// transport is PIO I2C, any GPIO pair works — override as needed.
+// transport is HW I2C, any GPIO pair works — override as needed.
 #define WII_PIN_SDA     12
 #define WII_PIN_SCL     13
+// Second I2C bus for dual nunchuck mode. GP2/GP3 use I2C1.
+// Wire a second extension cable to these pins (with pull-ups).
+// When two nunchucks are detected: left = stick+C/Z, right = stick+B3/B4.
+#define WII_PIN_SDA2    2
+#define WII_PIN_SCL2    3
 // I2C clock. Nunchuck spec is 400 kHz; clone controllers and Qwiic-adapter
 // chains often misbehave above ~100 kHz, so default to 50 kHz for max
 // robustness. The gp2040-ce team ran 400 kHz successfully; WiiChuck uses
