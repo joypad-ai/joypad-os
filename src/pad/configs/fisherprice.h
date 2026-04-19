@@ -73,6 +73,8 @@ static const pad_device_config_t pad_config_fisherprice_v1 = {
     .adc_ly = PAD_PIN_DISABLED,
     .adc_rx = PAD_PIN_DISABLED,
     .adc_ry = PAD_PIN_DISABLED,
+    .adc_lt = PAD_PIN_DISABLED,
+    .adc_rt = PAD_PIN_DISABLED,
 
     .invert_lx = false,
     .invert_ly = false,
@@ -159,6 +161,8 @@ static const pad_device_config_t pad_config_fisherprice_v2 = {
     .adc_ly = 1,    // ADC channel 1 (GPIO 27)
     .adc_rx = PAD_PIN_DISABLED,
     .adc_ry = PAD_PIN_DISABLED,
+    .adc_lt = PAD_PIN_DISABLED,
+    .adc_rt = PAD_PIN_DISABLED,
 
     .invert_lx = false,
     .invert_ly = true,

@@ -82,6 +82,8 @@ static const pad_device_config_t pad_config_alpakka = {
     .adc_ly = 0,            // ADC channel 0 (GPIO 26, PIN_TY)
     .adc_rx = PAD_PIN_DISABLED,
     .adc_ry = PAD_PIN_DISABLED,
+    .adc_lt = PAD_PIN_DISABLED,
+    .adc_rt = PAD_PIN_DISABLED,
 
     .invert_lx = false,
     .invert_ly = false,
