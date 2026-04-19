@@ -61,6 +61,9 @@ static const pad_device_config_t pad_config_abb = {
     .l4 = PAD_PIN_DISABLED,
     .r4 = PAD_PIN_DISABLED,
 
+    .f1 = PAD_PIN_DISABLED,
+    .f2 = PAD_PIN_DISABLED,
+
     // No toggle switches (screw terminal toggles are user-configurable via web config)
     .toggle = {
         { .pin = PAD_PIN_DISABLED, .function = 0, .invert = false },

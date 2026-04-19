@@ -54,17 +54,21 @@ static const pad_device_config_t pad_config_alpakka = {
 
     // Stick clicks
     .l3 = 112,              // Left stick click (expander 0)
-    .r3 = PAD_PIN_DISABLED, // No right stick
+    .r3 = 204,              // Right stick click (expander 1, PIN_R3)
 
     // Home (direct GPIO)
     .a1 = 20,               // Home / Guide (PIN_HOME)
     .a2 = PAD_PIN_DISABLED,
-    .a3 = PAD_PIN_DISABLED,
-    .a4 = PAD_PIN_DISABLED,
+    .a3 = 113,              // Select 2 (expander 0, PIN_SELECT_2)
+    .a4 = 201,              // Start 2 (expander 1, PIN_START_2)
 
     // Extra paddles
     .l4 = 109,              // Left paddle (expander 0, PIN_L4)
     .r4 = 207,              // Right paddle (expander 1, PIN_R4)
+
+    // Function keys (disabled — use web config to assign if needed)
+    .f1 = PAD_PIN_DISABLED,
+    .f2 = PAD_PIN_DISABLED,
 
     // No toggle switch (dpad always digital)
     .toggle = { 

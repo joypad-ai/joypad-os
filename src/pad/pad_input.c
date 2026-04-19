@@ -152,26 +152,26 @@ static bool pad_read_button(int16_t pin, bool active_high) {
     bool state;
 
     if (pin < 100) {
-        // Direct GPIO
+        // Direct GPIO — apply active_high/low inversion
         state = platform_gpio_get(pin);
+        return active_high ? state : !state;
     }
 #ifdef HAS_I2C_EXPANDER
     else if (pin < 200) {
         // I2C expander 0 (pins 100-115)
+        // Polarity inversion register already handles active-low → 1=pressed
         uint8_t bit = pin - PAD_I2C_EXPANDER_0_BASE;
         if (bit > 15) return false;
-        state = (i2c_expander_cache[0] >> bit) & 1;
+        return (i2c_expander_cache[0] >> bit) & 1;
     } else {
         // I2C expander 1 (pins 200-215)
         uint8_t bit = pin - PAD_I2C_EXPANDER_1_BASE;
         if (bit > 15) return false;
-        state = (i2c_expander_cache[1] >> bit) & 1;
+        return (i2c_expander_cache[1] >> bit) & 1;
     }
 #else
     else { return false; }
 #endif
-
-    return active_high ? state : !state;
 }
 
 // Read ADC channel and return 0-255 value with proper scaling

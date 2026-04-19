@@ -60,6 +60,9 @@ static const pad_device_config_t pad_config_fisherprice_v1 = {
     .l4 = PAD_PIN_DISABLED,
     .r4 = PAD_PIN_DISABLED,
 
+    .f1 = PAD_PIN_DISABLED,
+    .f2 = PAD_PIN_DISABLED,
+
     .toggle = {
         { .pin = 6, .function = PAD_TOGGLE_FUNC_DPAD_LSTICK, .invert = true },
         { .pin = PAD_PIN_DISABLED, .function = 0, .invert = false },
@@ -142,6 +145,9 @@ static const pad_device_config_t pad_config_fisherprice_v2 = {
     // Extra paddles
     .l4 = PAD_PIN_DISABLED,
     .r4 = PAD_PIN_DISABLED,
+
+    .f1 = PAD_PIN_DISABLED,
+    .f2 = PAD_PIN_DISABLED,
 
     .toggle = {
         { .pin = 6, .function = PAD_TOGGLE_FUNC_DPAD_RSTICK, .invert = false },
