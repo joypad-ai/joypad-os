@@ -6,7 +6,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
-## [2.0.0] — 2026-04-17
+## [2.0.0] — 2026-04-18
 
 ### Added
 
@@ -54,9 +54,14 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 - Xbox BLE gamepad mode with dual GATT service support
 - Generic native-output configuration API (OUTPUT.NATIVE.GET/SET)
 - CYW43 onboard LED status patterns: blinking = scanning, solid = connected, off = idle
+- **gc2usb** — auto-calibrating stick range scaling (tracks min/max per axis, expands to full 0-255)
+- **gc2usb_rp2040zero** — new build target (GC data on GP2, NeoPixel on GP16)
+- **Dual Nunchuck mode** — two I2C Nunchucks merged into one input (left stick + right stick, 4 face buttons)
+- **Batch flash tool** — `tools/flash-loop.sh` for flashing multiple boards in sequence
+- **8BitDo Ultimate BLE button mapping** — dedicated map for controllers with back paddles (VID 0x2DC8, >14 buttons)
 
 ### Changed
-- **usb2gc** — automatic console detection via GC_DATA pin; Joybus pin overridable at runtime via web config
+- **usb2gc / wii2gc** — automatic console detection via GC_DATA pin; Joybus pin overridable at runtime via web config
 - **Trigger threshold** — default changed from 128 (50% travel) to 1 (any press)
 - libxsm3 converted to a maintained fork (RobertDaleSmith/libxsm3) as a submodule
 - Platform HAL extended with GPIO and ADC abstractions for cross-platform pad input
@@ -70,7 +75,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 - Bluetooth generic gamepad analog axis scaling (was 1–255, corrected to 0–255)
 - Profile clone from built-in now copies actual button mappings (was copying passthrough for all buttons)
 - Custom profile chaining bug where L1→B1 + B1→R3 incorrectly produced L1→R3
-- XInput device naming showing "Sony DualShock 3" for Xbox controllers
+- XInput device naming showing "Sony DualShock 3" for Xbox controllers (HID type slots uninitialized)
+- BT device names now preferred over generic driver name in input test display
+- Input test transport labels: "bt classic" vs "ble" for clarity
 - nRF52840: CDC serial hang caused by stack overflow; pad config NVS key conflict; GPIO HAL guard omissions
 - MAX3421E SPI hang on boards using SPI1
 - NeoPixel data loss on multi-LED chains
