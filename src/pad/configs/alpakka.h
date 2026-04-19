@@ -70,6 +70,12 @@ static const pad_device_config_t pad_config_alpakka = {
     .f1 = PAD_PIN_DISABLED,
     .f2 = PAD_PIN_DISABLED,
 
+    // Right hat → right analog stick (D-hat on expander 1)
+    .rhat_up    = 206,      // PIN_DHAT_UP
+    .rhat_down  = 202,      // PIN_DHAT_DOWN
+    .rhat_left  = 203,      // PIN_DHAT_LEFT
+    .rhat_right = 205,      // PIN_DHAT_RIGHT
+
     // No toggle switch (dpad always digital)
     .toggle = { 
         { .pin = PAD_PIN_DISABLED, .function = 0, .invert = false }, 

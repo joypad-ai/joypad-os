@@ -489,6 +489,25 @@ static void pad_poll_device(uint8_t device_index) {
     if (config->adc_rt >= 0) {
         event->analog[ANALOG_R2] = pad_read_adc(config->adc_rt, false);
     }
+
+    // Right hat → right analog stick (digital 4-direction → 0/128/255)
+    // Used by Alpakka and similar controllers with a directional hat for the right stick.
+    if (config->rhat_up > 0 || config->rhat_down > 0 ||
+        config->rhat_left > 0 || config->rhat_right > 0) {
+        bool ah = config->active_high;
+        bool up    = (config->rhat_up > 0)    && pad_read_button(config->rhat_up, ah);
+        bool down  = (config->rhat_down > 0)  && pad_read_button(config->rhat_down, ah);
+        bool left  = (config->rhat_left > 0)  && pad_read_button(config->rhat_left, ah);
+        bool right = (config->rhat_right > 0) && pad_read_button(config->rhat_right, ah);
+
+        if (left)       event->analog[ANALOG_RX] = 0;
+        else if (right) event->analog[ANALOG_RX] = 255;
+        else            event->analog[ANALOG_RX] = 128;
+
+        if (up)         event->analog[ANALOG_RY] = 0;
+        else if (down)  event->analog[ANALOG_RY] = 255;
+        else            event->analog[ANALOG_RY] = 128;
+    }
 }
 
 // ============================================================================

@@ -111,6 +111,10 @@ void pad_config_to_flash(const pad_device_config_t* config, pad_config_flash_t* 
 
     flash->dpad_mode = config->dpad_mode;
     flash->onboard_led = config->onboard_led;
+    flash->rhat_up = config->rhat_up;
+    flash->rhat_down = config->rhat_down;
+    flash->rhat_left = config->rhat_left;
+    flash->rhat_right = config->rhat_right;
 }
 
 const pad_device_config_t* pad_config_from_flash(const pad_config_flash_t* flash)
@@ -203,6 +207,10 @@ const pad_device_config_t* pad_config_from_flash(const pad_config_flash_t* flash
 
     runtime_config.dpad_mode = flash->dpad_mode;
     runtime_config.onboard_led = flash->onboard_led;
+    runtime_config.rhat_up = flash->rhat_up;
+    runtime_config.rhat_down = flash->rhat_down;
+    runtime_config.rhat_left = flash->rhat_left;
+    runtime_config.rhat_right = flash->rhat_right;
 
     return &runtime_config;
 }

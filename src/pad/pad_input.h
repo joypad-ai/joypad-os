@@ -163,6 +163,10 @@ typedef struct {
         uint32_t output_mask;   // upper byte = action, lower 22 bits = buttons
     } combo[4];
 
+    // Right hat (digital directions → right analog stick)
+    // 4 pins for a directional hat that outputs as RX/RY (0/128/255)
+    int16_t rhat_up, rhat_down, rhat_left, rhat_right;
+
     // D-pad mode: 0=dpad, 1=left stick, 2=right stick
     uint8_t dpad_mode;
 
@@ -264,6 +268,10 @@ extern const InputInterface pad_input_interface;
         { .i2c_bus = 0, .sda = PAD_PIN_DISABLED, .scl = PAD_PIN_DISABLED, .addr = 0x49 }, \
         { .i2c_bus = 0, .sda = PAD_PIN_DISABLED, .scl = PAD_PIN_DISABLED, .addr = 0x49 }, \
     }, \
+    .rhat_up = PAD_PIN_DISABLED, \
+    .rhat_down = PAD_PIN_DISABLED, \
+    .rhat_left = PAD_PIN_DISABLED, \
+    .rhat_right = PAD_PIN_DISABLED, \
     .onboard_led = PAD_ONBOARD_LED_DEFAULT, \
 }
 

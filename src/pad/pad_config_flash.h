@@ -130,8 +130,12 @@ typedef struct {
     #define PAD_ONBOARD_LED_DISABLED 2
     uint8_t onboard_led;
 
+    // Right hat → right analog stick (4 pins, 8 bytes)
+    // 0 = disabled (legacy flash compat), >0 = pin number
+    int16_t rhat_up, rhat_down, rhat_left, rhat_right;
+
     // Reserved for future use (pad to 256 bytes)
-    uint8_t reserved[94];
+    uint8_t reserved[86];
 } pad_config_flash_t;
 
 _Static_assert(sizeof(pad_config_flash_t) == 256, "pad_config_flash_t size mismatch");
