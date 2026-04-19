@@ -130,6 +130,71 @@ static void i2c_expander_update_cache(void) {
 #endif // HAS_I2C_EXPANDER
 
 // ============================================================================
+// CAPACITIVE TOUCH SENSOR
+// ============================================================================
+// Charge-timing capacitive touch: drive touch_out, measure microseconds for
+// touch_in to follow. Finger on the sensor pad adds capacitance → longer
+// charge time. Based on Input Labs Alpakka firmware (Apache-2.0).
+
+#if !defined(PLATFORM_ESP32) && !defined(PLATFORM_NRF)
+#define TOUCH_TIMEOUT_US   200   // Max measurement time (µs)
+#define TOUCH_THRESHOLD_US  15   // Default threshold (µs) — touched if elapsed > this
+#define TOUCH_DEBOUNCE_MS   50   // Debounce release events
+
+static int8_t touch_out_pin = -1;
+static int8_t touch_in_pin = -1;
+static bool touch_initialized = false;
+static bool touch_prev = false;
+static uint32_t touch_last_release_us = 0;
+
+static void touch_init(int8_t out, int8_t in) {
+    if (out < 0 || in < 0) return;
+    gpio_init(out);
+    gpio_set_dir(out, GPIO_OUT);
+    gpio_init(in);
+    gpio_set_dir(in, GPIO_IN);
+    touch_out_pin = out;
+    touch_in_pin = in;
+    touch_initialized = true;
+}
+
+static bool touch_read(void) {
+    if (!touch_initialized) return false;
+
+    // Settle: drive out HIGH, wait for in to match
+    gpio_put(touch_out_pin, 1);
+    uint32_t t0 = time_us_32();
+    while (!gpio_get(touch_in_pin)) {
+        if (time_us_32() - t0 > TOUCH_TIMEOUT_US) break;
+    }
+
+    // Measure: drive out LOW, time how long in takes to follow
+    gpio_put(touch_out_pin, 0);
+    t0 = time_us_32();
+    while (gpio_get(touch_in_pin)) {
+        if (time_us_32() - t0 > TOUCH_TIMEOUT_US) {
+            // Timeout = very high capacitance = definitely touched
+            break;
+        }
+    }
+    uint32_t elapsed = time_us_32() - t0;
+
+    bool touched = elapsed > TOUCH_THRESHOLD_US;
+
+    // Debounce release
+    uint32_t now = time_us_32();
+    if (!touched && touch_prev) {
+        if (now - touch_last_release_us < TOUCH_DEBOUNCE_MS * 1000) {
+            return true;  // Suppress brief release
+        }
+        touch_last_release_us = now;
+    }
+    touch_prev = touched;
+    return touched;
+}
+#endif // !ESP32/NRF
+
+// ============================================================================
 // GPIO HELPERS
 // ============================================================================
 
@@ -269,6 +334,15 @@ static void pad_init_device_pins(const pad_device_config_t* config) {
     pad_init_button_pin(config->f1, ah);
     pad_init_button_pin(config->f2, ah);
 
+    // Initialize capacitive touch sensor → F1
+#if !defined(PLATFORM_ESP32) && !defined(PLATFORM_NRF)
+    if (config->touch_out >= 0 && config->touch_in >= 0) {
+        touch_init(config->touch_out, config->touch_in);
+        printf("[pad] Touch sensor: out=GP%d, in=GP%d → F1\n",
+               config->touch_out, config->touch_in);
+    }
+#endif
+
     // Initialize toggle switch pins
     for (int t = 0; t < 2; t++) {
         int16_t pin = config->toggle[t].pin;
@@ -351,6 +425,10 @@ static void pad_poll_device(uint8_t device_index) {
     // Function keys (internal only — for hotkey combos)
     if (pad_read_button(config->f1, ah)) buttons |= JP_BUTTON_F1;
     if (pad_read_button(config->f2, ah)) buttons |= JP_BUTTON_F2;
+#if !defined(PLATFORM_ESP32) && !defined(PLATFORM_NRF)
+    // Capacitive touch sensor → F1 (overrides pin-based F1 if touch is active)
+    if (touch_initialized && touch_read()) buttons |= JP_BUTTON_F1;
+#endif
 
     // Simple debounce: only update if same as previous read
     // (This filters out single-sample glitches)

@@ -70,6 +70,10 @@ static const pad_device_config_t pad_config_alpakka = {
     .f1 = PAD_PIN_DISABLED,
     .f2 = PAD_PIN_DISABLED,
 
+    // Capacitive touch sensor → F1 (grip touch pad)
+    .touch_out = 6,         // PIN_TOUCH_OUT
+    .touch_in  = 7,         // PIN_TOUCH_IN
+
     // Right hat → right analog stick (D-hat on expander 1)
     .rhat_up    = 206,      // PIN_DHAT_UP
     .rhat_down  = 202,      // PIN_DHAT_DOWN

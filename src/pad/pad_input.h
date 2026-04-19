@@ -167,6 +167,12 @@ typedef struct {
     // 4 pins for a directional hat that outputs as RX/RY (0/128/255)
     int16_t rhat_up, rhat_down, rhat_left, rhat_right;
 
+    // Capacitive touch sensor → F1 function key
+    // Uses charge-timing: drive touch_out, measure time for touch_in to follow.
+    // Finger adds capacitance → longer charge time → touched.
+    int8_t touch_out;       // Drive pin (PAD_PIN_DISABLED = no touch sensor)
+    int8_t touch_in;        // Sense pin
+
     // D-pad mode: 0=dpad, 1=left stick, 2=right stick
     uint8_t dpad_mode;
 
@@ -272,6 +278,8 @@ extern const InputInterface pad_input_interface;
     .rhat_down = PAD_PIN_DISABLED, \
     .rhat_left = PAD_PIN_DISABLED, \
     .rhat_right = PAD_PIN_DISABLED, \
+    .touch_out = PAD_PIN_DISABLED, \
+    .touch_in = PAD_PIN_DISABLED, \
     .onboard_led = PAD_ONBOARD_LED_DEFAULT, \
 }
 
