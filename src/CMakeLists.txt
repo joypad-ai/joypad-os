@@ -1296,6 +1296,8 @@ if (PICO_BOARD STREQUAL "pico_w" OR PICO_BOARD STREQUAL "pico2_w")
         CONFIG_BT2WII=1
         DISABLE_USB_HOST=1
         CONFIG_NO_NEOPIXEL=1
+        CONFIG_PAD_INPUT=1
+        SENSOR_PAD=1
         USE_BOOTSEL_BUTTON=1
         CYW43_LWIP=0
         BTSTACK_USE_CYW43=1
@@ -1303,6 +1305,7 @@ if (PICO_BOARD STREQUAL "pico_w" OR PICO_BOARD STREQUAL "pico2_w")
     )
     target_sources(joypad_bt2wii PUBLIC
         ${CORE_SOURCES}
+        ${CONTROLLER_SOURCES}
         ${BTHID_DEVICE_SOURCES}
         ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/hid/devices/generic/hid_parser.c
         ${CMAKE_CURRENT_SOURCE_DIR}/bt/btstack/btstack_host.c
@@ -1316,6 +1319,7 @@ if (PICO_BOARD STREQUAL "pico_w" OR PICO_BOARD STREQUAL "pico2_w")
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/bt2wii
         ${CMAKE_CURRENT_SOURCE_DIR}/native/device/wii
         ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd
+        ${CMAKE_CURRENT_SOURCE_DIR}/pad
         ${CMAKE_CURRENT_SOURCE_DIR}/bt
         ${CMAKE_CURRENT_SOURCE_DIR}/bt/btstack
         ${CMAKE_CURRENT_SOURCE_DIR}/bt/bthid
@@ -1327,6 +1331,9 @@ if (PICO_BOARD STREQUAL "pico_w" OR PICO_BOARD STREQUAL "pico2_w")
         pico_rand
         hardware_pio
         hardware_i2c
+        hardware_adc
+        hardware_pwm
+        hardware_spi
         hardware_flash
         pico_i2c_slave
         pico_cyw43_arch_poll

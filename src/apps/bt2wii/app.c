@@ -31,10 +31,20 @@ void cdc_commands_send_disconnect_event(uint8_t p) { (void)p; }
 // INPUT / OUTPUT REGISTRATION
 // ============================================================================
 
-// BT transport submits to the router directly — no InputInterface needed.
+#ifdef SENSOR_PAD
+#include "pad/pad_input.h"
+#include "pad/pad_config_flash.h"
+#endif
+
+static const InputInterface* input_interfaces[] = {
+#ifdef SENSOR_PAD
+    &pad_input_interface,
+#endif
+};
+
 const InputInterface** app_get_input_interfaces(uint8_t* count) {
-    *count = 0;
-    return NULL;
+    *count = sizeof(input_interfaces) / sizeof(input_interfaces[0]);
+    return input_interfaces;
 }
 
 static const OutputInterface* output_interfaces[] = {
@@ -122,6 +132,16 @@ void app_init(void)
     };
     router_init(&router_cfg);
     router_add_route(INPUT_SOURCE_BLE_CENTRAL, OUTPUT_TARGET_WII, 0);
+#ifdef SENSOR_PAD
+    router_add_route(INPUT_SOURCE_GPIO, OUTPUT_TARGET_WII, 0);
+
+    // Load pad config from flash (user configures pins via web config)
+    const pad_device_config_t* pad_cfg = pad_config_load_runtime();
+    if (pad_cfg) {
+        pad_input_add_device(pad_cfg);
+        printf("[app:bt2wii] Pad: %s\n", pad_cfg->name);
+    }
+#endif
 
     player_config_t player_cfg = {
         .slot_mode = PLAYER_SLOT_MODE,
