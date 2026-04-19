@@ -58,9 +58,9 @@ static const pad_device_config_t pad_config_alpakka = {
 
     // Home (direct GPIO)
     .a1 = 20,               // Home / Guide (PIN_HOME)
-    .a2 = PAD_PIN_DISABLED,
-    .a3 = 113,              // Select 2 (expander 0, PIN_SELECT_2)
-    .a4 = 201,              // Start 2 (expander 1, PIN_START_2)
+    .a2 = 113,              // Select 2 (expander 0, PIN_SELECT_2)
+    .a3 = 201,              // Start 2 (expander 1, PIN_START_2)
+    .a4 = PAD_PIN_DISABLED,
 
     // Extra paddles
     .l4 = 109,              // Left paddle (expander 0, PIN_L4)
