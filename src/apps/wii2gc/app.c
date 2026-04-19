@@ -9,6 +9,7 @@
 #include "core/services/players/manager.h"
 #include "core/services/players/feedback.h"
 #include "core/services/profiles/profile.h"
+#include "core/services/storage/flash.h"
 #include "core/input_interface.h"
 #include "core/output_interface.h"
 #include "core/services/leds/leds.h"
@@ -60,15 +61,23 @@ static const OutputInterface* cdc_outputs[] = { &usbd_output_interface };
 
 const OutputInterface** app_get_output_interfaces(uint8_t* count)
 {
-    // Same detection pattern as usb2gc: probe the GC data pin for 3V3 — if
-    // the console is powered and plugged in, go to play mode; otherwise
-    // boot as a USB device for web-config access.
-    gpio_init(GC_3V3_PIN);
-    gpio_set_dir(GC_3V3_PIN, GPIO_IN);
-    gpio_pull_down(GC_3V3_PIN);
+    // Detect console via GC_DATA joybus signal pin (same as usb2gc).
+    // Console pull-up (~1kΩ to 3.3V) keeps line HIGH when powered;
+    // our pull-down (~50kΩ) dominates when no console → LOW → config mode.
+    // Honour runtime pin override from web config.
+    flash_init();  // idempotent — needed early to read pin override
+    flash_t* settings = flash_get_settings();
+    uint detect_pin = GC_DATA_PIN;
+    if (settings && settings->joybus_data_pin > 0 && settings->joybus_data_pin <= 28) {
+        detect_pin = settings->joybus_data_pin;
+    }
+
+    gpio_init(detect_pin);
+    gpio_set_dir(detect_pin, GPIO_IN);
+    gpio_pull_down(detect_pin);
     sleep_ms(200);
 
-    if (!gpio_get(GC_3V3_PIN)) {
+    if (!gpio_get(detect_pin)) {
         gc_config_mode = true;
         *count = 1;
         return cdc_outputs;
@@ -85,6 +94,9 @@ const OutputInterface** app_get_output_interfaces(uint8_t* count)
 
 void app_init(void)
 {
+    // Expose GC output for web config in both modes (pin config, etc.)
+    native_output = &gamecube_output_interface;
+
     if (gc_config_mode) {
         printf("[app:wii2gc] Config mode - CDC serial for web configuration\n");
         leds_set_color(64, 32, 0);
