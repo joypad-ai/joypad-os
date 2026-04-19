@@ -507,6 +507,13 @@ static void pad_poll_device(uint8_t device_index) {
         if (up)         event->analog[ANALOG_RY] = 0;
         else if (down)  event->analog[ANALOG_RY] = 255;
         else            event->analog[ANALOG_RY] = 128;
+
+        // Suppress R3 when any hat direction is active — the hat's center
+        // click shares the same contact, so directional presses also trigger
+        // the R3 pin. Only count R3 when no direction is held.
+        if (up || down || left || right) {
+            event->buttons &= ~JP_BUTTON_R3;
+        }
     }
 }
 
