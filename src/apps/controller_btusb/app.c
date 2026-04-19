@@ -84,6 +84,15 @@ extern void le_device_db_remove(int index);
 #include "pad/pad_input.h"
 #ifdef PAD_CONFIG_ABB
 #include "pad/configs/abb.h"
+#elif defined(PAD_CONFIG_FISHERPRICE_V1)
+#include "pad/configs/fisherprice.h"
+#define PAD_CONFIG_DEFAULT pad_config_fisherprice_v1
+#elif defined(PAD_CONFIG_FISHERPRICE_V2)
+#include "pad/configs/fisherprice.h"
+#define PAD_CONFIG_DEFAULT pad_config_fisherprice_v2
+#elif defined(PAD_CONFIG_ALPAKKA)
+#include "pad/configs/alpakka.h"
+#define PAD_CONFIG_DEFAULT pad_config_alpakka
 #endif
 #endif
 
@@ -292,6 +301,8 @@ void app_init(void)
     const pad_device_config_t* pad_cfg = pad_config_load_runtime();
 #ifdef PAD_CONFIG_ABB
     if (!pad_cfg) pad_cfg = &pad_config_abb;
+#elif defined(PAD_CONFIG_DEFAULT)
+    if (!pad_cfg) pad_cfg = &PAD_CONFIG_DEFAULT;
 #endif
     if (pad_cfg) {
         pad_input_add_device(pad_cfg);

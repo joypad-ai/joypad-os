@@ -1698,6 +1698,78 @@ joypad_target_common(joypad_controller_btusb_rp2040_abb)
 pico_enable_stdio_usb(joypad_controller_btusb_rp2040_abb 0)
 pico_enable_stdio_uart(joypad_controller_btusb_rp2040_abb 1)
 
+# --- Controller BTUSB: Fisher Price V1 (KB2040, button-only mod) ---
+add_executable(joypad_controller_btusb_fisherprice_v1)
+target_compile_definitions(joypad_controller_btusb_fisherprice_v1 PRIVATE
+    CONFIG_CONTROLLER_BTUSB=1 CONFIG_USB=1 CONFIG_PAD_INPUT=1
+    DISABLE_USB_HOST=1 REQUIRE_BLE_OUTPUT=0
+    SENSOR_PAD=1 PAD_CONFIG_FISHERPRICE_V1=1
+    BUTTON_USER_GPIO=18 BOARD_NAME="kb2040"
+)
+target_sources(joypad_controller_btusb_fisherprice_v1 PUBLIC
+    ${CORE_SOURCES} ${USB_DEVICE_SOURCES} ${CONTROLLER_SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/stubs_peripheral.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/controller_btusb/app.c
+)
+target_include_directories(joypad_controller_btusb_fisherprice_v1 PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/controller_btusb
+    ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd
+    ${CMAKE_CURRENT_SOURCE_DIR}/pad
+)
+target_link_libraries(joypad_controller_btusb_fisherprice_v1 PRIVATE
+    pico_stdlib pico_multicore pico_rand hardware_pio hardware_i2c hardware_adc
+    hardware_pwm hardware_spi tinyusb_device tinyusb_board
+)
+joypad_target_common(joypad_controller_btusb_fisherprice_v1)
+
+# --- Controller BTUSB: Fisher Price V2 (KB2040, analog stick + shoulders mod) ---
+add_executable(joypad_controller_btusb_fisherprice_v2)
+target_compile_definitions(joypad_controller_btusb_fisherprice_v2 PRIVATE
+    CONFIG_CONTROLLER_BTUSB=1 CONFIG_USB=1 CONFIG_PAD_INPUT=1
+    DISABLE_USB_HOST=1 REQUIRE_BLE_OUTPUT=0
+    SENSOR_PAD=1 PAD_CONFIG_FISHERPRICE_V2=1
+    BUTTON_USER_GPIO=18 BOARD_NAME="kb2040"
+)
+target_sources(joypad_controller_btusb_fisherprice_v2 PUBLIC
+    ${CORE_SOURCES} ${USB_DEVICE_SOURCES} ${CONTROLLER_SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/stubs_peripheral.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/controller_btusb/app.c
+)
+target_include_directories(joypad_controller_btusb_fisherprice_v2 PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/controller_btusb
+    ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd
+    ${CMAKE_CURRENT_SOURCE_DIR}/pad
+)
+target_link_libraries(joypad_controller_btusb_fisherprice_v2 PRIVATE
+    pico_stdlib pico_multicore pico_rand hardware_pio hardware_i2c hardware_adc
+    hardware_pwm hardware_spi tinyusb_device tinyusb_board
+)
+joypad_target_common(joypad_controller_btusb_fisherprice_v2)
+
+# --- Controller BTUSB: Alpakka (Pico) ---
+add_executable(joypad_controller_btusb_alpakka)
+target_compile_definitions(joypad_controller_btusb_alpakka PRIVATE
+    CONFIG_CONTROLLER_BTUSB=1 CONFIG_USB=1 CONFIG_PAD_INPUT=1
+    DISABLE_USB_HOST=1 REQUIRE_BLE_OUTPUT=0
+    SENSOR_PAD=1 PAD_CONFIG_ALPAKKA=1
+    USE_BOOTSEL_BUTTON=1 BOARD_NAME="pico" BOARD_LED_PIN=25
+)
+target_sources(joypad_controller_btusb_alpakka PUBLIC
+    ${CORE_SOURCES} ${USB_DEVICE_SOURCES} ${CONTROLLER_SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/stubs_peripheral.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/controller_btusb/app.c
+)
+target_include_directories(joypad_controller_btusb_alpakka PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/controller_btusb
+    ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd
+    ${CMAKE_CURRENT_SOURCE_DIR}/pad
+)
+target_link_libraries(joypad_controller_btusb_alpakka PRIVATE
+    pico_stdlib pico_multicore pico_rand hardware_pio hardware_i2c hardware_adc
+    hardware_pwm hardware_spi tinyusb_device tinyusb_board
+)
+joypad_target_common(joypad_controller_btusb_alpakka)
+
 # --- SNES to USB ---
 add_executable(joypad_snes2usb)
 target_compile_definitions(joypad_snes2usb PRIVATE CONFIG_SNES2USB=1 CONFIG_USB=1 DISABLE_USB_HOST=1)
