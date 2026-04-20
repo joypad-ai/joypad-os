@@ -8,7 +8,7 @@
 #include "core/services/profiles/profile.h"
 #include "core/input_interface.h"
 #include "core/output_interface.h"
-#include "native/host/wii/wii_host.h"
+#include "native/host/wii_ext/wii_ext_host.h"
 #include "native/device/n64/n64_device.h"
 #include <stdio.h>
 

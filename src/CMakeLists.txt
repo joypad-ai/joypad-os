@@ -271,7 +271,7 @@ set(LODGENET_HOST_SOURCES
 
 # Wii extension host sources (hardware I2C via platform HAL + protocol lib)
 set(WII_HOST_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/native/host/wii/wii_host.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/host/wii_ext/wii_ext_host.c
     ${CMAKE_CURRENT_SOURCE_DIR}/platform/rp2040/platform_i2c_rp2040.c
     ${CMAKE_CURRENT_SOURCE_DIR}/lib/wii_ext/wii_ext.c
     ${CMAKE_CURRENT_SOURCE_DIR}/lib/wii_ext/ext_nunchuck.c
@@ -1314,12 +1314,12 @@ if (PICO_BOARD STREQUAL "pico_w" OR PICO_BOARD STREQUAL "pico2_w")
         ${CMAKE_CURRENT_SOURCE_DIR}/bt/btstack/bt_device_db.c
         ${CMAKE_CURRENT_SOURCE_DIR}/bt/transport/bt_transport.c
         ${CMAKE_CURRENT_SOURCE_DIR}/bt/transport/bt_transport_cyw43.c
-        ${CMAKE_CURRENT_SOURCE_DIR}/native/device/wii/wii_device.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/native/device/wii_ext/wii_ext_device.c
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/bt2wii/app.c
     )
     target_include_directories(joypad_bt2wii PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/bt2wii
-        ${CMAKE_CURRENT_SOURCE_DIR}/native/device/wii
+        ${CMAKE_CURRENT_SOURCE_DIR}/native/device/wii_ext
         ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd
         ${CMAKE_CURRENT_SOURCE_DIR}/pad
         ${CMAKE_CURRENT_SOURCE_DIR}/bt
@@ -1819,7 +1819,7 @@ target_sources(joypad_wii2n64 PUBLIC ${CORE_SOURCES} ${USB_DEVICE_SOURCES}
 target_include_directories(joypad_wii2n64 PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/wii2n64
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd
-    ${CMAKE_CURRENT_SOURCE_DIR}/native/host/wii
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/host/wii_ext
     ${CMAKE_CURRENT_SOURCE_DIR}/native/device/n64
     ${CMAKE_CURRENT_SOURCE_DIR}/lib/wii_ext
     ${CMAKE_CURRENT_SOURCE_DIR}/lib/joybus-pio/include
@@ -1845,7 +1845,7 @@ target_sources(joypad_wii2gc PUBLIC ${CORE_SOURCES} ${USB_DEVICE_SOURCES}
 target_include_directories(joypad_wii2gc PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/wii2gc
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd
-    ${CMAKE_CURRENT_SOURCE_DIR}/native/host/wii
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/host/wii_ext
     ${CMAKE_CURRENT_SOURCE_DIR}/native/device/gamecube
     ${CMAKE_CURRENT_SOURCE_DIR}/lib/wii_ext
     ${CMAKE_CURRENT_SOURCE_DIR}/lib/joybus-pio/include
@@ -1868,7 +1868,7 @@ target_sources(joypad_wii2usb PUBLIC ${CORE_SOURCES} ${USB_DEVICE_SOURCES}
 target_include_directories(joypad_wii2usb PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/wii2usb
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd
-    ${CMAKE_CURRENT_SOURCE_DIR}/native/host/wii
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/host/wii_ext
     ${CMAKE_CURRENT_SOURCE_DIR}/lib/wii_ext
 )
 target_link_libraries(joypad_wii2usb PRIVATE pico_stdlib pico_multicore hardware_pio hardware_i2c pico_rand tinyusb_device tinyusb_board)

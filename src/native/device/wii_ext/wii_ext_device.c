@@ -1,4 +1,4 @@
-// wii_device.c - Wii extension I2C-slave device driver
+// wii_ext_device.c - Wii extension I2C-slave device driver
 //
 // A Wiimote (the I2C master) polls its extension port by issuing short
 // write-then-read transactions at 400 kHz:
@@ -8,7 +8,7 @@
 // reads and minimal handling of a few special writes (0xF0 init,
 // 0xFB init-2, 0xFE mode select). We implement exactly that.
 
-#include "wii_device.h"
+#include "wii_ext_device.h"
 #include "core/router/router.h"
 #include "core/input_event.h"
 #include "core/buttons.h"
@@ -178,7 +178,7 @@ static void pack_report_from_event(const input_event_t *ev)
     reg_file[0x05] = b5;
 }
 
-// ---- Router tap: called for every input event routed to OUTPUT_TARGET_WII --
+// ---- Router tap: called for every input event routed to OUTPUT_TARGET_WII_EXTENSION --
 
 static void wii_device_router_tap(output_target_t output, uint8_t player_index,
                                   const input_event_t *event)
@@ -320,8 +320,8 @@ static void wii_device_out_task(void) {
 }
 
 const OutputInterface wii_output_interface = {
-    .name = "Wii",
-    .target = OUTPUT_TARGET_WII,
+    .name = "Wii Extension",
+    .target = OUTPUT_TARGET_WII_EXTENSION,
     .init   = wii_device_out_init,
     .task   = wii_device_out_task,
     .get_rumble     = NULL,
@@ -341,10 +341,10 @@ void wii_device_init(wii_device_emulation_t emulate)
     seed_calibration();
     seed_neutral_report();
 
-    // Register the router tap so events routed to OUTPUT_TARGET_WII pack
+    // Register the router tap so events routed to OUTPUT_TARGET_WII_EXTENSION pack
     // into the report register file. Exclusive mode — router skips its
     // own storage for this output since the I2C slave doesn't read it.
-    router_set_tap_exclusive(OUTPUT_TARGET_WII, wii_device_router_tap);
+    router_set_tap_exclusive(OUTPUT_TARGET_WII_EXTENSION, wii_device_router_tap);
 
     // Allow runtime pin override from flash (web config)
     uint8_t sda = WII_DEVICE_PIN_SDA;

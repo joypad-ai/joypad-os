@@ -1,4 +1,4 @@
-// wii_device.h - Wii extension I2C-slave device driver
+// wii_ext_device.h - Wii extension I2C-slave device driver
 //
 // Emulates a Wii Classic Controller (or Classic Pro) by sitting as an I2C
 // slave at address 0x52. A real Wiimote (or a Wii-connector breakout) can
@@ -6,7 +6,7 @@
 // Controller responding to the standard unencrypted init sequence.
 //
 // Consumed input comes from the router tap — whichever input events the
-// app routes to OUTPUT_TARGET_WII get packed into the 6-byte Classic
+// app routes to OUTPUT_TARGET_WII_EXTENSION get packed into the 6-byte Classic
 // report format and placed in the register file at addresses 0x00..0x05
 // so the Wiimote's next 6-byte read from register 0x00 delivers the
 // current state.
@@ -17,8 +17,8 @@
 //
 // Hardware: RP2040 hardware I2C slave (pico-sdk pico_i2c_slave library).
 
-#ifndef WII_DEVICE_H
-#define WII_DEVICE_H
+#ifndef WII_EXT_DEVICE_H
+#define WII_EXT_DEVICE_H
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -48,11 +48,11 @@ typedef enum {
 // Initialize the I2C slave at 0x52 with the given emulation personality,
 // pre-populate ID bytes + calibration + a neutral 6-byte report. Safe to
 // call once during app_init. Also registers as a router tap on
-// OUTPUT_TARGET_WII so events routed there update the report in real
+// OUTPUT_TARGET_WII_EXTENSION so events routed there update the report in real
 // time from whichever input the app is using.
 void wii_device_init(wii_device_emulation_t emulate);
 
 // Output interface for registering with the app framework.
 extern const OutputInterface wii_output_interface;
 
-#endif // WII_DEVICE_H
+#endif // WII_EXT_DEVICE_H

@@ -7,7 +7,7 @@
 #include "core/services/button/button.h"
 #include "core/input_interface.h"
 #include "core/output_interface.h"
-#include "native/device/wii/wii_device.h"
+#include "native/device/wii_ext/wii_ext_device.h"
 #include "usb/usbd/usbd.h"
 #include "core/services/storage/flash.h"
 #include "bt/transport/bt_transport.h"
@@ -93,11 +93,11 @@ static void on_button_event(button_event_t event)
 {
     switch (event) {
         case BUTTON_EVENT_CLICK:
-            printf("[app:bt2wii] Starting BT scan (60s)...\n");
+            printf("[app:bt2wiiext] Starting BT scan (60s)...\n");
             btstack_host_start_timed_scan(60000);
             break;
         case BUTTON_EVENT_HOLD:
-            printf("[app:bt2wii] Disconnecting all devices + clearing bonds\n");
+            printf("[app:bt2wiiext] Disconnecting all devices + clearing bonds\n");
             btstack_host_disconnect_all_devices();
             btstack_host_delete_all_bonds();
             break;
@@ -111,7 +111,7 @@ static void on_button_event(button_event_t event)
 
 void app_init(void)
 {
-    printf("[app:bt2wii] Initializing BT2WII v%s\n", APP_VERSION);
+    printf("[app:bt2wiiext] Initializing BT2WII v%s\n", APP_VERSION);
 
     // Expose Wii output for web config (pin/mode config via OUTPUT.NATIVE.GET/SET)
     native_output = &wii_output_interface;
@@ -138,24 +138,24 @@ void app_init(void)
         .mode = ROUTING_MODE,
         .merge_mode = MERGE_MODE,
         .max_players_per_output = {
-            [OUTPUT_TARGET_WII] = WII_OUTPUT_PORTS,
+            [OUTPUT_TARGET_WII_EXTENSION] = WII_OUTPUT_PORTS,
         },
         .merge_all_inputs = true,
         .transform_flags = TRANSFORM_FLAGS,
         .mouse_drain_rate = 0,
     };
     router_init(&router_cfg);
-    router_add_route(INPUT_SOURCE_BLE_CENTRAL, OUTPUT_TARGET_WII, 0);
+    router_add_route(INPUT_SOURCE_BLE_CENTRAL, OUTPUT_TARGET_WII_EXTENSION, 0);
     router_add_route(INPUT_SOURCE_BLE_CENTRAL, OUTPUT_TARGET_USB_DEVICE, 0);
 #ifdef SENSOR_PAD
-    router_add_route(INPUT_SOURCE_GPIO, OUTPUT_TARGET_WII, 0);
+    router_add_route(INPUT_SOURCE_GPIO, OUTPUT_TARGET_WII_EXTENSION, 0);
     router_add_route(INPUT_SOURCE_GPIO, OUTPUT_TARGET_USB_DEVICE, 0);
 
     // Load pad config from flash (user configures pins via web config)
     const pad_device_config_t* pad_cfg = pad_config_load_runtime();
     if (pad_cfg) {
         pad_input_add_device(pad_cfg);
-        printf("[app:bt2wii] Pad: %s\n", pad_cfg->name);
+        printf("[app:bt2wiiext] Pad: %s\n", pad_cfg->name);
     }
 #endif
 
@@ -174,11 +174,11 @@ void app_init(void)
         }
     }
 
-    printf("[app:bt2wii] BT host: %s\n", bt_input_enabled ? "enabled" : "disabled");
-    printf("[app:bt2wii] BT init deferred to first task tick\n");
-    printf("[app:bt2wii]   Routing: Bluetooth -> Wii extension (0x52)\n");
-    printf("[app:bt2wii]   Click BOOTSEL for 60s BT scan\n");
-    printf("[app:bt2wii]   Hold BOOTSEL to disconnect all + clear bonds\n");
+    printf("[app:bt2wiiext] BT host: %s\n", bt_input_enabled ? "enabled" : "disabled");
+    printf("[app:bt2wiiext] BT init deferred to first task tick\n");
+    printf("[app:bt2wiiext]   Routing: Bluetooth -> Wii extension (0x52)\n");
+    printf("[app:bt2wiiext]   Click BOOTSEL for 60s BT scan\n");
+    printf("[app:bt2wiiext]   Hold BOOTSEL to disconnect all + clear bonds\n");
 }
 
 // ============================================================================
@@ -196,12 +196,12 @@ void app_task(void)
     static bool bt_initialized = false;
     if (!bt_initialized) {
         bt_initialized = true;
-        printf("[app:bt2wii] Initializing CYW43...\n");
+        printf("[app:bt2wiiext] Initializing CYW43...\n");
         if (!bt_input_enabled) {
             btstack_host_suppress_scan(true);
         }
         bt_init(&bt_transport_cyw43);
-        printf("[app:bt2wii] BT host %s\n", bt_input_enabled ? "scanning" : "disabled");
+        printf("[app:bt2wiiext] BT host %s\n", bt_input_enabled ? "scanning" : "disabled");
     }
 
     button_task();

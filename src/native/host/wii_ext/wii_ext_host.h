@@ -1,12 +1,12 @@
-// wii_host.h - Native Wii extension controller host driver
+// wii_ext_host.h - Native Wii extension controller host driver
 //
 // Reads a Wii Nunchuck / Classic Controller / Classic Pro via PIO I2C
 // (cut extension cable wired directly to the Pico) and submits input
 // events to the router. Single port for v1; multi-port is a future
 // extension (see .dev/docs/WII_EXTENSION_PLAN.md).
 
-#ifndef WII_HOST_H
-#define WII_HOST_H
+#ifndef WII_EXT_HOST_H
+#define WII_EXT_HOST_H
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -48,4 +48,4 @@ void wii_host_init_dual(uint8_t sda1, uint8_t scl1, uint8_t sda2, uint8_t scl2);
 
 extern const InputInterface wii_input_interface;
 
-#endif // WII_HOST_H
+#endif // WII_EXT_HOST_H

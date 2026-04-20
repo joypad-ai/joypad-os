@@ -13,7 +13,7 @@
 #include "core/input_interface.h"
 #include "core/output_interface.h"
 #include "core/services/leds/leds.h"
-#include "native/host/wii/wii_host.h"
+#include "native/host/wii_ext/wii_ext_host.h"
 #include "native/device/gamecube/gamecube_device.h"
 #include "usb/usbd/usbd.h"
 #include "pico/stdlib.h"

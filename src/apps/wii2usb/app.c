@@ -10,7 +10,7 @@
 #include "core/input_interface.h"
 #include "core/output_interface.h"
 #include "usb/usbd/usbd.h"
-#include "native/host/wii/wii_host.h"
+#include "native/host/wii_ext/wii_ext_host.h"
 #include "core/services/leds/leds.h"
 #include <stdio.h>
 

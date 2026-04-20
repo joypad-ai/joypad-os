@@ -1,6 +1,6 @@
-// wii_host.c - Native Wii extension controller host driver (HW I2C transport)
+// wii_ext_host.c - Native Wii extension controller host driver (HW I2C transport)
 
-#include "wii_host.h"
+#include "wii_ext_host.h"
 #include "lib/wii_ext/wii_ext.h"
 #include "core/router/router.h"
 #include "core/input_event.h"
