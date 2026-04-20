@@ -105,11 +105,14 @@ static void seed_neutral_report(void)
     //   [3] LT[2:0]  << 5 | RT[4:0]
     //   [4] 0xFF (all bits = not-pressed)
     //   [5] 0xFF
-    reg_file[0x00] = (uint8_t)(0x20);                           // LX=32, RX bits zeroed
-    reg_file[0x01] = (uint8_t)(0x20);                           // LY=32
-    reg_file[0x02] = (uint8_t)((0x10) | ((0x10 & 0x01) << 7));  // RY=16, RX low bit
-    reg_file[0x03] = 0x00;                                      // LT=RT=0
-    reg_file[0x04] = 0xFF;
+    // Pack neutral sticks using same logic as pack_report_from_event
+    // LX=32(0x20), LY=32(0x20), RX=16(0x10), RY=16(0x10), LT=RT=0
+    uint8_t lx = 0x20, ly = 0x20, rx = 0x10, ry = 0x10;
+    reg_file[0x00] = (uint8_t)((rx & 0x18) << 3) | (lx & 0x3F);
+    reg_file[0x01] = (uint8_t)((rx & 0x06) << 5) | (ly & 0x3F);
+    reg_file[0x02] = (uint8_t)((rx & 0x01) << 7) | (ry & 0x1F);
+    reg_file[0x03] = 0x00;  // LT=RT=0
+    reg_file[0x04] = 0xFF;  // all buttons released
     reg_file[0x05] = 0xFF;
     // Report mode register.
     reg_file[0xFE] = 0x01;
@@ -124,11 +127,12 @@ static void pack_report_from_event(const input_event_t *ev)
     // Wii Classic format: LX/LY = 6-bit (0..63, ~32 center),
     //                     RX/RY = 5-bit (0..31, ~16 center),
     //                     LT/RT = 5-bit (0..31, 0 = released).
+    // Scale 0-255 → 6-bit (LX/LY) or 5-bit (RX/RY)
+    // Y inversion: HID 0=up → Classic 63=up. Center 128→32 (LX/LY) or 16 (RX/RY).
     uint8_t lx = ev->analog[ANALOG_LX] >> 2;
-    // Y-axis inversion: internal HID convention is 0=up, Wii native is 255=up.
-    uint8_t ly = (uint8_t)(255 - ev->analog[ANALOG_LY]) >> 2;
+    uint8_t ly = (255 - ev->analog[ANALOG_LY]) >> 2;
     uint8_t rx = ev->analog[ANALOG_RX] >> 3;
-    uint8_t ry = (uint8_t)(255 - ev->analog[ANALOG_RY]) >> 3;
+    uint8_t ry = (255 - ev->analog[ANALOG_RY]) >> 3;
     uint8_t lt = ev->analog[ANALOG_L2] >> 3;
     uint8_t rt = ev->analog[ANALOG_R2] >> 3;
 
