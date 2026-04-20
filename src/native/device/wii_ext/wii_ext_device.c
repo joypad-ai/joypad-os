@@ -206,13 +206,8 @@ static void __isr wii_slave_handler(i2c_inst_t *i2c, i2c_slave_event_t ev)
                 if (cursor < REG_FILE_SIZE) {
                     reg_file[cursor] = b;
                 }
-                // Special writes the Wiimote issues during init:
-                //   0xF0 = 0x55 + 0xFB = 0x00  (unencrypted init)
-                //   0xFE = 0x01/0x03/0x07      (report mode select)
-                // The register file naturally records the written byte;
-                // we don't need to do anything beyond that — the ID bytes
-                // stay consistent and the report mode byte is read back
-                // at 0xFE when the Wiimote asks.
+                // TODO: implement XOR encryption when reg[0xF0]=0xAA
+                // (see issue #129 — needed for real Wii compatibility)
                 cursor = (uint16_t)(cursor + 1) % REG_FILE_SIZE;
             }
             break;
@@ -261,8 +256,9 @@ static uint16_t wii_get_native_config(char* buf, uint16_t buf_size) {
     int scl = WII_DEVICE_PIN_SCL;
     int mode = 0;  // classic
     if (settings) {
-        if (settings->wii_sda_pin > 0 && settings->wii_sda_pin <= 28) sda = settings->wii_sda_pin;
-        if (settings->wii_scl_pin > 0 && settings->wii_scl_pin <= 28) scl = settings->wii_scl_pin;
+        // Stored as pin+1 (0=default, 1=GPIO0, 2=GPIO1, etc.)
+        if (settings->wii_sda_pin > 0) sda = settings->wii_sda_pin - 1;
+        if (settings->wii_scl_pin > 0) scl = settings->wii_scl_pin - 1;
         if (settings->wii_mode > 0) mode = settings->wii_mode - 1;
     }
     int n = snprintf(buf, buf_size,
@@ -287,10 +283,11 @@ static bool wii_set_native_config(const char* json, char* response_buf, uint16_t
         return false;
     }
     int val;
+    // Store as pin+1 (0=default, 1=GPIO0, 2=GPIO1, etc.)
     if (wii_json_get_int(json, "sda", &val) && val >= 0 && val <= 28)
-        settings->wii_sda_pin = (uint8_t)val;
+        settings->wii_sda_pin = (uint8_t)(val + 1);
     if (wii_json_get_int(json, "scl", &val) && val >= 0 && val <= 28)
-        settings->wii_scl_pin = (uint8_t)val;
+        settings->wii_scl_pin = (uint8_t)(val + 1);
 
     // Mode: "classic"=0, "classic_pro"=1, "nunchuck"=2 → stored as mode+1 (0=default)
     int name_len;
@@ -351,8 +348,9 @@ void wii_device_init(wii_device_emulation_t emulate)
     uint8_t scl = WII_DEVICE_PIN_SCL;
     flash_t* settings = flash_get_settings();
     if (settings) {
-        if (settings->wii_sda_pin > 0 && settings->wii_sda_pin <= 28) sda = settings->wii_sda_pin;
-        if (settings->wii_scl_pin > 0 && settings->wii_scl_pin <= 28) scl = settings->wii_scl_pin;
+        // Stored as pin+1 (0=default, 1=GPIO0, 2=GPIO1, etc.)
+        if (settings->wii_sda_pin > 0) sda = settings->wii_sda_pin - 1;
+        if (settings->wii_scl_pin > 0) scl = settings->wii_scl_pin - 1;
     }
 
     // Set up the I2C0 peripheral as a slave at 0x52.

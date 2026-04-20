@@ -1347,7 +1347,7 @@ if (PICO_BOARD STREQUAL "pico_w" OR PICO_BOARD STREQUAL "pico2_w")
     )
     joypad_target_common(joypad_bt2wii)
     pico_enable_stdio_usb(joypad_bt2wii 0)
-    pico_enable_stdio_uart(joypad_bt2wii 1)
+    pico_enable_stdio_uart(joypad_bt2wii 0)
 
     # --- BT to GameCube (Pico W / Pico 2 W built-in Bluetooth -> GameCube) ---
     add_executable(joypad_bt2gc)
