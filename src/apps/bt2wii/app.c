@@ -113,10 +113,23 @@ void app_init(void)
 {
     printf("[app:bt2wii] Initializing BT2WII v%s\n", APP_VERSION);
 
+    // Expose Wii output for web config (pin/mode config via OUTPUT.NATIVE.GET/SET)
+    native_output = &wii_output_interface;
+
+    // Determine emulation mode from flash (0=default/classic, 1=classic, 2=classic_pro, 3=nunchuck)
+    wii_device_emulation_t emu = WII_DEV_EMULATE_CLASSIC;
+    {
+        flash_t flash_data;
+        if (flash_load(&flash_data) && flash_data.wii_mode > 0) {
+            emu = (wii_device_emulation_t)(flash_data.wii_mode - 1);
+            if (emu > WII_DEV_EMULATE_NUNCHUCK) emu = WII_DEV_EMULATE_CLASSIC;
+        }
+    }
+
     // I2C slave up first so a plugged-in Wiimote gets a valid register
     // file immediately — even before the router and BT stack come up
     // the ID / calibration / neutral report bytes are already seeded.
-    wii_device_init(WII_DEV_EMULATE_CLASSIC);
+    wii_device_init(emu);
 
     button_init();
     button_set_callback(on_button_event);

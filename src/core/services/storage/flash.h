@@ -78,9 +78,12 @@ typedef struct {
 
     // Native output pin overrides
     uint8_t joybus_data_pin;     // 0 = compile-time default, 1-28 = override GPIO
+    uint8_t wii_sda_pin;         // 0 = compile-time default, 1-28 = override GPIO
+    uint8_t wii_scl_pin;         // 0 = compile-time default, 1-28 = override GPIO
+    uint8_t wii_mode;            // 0 = compile-time default, 1+ = wii_device_emulation_t + 1
 
-    // Reserved for future global settings (13 bytes)
-    uint8_t reserved[13];
+    // Reserved for future global settings (10 bytes)
+    uint8_t reserved[10];
 
     // Custom profiles (4 x 56 = 224 bytes)
     custom_profile_t profiles[CUSTOM_PROFILE_MAX_COUNT];
