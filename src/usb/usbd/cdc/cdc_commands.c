@@ -1102,7 +1102,11 @@ static void cmd_router_get(const char* json)
 #endif
 
     flash_t flash_data;
+#if REQUIRE_BT_INPUT
+    uint8_t rm = ROUTING_MODE, mm = MERGE_MODE, dm = 0, bti = 1;
+#else
     uint8_t rm = ROUTING_MODE, mm = MERGE_MODE, dm = 0, bti = 0;
+#endif
     if (flash_load(&flash_data) && flash_data.router_saved) {
         if (flash_data.routing_mode <= 2) rm = flash_data.routing_mode;
         if (flash_data.merge_mode <= 2) mm = flash_data.merge_mode;

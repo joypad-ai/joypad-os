@@ -739,6 +739,10 @@ void btstack_host_start_scan(void)
 #ifdef BTSTACK_DEFER_SCAN
     if (!btstack_host_scan_enabled) return;
 #endif
+    if (scan_suppressed) {
+        return;  // App suppressed scanning (e.g. BT host disabled)
+    }
+
     if (!hid_state.powered_on) {
         printf("[BTSTACK_HOST] Not powered on yet\n");
         return;

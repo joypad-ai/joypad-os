@@ -142,11 +142,11 @@
 // USB DEVICE CONFIGURATION (CONFIG_USB or DISABLE_USB_HOST builds)
 //--------------------------------------------------------------------
 
-#if defined(CONFIG_USB) || defined(DISABLE_USB_HOST) || defined(CONFIG_NGC)
+#if defined(CONFIG_USB) || defined(DISABLE_USB_HOST) || defined(CONFIG_NGC) || defined(CONFIG_BT2WII)
   // Device configuration
   #define CFG_TUD_ENDPOINT0_SIZE    64
 
-#if defined(CONFIG_BT2N64) || defined(CONFIG_LODGENET2N64) || defined(CONFIG_NUONSERIAL) || defined(CONFIG_BT2WII)
+#if defined(CONFIG_BT2N64) || defined(CONFIG_LODGENET2N64) || defined(CONFIG_NUONSERIAL)
   // CDC-only mode (no HID, no gamepad output)
   #define CFG_TUD_HID               0
   #define CFG_TUD_CDC               1

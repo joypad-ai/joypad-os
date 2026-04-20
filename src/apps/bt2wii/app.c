@@ -8,6 +8,8 @@
 #include "core/input_interface.h"
 #include "core/output_interface.h"
 #include "native/device/wii/wii_device.h"
+#include "usb/usbd/usbd.h"
+#include "core/services/storage/flash.h"
 #include "bt/transport/bt_transport.h"
 #include "bt/btstack/btstack_host.h"
 
@@ -19,13 +21,8 @@
 
 extern const bt_transport_t bt_transport_cyw43;
 
-// CDC stubs (bt2wii has no USB device stack).
-void cdc_commands_send_input_event(uint32_t b, const uint8_t* a) { (void)b; (void)a; }
-void cdc_commands_send_output_event(uint32_t b, const uint8_t* a) { (void)b; (void)a; }
-void cdc_commands_send_connect_event(uint8_t p, const char* n, uint16_t v, uint16_t pid) {
-    (void)p; (void)n; (void)v; (void)pid;
-}
-void cdc_commands_send_disconnect_event(uint8_t p) { (void)p; }
+// BT host enabled by default, togglable via web config
+static bool bt_input_enabled = true;
 
 // ============================================================================
 // INPUT / OUTPUT REGISTRATION
@@ -49,6 +46,7 @@ const InputInterface** app_get_input_interfaces(uint8_t* count) {
 
 static const OutputInterface* output_interfaces[] = {
     &wii_output_interface,
+    &usbd_output_interface,  // CDC web config alongside Wii I2C output
 };
 
 const OutputInterface** app_get_output_interfaces(uint8_t* count) {
@@ -72,15 +70,18 @@ static void led_status_update(void)
     bool bt_connected = btstack_classic_get_connection_count() > 0;
 
     if (bt_connected) {
-        // Solid on when a controller is paired + feeding events.
+        // Solid on when a controller is connected.
         if (!state) { led_set(true); state = true; }
-    } else {
-        // Slow blink while scanning / idle.
+    } else if (bt_input_enabled && btstack_host_is_scanning()) {
+        // Slow blink while scanning.
         if (now - last_toggle >= 800) {
             state = !state;
             led_set(state);
             last_toggle = now;
         }
+    } else {
+        // Off — BT disabled or idle.
+        if (state) { led_set(false); state = false; }
     }
 }
 
@@ -132,8 +133,10 @@ void app_init(void)
     };
     router_init(&router_cfg);
     router_add_route(INPUT_SOURCE_BLE_CENTRAL, OUTPUT_TARGET_WII, 0);
+    router_add_route(INPUT_SOURCE_BLE_CENTRAL, OUTPUT_TARGET_USB_DEVICE, 0);
 #ifdef SENSOR_PAD
     router_add_route(INPUT_SOURCE_GPIO, OUTPUT_TARGET_WII, 0);
+    router_add_route(INPUT_SOURCE_GPIO, OUTPUT_TARGET_USB_DEVICE, 0);
 
     // Load pad config from flash (user configures pins via web config)
     const pad_device_config_t* pad_cfg = pad_config_load_runtime();
@@ -150,6 +153,15 @@ void app_init(void)
     };
     players_init_with_config(&player_cfg);
 
+    // Check flash for BT host toggle (default: enabled)
+    {
+        flash_t flash_data;
+        if (flash_load(&flash_data) && flash_data.router_saved) {
+            bt_input_enabled = flash_data.bt_input_enabled != 0;
+        }
+    }
+
+    printf("[app:bt2wii] BT host: %s\n", bt_input_enabled ? "enabled" : "disabled");
     printf("[app:bt2wii] BT init deferred to first task tick\n");
     printf("[app:bt2wii]   Routing: Bluetooth -> Wii extension (0x52)\n");
     printf("[app:bt2wii]   Click BOOTSEL for 60s BT scan\n");
@@ -166,14 +178,17 @@ void app_task(void)
     int c = getchar_timeout_us(0);
     if (c == 'B') reset_usb_boot(0, 0);
 
-    // Deferred BT init runs once — waits one tick after the I2C slave is
-    // quiescent so the CYW43 bring-up doesn't stall the slave ISR.
+    // Deferred BT init runs once — CYW43 must always initialize (Pico W
+    // needs it), but scanning only starts if BT host is enabled.
     static bool bt_initialized = false;
     if (!bt_initialized) {
         bt_initialized = true;
-        printf("[app:bt2wii] Initializing Bluetooth...\n");
+        printf("[app:bt2wii] Initializing CYW43...\n");
+        if (!bt_input_enabled) {
+            btstack_host_suppress_scan(true);
+        }
         bt_init(&bt_transport_cyw43);
-        printf("[app:bt2wii] Bluetooth initialized\n");
+        printf("[app:bt2wii] BT host %s\n", bt_input_enabled ? "scanning" : "disabled");
     }
 
     button_task();

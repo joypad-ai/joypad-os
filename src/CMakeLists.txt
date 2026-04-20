@@ -1298,6 +1298,7 @@ if (PICO_BOARD STREQUAL "pico_w" OR PICO_BOARD STREQUAL "pico2_w")
         CONFIG_NO_NEOPIXEL=1
         CONFIG_PAD_INPUT=1
         SENSOR_PAD=1
+        REQUIRE_BT_INPUT=1
         USE_BOOTSEL_BUTTON=1
         CYW43_LWIP=0
         BTSTACK_USE_CYW43=1
@@ -1305,6 +1306,7 @@ if (PICO_BOARD STREQUAL "pico_w" OR PICO_BOARD STREQUAL "pico2_w")
     )
     target_sources(joypad_bt2wii PUBLIC
         ${CORE_SOURCES}
+        ${USB_DEVICE_SOURCES}
         ${CONTROLLER_SOURCES}
         ${BTHID_DEVICE_SOURCES}
         ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/hid/devices/generic/hid_parser.c
@@ -1340,9 +1342,11 @@ if (PICO_BOARD STREQUAL "pico_w" OR PICO_BOARD STREQUAL "pico2_w")
         pico_btstack_ble
         pico_btstack_classic
         pico_btstack_cyw43
+        tinyusb_device
+        tinyusb_board
     )
     joypad_target_common(joypad_bt2wii)
-    pico_enable_stdio_usb(joypad_bt2wii 1)
+    pico_enable_stdio_usb(joypad_bt2wii 0)
     pico_enable_stdio_uart(joypad_bt2wii 1)
 
     # --- BT to GameCube (Pico W / Pico 2 W built-in Bluetooth -> GameCube) ---
