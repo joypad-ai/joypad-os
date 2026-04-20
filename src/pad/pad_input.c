@@ -153,31 +153,41 @@ static void touch_init(int8_t out, int8_t in) {
     gpio_set_dir(out, GPIO_OUT);
     gpio_init(in);
     gpio_set_dir(in, GPIO_IN);
+    gpio_set_pulls(in, false, false);  // No pull-up/down — float for capacitive sensing
     touch_out_pin = out;
     touch_in_pin = in;
     touch_initialized = true;
 }
 
+static uint32_t touch_elapsed = 0;  // Last measurement for debug
+
 static bool touch_read(void) {
     if (!touch_initialized) return false;
 
-    // Settle: drive out HIGH, wait for in to match
-    gpio_put(touch_out_pin, 1);
+    // Match Alpakka firmware sequence (polarity_mode=0):
+    // 1. Settle: drive out LOW, wait for in to go LOW
+    gpio_put(touch_out_pin, 0);
     uint32_t t0 = time_us_32();
-    while (!gpio_get(touch_in_pin)) {
-        if (time_us_32() - t0 > TOUCH_TIMEOUT_US) break;
+    while (gpio_get(touch_in_pin) != 0) {
+        if (time_us_32() - t0 > TOUCH_TIMEOUT_US) return touch_prev;
     }
 
-    // Measure: drive out LOW, time how long in takes to follow
-    gpio_put(touch_out_pin, 0);
-    t0 = time_us_32();
-    while (gpio_get(touch_in_pin)) {
+    // 2. Measure: drive out HIGH, time how long in takes to go HIGH
+    uint32_t t_settled = time_us_32();
+    gpio_put(touch_out_pin, 1);
+    bool timedout = false;
+    while (gpio_get(touch_in_pin) == 0) {
         if (time_us_32() - t0 > TOUCH_TIMEOUT_US) {
-            // Timeout = very high capacitance = definitely touched
+            timedout = true;
             break;
         }
     }
-    uint32_t elapsed = time_us_32() - t0;
+
+    // 3. Reset for next cycle
+    gpio_put(touch_out_pin, 0);
+
+    uint32_t elapsed = timedout ? TOUCH_TIMEOUT_US : (time_us_32() - t_settled);
+    touch_elapsed = elapsed;
 
     bool touched = elapsed > TOUCH_THRESHOLD_US;
 
@@ -426,8 +436,10 @@ static void pad_poll_device(uint8_t device_index) {
     if (pad_read_button(config->f1, ah)) buttons |= JP_BUTTON_F1;
     if (pad_read_button(config->f2, ah)) buttons |= JP_BUTTON_F2;
 #if !defined(PLATFORM_ESP32) && !defined(PLATFORM_NRF)
-    // Capacitive touch sensor → F1 (overrides pin-based F1 if touch is active)
-    if (touch_initialized && touch_read()) buttons |= JP_BUTTON_F1;
+    // Capacitive touch sensor → maps to configurable button
+    if (touch_initialized) {
+        if (touch_read()) buttons |= JP_BUTTON_F1;
+    }
 #endif
 
     // Simple debounce: only update if same as previous read

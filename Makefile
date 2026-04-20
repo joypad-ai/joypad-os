@@ -115,6 +115,9 @@ CONSOLE_bt2wii := joypad_bt2wii
 CONSOLE_controller_btusb := joypad_controller_btusb
 CONSOLE_controller_btusb_rp2040_abb := joypad_controller_btusb_rp2040_abb
 CONSOLE_controller_btusb_feather_rp2040 := joypad_controller_btusb_feather_rp2040
+CONSOLE_controller_btusb_fisherprice_v1 := joypad_controller_btusb_fisherprice_v1
+CONSOLE_controller_btusb_fisherprice_v2 := joypad_controller_btusb_fisherprice_v2
+CONSOLE_controller_btusb_alpakka := joypad_controller_btusb_alpakka
 
 
 # App definitions: APP_name = board target output_name input output
@@ -185,6 +188,9 @@ APP_controller_fisherprice_v1_kb2040 := kb2040 controller_fisherprice_v1 control
 APP_controller_fisherprice_v2_kb2040 := kb2040 controller_fisherprice_v2 controller_fisherprice_v2_kb2040 GPIO/ADC USB
 APP_controller_alpakka_pico := pico controller_alpakka controller_alpakka_pico GPIO/I2C USB
 APP_controller_macropad := macropad controller_macropad controller_macropad GPIO USB
+APP_controller_btusb_fisherprice_v1_kb2040 := kb2040 controller_btusb_fisherprice_v1 controller_btusb_fisherprice_v1_kb2040 GPIO USB
+APP_controller_btusb_fisherprice_v2_kb2040 := kb2040 controller_btusb_fisherprice_v2 controller_btusb_fisherprice_v2_kb2040 GPIO/ADC USB
+APP_controller_btusb_alpakka_pico := pico controller_btusb_alpakka controller_btusb_alpakka_pico GPIO/I2C USB
 APP_controller_btusb_pico_w := pico_w controller_btusb controller_btusb_pico_w JoyWing BLE/USB
 APP_controller_btusb_pico2_w := pico2_w controller_btusb controller_btusb_pico2_w JoyWing BLE/USB
 APP_controller_btusb_rp2040_abb := pico controller_btusb_rp2040_abb controller_btusb_rp2040_abb ABB USB
@@ -896,6 +902,18 @@ controller_alpakka_pico:
 .PHONY: controller_macropad
 controller_macropad:
 	$(call build_app,controller_macropad)
+
+.PHONY: controller_btusb_fisherprice_v1_kb2040
+controller_btusb_fisherprice_v1_kb2040:
+	$(call build_app,controller_btusb_fisherprice_v1_kb2040)
+
+.PHONY: controller_btusb_fisherprice_v2_kb2040
+controller_btusb_fisherprice_v2_kb2040:
+	$(call build_app,controller_btusb_fisherprice_v2_kb2040)
+
+.PHONY: controller_btusb_alpakka_pico
+controller_btusb_alpakka_pico:
+	$(call build_app,controller_btusb_alpakka_pico)
 
 .PHONY: controller_btusb_pico_w
 controller_btusb_pico_w:
