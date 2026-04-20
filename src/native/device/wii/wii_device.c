@@ -12,10 +12,14 @@
 #include "core/router/router.h"
 #include "core/input_event.h"
 #include "core/buttons.h"
+#include "core/services/storage/flash.h"
+#include "core/output_interface.h"
+#include "platform/platform.h"
 #include "pico/i2c_slave.h"
 #include "hardware/gpio.h"
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #define WII_I2C_ADDR           0x52
 #define WII_DEV_I2C_INST       i2c0
@@ -235,6 +239,76 @@ static void __isr wii_slave_handler(i2c_inst_t *i2c, i2c_slave_event_t ev)
     }
 }
 
+// ---- Native output config (web config: Output > Wii Extension) -------------
+
+static bool wii_json_get_int(const char* json, const char* key, int* out_val) {
+    char search[32];
+    snprintf(search, sizeof(search), "\"%s\":", key);
+    const char* start = strstr(json, search);
+    if (!start) return false;
+    start += strlen(search);
+    while (*start == ' ' || *start == '\t') start++;
+    if (*start == '-' || (*start >= '0' && *start <= '9')) {
+        *out_val = atoi(start);
+        return true;
+    }
+    return false;
+}
+
+static uint16_t wii_get_native_config(char* buf, uint16_t buf_size) {
+    flash_t* settings = flash_get_settings();
+    int sda = WII_DEVICE_PIN_SDA;
+    int scl = WII_DEVICE_PIN_SCL;
+    int mode = 0;  // classic
+    if (settings) {
+        if (settings->wii_sda_pin > 0 && settings->wii_sda_pin <= 28) sda = settings->wii_sda_pin;
+        if (settings->wii_scl_pin > 0 && settings->wii_scl_pin <= 28) scl = settings->wii_scl_pin;
+        if (settings->wii_mode > 0) mode = settings->wii_mode - 1;
+    }
+    int n = snprintf(buf, buf_size,
+        "\"type\":\"wii\","
+        "\"modes\":[\"classic\",\"classic_pro\",\"nunchuck\",\"guitar\",\"drums\",\"turntable\",\"taiko\",\"udraw\"],"
+        "\"disabled_modes\":[\"nunchuck\",\"guitar\",\"drums\",\"turntable\",\"taiko\",\"udraw\"],"
+        "\"current_mode\":\"%s\","
+        "\"pins\":{"
+            "\"sda\":{\"label\":\"SDA\",\"value\":%d,\"min\":0,\"max\":28,\"default\":%d},"
+            "\"scl\":{\"label\":\"SCL\",\"value\":%d,\"min\":0,\"max\":28,\"default\":%d}"
+        "}",
+        mode == 2 ? "nunchuck" : mode == 1 ? "classic_pro" : "classic",
+        sda, WII_DEVICE_PIN_SDA,
+        scl, WII_DEVICE_PIN_SCL);
+    return (n > 0 && n < buf_size) ? (uint16_t)n : 0;
+}
+
+static bool wii_set_native_config(const char* json, char* response_buf, uint16_t response_size) {
+    flash_t* settings = flash_get_settings();
+    if (!settings) {
+        snprintf(response_buf, response_size, "{\"ok\":false,\"err\":\"flash not initialized\"}");
+        return false;
+    }
+    int val;
+    if (wii_json_get_int(json, "sda", &val) && val >= 0 && val <= 28)
+        settings->wii_sda_pin = (uint8_t)val;
+    if (wii_json_get_int(json, "scl", &val) && val >= 0 && val <= 28)
+        settings->wii_scl_pin = (uint8_t)val;
+
+    // Mode: "classic"=0, "classic_pro"=1, "nunchuck"=2 → stored as mode+1 (0=default)
+    int name_len;
+    const char* mode_start = strstr(json, "\"mode\":\"");
+    if (mode_start) {
+        mode_start += 8;
+        if (strncmp(mode_start, "nunchuck", 8) == 0) settings->wii_mode = 3;
+        else if (strncmp(mode_start, "classic_pro", 11) == 0) settings->wii_mode = 2;
+        else settings->wii_mode = 1;  // classic
+    }
+
+    flash_save_force(settings);
+    snprintf(response_buf, response_size, "{\"ok\":true,\"reboot\":true}");
+    sleep_ms(150);
+    platform_reboot();
+    return true;
+}
+
 // ---- Output interface -------------------------------------------------------
 
 static void wii_device_out_init(void) {
@@ -252,6 +326,8 @@ const OutputInterface wii_output_interface = {
     .task   = wii_device_out_task,
     .get_rumble     = NULL,
     .get_player_led = NULL,
+    .get_native_config = wii_get_native_config,
+    .set_native_config = wii_set_native_config,
 };
 
 // ---- Public init ------------------------------------------------------------
@@ -270,20 +346,29 @@ void wii_device_init(wii_device_emulation_t emulate)
     // own storage for this output since the I2C slave doesn't read it.
     router_set_tap_exclusive(OUTPUT_TARGET_WII, wii_device_router_tap);
 
-    // Set up the I2C0 peripheral as a slave at 0x52. pico_i2c_slave
-    // configures the pins, enables the IRQ, and attaches our handler.
-    gpio_init(WII_DEVICE_PIN_SDA);
-    gpio_init(WII_DEVICE_PIN_SCL);
-    gpio_set_function(WII_DEVICE_PIN_SDA, GPIO_FUNC_I2C);
-    gpio_set_function(WII_DEVICE_PIN_SCL, GPIO_FUNC_I2C);
-    gpio_pull_up(WII_DEVICE_PIN_SDA);
-    gpio_pull_up(WII_DEVICE_PIN_SCL);
+    // Allow runtime pin override from flash (web config)
+    uint8_t sda = WII_DEVICE_PIN_SDA;
+    uint8_t scl = WII_DEVICE_PIN_SCL;
+    flash_t* settings = flash_get_settings();
+    if (settings) {
+        if (settings->wii_sda_pin > 0 && settings->wii_sda_pin <= 28) sda = settings->wii_sda_pin;
+        if (settings->wii_scl_pin > 0 && settings->wii_scl_pin <= 28) scl = settings->wii_scl_pin;
+    }
+
+    // Set up the I2C0 peripheral as a slave at 0x52.
+    gpio_init(sda);
+    gpio_init(scl);
+    gpio_set_function(sda, GPIO_FUNC_I2C);
+    gpio_set_function(scl, GPIO_FUNC_I2C);
+    gpio_pull_up(sda);
+    gpio_pull_up(scl);
 
     i2c_init(WII_DEV_I2C_INST, WII_DEVICE_I2C_FREQ_HZ);
     i2c_slave_init(WII_DEV_I2C_INST, WII_I2C_ADDR, &wii_slave_handler);
 
-    printf("[wii_device] slave @ 0x%02X on SDA=%d SCL=%d (emulating %s)\n",
-           WII_I2C_ADDR, WII_DEVICE_PIN_SDA, WII_DEVICE_PIN_SCL,
+    printf("[wii_device] slave @ 0x%02X on SDA=%d SCL=%d (emulating %s)%s\n",
+           WII_I2C_ADDR, sda, scl,
            emulate == WII_DEV_EMULATE_CLASSIC_PRO ? "Classic Pro" :
-           emulate == WII_DEV_EMULATE_NUNCHUCK    ? "Nunchuck" : "Classic");
+           emulate == WII_DEV_EMULATE_NUNCHUCK    ? "Nunchuck" : "Classic",
+           (sda != WII_DEVICE_PIN_SDA || scl != WII_DEVICE_PIN_SCL) ? " (override)" : "");
 }

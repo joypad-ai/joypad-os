@@ -19,13 +19,14 @@ import { DirtyTracker } from './dirty-tracker.js';
 
 // Display name + nav label per type (extend as new outputs land)
 const TYPE_INFO = {
-    joybus:   { title: 'Joybus Output',     nav: 'Joybus'   },
-    maple:    { title: 'Maple Bus Output',  nav: 'Maple'    },
-    pce:      { title: 'PCEngine Output',   nav: 'PCEngine' },
-    polyface: { title: 'Polyface Output',   nav: 'Polyface' },
-    '3do':    { title: '3DO Output',        nav: '3DO'      },
-    loopy:    { title: 'Loopy Output',      nav: 'Loopy'    },
-    uart:     { title: 'UART Output',       nav: 'UART'     },
+    joybus:   { title: 'Joybus Output',        nav: 'Joybus'   },
+    wii:      { title: 'Wii Extension Output', nav: 'Wii Ext'  },
+    maple:    { title: 'Maple Bus Output',     nav: 'Maple'    },
+    pce:      { title: 'PCEngine Output',      nav: 'PCEngine' },
+    polyface: { title: 'Polyface Output',      nav: 'Polyface' },
+    '3do':    { title: '3DO Output',           nav: '3DO'      },
+    loopy:    { title: 'Loopy Output',         nav: 'Loopy'    },
+    uart:     { title: 'UART Output',          nav: 'UART'     },
 };
 
 export class NativeOutputCard {
@@ -86,9 +87,11 @@ export class NativeOutputCard {
             html += '<div class="row">';
             html += '<span class="label">Mode</span>';
             html += '<select id="nativeModeSelect">';
+            const disabledModes = this.config.disabled_modes || [];
             for (const m of modes) {
                 const sel = (m === this.config.current_mode) ? ' selected' : '';
-                html += `<option value="${m}"${sel}>${this.formatLabel(m)}</option>`;
+                const dis = disabledModes.includes(m) ? ' disabled' : '';
+                html += `<option value="${m}"${sel}${dis}>${this.formatLabel(m)}${dis ? ' (coming soon)' : ''}</option>`;
             }
             html += '</select>';
             html += '</div>';
