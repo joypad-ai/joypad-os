@@ -274,6 +274,11 @@ set(PS2KBD_HOST_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/native/host/ps2kbd/ps2kbd_host.c
 )
 
+# PS1/PS2 controller host sources (bit-bang 5-wire SPI-like protocol)
+set(PSX_HOST_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/host/psx/psx_host.c
+)
+
 # Wii extension host sources (hardware I2C via platform HAL + protocol lib)
 set(WII_HOST_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/native/host/wii_ext/wii_ext_host.c
@@ -1817,6 +1822,21 @@ target_include_directories(joypad_ps2kbd2usb PUBLIC
 target_link_libraries(joypad_ps2kbd2usb PRIVATE pico_stdlib pico_multicore hardware_pio pico_rand tinyusb_device tinyusb_board)
 joypad_target_common(joypad_ps2kbd2usb)
 pico_generate_pio_header(joypad_ps2kbd2usb ${CMAKE_CURRENT_LIST_DIR}/native/host/ps2kbd/ps2kbd.pio)
+
+# --- PS1/PS2 controller to USB ---
+add_executable(joypad_psx2usb)
+target_compile_definitions(joypad_psx2usb PRIVATE CONFIG_PSX2USB=1 CONFIG_USB=1 DISABLE_USB_HOST=1)
+target_sources(joypad_psx2usb PUBLIC ${CORE_SOURCES} ${USB_DEVICE_SOURCES}
+    ${PSX_HOST_SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/psx2usb/app.c
+)
+target_include_directories(joypad_psx2usb PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/psx2usb
+    ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/host/psx
+)
+target_link_libraries(joypad_psx2usb PRIVATE pico_stdlib pico_multicore hardware_pio pico_rand tinyusb_device tinyusb_board)
+joypad_target_common(joypad_psx2usb)
 
 # --- WII2N64 (Wii extension -> N64) — Pi Pico target ---
 # Pico has no NeoPixel or STEMMA QT. I2C0 on GP4/GP5, N64 data on GP2.

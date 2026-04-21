@@ -94,6 +94,7 @@ CONSOLE_n64 := joypad_n64
 CONSOLE_wifi2usb := joypad_wifi2usb
 CONSOLE_snes2usb := joypad_snes2usb
 CONSOLE_ps2kbd2usb := joypad_ps2kbd2usb
+CONSOLE_psx2usb := joypad_psx2usb
 CONSOLE_nes2usb := joypad_nes2usb
 CONSOLE_n642usb := joypad_n642usb
 CONSOLE_nuon2usb := joypad_nuon2usb
@@ -171,6 +172,7 @@ APP_wifi2usb_pico_w := pico_w wifi2usb wifi2usb_pico_w WiFi USB
 APP_wifi2usb_pico2_w := pico2_w wifi2usb wifi2usb_pico2_w WiFi USB
 APP_snes2usb_kb2040 := kb2040 snes2usb snes2usb_kb2040 SNES USB
 APP_ps2kbd2usb_kb2040 := kb2040 ps2kbd2usb ps2kbd2usb_kb2040 PS/2-Keyboard USB
+APP_psx2usb_kb2040 := kb2040 psx2usb psx2usb_kb2040 PS1/PS2 USB
 APP_n642usb_kb2040 := kb2040 n642usb n642usb_kb2040 N64 USB
 APP_nuon2usb_kb2040 := kb2040 nuon2usb nuon2usb_kb2040 Nuon USB
 APP_nuon2usb_pico_w := pico_w nuon2usb nuon2usb_pico_w Nuon USB
@@ -292,6 +294,7 @@ help:
 	@echo "  make wifi2usb_pico_w    - WiFi -> USB HID (Pico W)"
 	@echo "  make snes2usb_kb2040    - SNES -> USB HID (KB2040)"
 	@echo "  make ps2kbd2usb_kb2040  - PS/2 keyboard -> USB HID (KB2040)"
+	@echo "  make psx2usb_kb2040     - PS1/PS2 controller -> USB HID (KB2040)"
 	@echo "  make n642usb_kb2040     - N64 -> USB HID (KB2040)"
 	@echo "  make nuon2usb_kb2040    - Nuon -> USB HID (KB2040)"
 	@echo "  make gc2usb_kb2040      - GameCube -> USB HID (KB2040)"
@@ -850,6 +853,10 @@ snes2usb_kb2040:
 ps2kbd2usb_kb2040:
 	$(call build_app,ps2kbd2usb_kb2040)
 
+.PHONY: psx2usb_kb2040
+psx2usb_kb2040:
+	$(call build_app,psx2usb_kb2040)
+
 .PHONY: n642usb_kb2040
 n642usb_kb2040:
 	$(call build_app,n642usb_kb2040)
@@ -1255,6 +1262,10 @@ flash-snes2usb_kb2040:
 .PHONY: flash-ps2kbd2usb_kb2040
 flash-ps2kbd2usb_kb2040:
 	@$(MAKE) --no-print-directory _flash_app APP_NAME=ps2kbd2usb_kb2040
+
+.PHONY: flash-psx2usb_kb2040
+flash-psx2usb_kb2040:
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=psx2usb_kb2040
 
 .PHONY: flash-n642usb_kb2040
 flash-n642usb_kb2040:

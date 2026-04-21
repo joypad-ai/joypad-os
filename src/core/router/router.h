@@ -47,6 +47,7 @@ typedef enum {
     INPUT_SOURCE_NATIVE_NUON,
     INPUT_SOURCE_NATIVE_WII,
     INPUT_SOURCE_NATIVE_PS2KBD,     // PS/2 keyboard (data + clock GPIO, PIO-decoded)
+    INPUT_SOURCE_NATIVE_PSX,        // PS1/PS2 controller (SPI-like 5-wire protocol)
     INPUT_SOURCE_GPIO,
     INPUT_SOURCE_SENSORS,
     INPUT_SOURCE_I2C_PEER,
