@@ -1527,6 +1527,57 @@ if (PICO_BOARD STREQUAL "pico_w" OR PICO_BOARD STREQUAL "pico2_w")
     pico_enable_stdio_usb(joypad_usb2ble 0)
     pico_enable_stdio_uart(joypad_usb2ble 1)
 
+    # --- USB2WIIMOTE (Pico W / Pico 2 W: USB Host -> BT Classic Wiimote emulation) ---
+    # USB controllers stream in via PIO-USB host; we pretend to be a Nintendo
+    # RVL-CNT-01 over Classic Bluetooth so a real Wii accepts us as a Wiimote.
+    add_executable(joypad_usb2wiimote)
+    target_compile_definitions(joypad_usb2wiimote PRIVATE
+        CONFIG_USB2WIIMOTE=1
+        CONFIG_USB=1
+        CONFIG_NO_NEOPIXEL=1
+        PICO_DEFAULT_PIO_USB_DP_PIN=16
+        BOARD_TUH_RHPORT=1
+        USE_BOOTSEL_BUTTON=1
+        CYW43_LWIP=0
+        BTSTACK_USE_CYW43=1
+        ENABLE_BTSTACK=1
+    )
+    target_sources(joypad_usb2wiimote PUBLIC
+        ${COMMON_SOURCES}
+        ${USB_DEVICE_SOURCES}
+        ${BTHID_DEVICE_SOURCES}
+        ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/hid/devices/generic/hid_parser.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/bt/btstack/btstack_host.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/bt/btstack/bt_device_db.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/bt/transport/bt_transport.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/bt/transport/bt_transport_cyw43.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/bt/bt_output/wiimote/bt_output_wiimote.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/bt/bt_output/wiimote/wiimote_sdp.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2wiimote/app.c
+    )
+    target_include_directories(joypad_usb2wiimote PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2wiimote
+        ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd
+        ${CMAKE_CURRENT_SOURCE_DIR}/bt
+        ${CMAKE_CURRENT_SOURCE_DIR}/bt/btstack
+        ${CMAKE_CURRENT_SOURCE_DIR}/bt/bthid
+        ${CMAKE_CURRENT_SOURCE_DIR}/bt/bt_output
+        ${CMAKE_CURRENT_SOURCE_DIR}/bt/bt_output/wiimote
+        ${BTSTACK_INCLUDES}
+    )
+    target_link_libraries(joypad_usb2wiimote PRIVATE
+        ${COMMON_LIBRARIES}
+        tinyusb_device
+        tinyusb_pico_pio_usb
+        pico_cyw43_arch_poll
+        pico_btstack_ble
+        pico_btstack_classic
+        pico_btstack_cyw43
+    )
+    joypad_target_common(joypad_usb2wiimote)
+    pico_enable_stdio_usb(joypad_usb2wiimote 0)
+    pico_enable_stdio_uart(joypad_usb2wiimote 1)
+
     # --- ControllerBTUSB (Pico W / Pico 2 W: JoyWing sensor + BLE peripheral + USB) ---
     # Full-featured universal controller on Pico W:
     #   GPIO pad + JoyWing → BLE + USB device output
