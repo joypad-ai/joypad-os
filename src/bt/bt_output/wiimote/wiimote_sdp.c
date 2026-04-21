@@ -38,6 +38,7 @@
 #include "classic/hid_device.h"
 #include "classic/sdp_util.h"
 #include "classic/sdp_server.h"
+#include "classic/device_id_server.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -47,6 +48,7 @@
 // ============================================================================
 
 static uint8_t  hid_service_buffer[400];
+static uint8_t  device_id_buffer[100];
 static uint16_t hid_cid = 0;
 static bool     hid_ready = false;          // HID control+interrupt channels up
 static bool     can_send = false;           // set from CAN_SEND_NOW subevent
@@ -185,6 +187,22 @@ void wiimote_sdp_register(void) {
     };
     hid_create_sdp_record(hid_service_buffer, sdp_create_service_record_handle(), &hid_params);
     sdp_register_service(hid_service_buffer);
+
+    // --- Bluetooth Device ID record (Nintendo / Wiimote) ---
+    // Real Wiimote advertises:
+    //   Vendor ID source = Bluetooth SIG (0x0001)
+    //   Vendor ID        = 0x057E (Nintendo)
+    //   Product ID       = 0x0306 (Wiimote)
+    //   Version          = 0x0600
+    // Some Wii firmware versions cross-check these against the HID record.
+    memset(device_id_buffer, 0, sizeof(device_id_buffer));
+    device_id_create_sdp_record(device_id_buffer,
+                                sdp_create_service_record_handle(),
+                                DEVICE_ID_VENDOR_ID_SOURCE_BLUETOOTH,
+                                0x057E,     // Nintendo
+                                0x0306,     // Wiimote
+                                0x0600);
+    sdp_register_service(device_id_buffer);
 
     // --- HID device + event handlers ---
     hid_device_init(false, WIIMOTE_HID_DESCRIPTOR_SIZE, wiimote_hid_descriptor);
