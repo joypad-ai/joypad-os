@@ -16,6 +16,7 @@
 #include "../bt_output.h"
 #include "wiimote_reports.h"
 #include "wiimote_eeprom.h"
+#include "wiimote_ext.h"
 #include "wiimote_sdp.h"
 #include "core/router/router.h"
 #include "core/input_event.h"
