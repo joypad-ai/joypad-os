@@ -8,6 +8,7 @@
 #include "core/input_interface.h"
 #include "core/output_interface.h"
 #include "usb/usbh/usbh.h"
+#include "bt/bt_output/bt_output.h"
 #include "bt/bt_output/wiimote/bt_output_wiimote.h"
 #include "usb/usbd/usbd.h"
 #include "bt/transport/bt_transport.h"

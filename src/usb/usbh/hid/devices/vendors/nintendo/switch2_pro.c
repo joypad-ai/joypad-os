@@ -224,7 +224,7 @@ static bool find_bulk_endpoint(uint8_t dev_addr, uint8_t* ep_out, uint8_t* itf_n
     return false;
   }
 
-  tusb_xfer_result_t result = tuh_descriptor_get_configuration_sync(
+  xfer_result_t result = tuh_descriptor_get_configuration_sync(
     dev_addr, 0, switch2_config_buf, sizeof(switch2_config_buf));
 
   if (result != XFER_RESULT_SUCCESS) {
