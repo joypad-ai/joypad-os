@@ -269,6 +269,11 @@ set(LODGENET_HOST_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/native/host/lodgenet/lodgenet_host.c
 )
 
+# PS/2 keyboard host sources (PIO-driven 2-wire DATA+CLOCK)
+set(PS2KBD_HOST_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/host/ps2kbd/ps2kbd_host.c
+)
+
 # Wii extension host sources (hardware I2C via platform HAL + protocol lib)
 set(WII_HOST_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/native/host/wii_ext/wii_ext_host.c
@@ -1796,6 +1801,22 @@ target_include_directories(joypad_snes2usb PUBLIC
 )
 target_link_libraries(joypad_snes2usb PRIVATE pico_stdlib pico_multicore hardware_pio pico_rand tinyusb_device tinyusb_board)
 joypad_target_common(joypad_snes2usb)
+
+# --- PS/2 Keyboard to USB ---
+add_executable(joypad_ps2kbd2usb)
+target_compile_definitions(joypad_ps2kbd2usb PRIVATE CONFIG_PS2KBD2USB=1 CONFIG_USB=1 DISABLE_USB_HOST=1)
+target_sources(joypad_ps2kbd2usb PUBLIC ${CORE_SOURCES} ${USB_DEVICE_SOURCES}
+    ${PS2KBD_HOST_SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/ps2kbd2usb/app.c
+)
+target_include_directories(joypad_ps2kbd2usb PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/ps2kbd2usb
+    ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/host/ps2kbd
+)
+target_link_libraries(joypad_ps2kbd2usb PRIVATE pico_stdlib pico_multicore hardware_pio pico_rand tinyusb_device tinyusb_board)
+joypad_target_common(joypad_ps2kbd2usb)
+pico_generate_pio_header(joypad_ps2kbd2usb ${CMAKE_CURRENT_LIST_DIR}/native/host/ps2kbd/ps2kbd.pio)
 
 # --- WII2N64 (Wii extension -> N64) — Pi Pico target ---
 # Pico has no NeoPixel or STEMMA QT. I2C0 on GP4/GP5, N64 data on GP2.

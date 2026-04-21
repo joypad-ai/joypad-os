@@ -1,0 +1,59 @@
+; ps2kbd.pio - PS/2 keyboard frame capture
+;
+; Captures 11-bit PS/2 frames from a keyboard:
+;   1 start bit (always 0) + 8 data bits (LSB first) + 1 odd parity bit + 1 stop bit (always 1)
+;
+; Data is sampled on the falling edge of the clock line (keyboard drives clock at ~10-20 kHz).
+;
+; Pin layout (consecutive, data lower than clock):
+;   IN base + 0 : DATA
+;   IN base + 1 : CLOCK
+;
+; Frame is shifted into the ISR starting from the data bit field (LSB-first). After 11 bits
+; the ISR is auto-pushed to the RX FIFO. The consumer strips start/parity/stop bits and keeps
+; the 8 data bits.
+
+.program ps2kbd
+
+.wrap_target
+    wait 0 pin 1        ; wait for clock to go low (falling edge)
+    in pins, 1          ; sample data bit into ISR
+    wait 1 pin 1        ; wait for clock to go back high
+.wrap
+
+% c-sdk {
+#include "hardware/clocks.h"
+#include "hardware/gpio.h"
+
+static inline void ps2kbd_program_init(PIO pio, uint sm, uint offset, uint pin_data) {
+    // pin_data = data pin; pin_data + 1 = clock pin
+    uint pin_clock = pin_data + 1;
+
+    pio_sm_config c = ps2kbd_program_get_default_config(offset);
+
+    // IN pins start at DATA; 'wait 0 pin 1' and 'wait 1 pin 1' then reference CLOCK.
+    sm_config_set_in_pins(&c, pin_data);
+
+    // Both pins are inputs with internal pull-ups (PS/2 uses open-drain + external pull-ups,
+    // but internal pulls are a safe fallback if the keyboard drives hard).
+    pio_gpio_init(pio, pin_data);
+    pio_gpio_init(pio, pin_clock);
+    pio_sm_set_consecutive_pindirs(pio, sm, pin_data, 2, false);
+    gpio_pull_up(pin_data);
+    gpio_pull_up(pin_clock);
+
+    // Shift direction: LSB first (PS/2 transmits LSB-first). Auto-push every 11 bits so
+    // one FIFO entry holds a full frame.
+    sm_config_set_in_shift(&c, true, true, 11);
+    sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX);
+
+    // Clock divider: PS/2 peaks around 20 kHz. We need to sample the data line comfortably
+    // within the ~25 us clock half-period. A few hundred kHz of PIO clock is plenty; use
+    // ~4 MHz to keep edge detection crisp without wasting bus bandwidth.
+    float div = (float)clock_get_hz(clk_sys) / 4000000.0f;
+    sm_config_set_clkdiv(&c, div);
+
+    pio_sm_init(pio, sm, offset, &c);
+    pio_sm_set_enabled(pio, sm, true);
+}
+%}
