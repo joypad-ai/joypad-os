@@ -1,60 +1,122 @@
 // bt_output_wiimote.c - Wiimote-over-Bluetooth Classic HID device output
 // SPDX-License-Identifier: Apache-2.0
 //
-// STATUS: scaffold. The OutputInterface is wired up so apps can include
-// this module and the router submits input_event_t here, but the BTstack
-// Classic HID device role, custom SDP records, PIN handshake, and Wiimote
-// report generation are all TODO.
+// STATUS (Phase 1b): core report generation + output decoding is wired.
+// Remaining work:
+//   Phase 1c: Nunchuk / Classic extension bytes
+//   Phase 1d: BTstack hid_device_init + custom SDP + PIN pairing
+//   Phase 1e: usb2wiimote / bt2wiimote apps
 //
-// Implementation plan lives in .dev/docs/picogamepad_absorption.md and will
-// grow in the following files as work proceeds:
-//   wiimote_reports.c     : HID input/output reports 0x11-0x1f, 0x20-0x3f
-//   wiimote_eeprom.h      : calibration blob (clean-roomed from WiiBrew)
-//   wiimote_ir.c          : IR sensor-bar dot synthesis
-//   wiimote_ext_nunchuk.c : Nunchuk extension emulation
-//   wiimote_ext_classic.c : Classic Controller extension emulation
-//   wiimote_ext_crypto.c  : extension encryption s-boxes
-//   wiimote_sdp.c         : custom SDP records mimicking RVL-CNT-01
+// Right now router_tap updates a cached input_event_t and marks it dirty;
+// a periodic task builds the currently-selected report format. Once the
+// BTstack wiring lands in 1d, the task will push via
+// hid_device_send_interrupt_message().
 
 #include "bt_output_wiimote.h"
 #include "../bt_output.h"
+#include "wiimote_reports.h"
+#include "wiimote_eeprom.h"
 #include "core/router/router.h"
 #include "core/input_event.h"
+#include "core/buttons.h"
 #include <stdio.h>
 #include <string.h>
 
 // ============================================================================
-// INTERNAL STATE (scaffold)
+// INTERNAL STATE
 // ============================================================================
 
-static wiimote_ext_mode_t current_ext = WIIMOTE_EXT_NONE;
-static bool connected = false;
+static wiimote_state_t      wm_state;
+static wiimote_ext_mode_t   current_ext = WIIMOTE_EXT_NONE;
+static bool                 connected = false;
+
+// Cached most-recent router event. We don't generate a report unless
+// something changed OR the Wii requested continuous mode.
+static input_event_t        last_event;
+static bool                 event_valid = false;
+static bool                 event_dirty = false;
 
 // ============================================================================
-// OUTPUT INTERFACE CALLBACKS (scaffold)
+// ROUTER TAP — called when new input routes to OUTPUT_TARGET_WIIMOTE_BT
 // ============================================================================
 
-static void wiimote_init(void) {
-    printf("[bt_wiimote] init (scaffold — BTstack wiring TODO)\n");
-    current_ext = WIIMOTE_EXT_NONE;
-    connected = false;
-}
-
-static void wiimote_task(void) {
-    // TODO: drive report pump, handle reconnect, service BTstack events if
-    // needed (most BTstack work happens inside its event handler).
-}
-
-// Router tap — called by router when a new input_event_t arrives that's
-// routed to OUTPUT_TARGET_WIIMOTE_BT. See router_set_tap() in app_init.
-// TODO: translate input_event_t to Wiimote HID report and queue for send.
-__attribute__((unused))
 static void wiimote_router_tap(output_target_t target, uint8_t player_index,
                                 const input_event_t* event) {
     (void)target;
     (void)player_index;
-    (void)event;
-    // TODO: regenerate 0x30-0x37 style input report from event + current_ext
+    if (!event) return;
+    last_event  = *event;
+    event_valid = true;
+    event_dirty = true;
+}
+
+// ============================================================================
+// OUTPUT-REPORT HANDLERS — called from BTstack set-report callback (Phase 1d)
+// ============================================================================
+//
+// For now these are direct-callable entry points. Once hid_device is wired,
+// the BTstack packet handler forwards SET_REPORT payloads here.
+
+void bt_output_wiimote_handle_output_report(const uint8_t* report, uint16_t len) {
+    if (!report || len < 1) return;
+
+    uint8_t id = report[0];
+
+    // Memory read (0x17) needs a synthesized 0x21 reply. Queue it via the
+    // send path once BTstack wiring is in place.
+    if (id == 0x17 && len >= 7) {
+        uint32_t addr = ((uint32_t)report[2] << 16) | ((uint32_t)report[3] << 8) | report[4];
+        uint16_t size = ((uint16_t)report[5] << 8) | report[6];
+        // TODO: build 0x21 read-memory response (21 bytes):
+        //   byte 0: 0x21
+        //   bytes 1-2: core buttons
+        //   byte 3: size-1 (high nibble) | error code (low nibble)
+        //   bytes 4-5: address
+        //   bytes 6..: up to 16 bytes of memory
+        (void)addr; (void)size;
+        return;
+    }
+
+    // Generic 0x11/0x12/0x15 handling updates wm_state and signals a 0x20
+    // status reply if needed.
+    bool need_status = wiimote_apply_output(&wm_state, report, len);
+    if (need_status) {
+        // TODO: queue 0x20 status report (Phase 1d)
+        event_dirty = true;
+    }
+}
+
+// ============================================================================
+// PERIODIC TASK
+// ============================================================================
+
+static void wiimote_init(void) {
+    printf("[bt_wiimote] init — reports wired, BTstack TODO\n");
+    wiimote_state_init(&wm_state);
+    current_ext = WIIMOTE_EXT_NONE;
+    connected = false;
+    event_valid = false;
+    event_dirty = false;
+    memset(&last_event, 0, sizeof(last_event));
+
+    // Register our tap so router calls us for OUTPUT_TARGET_WIIMOTE_BT.
+    router_set_tap_exclusive(OUTPUT_TARGET_WIIMOTE_BT, wiimote_router_tap);
+}
+
+static void wiimote_task(void) {
+    if (!event_valid) return;
+
+    // Only emit when something changed (unless Wii asked for continuous).
+    if (!event_dirty && !wm_state.continuous) return;
+    event_dirty = false;
+
+    uint8_t buf[23];
+    uint16_t n = wiimote_build_current(&wm_state, &last_event, buf);
+
+    // TODO Phase 1d: push to BTstack HID interrupt channel.
+    //   hid_device_send_interrupt_message(cid, buf, n);
+    (void)n;
+    (void)buf;
 }
 
 // ============================================================================
@@ -66,9 +128,9 @@ void bt_output_wiimote_set_ext(wiimote_ext_mode_t mode) {
     if (mode == current_ext) return;
     printf("[bt_wiimote] ext mode %d -> %d (hot-plug)\n", current_ext, mode);
     current_ext = mode;
-    // TODO: trigger extension-change notification to the Wii
-    //   (send 0x20 status with extension-attached bit toggled, then the Wii
-    //    will re-read the ext ID bytes at 0xFA)
+    wm_state.extension_attached = (mode != WIIMOTE_EXT_NONE);
+    // TODO Phase 1c: send 0x20 status with the extension-attached bit
+    // toggled so the Wii re-reads the ext ID at 0xFA.
 }
 
 wiimote_ext_mode_t bt_output_wiimote_get_ext(void) {
@@ -84,26 +146,21 @@ const OutputInterface bt_output_wiimote_interface = {
     .target  = OUTPUT_TARGET_WIIMOTE_BT,
     .init    = wiimote_init,
     .task    = wiimote_task,
-    // Core 1 task not needed — BTstack is event-driven from its run loop
     .core1_task = NULL,
-    // Feedback (rumble from Wii) will come later — Wiimote 0x13/0x19 output
-    // reports carry rumble + LED state that we forward to input devices.
     .get_feedback = NULL,
     .get_rumble = NULL,
     .get_player_led = NULL,
-    // No profile system yet
     .get_profile_count = NULL,
     .get_active_profile = NULL,
     .set_active_profile = NULL,
     .get_profile_name = NULL,
     .get_trigger_threshold = NULL,
-    // No native-config JSON for this output (BT config lives elsewhere)
     .get_native_config = NULL,
     .set_native_config = NULL,
 };
 
 // ============================================================================
-// SHARED BT OUTPUT STUBS (scaffold for src/bt/bt_output/bt_output.h)
+// SHARED BT OUTPUT STUBS
 // ============================================================================
 
 void bt_output_init(void) {
