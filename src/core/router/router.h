@@ -68,6 +68,7 @@ typedef enum {
     OUTPUT_TARGET_BLE_PERIPHERAL,
     OUTPUT_TARGET_UART,             // UART bridge to ESP32/other MCU
     OUTPUT_TARGET_WII_EXTENSION,              // Wii extension I2C slave (bt2wiiex apps)
+    OUTPUT_TARGET_WIIMOTE_BT,                 // Wiimote-over-Bluetooth Classic (bt2wiimote, usb2wiimote)
     OUTPUT_TARGET_COUNT             // Must be last — used to size arrays
 } output_target_t;
 
