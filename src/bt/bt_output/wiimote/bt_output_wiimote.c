@@ -16,6 +16,7 @@
 #include "../bt_output.h"
 #include "wiimote_reports.h"
 #include "wiimote_eeprom.h"
+#include "wiimote_sdp.h"
 #include "core/router/router.h"
 #include "core/input_event.h"
 #include "core/buttons.h"
@@ -62,27 +63,32 @@ void bt_output_wiimote_handle_output_report(const uint8_t* report, uint16_t len)
 
     uint8_t id = report[0];
 
-    // Memory read (0x17) needs a synthesized 0x21 reply. Queue it via the
-    // send path once BTstack wiring is in place.
+    // Memory read (0x17) — return a 0x21 response from the virtual EEPROM.
     if (id == 0x17 && len >= 7) {
         uint32_t addr = ((uint32_t)report[2] << 16) | ((uint32_t)report[3] << 8) | report[4];
         uint16_t size = ((uint16_t)report[5] << 8) | report[6];
-        // TODO: build 0x21 read-memory response (21 bytes):
-        //   byte 0: 0x21
-        //   bytes 1-2: core buttons
-        //   byte 3: size-1 (high nibble) | error code (low nibble)
-        //   bytes 4-5: address
-        //   bytes 6..: up to 16 bytes of memory
-        (void)addr; (void)size;
+        if (size > 16) size = 16;       // 0x21 payload holds up to 16 bytes
+
+        uint8_t buf[22] = {0};
+        buf[0] = 0x21;
+        uint16_t btns = event_valid ? wiimote_buttons_from_event(&last_event) : 0;
+        buf[1] = btns & 0xff;
+        buf[2] = (btns >> 8) & 0xff;
+        buf[3] = ((size - 1) & 0x0f) << 4;  // upper nibble = size-1, lower = err=0
+        buf[4] = (addr >> 8) & 0xff;
+        buf[5] = addr & 0xff;
+        wiimote_eeprom_read_block(addr, &buf[6], size);
+        wiimote_sdp_send_report(buf, 6 + size);
         return;
     }
 
-    // Generic 0x11/0x12/0x15 handling updates wm_state and signals a 0x20
-    // status reply if needed.
     bool need_status = wiimote_apply_output(&wm_state, report, len);
     if (need_status) {
-        // TODO: queue 0x20 status report (Phase 1d)
-        event_dirty = true;
+        uint8_t status_buf[8];
+        uint16_t n = wiimote_build_status(&wm_state,
+                                          event_valid ? &last_event : NULL,
+                                          status_buf);
+        wiimote_sdp_send_report(status_buf, n);
     }
 }
 
@@ -91,7 +97,7 @@ void bt_output_wiimote_handle_output_report(const uint8_t* report, uint16_t len)
 // ============================================================================
 
 static void wiimote_init(void) {
-    printf("[bt_wiimote] init — reports wired, BTstack TODO\n");
+    printf("[bt_wiimote] init\n");
     wiimote_state_init(&wm_state);
     current_ext = WIIMOTE_EXT_NONE;
     connected = false;
@@ -99,24 +105,25 @@ static void wiimote_init(void) {
     event_dirty = false;
     memset(&last_event, 0, sizeof(last_event));
 
-    // Register our tap so router calls us for OUTPUT_TARGET_WIIMOTE_BT.
+    // Register BTstack HID + SDP + GAP setup.
+    wiimote_sdp_register();
+
+    // Wire router so the router delivers input events to us.
     router_set_tap_exclusive(OUTPUT_TARGET_WIIMOTE_BT, wiimote_router_tap);
 }
 
 static void wiimote_task(void) {
+    connected = wiimote_sdp_is_connected();
+    if (!connected) return;
     if (!event_valid) return;
 
-    // Only emit when something changed (unless Wii asked for continuous).
+    // Emit when something changed OR the Wii asked for continuous mode.
     if (!event_dirty && !wm_state.continuous) return;
     event_dirty = false;
 
     uint8_t buf[23];
     uint16_t n = wiimote_build_current(&wm_state, &last_event, buf);
-
-    // TODO Phase 1d: push to BTstack HID interrupt channel.
-    //   hid_device_send_interrupt_message(cid, buf, n);
-    (void)n;
-    (void)buf;
+    wiimote_sdp_send_report(buf, n);
 }
 
 // ============================================================================
