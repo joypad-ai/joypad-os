@@ -140,11 +140,72 @@ static void queue_status_report(void) {
     wiimote_sdp_send_report(status_buf, n);
 }
 
+// Handle a 0x16 memory write. Payload (after 0x16):
+//   byte 1    : flags (bit 0 = rumble, bit 2 = register space)
+//   byte 2-4  : 24-bit address
+//   byte 5    : size (1-16)
+//   byte 6-21 : data bytes (up to 16)
+// Acknowledge with a 0x22 report: [0x22, btn_lo, btn_hi, report_id_that_caused, error]
+static void answer_memory_write(const uint8_t* report, uint16_t len) {
+    if (len < 7) return;
+
+    uint8_t  flags = report[1];
+    uint32_t addr  = ((uint32_t)report[2] << 16) | ((uint32_t)report[3] << 8) | report[4];
+    uint8_t  size  = report[5];
+    bool     is_register = (flags & 0x04) != 0;
+
+    if (size > 16) size = 16;
+    if (len < (uint16_t)(6 + size)) size = (uint16_t)(len - 6);
+
+    if (is_register && (addr & 0x00FF0000) == 0x00A40000) {
+        uint32_t ext_addr = addr & 0xFF;
+        for (uint8_t i = 0; i < size; i++) {
+            uint32_t a = ext_addr + i;
+            uint8_t  b = report[6 + i];
+            if (a >= 0x40 && a < 0x50) {
+                // Encryption key — 16 bytes at 0x40-0x4F.
+                wm_state.ext_key[a - 0x40] = b;
+                if (a == 0x4F) {
+                    wm_state.ext_key_set = true;
+                    // Receiving a key implies the Wii intends to use
+                    // encryption from this point forward. A subsequent
+                    // write to 0xF0 can still flip it off.
+                    wm_state.ext_encrypted = true;
+                    printf("[bt_wiimote] ext encryption key armed\n");
+                }
+            } else if (a == 0xF0) {
+                // 0xAA enables encryption, 0x55 / 0x00 disables.
+                bool new_enc = (b == 0xAA);
+                if (new_enc != wm_state.ext_encrypted) {
+                    printf("[bt_wiimote] ext encryption %s\n", new_enc ? "ON" : "OFF");
+                }
+                wm_state.ext_encrypted = new_enc;
+            }
+            // Other writes silently accepted.
+        }
+    }
+    // EEPROM writes (is_register==false) are ignored — we're read-only.
+
+    // 0x22 ack: report ID, 2 byte buttons, caused-report-ID, error code.
+    uint8_t ack[5];
+    ack[0] = 0x22;
+    uint16_t btns = event_valid ? wiimote_buttons_from_event(&last_event) : 0;
+    ack[1] = btns & 0xff;
+    ack[2] = (btns >> 8) & 0xff;
+    ack[3] = 0x16;
+    ack[4] = 0x00;  // 0 = success
+    wiimote_sdp_send_report(ack, sizeof(ack));
+}
+
 void bt_output_wiimote_handle_output_report(const uint8_t* report, uint16_t len) {
     if (!report || len < 1) return;
 
     uint8_t id = report[0];
 
+    if (id == 0x16) {
+        answer_memory_write(report, len);
+        return;
+    }
     if (id == 0x17) {
         answer_memory_read(report, len);
         return;

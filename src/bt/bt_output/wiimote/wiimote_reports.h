@@ -82,6 +82,10 @@ typedef struct {
     bool     rumble;            // 0x11/0x13/0x14/0x15 byte 0 bit 0
     uint8_t  battery_level;     // 0..200 (0x20 byte 5)
     bool     extension_attached;// 0x20 byte 2 bit 1
+    // Extension encryption state — populated by 0x16 writes from the Wii.
+    uint8_t  ext_key[16];       // raw key at ext reg 0x40-0x4F (stream-cipher seed)
+    bool     ext_key_set;       // true once the Wii has written a key
+    bool     ext_encrypted;     // 0xF0 = 0xAA enables, 0x55/0x00 disables
 } wiimote_state_t;
 
 static inline void wiimote_state_init(wiimote_state_t* s) {
@@ -91,6 +95,9 @@ static inline void wiimote_state_init(wiimote_state_t* s) {
     s->rumble = false;
     s->battery_level = 0xC8;    // ~80% = 0xC8 = 200 on WiiBrew scale
     s->extension_attached = false;
+    for (int i = 0; i < 16; i++) s->ext_key[i] = 0;
+    s->ext_key_set = false;
+    s->ext_encrypted = false;
 }
 
 // ============================================================================
