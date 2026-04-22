@@ -170,17 +170,66 @@ static inline uint16_t wiimote_build_core_accel(const input_event_t* e, uint8_t*
     return 6;
 }
 
-// Build whichever report is currently selected by the Wii. Extension /
-// IR modes fall back to 0x30 until Phase 1c wires in extension bytes.
+// Core + 8-byte extension (0x32): 11 bytes total.
+// Caller provides up to 6 bytes of extension data; remaining 2 bytes zero-padded.
+static inline uint16_t wiimote_build_core_ext8(const input_event_t* e,
+                                               const uint8_t* ext, uint16_t ext_len,
+                                               uint8_t* out) {
+    uint16_t btns = wiimote_buttons_from_event(e);
+    out[0] = 0x32;
+    out[1] = btns & 0xff;
+    out[2] = (btns >> 8) & 0xff;
+    for (int i = 0; i < 8; i++) out[3 + i] = (i < ext_len) ? ext[i] : 0x00;
+    return 11;
+}
+
+// Core + accel + 16-byte extension (0x35): 22 bytes total.
+static inline uint16_t wiimote_build_core_acc_ext16(const input_event_t* e,
+                                                    const uint8_t* ext, uint16_t ext_len,
+                                                    uint8_t* out) {
+    uint16_t btns = wiimote_buttons_from_event(e);
+    out[0] = 0x35;
+    out[1] = btns & 0xff;
+    out[2] = (btns >> 8) & 0xff;
+    out[3] = 0x80;  // Accel X (0g)
+    out[4] = 0x80;  // Accel Y (0g)
+    out[5] = 0xA3;  // Accel Z (+1g face-up)
+    for (int i = 0; i < 16; i++) out[6 + i] = (i < ext_len) ? ext[i] : 0x00;
+    return 22;
+}
+
+// Core + 19-byte extension (0x34): 22 bytes total.
+static inline uint16_t wiimote_build_core_ext19(const input_event_t* e,
+                                                const uint8_t* ext, uint16_t ext_len,
+                                                uint8_t* out) {
+    uint16_t btns = wiimote_buttons_from_event(e);
+    out[0] = 0x34;
+    out[1] = btns & 0xff;
+    out[2] = (btns >> 8) & 0xff;
+    for (int i = 0; i < 19; i++) out[3 + i] = (i < ext_len) ? ext[i] : 0x00;
+    return 22;
+}
+
+// Build whichever report is currently selected by the Wii. `ext` is the
+// caller's current extension payload (NULL if no extension attached); up to
+// `ext_len` bytes will be included in extension-mode reports, rest zero-padded.
 static inline uint16_t wiimote_build_current(const wiimote_state_t* s,
                                              const input_event_t* e,
+                                             const uint8_t* ext, uint16_t ext_len,
                                              uint8_t* out) {
     switch (s->reporting_mode) {
         case WM_REPORT_CORE_ACC:
         case WM_REPORT_CORE_ACC_IR12:
-        case WM_REPORT_CORE_ACC_EXT16:
         case WM_REPORT_CORE_ACC_IR10_EXT6:
             return wiimote_build_core_accel(e, out);
+        case WM_REPORT_CORE_EXT8:
+        case WM_REPORT_CORE_IR10_EXT9:
+            return wiimote_build_core_ext8(e, ext, ext_len, out);
+        case WM_REPORT_CORE_ACC_EXT16:
+            return wiimote_build_core_acc_ext16(e, ext, ext_len, out);
+        case WM_REPORT_CORE_EXT19:
+        case WM_REPORT_EXT21:
+            return wiimote_build_core_ext19(e, ext, ext_len, out);
         case WM_REPORT_CORE:
         default:
             return wiimote_build_core(e, out);
