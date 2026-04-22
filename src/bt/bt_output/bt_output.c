@@ -849,7 +849,7 @@ void bt_output_get_mode_color(bt_output_mode_t mode, uint8_t *r, uint8_t *g, uin
 // ============================================================================
 
 const OutputInterface bt_output_interface = {
-    .name = "BLE HID",
+    .name = "BT HID",
     .target = OUTPUT_TARGET_BT,
     .init = bt_output_init,
     .task = bt_output_task,

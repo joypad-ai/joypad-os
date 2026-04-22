@@ -550,26 +550,26 @@ void app_task(void)
     // Track state changes for LED color updates
     static bool last_ble_conn = false;
     static bool last_usb_active = false;
-    static bt_output_mode_t last_ble_mode = BT_MODE_COUNT;
+    static bt_output_mode_t last_bt_mode = BT_MODE_COUNT;
     static usb_output_mode_t last_usb_mode = USB_OUTPUT_MODE_COUNT;
 
-    bt_output_mode_t ble_mode = bt_output_get_mode();
+    bt_output_mode_t bt_mode = bt_output_get_mode();
     usb_output_mode_t usb_mode = usbd_get_mode();
 
     if (ble_conn != last_ble_conn || usb_active != last_usb_active ||
-        ble_mode != last_ble_mode || usb_mode != last_usb_mode) {
+        bt_mode != last_bt_mode || usb_mode != last_usb_mode) {
         last_ble_conn = ble_conn;
         last_usb_active = usb_active;
-        last_ble_mode = ble_mode;
+        last_bt_mode = bt_mode;
         last_usb_mode = usb_mode;
 
         uint8_t r, g, b;
         if (ble_conn) {
-            bt_output_get_mode_color(ble_mode, &r, &g, &b);
+            bt_output_get_mode_color(bt_mode, &r, &g, &b);
         } else if (usb_active) {
             usbd_get_mode_color(usb_mode, &r, &g, &b);
         } else {
-            bt_output_get_mode_color(ble_mode, &r, &g, &b);
+            bt_output_get_mode_color(bt_mode, &r, &g, &b);
         }
         leds_set_color(r, g, b);
     }

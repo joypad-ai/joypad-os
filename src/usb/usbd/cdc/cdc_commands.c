@@ -413,6 +413,7 @@ static void cmd_ble_mode_list(const char* json)
 
     bool first = true;
     for (int i = 0; i < BT_MODE_COUNT && pos < (int)sizeof(response_buf) - 50; i++) {
+        if (!bt_output_is_mode_supported((bt_output_mode_t)i)) continue;
         if (!first) pos += snprintf(response_buf + pos, sizeof(response_buf) - pos, ",");
         first = false;
         pos += snprintf(response_buf + pos, sizeof(response_buf) - pos,
