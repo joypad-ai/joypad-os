@@ -2,6 +2,11 @@ cmake_minimum_required(VERSION 3.12)
 
 # Pull in SDK from local submodule (must be before project)
 set(PICO_SDK_PATH ${CMAKE_CURRENT_LIST_DIR}/lib/pico-sdk)
+# Point pico-sdk at our vendored TinyUSB 0.19.0 (src/lib/tinyusb) instead of
+# the older 0.18.0 bundled inside pico-sdk/lib/tinyusb. Pico-PIO-USB's
+# hcd_pio_usb.c calls APIs added in 0.19.0 (tuh_bus_info_t, tuh_bus_info_get),
+# so without this override pico_w USB-host targets fail to build.
+set(PICO_TINYUSB_PATH ${CMAKE_CURRENT_LIST_DIR}/lib/tinyusb)
 include(${PICO_SDK_PATH}/pico_sdk_init.cmake)
 
 project(joypad C CXX ASM)
