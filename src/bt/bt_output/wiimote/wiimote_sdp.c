@@ -33,6 +33,7 @@
 #include "btstack_defines.h"
 #include "btstack_event.h"
 #include "btstack_util.h"
+#include "btstack_tlv.h"
 #include "gap.h"
 #include "hci.h"
 #include "l2cap.h"
@@ -56,6 +57,40 @@ static bool     can_send = false;           // set from CAN_SEND_NOW subevent
 
 static bd_addr_t wii_addr = {0, 0, 0, 0, 0, 0};
 static bool      wii_addr_valid = false;
+
+// TLV tag 'WIIM' — persists the bonded Wii BD_ADDR across reboots so the
+// Pico W reconnects to the same Wii without re-pairing via the Sync button.
+#define TLV_TAG_WII_ADDR \
+    (((uint32_t)'W' << 24) | ((uint32_t)'I' << 16) | ((uint32_t)'I' << 8) | 'M')
+
+static void wii_addr_persist(void) {
+    const btstack_tlv_t* tlv = NULL;
+    void* ctx = NULL;
+    btstack_tlv_get_instance(&tlv, &ctx);
+    if (!tlv || !wii_addr_valid) return;
+    tlv->store_tag(ctx, TLV_TAG_WII_ADDR, wii_addr, 6);
+}
+
+static void wii_addr_restore(void) {
+    const btstack_tlv_t* tlv = NULL;
+    void* ctx = NULL;
+    btstack_tlv_get_instance(&tlv, &ctx);
+    if (!tlv) return;
+
+    bd_addr_t stored;
+    int len = tlv->get_tag(ctx, TLV_TAG_WII_ADDR, stored, 6);
+    if (len != 6) return;
+
+    bool nonzero = false;
+    for (int i = 0; i < 6; i++) if (stored[i]) { nonzero = true; break; }
+    if (!nonzero) return;
+
+    memcpy(wii_addr, stored, 6);
+    wii_addr_valid = true;
+    printf("[wiimote_sdp] Restored bonded Wii %02x:%02x:%02x:%02x:%02x:%02x\n",
+           wii_addr[0], wii_addr[1], wii_addr[2],
+           wii_addr[3], wii_addr[4], wii_addr[5]);
+}
 
 static btstack_packet_callback_registration_t hci_event_cb_reg;
 
@@ -140,7 +175,15 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t* packe
                     }
                     hid_cid = hid_subevent_connection_opened_get_hid_cid(packet);
                     hid_ready = true;
-                    printf("[wiimote_sdp] HID connection opened cid=0x%04x\n", hid_cid);
+                    bd_addr_t remote;
+                    hid_subevent_connection_opened_get_bd_addr(packet, remote);
+                    printf("[wiimote_sdp] HID connection opened cid=0x%04x from "
+                           "%02x:%02x:%02x:%02x:%02x:%02x\n",
+                           hid_cid, remote[0], remote[1], remote[2],
+                           remote[3], remote[4], remote[5]);
+                    // First-time Sync-button pairing: capture the Wii addr so
+                    // subsequent reboots can reconnect outgoing.
+                    if (!wii_addr_valid) wiimote_sdp_set_wii_addr(remote);
                     break;
                 }
                 case HID_SUBEVENT_CONNECTION_CLOSED:
@@ -231,6 +274,10 @@ void wiimote_sdp_register(void) {
     hci_event_cb_reg.callback = &packet_handler;
     hci_add_event_handler(&hci_event_cb_reg);
 
+    // Restore a previously bonded Wii BD_ADDR if we have one — lets
+    // wiimote_sdp_reconnect() work without the user re-syncing.
+    wii_addr_restore();
+
     printf("[wiimote_sdp] HID + SDP registered (CoD 0x002504, name 'Nintendo RVL-CNT-01')\n");
 }
 
@@ -246,6 +293,7 @@ void wiimote_sdp_set_wii_addr(const bd_addr_t addr) {
         printf("[wiimote_sdp] Stored Wii addr %02x:%02x:%02x:%02x:%02x:%02x\n",
                wii_addr[0], wii_addr[1], wii_addr[2],
                wii_addr[3], wii_addr[4], wii_addr[5]);
+        wii_addr_persist();
     }
 }
 
