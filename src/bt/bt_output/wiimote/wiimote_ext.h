@@ -40,6 +40,95 @@ static const uint8_t WIIMOTE_EXT_ID_CLASSIC[6]  = { 0x00, 0x00, 0xA4, 0x20, 0x01
 // only report fully pressed (value 31) — no analog pressure.
 
 // ============================================================================
+// EXTENSION KIND (forward-declared — used by calibration + payload builders)
+// ============================================================================
+
+typedef enum {
+    WM_EXT_NONE     = 0,
+    WM_EXT_NUNCHUK,
+    WM_EXT_CLASSIC,
+    WM_EXT_CLASSIC_PRO,
+} wm_ext_kind_t;
+
+// ============================================================================
+// CALIBRATION DATA (extension memory 0x20-0x3F — two identical 16-byte blocks)
+// ============================================================================
+// Read by the Wii after the extension ID to figure out how to interpret
+// stick/accel values. Layout and defaults are straight from WiiBrew.
+//
+// Nunchuk (16 bytes) — two identical 16-byte blocks at 0x20-0x2F and 0x30-0x3F:
+//   0x00-0x02 : zero-g X, Y, Z (10-bit high bytes)
+//   0x03      : packed LSBs + battery bits (safe to leave 0)
+//   0x04-0x06 : one-g X, Y, Z (10-bit high bytes)
+//   0x07      : packed LSBs
+//   0x08      : joystick X max   (0-255)
+//   0x09      : joystick X min
+//   0x0A      : joystick X center
+//   0x0B      : joystick Y max
+//   0x0C      : joystick Y min
+//   0x0D      : joystick Y center
+//   0x0E-0x0F : 16-bit checksum = (sum(bytes) + 0x55AA) & 0xFFFF stored big-endian
+//
+// Classic Controller (16 bytes):
+//   0x00 : LX max (0-63)      0x01 : LX min      0x02 : LX center
+//   0x03 : LY max             0x04 : LY min      0x05 : LY center
+//   0x06 : RX max (0-31)      0x07 : RX min      0x08 : RX center
+//   0x09 : RY max             0x0A : RY min      0x0B : RY center
+//   0x0C : LT max             0x0D : LT min
+//   0x0E-0x0F : checksum (same formula as Nunchuk)
+//
+// For both, we use neutral defaults that the Wii treats as "full range" —
+// game-side calibration then adjusts live. Duplicated at 0x20 and 0x30 so
+// the Wii's redundant read returns the same data.
+
+static inline void wiimote_ext_build_calibration(wm_ext_kind_t kind, uint8_t out[16]) {
+    for (int i = 0; i < 16; i++) out[i] = 0;
+
+    switch (kind) {
+        case WM_EXT_NUNCHUK: {
+            // Accel cal: zero-g 512 (0x200), one-g 640 (0x280) — 10-bit values,
+            // upper byte = value >> 2.
+            out[0x00] = 0x80;   // zero-g X hi
+            out[0x01] = 0x80;   // zero-g Y hi
+            out[0x02] = 0x80;   // zero-g Z hi
+            out[0x03] = 0x00;   // LSB packing (zeros OK)
+            out[0x04] = 0xA0;   // one-g X hi
+            out[0x05] = 0xA0;   // one-g Y hi
+            out[0x06] = 0xA0;   // one-g Z hi
+            out[0x07] = 0x00;   // LSB packing
+            // Stick cal: 8-bit full range.
+            out[0x08] = 0xFF;   // X max
+            out[0x09] = 0x00;   // X min
+            out[0x0A] = 0x80;   // X center
+            out[0x0B] = 0xFF;   // Y max
+            out[0x0C] = 0x00;   // Y min
+            out[0x0D] = 0x80;   // Y center
+            break;
+        }
+        case WM_EXT_CLASSIC:
+        case WM_EXT_CLASSIC_PRO: {
+            // 6-bit L-stick, 5-bit R-stick, 5-bit triggers.
+            out[0x00] = 0x3F; out[0x01] = 0x00; out[0x02] = 0x20;   // LX max/min/ctr
+            out[0x03] = 0x3F; out[0x04] = 0x00; out[0x05] = 0x20;   // LY
+            out[0x06] = 0x1F; out[0x07] = 0x00; out[0x08] = 0x10;   // RX
+            out[0x09] = 0x1F; out[0x0A] = 0x00; out[0x0B] = 0x10;   // RY
+            out[0x0C] = 0x1F; out[0x0D] = 0x00;                     // LT max/min
+            break;
+        }
+        case WM_EXT_NONE:
+        default:
+            return;
+    }
+
+    // 16-bit big-endian checksum = (sum(bytes 0..13) + 0x55AA)
+    uint16_t sum = 0;
+    for (int i = 0; i < 14; i++) sum += out[i];
+    sum += 0x55AA;
+    out[0x0E] = (sum >> 8) & 0xFF;
+    out[0x0F] = sum & 0xFF;
+}
+
+// ============================================================================
 // NUNCHUK — 6-byte extension payload
 // ============================================================================
 // Byte layout (per WiiBrew):
@@ -156,13 +245,6 @@ static inline void wiimote_ext_build_classic(const input_event_t* e, uint8_t out
 // ============================================================================
 // DISPATCH
 // ============================================================================
-
-typedef enum {
-    WM_EXT_NONE     = 0,
-    WM_EXT_NUNCHUK,
-    WM_EXT_CLASSIC,
-    WM_EXT_CLASSIC_PRO,
-} wm_ext_kind_t;
 
 // Copy the appropriate 6-byte ID for `kind` into `out`. Returns true on success.
 static inline bool wiimote_ext_get_id(wm_ext_kind_t kind, uint8_t out[6]) {

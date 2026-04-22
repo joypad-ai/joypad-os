@@ -97,22 +97,31 @@ static void answer_memory_read(const uint8_t* report, uint16_t len) {
     if (is_register && (addr & 0x00FF0000) == 0x00A40000) {
         // Extension register space. Address within 0xA400xx - 0xA400FF.
         uint32_t ext_addr = addr & 0xFF;
+
+        // Resolve the current extension kind once.
+        wm_ext_kind_t kind = (current_ext == WIIMOTE_EXT_NUNCHUK)     ? WM_EXT_NUNCHUK
+                           : (current_ext == WIIMOTE_EXT_CLASSIC)     ? WM_EXT_CLASSIC
+                           : (current_ext == WIIMOTE_EXT_CLASSIC_PRO) ? WM_EXT_CLASSIC_PRO
+                           : WM_EXT_NONE;
+
+        // Pre-compute calibration + ID blocks so bulk reads don't re-call
+        // the builders per byte.
+        uint8_t calib[16];
+        wiimote_ext_build_calibration(kind, calib);
+        uint8_t id_bytes[6];
+        bool id_valid = wiimote_ext_get_id(kind, id_bytes);
+
         for (uint16_t i = 0; i < size; i++) {
             uint32_t a = ext_addr + i;
             uint8_t  b = 0x00;
-            if (a >= 0xFA && a <= 0xFF) {
-                // Extension identifier bytes.
-                wm_ext_kind_t kind = (current_ext == WIIMOTE_EXT_NUNCHUK)     ? WM_EXT_NUNCHUK
-                                   : (current_ext == WIIMOTE_EXT_CLASSIC)     ? WM_EXT_CLASSIC
-                                   : (current_ext == WIIMOTE_EXT_CLASSIC_PRO) ? WM_EXT_CLASSIC_PRO
-                                   : WM_EXT_NONE;
-                uint8_t id[6];
-                if (wiimote_ext_get_id(kind, id)) {
-                    b = id[a - 0xFA];
-                }
+            if (a >= 0x20 && a < 0x30) {
+                b = calib[a - 0x20];
+            } else if (a >= 0x30 && a < 0x40) {
+                // Real Wiimote duplicates the cal block.
+                b = calib[a - 0x30];
+            } else if (a >= 0xFA && a <= 0xFF) {
+                if (id_valid) b = id_bytes[a - 0xFA];
             }
-            // 0x20-0x3F calibration left as zeros for now — games typically
-            // tolerate this, but flight/racing titles may prefer real cal.
             buf[6 + i] = b;
         }
     } else {
