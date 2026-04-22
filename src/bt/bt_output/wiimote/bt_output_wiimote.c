@@ -17,6 +17,7 @@
 #include "wiimote_reports.h"
 #include "wiimote_eeprom.h"
 #include "wiimote_ext.h"
+#include "wiimote_ir.h"
 #include "wiimote_sdp.h"
 #include "core/router/router.h"
 #include "core/input_event.h"
@@ -30,6 +31,7 @@
 
 static wiimote_state_t      wm_state;
 static wiimote_ext_mode_t   current_ext = WIIMOTE_EXT_NONE;
+static wiimote_ir_state_t   ir_state;
 static bool                 connected = false;
 
 // Cached most-recent router event. We don't generate a report unless
@@ -235,6 +237,20 @@ static void wiimote_init(void) {
     router_set_tap_exclusive(OUTPUT_TARGET_WIIMOTE_BT, wiimote_router_tap);
 }
 
+// Derive the virtual IR pointer from the cached input event. Right stick
+// drives pointer position; fall back to "centred" when no input yet.
+static void update_ir_state(void) {
+    if (!event_valid) {
+        ir_state.active = false;
+        return;
+    }
+    // Right-stick 0..255 -> 0..1, centred at 128.
+    ir_state.x = (float)last_event.analog[ANALOG_RX] / 255.0f;
+    ir_state.y = (float)last_event.analog[ANALOG_RY] / 255.0f;
+    ir_state.active = true;
+    ir_state.bar_above_tv = true;
+}
+
 static void wiimote_task(void) {
     connected = wiimote_sdp_is_connected();
     if (!connected) return;
@@ -247,9 +263,16 @@ static void wiimote_task(void) {
     uint8_t ext_buf[6];
     uint16_t ext_len = build_ext_payload(ext_buf);
 
+    update_ir_state();
+    uint8_t ir12[12];
+    uint8_t ir10[10];
+    wiimote_ir_pack_extended(&ir_state, ir12);
+    wiimote_ir_pack_basic(&ir_state, ir10);
+
     uint8_t buf[23];
     uint16_t n = wiimote_build_current(&wm_state, &last_event,
-                                       ext_len ? ext_buf : NULL, ext_len, buf);
+                                       ext_len ? ext_buf : NULL, ext_len,
+                                       ir12, ir10, buf);
     wiimote_sdp_send_report(buf, n);
 }
 
