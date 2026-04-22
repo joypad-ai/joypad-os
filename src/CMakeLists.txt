@@ -1959,6 +1959,25 @@ target_link_libraries(joypad_gc2usb_rp2040zero PRIVATE pico_stdlib pico_multicor
 joypad_target_common(joypad_gc2usb_rp2040zero)
 pico_generate_pio_header(joypad_gc2usb_rp2040zero ${CMAKE_CURRENT_LIST_DIR}/lib/joybus-pio/src/joybus.pio)
 
+# --- GC2USB (GameCube -> USB HID, Pico) ---
+# GP29 isn't broken out on the standard Pico, so use GP28 (last regular GPIO)
+# for the joybus data line.
+add_executable(joypad_gc2usb_pico)
+target_compile_definitions(joypad_gc2usb_pico PRIVATE CONFIG_GC2USB=1 CONFIG_USB=1 DISABLE_USB_HOST=1 GC_PIN_DATA=28)
+target_sources(joypad_gc2usb_pico PUBLIC ${CORE_SOURCES} ${USB_DEVICE_SOURCES}
+    ${GC_HOST_SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/gc2usb/app.c
+)
+target_include_directories(joypad_gc2usb_pico PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/gc2usb
+    ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/host/gc
+    ${CMAKE_CURRENT_SOURCE_DIR}/lib/joybus-pio/include
+)
+target_link_libraries(joypad_gc2usb_pico PRIVATE pico_stdlib pico_multicore hardware_pio pico_rand tinyusb_device tinyusb_board)
+joypad_target_common(joypad_gc2usb_pico)
+pico_generate_pio_header(joypad_gc2usb_pico ${CMAKE_CURRENT_LIST_DIR}/lib/joybus-pio/src/joybus.pio)
+
 # --- NEGEO2USB (NEOGEO -> USB HID) ---
 add_executable(joypad_neogeo2usb)
 target_compile_definitions(joypad_neogeo2usb PRIVATE CONFIG_NEOGEO2USB=1 CONFIG_USB=1 DISABLE_USB_HOST=1 BUTTON_USER_GPIO=${BOARD_BUTTON_GPIO})
