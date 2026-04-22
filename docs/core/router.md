@@ -140,7 +140,7 @@ For push-based outputs (UART, BLE) that do not poll `router_get_output()`, regis
 router_set_tap(OUTPUT_TARGET_UART, my_uart_callback);
 
 // Exclusive tap: callback called, router_outputs NOT written (avoids copy)
-router_set_tap_exclusive(OUTPUT_TARGET_BLE_PERIPHERAL, my_ble_callback);
+router_set_tap_exclusive(OUTPUT_TARGET_BT, my_ble_callback);
 ```
 
 ## Routing Table

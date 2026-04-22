@@ -26,7 +26,7 @@
 #endif
 
 #if REQUIRE_BLE_OUTPUT
-#include "bt/ble_output/ble_output.h"
+#include "bt/bt_output/bt_output.h"
 #include "bt/transport/bt_transport.h"
 
 #ifdef BTSTACK_USE_CYW43
@@ -50,7 +50,7 @@ typedef void (*bt_nrf_post_init_fn)(void);
 extern void bt_nrf_set_post_init(bt_nrf_post_init_fn fn);
 #endif
 
-// BTstack APIs for bond management (available after ble_output_late_init)
+// BTstack APIs for bond management (available after bt_output_late_init)
 extern void gap_delete_all_link_keys(void);
 extern void gap_advertisements_enable(int enabled);
 extern int le_device_db_max_count(void);
@@ -143,8 +143,8 @@ static void on_button_event(button_event_t event)
 #endif
 #if REQUIRE_BLE_OUTPUT
             printf("[app:controller_btusb] BLE: %s (%s), USB: %s (%s)\n",
-                   ble_output_get_mode_name(ble_output_get_mode()),
-                   ble_output_is_connected() ? "connected" : "advertising",
+                   bt_output_get_mode_name(bt_output_get_mode()),
+                   bt_output_is_connected() ? "connected" : "advertising",
                    usbd_get_mode_name(usbd_get_mode()),
                    tud_mounted() ? "mounted" : "disconnected");
 #else
@@ -156,12 +156,12 @@ static void on_button_event(button_event_t event)
 
         case BUTTON_EVENT_DOUBLE_CLICK: {
 #if REQUIRE_BLE_OUTPUT
-            if (ble_output_is_connected() || !usb_gamepad_active()) {
+            if (bt_output_is_connected() || !usb_gamepad_active()) {
                 // BLE connected or no active USB gamepad → cycle BLE mode
-                ble_output_mode_t next = ble_output_get_next_mode();
+                bt_output_mode_t next = bt_output_get_next_mode();
                 printf("[app:controller_btusb] Double-click - BLE mode → %s\n",
-                       ble_output_get_mode_name(next));
-                ble_output_set_mode(next);  // Saves to flash + reboots
+                       bt_output_get_mode_name(next));
+                bt_output_set_mode(next);  // Saves to flash + reboots
             } else
 #endif
             {
@@ -213,7 +213,7 @@ static bool sinput_rgb_override = false;
 static void bt_central_post_init(void)
 {
 #if REQUIRE_BLE_OUTPUT
-    ble_output_late_init();
+    bt_output_late_init();
 #endif
     // Always init HID handlers so bond management (forget, status) works
     // even when BT scanning is disabled. Only start scanning if enabled.
@@ -255,7 +255,7 @@ const InputInterface** app_get_input_interfaces(uint8_t* count)
 
 static const OutputInterface* output_interfaces[] = {
 #if REQUIRE_BLE_OUTPUT
-    &ble_output_interface,
+    &bt_output_interface,
 #endif
     &usbd_output_interface,
 };
@@ -370,7 +370,7 @@ void app_init(void)
         .merge_mode = MERGE_MODE,
         .max_players_per_output = {
 #if REQUIRE_BLE_OUTPUT
-            [OUTPUT_TARGET_BLE_PERIPHERAL] = 1,
+            [OUTPUT_TARGET_BT] = 1,
 #endif
             [OUTPUT_TARGET_USB_DEVICE] = 1,
         },
@@ -409,7 +409,7 @@ void app_init(void)
 
 #if REQUIRE_BLE_OUTPUT
     // Route: GPIO (sensors) → BLE Peripheral
-    router_add_route(INPUT_SOURCE_GPIO, OUTPUT_TARGET_BLE_PERIPHERAL, 0);
+    router_add_route(INPUT_SOURCE_GPIO, OUTPUT_TARGET_BT, 0);
 #endif
 
     // Route: GPIO (sensors) → USB Device (CDC config + wired gamepad)
@@ -419,7 +419,7 @@ void app_init(void)
     // Route: USB Host controllers → USB Device
     router_add_route(INPUT_SOURCE_USB_HOST, OUTPUT_TARGET_USB_DEVICE, 0);
 #if REQUIRE_BLE_OUTPUT
-    router_add_route(INPUT_SOURCE_USB_HOST, OUTPUT_TARGET_BLE_PERIPHERAL, 0);
+    router_add_route(INPUT_SOURCE_USB_HOST, OUTPUT_TARGET_BT, 0);
 #endif
 #endif
 
@@ -427,7 +427,7 @@ void app_init(void)
     // Route: BLE Central (scanned controllers) → USB Device
     router_add_route(INPUT_SOURCE_BLE_CENTRAL, OUTPUT_TARGET_USB_DEVICE, 0);
 #if REQUIRE_BLE_OUTPUT
-    router_add_route(INPUT_SOURCE_BLE_CENTRAL, OUTPUT_TARGET_BLE_PERIPHERAL, 0);
+    router_add_route(INPUT_SOURCE_BLE_CENTRAL, OUTPUT_TARGET_BT, 0);
 #endif
 #endif
 
@@ -443,14 +443,14 @@ void app_init(void)
     // Initialize BLE transport with post-init callback.
     // Post-init runs in BTstack task context after HCI is ready.
 #if REQUIRE_BLE_OUTPUT
-    ble_output_init();  // Load BLE mode from flash before BTstack starts
+    bt_output_init();  // Load BLE mode from flash before BTstack starts
 #endif
 
     // Select post-init callback
 #if REQUIRE_BT_INPUT
     #define BT_POST_INIT bt_central_post_init
 #elif REQUIRE_BLE_OUTPUT
-    #define BT_POST_INIT ble_output_late_init
+    #define BT_POST_INIT bt_output_late_init
 #endif
 
 #ifdef BTSTACK_USE_CYW43
@@ -543,17 +543,17 @@ void app_task(void)
     bt_task();
 
     // NeoPixel: show connection state and active output mode color
-    bool ble_conn = ble_output_is_connected();
+    bool ble_conn = bt_output_is_connected();
     bool usb_active = usb_gamepad_active();
     leds_set_connected_devices((ble_conn || usb_active) ? 1 : 0);
 
     // Track state changes for LED color updates
     static bool last_ble_conn = false;
     static bool last_usb_active = false;
-    static ble_output_mode_t last_ble_mode = BLE_MODE_COUNT;
+    static bt_output_mode_t last_ble_mode = BT_MODE_COUNT;
     static usb_output_mode_t last_usb_mode = USB_OUTPUT_MODE_COUNT;
 
-    ble_output_mode_t ble_mode = ble_output_get_mode();
+    bt_output_mode_t ble_mode = bt_output_get_mode();
     usb_output_mode_t usb_mode = usbd_get_mode();
 
     if (ble_conn != last_ble_conn || usb_active != last_usb_active ||
@@ -565,11 +565,11 @@ void app_task(void)
 
         uint8_t r, g, b;
         if (ble_conn) {
-            ble_output_get_mode_color(ble_mode, &r, &g, &b);
+            bt_output_get_mode_color(ble_mode, &r, &g, &b);
         } else if (usb_active) {
             usbd_get_mode_color(usb_mode, &r, &g, &b);
         } else {
-            ble_output_get_mode_color(ble_mode, &r, &g, &b);
+            bt_output_get_mode_color(ble_mode, &r, &g, &b);
         }
         leds_set_color(r, g, b);
     }
@@ -704,7 +704,7 @@ void app_task(void)
             bool any_host_enabled = false;
 
 #if REQUIRE_BLE_OUTPUT
-            if (ble_output_is_connected()) any_connected = true;
+            if (bt_output_is_connected()) any_connected = true;
 #endif
 #if REQUIRE_BT_INPUT
             if (bt_input_enabled) {

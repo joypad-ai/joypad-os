@@ -24,6 +24,7 @@
 
 #include "wiimote_sdp.h"
 #include "wiimote_hid_descriptor.h"
+#include "wiimote_runtime.h"
 
 // BTstack includes (specific headers only — <btstack.h> drags in audio codecs)
 #include "btstack_config.h"
@@ -85,6 +86,20 @@ static void handle_pin_code_request(const uint8_t* packet) {
            requester[0], requester[1], requester[2], requester[3], requester[4], requester[5]);
 
     gap_pin_code_response_binary(requester, pin, 6);
+}
+
+// ============================================================================
+// OUTPUT REPORT CALLBACK — trampolines BTstack's signature to wiimote_runtime
+// ============================================================================
+
+static void report_data_callback(uint16_t cid, hid_report_type_t report_type,
+                                 uint16_t report_id, int report_size,
+                                 uint8_t* report) {
+    (void)cid;
+    (void)report_type;
+    (void)report_id;
+    if (report_size <= 0 || !report) return;
+    wiimote_runtime_handle_output_report(report, (uint16_t)report_size);
 }
 
 // ============================================================================
@@ -207,6 +222,10 @@ void wiimote_sdp_register(void) {
     // --- HID device + event handlers ---
     hid_device_init(false, WIIMOTE_HID_DESCRIPTOR_SIZE, wiimote_hid_descriptor);
     hid_device_register_packet_handler(packet_handler);
+
+    // Wii writes HID output reports (0x11-0x19) via SET_REPORT or the
+    // OUT interrupt channel; the report-data callback fires for both.
+    hid_device_register_report_data_callback(report_data_callback);
 
     // --- HCI event handler (for PIN/user-confirmation) ---
     hci_event_cb_reg.callback = &packet_handler;

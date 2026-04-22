@@ -1,19 +1,27 @@
-// ble_output.c - BLE HID Output Interface (HOGP Peripheral)
+// bt_output.c - Bluetooth HID Output (BLE HOGP + Classic HID device)
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2024 Robert Dale Smith
 //
-// Implements OutputInterface for BLE HID output using BTstack's hids_device
-// GATT service. Supports two modes:
-//   - Standard: Composite gamepad + keyboard + mouse (ESP32-BLE-CompositeHID compatible)
-//   - Xbox BLE: Xbox One S / Series X compatible gamepad with rumble
+// Implements OutputInterface for wireless HID output. Dispatches between
+// BLE HOGP peripheral modes and Classic BT HID-device modes based on the
+// flash-persisted current_mode. Only one wireless profile is live at a
+// time; switching modes persists to flash and reboots.
+//   - BT_MODE_BLE_STANDARD: composite gamepad + keyboard + mouse
+//   - BT_MODE_BLE_XBOX:     Xbox One S / Series X compatible BLE gamepad
+//   - BT_MODE_CLASSIC_WIIMOTE: Nintendo RVL-CNT-01 over Classic BT
+//     (only when BTSTACK_HAS_CLASSIC is defined)
 
 #include "app.h"
-#include "ble_output.h"
+#include "bt_output.h"
 #include "ble_output_keyboard.h"
 #include "ble_output_mouse.h"
 #include "ble_output_xbox.h"
 #include "ble_nus.h"
 #include "ble_gamepad.h"  // Generated from ble_gamepad.gatt by compile_gatt.py
+
+#ifdef BTSTACK_HAS_CLASSIC
+#include "wiimote/wiimote_runtime.h"
+#endif
 
 // Xbox GATT database (compiled from ble_xbox.gatt, wrapped in ble_xbox_gatt_db.c)
 extern const uint8_t *ble_xbox_profile_data;
@@ -262,9 +270,32 @@ typedef enum {
 static hci_con_handle_t con_handle = HCI_CON_HANDLE_INVALID;
 static bool ble_connected = false;
 
-bool ble_output_is_connected(void)
+// Mode is persisted across reboots (settings->bt_output_mode) and loaded in
+// bt_output_init(). Default BLE Standard so that unmodified firmware acts
+// the same as before this file grew Classic-BT dispatch.
+static bt_output_mode_t current_mode = BT_MODE_BLE_STANDARD;
+
+bool bt_output_is_connected(void)
 {
+#ifdef BTSTACK_HAS_CLASSIC
+    if (current_mode == BT_MODE_CLASSIC_WIIMOTE) return wiimote_runtime_is_connected();
+#endif
     return ble_connected;
+}
+
+bool bt_output_is_mode_supported(bt_output_mode_t mode)
+{
+    switch (mode) {
+        case BT_MODE_BLE_STANDARD:
+        case BT_MODE_BLE_XBOX:
+            return true;
+#ifdef BTSTACK_HAS_CLASSIC
+        case BT_MODE_CLASSIC_WIIMOTE:
+            return true;
+#endif
+        default:
+            return false;
+    }
 }
 
 // Pending reports (flow-controlled — only one at a time)
@@ -286,7 +317,10 @@ static hids_device_report_t hid_report_storage[6];
 #define HID_REPORT_STORAGE_COUNT (sizeof(hid_report_storage) / sizeof(hid_report_storage[0]))
 
 // Mode (loaded from flash on init)
-static ble_output_mode_t current_mode = BLE_MODE_STANDARD;
+// Defined up top (before is_connected) so the mode-dispatch helpers can
+// reference it — this is the real definition; keep the forward-decl above
+// pointing at this storage.
+// static bt_output_mode_t current_mode = BT_MODE_BLE_STANDARD;  (moved up)
 
 static btstack_packet_callback_registration_t hci_event_callback_registration;
 static btstack_packet_callback_registration_t sm_event_callback_registration;
@@ -446,7 +480,7 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
 
                     printf("[ble_output] SET_REPORT: id=%d len=%d mode=%d\n",
                            report_id, report_len, current_mode);
-                    if (current_mode == BLE_MODE_XBOX && report_id == 3) {
+                    if (current_mode == BT_MODE_BLE_XBOX && report_id == 3) {
                         // Xbox rumble output report
                         uint8_t rumble_left, rumble_right;
                         if (ble_xbox_parse_rumble(report_data, report_len,
@@ -475,17 +509,20 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
 // OUTPUT INTERFACE IMPLEMENTATION
 // ============================================================================
 
-void ble_output_init(void)
+void bt_output_init(void)
 {
     // Load mode from flash
     flash_init();
     flash_t *settings = flash_get_settings();
-    if (settings && settings->ble_output_mode < BLE_MODE_COUNT) {
-        current_mode = (ble_output_mode_t)settings->ble_output_mode;
+    if (settings && settings->bt_output_mode < BT_MODE_COUNT) {
+        bt_output_mode_t saved = (bt_output_mode_t)settings->bt_output_mode;
+        // Guard against a flashed mode that's unsupported on this hardware
+        // (e.g. nRF52840 flashed from a Pico W image that stored Wiimote).
+        if (bt_output_is_mode_supported(saved)) current_mode = saved;
     }
 
     printf("[ble_output] Initializing BLE output (mode: %s)\n",
-           ble_output_get_mode_name(current_mode));
+           bt_output_get_mode_name(current_mode));
 
     // Initialize reports to neutral state
     memset(&pending_gamepad, 0, sizeof(pending_gamepad));
@@ -522,20 +559,28 @@ static int att_write_callback(hci_con_handle_t con_handle, uint16_t att_handle,
 }
 
 // Called after bt_init() — BTstack must be running before GATT/GAP setup
-void ble_output_late_init(void)
+void bt_output_late_init(void)
 {
-    printf("[ble_output] Setting up BLE GATT services (mode: %s)\n",
-           ble_output_get_mode_name(current_mode));
+    printf("[bt_output] Setting up BT services (mode: %s)\n",
+           bt_output_get_mode_name(current_mode));
+
+#ifdef BTSTACK_HAS_CLASSIC
+    if (current_mode == BT_MODE_CLASSIC_WIIMOTE) {
+        // Classic BT path — skip the BLE HOGP setup entirely.
+        wiimote_runtime_init();
+        return;
+    }
+#endif
 
     // Initialize L2CAP and Security Manager (required before ATT/GATT setup)
     l2cap_init();
     sm_init();
 
     // Setup ATT server with mode-appropriate GATT profile
-    const uint8_t *gatt_db = (current_mode == BLE_MODE_XBOX)
+    const uint8_t *gatt_db = (current_mode == BT_MODE_BLE_XBOX)
         ? ble_xbox_profile_data : profile_data;
     printf("[ble_output] Using %s GATT database (ptr=%p)\n",
-           (current_mode == BLE_MODE_XBOX) ? "Xbox" : "Standard", gatt_db);
+           (current_mode == BT_MODE_BLE_XBOX) ? "Xbox" : "Standard", gatt_db);
     att_server_init(gatt_db, NULL, att_write_callback);
 
     // Setup GATT services
@@ -547,7 +592,7 @@ void ble_output_late_init(void)
     device_information_service_server_init();
 
     // Mode-dependent PnP ID and device info
-    if (current_mode == BLE_MODE_XBOX) {
+    if (current_mode == BT_MODE_BLE_XBOX) {
         device_information_service_server_set_manufacturer_name("Microsoft");
         device_information_service_server_set_model_number("Xbox Wireless Controller");
         device_information_service_server_set_software_revision("1.0.0");
@@ -564,7 +609,7 @@ void ble_output_late_init(void)
     // Setup HID Device service with mode-appropriate descriptor
     const uint8_t *hid_desc;
     uint16_t hid_desc_size;
-    if (current_mode == BLE_MODE_XBOX) {
+    if (current_mode == BT_MODE_BLE_XBOX) {
         hid_desc = ble_xbox_get_descriptor();
         hid_desc_size = ble_xbox_get_descriptor_size();
     } else {
@@ -581,7 +626,7 @@ void ble_output_late_init(void)
     // Each mode uses a distinct BLE address so hosts see them as separate devices.
     // Derive a static random address from the real BD_ADDR, with mode in the last byte.
     // Static random addresses have the two MSBs of the first byte set to 11.
-    if (current_mode != BLE_MODE_STANDARD) {
+    if (current_mode != BT_MODE_BLE_STANDARD) {
         bd_addr_t base_addr;
         gap_local_bd_addr(base_addr);
         bd_addr_t mode_addr;
@@ -597,7 +642,7 @@ void ble_output_late_init(void)
     const char *gap_name;
     const uint8_t *adv_data;
     uint16_t adv_data_len;
-    if (current_mode == BLE_MODE_XBOX) {
+    if (current_mode == BT_MODE_BLE_XBOX) {
         gap_name = "Joypad Xinput";
         adv_data = adv_data_xbox;
         adv_data_len = sizeof(adv_data_xbox);
@@ -627,7 +672,7 @@ void ble_output_late_init(void)
 
     // Initialize NUS (Nordic UART Service) for wireless config — standard mode only
     // (Xbox mode uses a different GATT profile without NUS)
-    if (current_mode == BLE_MODE_STANDARD) {
+    if (current_mode == BT_MODE_BLE_STANDARD) {
         ble_nus_init();
     }
 
@@ -638,9 +683,9 @@ void ble_output_late_init(void)
 // TASK — Standard mode (composite: gamepad + keyboard + mouse)
 // ============================================================================
 
-static void ble_output_task_standard(void)
+static void bt_output_task_standard(void)
 {
-    const input_event_t *event = router_get_output(OUTPUT_TARGET_BLE_PERIPHERAL, 0);
+    const input_event_t *event = router_get_output(OUTPUT_TARGET_BT, 0);
     if (!event) return;
 
     // Stream output event to CDC/NUS for web config (if enabled)
@@ -693,9 +738,9 @@ static void ble_output_task_standard(void)
 // TASK — Xbox BLE mode (gamepad only, with rumble feedback)
 // ============================================================================
 
-static void ble_output_task_xbox(void)
+static void bt_output_task_xbox(void)
 {
-    const input_event_t *event = router_get_output(OUTPUT_TARGET_BLE_PERIPHERAL, 0);
+    const input_event_t *event = router_get_output(OUTPUT_TARGET_BT, 0);
     if (!event) return;
 
     // Stream output event to CDC/NUS for web config (if enabled)
@@ -714,14 +759,21 @@ static void ble_output_task_xbox(void)
 // MAIN TASK DISPATCH
 // ============================================================================
 
-void ble_output_task(void)
+void bt_output_task(void)
 {
+#ifdef BTSTACK_HAS_CLASSIC
+    if (current_mode == BT_MODE_CLASSIC_WIIMOTE) {
+        wiimote_runtime_task();
+        return;
+    }
+#endif
+
     if (!ble_connected || con_handle == HCI_CON_HANDLE_INVALID) return;
 
-    if (current_mode == BLE_MODE_XBOX) {
-        ble_output_task_xbox();
+    if (current_mode == BT_MODE_BLE_XBOX) {
+        bt_output_task_xbox();
     } else {
-        ble_output_task_standard();
+        bt_output_task_standard();
     }
 }
 
@@ -729,54 +781,66 @@ void ble_output_task(void)
 // MODE SELECTION
 // ============================================================================
 
-ble_output_mode_t ble_output_get_mode(void)
+bt_output_mode_t bt_output_get_mode(void)
 {
     return current_mode;
 }
 
-void ble_output_set_mode(ble_output_mode_t mode)
+void bt_output_set_mode(bt_output_mode_t mode)
 {
-    if (mode >= BLE_MODE_COUNT || mode == current_mode) return;
+    if (mode >= BT_MODE_COUNT || mode == current_mode) return;
+    if (!bt_output_is_mode_supported(mode)) {
+        printf("[bt_output] Mode %s not supported on this platform, refusing\n",
+               bt_output_get_mode_name(mode));
+        return;
+    }
 
-    printf("[ble_output] Switching mode from %s to %s\n",
-           ble_output_get_mode_name(current_mode),
-           ble_output_get_mode_name(mode));
+    printf("[bt_output] Switching mode from %s to %s\n",
+           bt_output_get_mode_name(current_mode),
+           bt_output_get_mode_name(mode));
 
     // Save to flash
     flash_t *settings = flash_get_settings();
     if (settings) {
-        settings->ble_output_mode = (uint8_t)mode;
+        settings->bt_output_mode = (uint8_t)mode;
         flash_save_force(settings);
     }
 
     // Brief delay to allow flash write to complete
     platform_sleep_ms(50);
 
-    // Reboot to apply new HID descriptor
-    printf("[ble_output] Rebooting for new HID descriptor...\n");
+    // Reboot to apply new HID descriptor (and potentially switch BT stack)
+    printf("[bt_output] Rebooting for new profile...\n");
     platform_reboot();
 }
 
-ble_output_mode_t ble_output_get_next_mode(void)
+bt_output_mode_t bt_output_get_next_mode(void)
 {
-    return (ble_output_mode_t)((current_mode + 1) % BLE_MODE_COUNT);
+    bt_output_mode_t m = current_mode;
+    for (int i = 0; i < BT_MODE_COUNT; i++) {
+        m = (bt_output_mode_t)((m + 1) % BT_MODE_COUNT);
+        if (bt_output_is_mode_supported(m) && m != current_mode) return m;
+    }
+    return current_mode;
 }
 
-const char* ble_output_get_mode_name(ble_output_mode_t mode)
+const char* bt_output_get_mode_name(bt_output_mode_t mode)
 {
     switch (mode) {
-        case BLE_MODE_STANDARD: return "Standard BLE";
-        case BLE_MODE_XBOX:     return "Xbox BLE";
-        default:                return "Unknown";
+        case BT_MODE_BLE_STANDARD:    return "Standard BLE";
+        case BT_MODE_BLE_XBOX:        return "Xbox BLE";
+        case BT_MODE_CLASSIC_WIIMOTE: return "Wiimote (Classic BT)";
+        default:                      return "Unknown";
     }
 }
 
-void ble_output_get_mode_color(ble_output_mode_t mode, uint8_t *r, uint8_t *g, uint8_t *b)
+void bt_output_get_mode_color(bt_output_mode_t mode, uint8_t *r, uint8_t *g, uint8_t *b)
 {
     switch (mode) {
-        case BLE_MODE_STANDARD: *r = 0; *g = 0; *b = 64; break;   // Blue
-        case BLE_MODE_XBOX:     *r = 0; *g = 64; *b = 0; break;   // Green
-        default:                *r = 64; *g = 64; *b = 64; break;  // White
+        case BT_MODE_BLE_STANDARD:    *r = 0;  *g = 0;  *b = 64; break;  // Blue
+        case BT_MODE_BLE_XBOX:        *r = 0;  *g = 64; *b = 0;  break;  // Green
+        case BT_MODE_CLASSIC_WIIMOTE: *r = 64; *g = 64; *b = 64; break;  // White
+        default:                      *r = 64; *g = 0;  *b = 0;  break;  // Red
     }
 }
 
@@ -784,11 +848,11 @@ void ble_output_get_mode_color(ble_output_mode_t mode, uint8_t *r, uint8_t *g, u
 // OUTPUT INTERFACE EXPORT
 // ============================================================================
 
-const OutputInterface ble_output_interface = {
+const OutputInterface bt_output_interface = {
     .name = "BLE HID",
-    .target = OUTPUT_TARGET_BLE_PERIPHERAL,
-    .init = ble_output_init,
-    .task = ble_output_task,
+    .target = OUTPUT_TARGET_BT,
+    .init = bt_output_init,
+    .task = bt_output_task,
     .core1_task = NULL,
     .get_feedback = NULL,
     .get_rumble = NULL,

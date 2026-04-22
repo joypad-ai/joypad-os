@@ -16,7 +16,7 @@ The `flash_t` structure (256 bytes, exactly one flash page) holds:
 | `usb_output_mode` | 1B | USB device output mode (HID, XInput, PS3, etc.) |
 | `wiimote_orient_mode` | 1B | Wiimote orientation (Auto/Horizontal/Vertical) |
 | `custom_profile_count` | 1B | Number of custom profiles (0-4) |
-| `ble_output_mode` | 1B | BLE output mode |
+| `bt_output_mode` | 1B | BT output mode (BLE / Classic) |
 | `reserved` | 19B | Reserved for future settings |
 | `profiles[4]` | 224B | Up to 4 custom profiles (56 bytes each) |
 

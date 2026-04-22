@@ -11,7 +11,7 @@
 #include "core/input_interface.h"
 #include "core/output_interface.h"
 #include "usb/usbh/usbh.h"
-#include "bt/ble_output/ble_output.h"
+#include "bt/bt_output/bt_output.h"
 #include "usb/usbd/usbd.h"
 #include "bt/transport/bt_transport.h"
 #include "bt/btstack/btstack_host.h"
@@ -62,16 +62,16 @@ static void on_button_event(button_event_t event)
     switch (event) {
         case BUTTON_EVENT_CLICK:
             printf("[app:usb2ble] Button click - current mode: %s\n",
-                   ble_output_get_mode_name(ble_output_get_mode()));
+                   bt_output_get_mode_name(bt_output_get_mode()));
             break;
 
         case BUTTON_EVENT_DOUBLE_CLICK: {
             // Cycle BLE output mode (Standard ↔ Xbox BLE)
             // set_mode saves to flash and reboots
-            ble_output_mode_t next = ble_output_get_next_mode();
+            bt_output_mode_t next = bt_output_get_next_mode();
             printf("[app:usb2ble] Double-click - switching to %s\n",
-                   ble_output_get_mode_name(next));
-            ble_output_set_mode(next);
+                   bt_output_get_mode_name(next));
+            bt_output_set_mode(next);
             break;
         }
 
@@ -115,7 +115,7 @@ const InputInterface** app_get_input_interfaces(uint8_t* count)
 // ============================================================================
 
 static const OutputInterface* output_interfaces[] = {
-    &ble_output_interface,
+    &bt_output_interface,
     &usbd_output_interface,
 };
 
@@ -142,7 +142,7 @@ void app_init(void)
         .mode = ROUTING_MODE,
         .merge_mode = MERGE_MODE,
         .max_players_per_output = {
-            [OUTPUT_TARGET_BLE_PERIPHERAL] = 1,
+            [OUTPUT_TARGET_BT] = 1,
             [OUTPUT_TARGET_USB_DEVICE] = 1,
         },
         .merge_all_inputs = true,
@@ -151,7 +151,7 @@ void app_init(void)
     router_init(&router_cfg);
 
     // Route: USB Host → BLE Peripheral
-    router_add_route(INPUT_SOURCE_USB_HOST, OUTPUT_TARGET_BLE_PERIPHERAL, 0);
+    router_add_route(INPUT_SOURCE_USB_HOST, OUTPUT_TARGET_BT, 0);
 
     // Route: USB Host → USB Device (CDC config - streams events to web config tool)
     router_add_route(INPUT_SOURCE_USB_HOST, OUTPUT_TARGET_USB_DEVICE, 0);
@@ -171,7 +171,7 @@ void app_init(void)
     bt_init(&bt_transport_cyw43);
 
     // BTstack is now running — initialize GATT/GAP services
-    ble_output_late_init();
+    bt_output_late_init();
 
     printf("[app:usb2ble] Initialization complete\n");
     printf("[app:usb2ble]   Routing: USB Host → BLE Peripheral (Gamepad) + USB Device (CDC)\n");

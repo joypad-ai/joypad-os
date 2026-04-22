@@ -45,12 +45,12 @@ if(CONFIG_APP STREQUAL "controller_btusb")
         "${SHARED_SRC}/drivers/joywing/joywing_input.c"
         "${SHARED_SRC}/platform/esp32/platform_i2c_esp32.c"
         # BLE output (peripheral mode)
-        "${SHARED_SRC}/bt/ble_output/ble_output.c"
-        "${SHARED_SRC}/bt/ble_output/ble_output_keyboard.c"
-        "${SHARED_SRC}/bt/ble_output/ble_output_mouse.c"
-        "${SHARED_SRC}/bt/ble_output/ble_output_xbox.c"
-        "${SHARED_SRC}/bt/ble_output/ble_nus.c"
-        "${SHARED_SRC}/bt/ble_output/ble_xbox_gatt_db.c"
+        "${SHARED_SRC}/bt/bt_output/bt_output.c"
+        "${SHARED_SRC}/bt/bt_output/ble_output_keyboard.c"
+        "${SHARED_SRC}/bt/bt_output/ble_output_mouse.c"
+        "${SHARED_SRC}/bt/bt_output/ble_output_xbox.c"
+        "${SHARED_SRC}/bt/bt_output/ble_nus.c"
+        "${SHARED_SRC}/bt/bt_output/ble_xbox_gatt_db.c"
         # BT transport (peripheral mode — no btstack_host, no bthid)
         "${SHARED_SRC}/bt/transport/bt_transport.c"
         "${SHARED_SRC}/bt/transport/bt_transport_esp32.c"
@@ -405,7 +405,7 @@ if(APP_NEEDS_BTSTACK)
     )
     if(APP_BTSTACK_MODE STREQUAL "peripheral")
         list(APPEND INCLUDE_DIRS
-            "${SHARED_SRC}/bt/ble_output"
+            "${SHARED_SRC}/bt/bt_output"
             "${CMAKE_CURRENT_BINARY_DIR}"
         )
     endif()
@@ -453,18 +453,18 @@ if(APP_BTSTACK_MODE STREQUAL "peripheral")
     add_custom_command(
         OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/ble_gamepad.h"
         COMMAND python3 ${COMPILE_GATT}
-            "${SHARED_SRC}/bt/ble_output/ble_gamepad.gatt"
+            "${SHARED_SRC}/bt/bt_output/ble_gamepad.gatt"
             "${CMAKE_CURRENT_BINARY_DIR}/ble_gamepad.h"
-        DEPENDS "${SHARED_SRC}/bt/ble_output/ble_gamepad.gatt"
+        DEPENDS "${SHARED_SRC}/bt/bt_output/ble_gamepad.gatt"
         COMMENT "Generating ble_gamepad.h from GATT definition"
     )
 
     add_custom_command(
         OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/ble_xbox.h"
         COMMAND python3 ${COMPILE_GATT}
-            "${SHARED_SRC}/bt/ble_output/ble_xbox.gatt"
+            "${SHARED_SRC}/bt/bt_output/ble_xbox.gatt"
             "${CMAKE_CURRENT_BINARY_DIR}/ble_xbox.h"
-        DEPENDS "${SHARED_SRC}/bt/ble_output/ble_xbox.gatt"
+        DEPENDS "${SHARED_SRC}/bt/bt_output/ble_xbox.gatt"
         COMMENT "Generating ble_xbox.h from GATT definition"
     )
 

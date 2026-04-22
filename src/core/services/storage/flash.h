@@ -69,7 +69,7 @@ typedef struct {
     uint8_t custom_profile_count; // Number of custom profiles (0-4)
 
     // Global settings (continued)
-    uint8_t ble_output_mode;     // BLE output mode (0=Standard composite, 1=Xbox BLE)
+    uint8_t bt_output_mode;      // BT output mode (0=Standard BLE, 1=Xbox BLE, 2=Wiimote Classic, ...)
     uint8_t router_saved;        // Non-zero if router settings were explicitly saved
     uint8_t routing_mode;        // Router mode (0=simple, 1=merge, 2=broadcast)
     uint8_t merge_mode;          // Merge mode (0=priority, 1=blend, 2=all)

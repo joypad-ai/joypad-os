@@ -34,7 +34,7 @@
 
 // Optional BLE output support
 #if REQUIRE_BLE_OUTPUT
-#include "bt/ble_output/ble_output.h"
+#include "bt/bt_output/bt_output.h"
 #endif
 
 // ============================================================================
@@ -362,10 +362,10 @@ static void cmd_mode_list(const char* json)
 static void cmd_ble_mode_get(const char* json)
 {
     (void)json;
-    ble_output_mode_t mode = ble_output_get_mode();
+    bt_output_mode_t mode = bt_output_get_mode();
     snprintf(response_buf, sizeof(response_buf),
              "{\"mode\":%d,\"name\":\"%s\"}",
-             (int)mode, ble_output_get_mode_name(mode));
+             (int)mode, bt_output_get_mode_name(mode));
     send_json(response_buf);
 }
 
@@ -377,46 +377,46 @@ static void cmd_ble_mode_set(const char* json)
         return;
     }
 
-    if (mode < 0 || mode >= BLE_MODE_COUNT) {
+    if (mode < 0 || mode >= BT_MODE_COUNT) {
         send_error("invalid mode");
         return;
     }
 
-    ble_output_mode_t current = ble_output_get_mode();
-    if ((ble_output_mode_t)mode == current) {
+    bt_output_mode_t current = bt_output_get_mode();
+    if ((bt_output_mode_t)mode == current) {
         snprintf(response_buf, sizeof(response_buf),
                  "{\"mode\":%d,\"name\":\"%s\",\"reboot\":false}",
-                 mode, ble_output_get_mode_name((ble_output_mode_t)mode));
+                 mode, bt_output_get_mode_name((bt_output_mode_t)mode));
         send_json(response_buf);
         return;
     }
 
     snprintf(response_buf, sizeof(response_buf),
              "{\"mode\":%d,\"name\":\"%s\",\"reboot\":true}",
-             mode, ble_output_get_mode_name((ble_output_mode_t)mode));
+             mode, bt_output_get_mode_name((bt_output_mode_t)mode));
     send_json(response_buf);
 
     // Flush then switch mode (saves to flash and reboots)
     tud_task();
     platform_sleep_ms(50);
     tud_task();
-    ble_output_set_mode((ble_output_mode_t)mode);
+    bt_output_set_mode((bt_output_mode_t)mode);
 }
 
 static void cmd_ble_mode_list(const char* json)
 {
     (void)json;
-    ble_output_mode_t current = ble_output_get_mode();
+    bt_output_mode_t current = bt_output_get_mode();
 
     int pos = snprintf(response_buf, sizeof(response_buf),
                        "{\"current\":%d,\"modes\":[", (int)current);
 
     bool first = true;
-    for (int i = 0; i < BLE_MODE_COUNT && pos < (int)sizeof(response_buf) - 50; i++) {
+    for (int i = 0; i < BT_MODE_COUNT && pos < (int)sizeof(response_buf) - 50; i++) {
         if (!first) pos += snprintf(response_buf + pos, sizeof(response_buf) - pos, ",");
         first = false;
         pos += snprintf(response_buf + pos, sizeof(response_buf) - pos,
-                        "{\"id\":%d,\"name\":\"%s\"}", i, ble_output_get_mode_name(i));
+                        "{\"id\":%d,\"name\":\"%s\"}", i, bt_output_get_mode_name(i));
     }
     snprintf(response_buf + pos, sizeof(response_buf) - pos, "]}");
     send_json(response_buf);
