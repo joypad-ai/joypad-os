@@ -196,7 +196,6 @@ static void __not_in_flash_func(gpio_tap_callback)(output_target_t output,
 // init for GPIO communication
 void gpio_device_init()
 { 
-  profile_indicator_disable_rumble();
   profile_set_player_count_callback(gpio_get_player_count_for_profile);
 
   // Register exclusive tap for push-based GPIO updates — fires immediately from
