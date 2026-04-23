@@ -6,6 +6,7 @@
 #include "profile.h"
 #include "platform/platform.h"
 #include <stdio.h>
+#include <stddef.h>
 #include <string.h>
 
 // External dependencies (feedback and visual indication)
@@ -813,8 +814,8 @@ void profile_apply(const profile_t* profile,
         input_buttons &= ~JP_BUTTON_DR;   // D-pad Right
     }
 
-    // Initialize output with passthrough values
-    memset(output, 0, sizeof(profile_output_t));
+    // Zero output fields only — autofire_start_ms at the end is preserved across calls.
+    memset(output, 0, offsetof(profile_output_t, autofire_start_ms));
     output->buttons = input_buttons;  // Start with passthrough
     output->left_x = lx;
     output->left_y = ly;
@@ -909,6 +910,23 @@ void profile_apply(const profile_t* profile,
 
         // Check if input button is pressed (includes threshold-based L2/R2)
         bool pressed = ((buttons_with_triggers & entry->input) != 0);
+
+        if (entry->autofire_period_ms > 0) {
+            uint8_t bit = __builtin_ctz(entry->input);
+            if (bit < AUTOFIRE_BUTTON_COUNT) {
+                if (pressed) {
+                    if (output->autofire_start_ms[bit] == 0)
+                        output->autofire_start_ms[bit] = platform_time_ms();
+                    uint32_t elapsed = platform_time_ms() - output->autofire_start_ms[bit];
+                    // Time within the current cycle = elapsed % period (ms).
+                    // Button ON for the first half, OFF for the second half.
+                    // e.g. 30 Hz (period=33ms): 0-16ms ON, 17-32ms OFF, 33ms new cycle ...
+                    pressed = (elapsed % entry->autofire_period_ms) < (entry->autofire_period_ms / 2);
+                } else {
+                    output->autofire_start_ms[bit] = 0;
+                }
+            }
+        }
 
         if (pressed) {
             // Set output button(s)
