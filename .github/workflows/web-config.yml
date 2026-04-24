@@ -26,6 +26,19 @@ jobs:
       - name: Build
         run: cd tools/web-config && npm run build
 
+      # Vercel CLI v25 (used by amondnet/vercel-action@v25) needs a
+      # .vercel/project.json to identify the project. Generate it from the
+      # repo secrets so we don't have to commit the link file.
+      - name: Link Vercel project
+        run: |
+          mkdir -p .vercel
+          cat > .vercel/project.json <<EOF
+          {
+            "orgId": "${{ secrets.VERCEL_ORG_ID }}",
+            "projectId": "${{ secrets.VERCEL_PROJECT_ID }}"
+          }
+          EOF
+
       - name: Deploy to Vercel
         uses: amondnet/vercel-action@v25
         with:
