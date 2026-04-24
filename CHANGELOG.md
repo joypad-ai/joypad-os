@@ -11,7 +11,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 ### Added
 
 #### New Apps
-- **bt2wii** — Bluetooth controllers → Wii extension port (I2C slave emulation)
+- **bt2wiiext** — Bluetooth controllers → Wii extension port (Classic Controller Pro I2C slave emulation with marcan/Dolphin extension encryption); fully functional in libogc-based homebrew controller tester apps
 - **wii2usb / wii2gc / wii2n64** — Wii extension accessories (Nunchuck, Classic, Classic Pro) → USB HID, GameCube, or N64
 - **bt2gc / bt2nuon / bt2loopy** — Bluetooth → GameCube, Nuon, and Casio Loopy output (Pico W)
 - **nuon2usb** — Read Nuon controllers as USB HID input
@@ -84,7 +84,12 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 - NeoPixel data loss on multi-LED chains
 - BOOTSEL button reads throttled to prevent blocking flash access and interrupts
 - Wii extension support extended to all accessories (Nunchuck, Classic, Classic Pro, and others)
+- Wii extension calibration block checksum corrected to Dolphin's 8-bit format (`cal[14] = sum+0x55`, `cal[15] = cal[14]+0x55`); previous 16-bit big-endian sum was rejected by the Wii System Menu, causing it to fall back to internal defaults and mis-map analog axes
 - PCEngine docs: added voltage level warning for 5V→3.3V level shifting
+
+### Known limitations
+
+- **bt2wiiext on Wii System Menu** — analog stick direction mapping has unresolved issues specific to the System Menu's cursor logic; the firmware reports correct format-0x01 byte values (verified in libogc-based homebrew controller tester apps) but the System Menu interprets them differently. Buttons and analog triggers work correctly in all tested contexts.
 
 ---
 
