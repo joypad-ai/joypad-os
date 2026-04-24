@@ -2,7 +2,7 @@ name: Deploy Web Config
 
 on:
   push:
-    branches: [main, master]
+    branches: [main]
     paths:
       - 'tools/web-config/**'
   workflow_dispatch:
