@@ -26,24 +26,27 @@ jobs:
       - name: Build
         run: cd tools/web-config && npm run build
 
-      # Vercel CLI v25 (used by amondnet/vercel-action@v25) needs a
-      # .vercel/project.json to identify the project. Generate it from the
-      # repo secrets so we don't have to commit the link file.
-      - name: Link Vercel project
-        run: |
-          mkdir -p .vercel
-          cat > .vercel/project.json <<EOF
-          {
-            "orgId": "${{ secrets.VERCEL_ORG_ID }}",
-            "projectId": "${{ secrets.VERCEL_PROJECT_ID }}"
-          }
-          EOF
+      # Vercel modern CLI flow — no .vercel/ directory or amondnet action.
+      # The CLI honours VERCEL_ORG_ID + VERCEL_PROJECT_ID env vars on its
+      # own when invoked directly (the older amondnet/vercel-action@v25
+      # wrapper around CLI v25 doesn't, hence the previous failures).
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Pull Vercel environment
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Build with Vercel
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
 
       - name: Deploy to Vercel
-        uses: amondnet/vercel-action@v25
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
-          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
-          vercel-args: '--prod'
-          working-directory: ./
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
