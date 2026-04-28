@@ -193,7 +193,7 @@ static inline void write_data(const uint8_t* data, size_t len) {
 #ifndef DISABLE_DISPLAY_SPI
 extern void display_spi_init(const display_config_t* config);
 #endif
-extern void display_i2c_init(const display_i2c_config_t* config);
+extern bool display_i2c_init(const display_i2c_config_t* config);
 
 // ============================================================================
 // INITIALIZATION
@@ -239,8 +239,13 @@ void display_init(const display_config_t* config) {
 #endif
 
 void display_init_i2c(const display_i2c_config_t* config) {
-    // I2C transport init (sets function pointers + col_offset)
-    display_i2c_init(config);
+    // I2C transport init (sets function pointers + col_offset).
+    // Returns false when no device ACKs at the configured address —
+    // skip the rest so display_is_initialized() stays false and the
+    // app can avoid all OLED bookkeeping cost when no display is wired.
+    if (!display_i2c_init(config)) {
+        return;
+    }
     rotated_panel = true;  // SH1107 is 64x128 native, rotated 90° to 128x64
 
     // SH1107 128x64 init sequence (from Adafruit SH110X library)
@@ -279,7 +284,9 @@ void display_init_i2c(const display_i2c_config_t* config) {
 
 void display_init_ssd1306_i2c(const display_i2c_config_t* config) {
     // I2C transport init (sets function pointers + col_offset)
-    display_i2c_init(config);
+    if (!display_i2c_init(config)) {
+        return;
+    }
     // SSD1306 is native 128x64, no rotation needed
 
     // SSD1306 init sequence

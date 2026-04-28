@@ -9,6 +9,7 @@
 #include "hardware/i2c.h"
 #include "hardware/gpio.h"
 #include "pico/stdlib.h"
+#include <stdio.h>
 #include <string.h>
 
 static i2c_inst_t* i2c = NULL;
@@ -29,7 +30,7 @@ static void i2c_write_data(const uint8_t* data, size_t len) {
     i2c_write_blocking(i2c, i2c_addr, buf, chunk + 1, false);
 }
 
-void display_i2c_init(const display_i2c_config_t* config) {
+bool display_i2c_init(const display_i2c_config_t* config) {
     i2c = (config->i2c_inst == 0) ? i2c0 : i2c1;
     i2c_addr = config->addr;
 
@@ -40,7 +41,21 @@ void display_i2c_init(const display_i2c_config_t* config) {
     gpio_pull_up(config->pin_sda);
     gpio_pull_up(config->pin_scl);
 
+    // Probe: a single-byte write with a short timeout. If no device ACKs,
+    // the call returns PICO_ERROR_GENERIC immediately and we bail without
+    // registering transport. Without this probe a missing OLED would let
+    // the rest of the firmware spend cycles building+shipping a framebuffer
+    // every loop iteration, NACKing on every byte.
+    uint8_t probe = 0x00;
+    int rc = i2c_write_timeout_us(i2c, i2c_addr, &probe, 1, false, 2000);
+    if (rc < 0) {
+        printf("[display] No I2C device at 0x%02X (rc=%d) — skipping OLED init\n",
+               i2c_addr, rc);
+        return false;
+    }
+
     // Register transport
     display_set_transport(i2c_write_cmd, i2c_write_data);
     display_set_col_offset(0);  // SH1107 uses no column offset
+    return true;
 }

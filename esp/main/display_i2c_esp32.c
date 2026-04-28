@@ -69,7 +69,7 @@ static void display_start_task(void)
 #define I2C_SDA_PIN  3
 #define I2C_SCL_PIN  4
 
-void display_i2c_init(const display_i2c_config_t* config)
+bool display_i2c_init(const display_i2c_config_t* config)
 {
     // Initialize I2C bus via platform HAL
     platform_i2c_config_t i2c_cfg = {
@@ -81,7 +81,7 @@ void display_i2c_init(const display_i2c_config_t* config)
     i2c_bus = platform_i2c_init(&i2c_cfg);
     if (!i2c_bus) {
         printf("[display] I2C bus init failed\n");
-        return;
+        return false;
     }
 
     // Probe: check if a display is actually connected at this address
@@ -90,7 +90,7 @@ void display_i2c_init(const display_i2c_config_t* config)
     if (ret) {
         printf("[display] No I2C device at 0x%02X\n", config->addr);
         i2c_bus = NULL;
-        return;
+        return false;
     }
 
     i2c_addr = config->addr;
@@ -103,4 +103,5 @@ void display_i2c_init(const display_i2c_config_t* config)
     display_start_task();
 
     printf("[display] I2C transport initialized (addr=0x%02X)\n", i2c_addr);
+    return true;
 }

@@ -509,7 +509,12 @@ void joy_anim_event(joy_event_t event) {
             break;
 
         case JOY_EVENT_IDLE_TIMEOUT:
-            if (current_state == JOY_STATE_IDLE) {
+            // Single-step demotion. App fires this at staged timeouts:
+            //   ACTIVE → IDLE   (first wake-down)
+            //   IDLE   → SLEEP  (second wake-down)
+            if (current_state == JOY_STATE_ACTIVE) {
+                set_state(JOY_STATE_IDLE, now);
+            } else if (current_state == JOY_STATE_IDLE) {
                 set_state(JOY_STATE_SLEEP, now);
             }
             break;

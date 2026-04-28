@@ -443,7 +443,10 @@ void usbd_get_mode_color(usb_output_mode_t mode, uint8_t *r, uint8_t *g, uint8_t
         case USB_OUTPUT_MODE_PCEMINI:
             *r = 0; *g = 0; *b = 64; break;      // blue
         case USB_OUTPUT_MODE_SINPUT:
-            *r = 80; *g = 80; *b = 80; break;    // white
+            // White stacks all 3 channels — keep per-channel low so the
+            // total brightness matches (and undercuts) the single-channel
+            // mode colors. Even at 10/ch the perceived output is bright.
+            *r = 10; *g = 10; *b = 10; break;    // dim white
         case USB_OUTPUT_MODE_CDC:
             *r = 0; *g = 64; *b = 64; break;     // cyan
         default: // HID, GC_ADAPTER
