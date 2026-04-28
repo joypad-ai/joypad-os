@@ -146,6 +146,13 @@ static void joywing_init_instance(uint8_t idx)
 
     uint8_t hw_id = seesaw_get_hw_id(&jw->seesaw);
     printf("[joywing:%d] Seesaw HW ID: 0x%02X (addr=0x%02X)\n", idx, hw_id, addr);
+    if (hw_id == 0) {
+        // No Seesaw responded — leave instance disabled so polling doesn't
+        // keep timing out at 6 I2C ops/poll. Web config can still show
+        // the JoyWing as configured; presence is decided at boot.
+        printf("[joywing:%d] No device — instance disabled\n", idx);
+        return;
+    }
 
     if (!seesaw_gpio_set_input_pullup(&jw->seesaw, JOYWING_BTN_MASK)) {
         printf("[joywing:%d] GPIO config failed\n", idx);

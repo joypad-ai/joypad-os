@@ -905,13 +905,17 @@ target_compile_definitions(joypad_usb_feather_rp2040_max3421 PRIVATE
     MAX3421_CS_PIN=10
     MAX3421_INTR_PIN=9
     USE_BOOTSEL_BUTTON=1
-    # FeatherWing OLED 128x64 (SH1107) over I2C on STEMMA QT
+    # FeatherWing OLED 128x64 (SH1107) over I2C on STEMMA QT.
+    # Button silkscreen labels D6/D5 → RP2040 GPIO 8/7 (NOT 6/5 — the
+    # Adafruit Feather pin labels do not map 1:1 to GPIO numbers).
+    # Button A on D9 (GPIO 9) conflicts with MAX3421 INT here, so it's
+    # not defined.
     OLED_I2C_INST=1
     OLED_I2C_SDA_PIN=2
     OLED_I2C_SCL_PIN=3
     OLED_I2C_ADDR=0x3C
-    OLED_BUTTON_B_PIN=6
-    OLED_BUTTON_C_PIN=5
+    OLED_BUTTON_B_PIN=8
+    OLED_BUTTON_C_PIN=7
     I2C_PEER_ENABLED=1
 )
 target_sources(joypad_usb_feather_rp2040_max3421 PUBLIC
@@ -950,13 +954,14 @@ target_compile_definitions(joypad_usb_feather_rp2040_usb_host_max3421 PRIVATE
     MAX3421_MISO_PIN=8
     MAX3421_CS_PIN=10
     MAX3421_INTR_PIN=9
-    # FeatherWing OLED 128x64 (SH1107) over I2C on STEMMA QT
+    # FeatherWing OLED 128x64 (SH1107) over I2C on STEMMA QT.
+    # Button A (D9 → GPIO 9) and B (D6 → GPIO 8) both conflict with
+    # MAX3421 (INT=9, MISO=8) on this build — only C is exposed.
     OLED_I2C_INST=1
     OLED_I2C_SDA_PIN=2
     OLED_I2C_SCL_PIN=3
     OLED_I2C_ADDR=0x3C
-    OLED_BUTTON_B_PIN=6
-    OLED_BUTTON_C_PIN=5
+    OLED_BUTTON_C_PIN=7
     I2C_PEER_ENABLED=1
 )
 target_sources(joypad_usb_feather_rp2040_usb_host_max3421 PUBLIC
@@ -2229,9 +2234,11 @@ target_compile_definitions(joypad_controller_btusb_feather_rp2040 PRIVATE
     OLED_I2C_SDA_PIN=2
     OLED_I2C_SCL_PIN=3
     OLED_I2C_ADDR=0x3C
+    # FeatherWing OLED 128x64 buttons. Pin labels on the FeatherWing
+    # silkscreen (D9/D6/D5) map to RP2040 GPIO 9/8/7 — NOT 9/6/5.
     OLED_BUTTON_A_PIN=9
-    OLED_BUTTON_B_PIN=6
-    OLED_BUTTON_C_PIN=5
+    OLED_BUTTON_B_PIN=8
+    OLED_BUTTON_C_PIN=7
 )
 target_sources(joypad_controller_btusb_feather_rp2040 PUBLIC
     ${CORE_SOURCES}

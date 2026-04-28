@@ -101,10 +101,58 @@ extern void le_device_db_remove(int index);
 #endif
 #endif
 
-// OLED display + eyes animation (conditional)
+// OLED display + animation (conditional)
 #if defined(OLED_I2C_INST) || defined(OLED_I2C_DISPLAY)
 #include "core/services/display/display.h"
 #include "core/services/display/eyes_anim.h"
+#include "core/services/display/joy_anim.h"
+#include "usb/usbd/cdc/cdc_commands.h"
+#ifdef OLED_BUTTON_B_PIN
+#include "hardware/gpio.h"
+#endif
+
+// FeatherWing display modes — paged with the OLED's B (center) button.
+// Future plan: A=up, B=confirm, C=down for menu navigation. For now B
+// just cycles modes.
+typedef enum {
+    OLED_MODE_EYES = 0,
+    OLED_MODE_JOY,
+    OLED_MODE_INFO,    // USB mode + connected device + analog values + button marquee
+    OLED_MODE_COUNT,
+} oled_mode_t;
+static oled_mode_t oled_current_mode = OLED_MODE_EYES;
+
+// Arrow glyphs for the marquee (chars 1-4 in the built-in font).
+#define ARROW_UP    "\x01"
+#define ARROW_DOWN  "\x02"
+#define ARROW_LEFT  "\x03"
+#define ARROW_RIGHT "\x04"
+
+typedef struct { uint32_t mask; const char* name; } oled_button_name_t;
+static const oled_button_name_t oled_button_names[] = {
+    { JP_BUTTON_DU, ARROW_UP },     { JP_BUTTON_DR, ARROW_RIGHT },
+    { JP_BUTTON_DD, ARROW_DOWN },   { JP_BUTTON_DL, ARROW_LEFT },
+    { JP_BUTTON_B1, "B1" }, { JP_BUTTON_B2, "B2" },
+    { JP_BUTTON_B3, "B3" }, { JP_BUTTON_B4, "B4" },
+    { JP_BUTTON_L1, "L1" }, { JP_BUTTON_R1, "R1" },
+    { JP_BUTTON_L2, "L2" }, { JP_BUTTON_R2, "R2" },
+    { JP_BUTTON_S1, "S1" }, { JP_BUTTON_S2, "S2" },
+    { JP_BUTTON_L3, "L3" }, { JP_BUTTON_R3, "R3" },
+    { JP_BUTTON_A1, "A1" }, { JP_BUTTON_A2, "A2" },
+    { 0, NULL }
+};
+
+static const char* oled_transport_str(input_transport_t t) {
+    switch (t) {
+        case INPUT_TRANSPORT_USB:        return "USB";
+        case INPUT_TRANSPORT_BT_CLASSIC: return "BT";
+        case INPUT_TRANSPORT_BT_BLE:     return "BLE";
+        case INPUT_TRANSPORT_NATIVE:     return "Native";
+        case INPUT_TRANSPORT_I2C:        return "I2C";
+        case INPUT_TRANSPORT_GPIO:       return "GPIO";
+        default:                         return "?";
+    }
+}
 #endif
 
 // ============================================================================
@@ -505,7 +553,26 @@ void app_init(void)
     if (display_is_initialized()) {
         eyes_anim_init();
         eyes_anim_event(EYES_EVENT_BOOT);
-        printf("[app:controller_btusb] OLED + eyes animation initialized\n");
+        joy_anim_init();
+        joy_anim_event(JOY_EVENT_BOOT);
+#ifdef OLED_BUTTON_B_PIN
+        // B (center) cycles display modes. A and C set up too with
+        // pull-ups so they're ready for future menu navigation.
+        gpio_init(OLED_BUTTON_B_PIN);
+        gpio_set_dir(OLED_BUTTON_B_PIN, GPIO_IN);
+        gpio_pull_up(OLED_BUTTON_B_PIN);
+#ifdef OLED_BUTTON_A_PIN
+        gpio_init(OLED_BUTTON_A_PIN);
+        gpio_set_dir(OLED_BUTTON_A_PIN, GPIO_IN);
+        gpio_pull_up(OLED_BUTTON_A_PIN);
+#endif
+#ifdef OLED_BUTTON_C_PIN
+        gpio_init(OLED_BUTTON_C_PIN);
+        gpio_set_dir(OLED_BUTTON_C_PIN, GPIO_IN);
+        gpio_pull_up(OLED_BUTTON_C_PIN);
+#endif
+#endif
+        printf("[app:controller_btusb] OLED + eyes/joy animations initialized\n");
     } else {
         printf("[app:controller_btusb] No OLED detected — display features disabled\n");
     }
@@ -735,6 +802,12 @@ void app_task(void)
                         break;
                     }
                 }
+                // Feed each newly-pressed button name to the marquee for INFO mode.
+                for (int i = 0; oled_button_names[i].name != NULL; i++) {
+                    if (newly_pressed & oled_button_names[i].mask) {
+                        display_marquee_add(oled_button_names[i].name);
+                    }
+                }
             }
             last_buttons = ev->buttons;
             // Hold while any mapped button is still down.
@@ -750,14 +823,74 @@ void app_task(void)
             eyes_anim_event(EYES_EVENT_IDLE_TIMEOUT);
         }
 
-        // Tick + render at ~20fps cap (same as usb2usb).
-        if (now - last_render_ms >= 50) {
+#ifdef OLED_BUTTON_B_PIN
+        // B-button edge detection (active-low with pull-up). Cycle the
+        // display mode on press.
+        {
+            static bool last_b = true;
+            static uint32_t debounce_b = 0;
+            bool b = gpio_get(OLED_BUTTON_B_PIN);
+            if (!b && last_b && (now - debounce_b > 200)) {
+                debounce_b = now;
+                oled_current_mode = (oled_mode_t)((oled_current_mode + 1) % OLED_MODE_COUNT);
+                printf("[app:controller_btusb] OLED mode → %d\n", oled_current_mode);
+            }
+            last_b = b;
+        }
+#endif
+
+        if (now - last_render_ms >= 100) {
             last_render_ms = now;
-            eyes_anim_tick(now);
-            eyes_anim_render();
+            switch (oled_current_mode) {
+                case OLED_MODE_JOY:
+                    joy_anim_tick(now);
+                    joy_anim_render();
+                    break;
+
+                case OLED_MODE_INFO: {
+                    display_clear();
+                    usb_output_mode_t mode = usbd_get_mode();
+                    display_text_large(0, 0, usbd_get_mode_name(mode));
+                    display_hline(0, 17, DISPLAY_WIDTH);
+
+                    if (playersCount > 0 && players[0].dev_addr >= 0) {
+                        const char* pname = get_player_name(0);
+                        if (pname) display_text(0, 20, pname);
+
+                        char info[22];
+                        snprintf(info, sizeof(info), "%s dev:%d P%d/%d",
+                                 oled_transport_str(players[0].transport),
+                                 players[0].dev_addr,
+                                 players[0].player_number, playersCount);
+                        display_text(0, 30, info);
+
+                        if (ev) {
+                            char line[22];
+                            snprintf(line, sizeof(line), "L:%02X,%02X R:%02X,%02X T:%02X,%02X",
+                                     ev->analog[ANALOG_LX], ev->analog[ANALOG_LY],
+                                     ev->analog[ANALOG_RX], ev->analog[ANALOG_RY],
+                                     ev->analog[ANALOG_L2], ev->analog[ANALOG_R2]);
+                            display_text(0, 40, line);
+                        }
+                    }
+
+                    display_marquee_tick();
+                    display_marquee_render(52);
+                    break;
+                }
+
+                case OLED_MODE_EYES:
+                default:
+                    eyes_anim_tick(now);
+                    eyes_anim_render();
+                    break;
+            }
             display_update();
         } else {
-            eyes_anim_tick(now);
+            // Tick the active mode each iteration so animation timing
+            // stays smooth even between renders.
+            if (oled_current_mode == OLED_MODE_JOY) joy_anim_tick(now);
+            else if (oled_current_mode == OLED_MODE_EYES) eyes_anim_tick(now);
         }
     }
 #endif
