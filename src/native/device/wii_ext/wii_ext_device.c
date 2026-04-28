@@ -88,6 +88,10 @@ static void seed_id_bytes(wii_device_emulation_t k)
             id[0] = 0x00; id[5] = 0x01;
             break;
         case WII_DEV_EMULATE_CLASSIC_PRO:
+            // Pro defaults to format 0x01 (6-byte). Both libogc-based
+            // homebrew tester apps and the Wii System Menu read us in
+            // format 0x01 by default (neither writes 0xFE to switch us).
+            // id[0]=0x01 distinguishes Pro within the Classic family.
             id[0] = 0x01; id[5] = 0x01;
             break;
         case WII_DEV_EMULATE_NUNCHUCK:
@@ -98,28 +102,46 @@ static void seed_id_bytes(wii_device_emulation_t k)
     memcpy((void *)&reg_file[0xFA], id, 6);
 }
 
-// Seed format 0x01 (6-byte) rest pattern. Sticks centered, triggers off,
-// no buttons pressed. Encryption (if negotiated) wraps this in the read
+// Seed neutral report. Default mode follows id[4] (Pro defaults to 0x03,
+// Classic to 0x01). Encryption (if negotiated) wraps this in the read
 // handler — the register file itself stays plaintext.
 static void seed_neutral_report(void)
 {
-    reg_file[0x00] = 0xA0;  // RX<4:3>=10, LX=0x20
-    reg_file[0x01] = 0x20;  // RX<2:1>=00, LY=0x20
-    reg_file[0x02] = 0x10;  // RX<0>=0, LT<4:3>=0, RY=0x10
-    reg_file[0x03] = 0x00;  // LT<2:0>=0, RT=0
-    reg_file[0x04] = 0xFF;  // buttons unpressed
-    reg_file[0x05] = 0xFF;
-    reg_file[0xFE] = 0x01;
+    uint8_t fmt = reg_file[0xFE];  // already set by seed_id_bytes via id[4]
+    if (fmt == 0x03) {
+        // Format 0x03: 8-bit per axis, center 0x80, triggers 0x00.
+        reg_file[0x00] = 0x80;  // LX
+        reg_file[0x01] = 0x80;  // RX
+        reg_file[0x02] = 0x80;  // LY
+        reg_file[0x03] = 0x80;  // RY
+        reg_file[0x04] = 0x00;  // LT
+        reg_file[0x05] = 0x00;  // RT
+        reg_file[0x06] = 0xFF;  // buttons hi unpressed
+        reg_file[0x07] = 0xFF;  // buttons lo unpressed
+    } else {
+        // Format 0x01: 6-bit packed.
+        reg_file[0x00] = 0xA0;  // RX<4:3>=10, LX=0x20
+        reg_file[0x01] = 0x20;  // RX<2:1>=00, LY=0x20
+        reg_file[0x02] = 0x10;  // RX<0>=0, LT<4:3>=0, RY=0x10
+        reg_file[0x03] = 0x00;  // LT<2:0>=0, RT=0
+        reg_file[0x04] = 0xFF;  // buttons unpressed
+        reg_file[0x05] = 0xFF;
+        // Seed bytes 6/7 too in case host reads more than 6 bytes and
+        // interprets as buttons (active-low → 0x00 would mean "pressed").
+        reg_file[0x06] = 0xFF;
+        reg_file[0x07] = 0xFF;
+    }
 
     static const uint8_t init7d[6] = { 0x00, 0x80, 0x14, 0x82, 0x00, 0x08 };
     memcpy((void *)&reg_file[0x7D], init7d, sizeof(init7d));
 }
 
-// ---- Event → report packer (format 0x01) -----------------------------------
+// ---- Event → report packer (format 0x01 default; 0x03 when host requests) --
 
 static void pack_report_from_event(const input_event_t *ev)
 {
-    // Buttons — active-LOW: 1 = unpressed, 0 = pressed.
+    // Buttons — active-LOW: 1 = unpressed, 0 = pressed. Same bit layout
+    // in both format 0x01 and 0x03; just placed at different offsets.
     uint8_t btn_lo = 0xFF, btn_hi = 0xFF;
     uint32_t btn = ev->buttons;
     if (btn & JP_BUTTON_DR) btn_lo &= ~(1u << 7);
@@ -137,6 +159,44 @@ static void pack_report_from_event(const input_event_t *ev)
     if (btn & JP_BUTTON_R2) btn_hi &= ~(1u << 2);
     if (btn & JP_BUTTON_DL) btn_hi &= ~(1u << 1);
     if (btn & JP_BUTTON_DU) btn_hi &= ~(1u << 0);
+
+    if (reg_file[0xFE] == 0x03) {
+        // Format 0x03 — 8 bytes, 8-bit per axis. Required by Wii System
+        // Menu (per wiibrew: the Wii Main Menu sets the data format byte
+        // to 0x03). Empirically the Menu inverts both X and Y from HID
+        // convention. X axes use centered signed-delta math (HID 128 →
+        // exactly 0x80) which gave clean cursor behavior. Y axes use
+        // simple linear inversion (which behaved differently from the
+        // centered math even with identical inputs — Y appears to use
+        // a different range or deadzone in the Menu's interpretation).
+        #define WII_FMT3_X(hid) ({                                         \
+            int _delta = 128 - (int)(hid);                                 \
+            int _scaled = (_delta * 0x61) / 128;                           \
+            int _v = 0x80 + _scaled;                                       \
+            if (_v < 0x1F) _v = 0x1F;                                      \
+            if (_v > 0xE1) _v = 0xE1;                                      \
+            (uint8_t)_v;                                                   \
+        })
+        uint8_t lx = WII_FMT3_X(ev->analog[ANALOG_LX]);
+        uint8_t rx = WII_FMT3_X(ev->analog[ANALOG_RX]);
+        uint8_t ly = (uint8_t)(0x1F + ((uint16_t)(255 - ev->analog[ANALOG_LY]) * 0xC2 / 255));
+        uint8_t ry = (uint8_t)(0x1F + ((uint16_t)(255 - ev->analog[ANALOG_RY]) * 0xC2 / 255));
+        #undef WII_FMT3_X
+        uint8_t lt = ev->analog[ANALOG_L2];
+        uint8_t rt = ev->analog[ANALOG_R2];
+
+        uint32_t irq_state = save_and_disable_interrupts();
+        reg_file[0x00] = lx;
+        reg_file[0x01] = rx;
+        reg_file[0x02] = ly;
+        reg_file[0x03] = ry;
+        reg_file[0x04] = lt;
+        reg_file[0x05] = rt;
+        reg_file[0x06] = btn_lo;
+        reg_file[0x07] = btn_hi;
+        restore_interrupts(irq_state);
+        return;
+    }
 
     // Format 0x01: 6-bit LX/LY + 5-bit RX/RY + 5-bit triggers. The Wii
     // upscales 6-bit values ×4 to compare against the 8-bit cal block,
@@ -211,6 +271,7 @@ static void wii_log_drain(void) {
             case 'A': printf("[wii_ext] seek 0x%02X\n", e.reg); break;
             case 'W': printf("[wii_ext] W 0x%02X = 0x%02X\n", e.reg, e.val); break;
             case 'R': printf("[wii_ext] R 0x%02X = 0x%02X\n", e.reg, e.val); break;
+            case 'M': printf("[wii_ext] format mode changed: 0x%02X -> 0x%02X\n", e.reg, e.val); break;
         }
     }
     if (wii_log_dropped) {
@@ -243,8 +304,15 @@ static void __isr wii_slave_handler(i2c_inst_t *i2c, i2c_slave_event_t ev)
                 // negotiation. This lets a new session reset stale
                 // encryption state from a previous session: when 0x55
                 // arrives at 0xF0, we recognize it raw and disable.
-                bool is_control_reg = (cursor == 0xF0 || cursor == 0xFB ||
-                                       cursor == 0xFE);
+                // Encryption-negotiation control registers: 0xF0 (disable/
+                // re-enable) and 0xFB (init step 2) are always sent in
+                // plaintext by the Wii. Decrypting them with stale cipher
+                // state from a previous session would corrupt the values
+                // and break re-init, so leave them raw. 0xFE (format mode
+                // select) is sent encrypted once encryption is active and
+                // MUST be decrypted, otherwise we'd store a garbage byte
+                // and silently stay in the wrong format mode.
+                bool is_control_reg = (cursor == 0xF0 || cursor == 0xFB);
                 uint8_t store_b = b;
                 if (wii_ext_crypto_enabled && !is_control_reg) {
                     wii_ext_crypto_decrypt(&store_b, (uint8_t)cursor, 1);
@@ -264,10 +332,37 @@ static void __isr wii_slave_handler(i2c_inst_t *i2c, i2c_slave_event_t ev)
                 } else if (cursor == 0x4F && reg_file[0xF0] == 0xAA) {
                     wii_ext_crypto_init(&reg_file[0x40]);
                 } else if (cursor == 0xFE) {
-                    // Format-mode switch — mirror into id[4] (0xFE register
-                    // and ID byte 4 must agree per real-CC behavior).
+                    // Format-mode switch — mirror into id[4] (the ID byte
+                    // and the 0xFE format register must agree per real-CC
+                    // behavior). Also seed sensible neutral data bytes
+                    // for the new format so a host read between the mode
+                    // switch and the next BT input event sees centred
+                    // sticks instead of stale bytes from the old format.
+                    uint8_t prev = reg_file[0xFE];
+                    if (prev != store_b) {
+                        wii_log_push('M', prev, store_b);  // 'M' = mode change
+                    }
                     reg_file[0xFE] = store_b;
                     reg_file[0xFA + 4] = store_b;
+                    if (store_b == 0x03) {
+                        // Format 0x03: 8-bit per axis, center 0x80.
+                        reg_file[0x00] = 0x80;  // LX
+                        reg_file[0x01] = 0x80;  // RX
+                        reg_file[0x02] = 0x80;  // LY
+                        reg_file[0x03] = 0x80;  // RY
+                        reg_file[0x04] = 0x00;  // LT
+                        reg_file[0x05] = 0x00;  // RT
+                        reg_file[0x06] = 0xFF;  // buttons lo (unpressed)
+                        reg_file[0x07] = 0xFF;  // buttons hi (unpressed)
+                    } else if (store_b == 0x01) {
+                        // Format 0x01: 6-bit packed centered values.
+                        reg_file[0x00] = 0xA0;  // RX<4:3>=10, LX=0x20
+                        reg_file[0x01] = 0x20;  // RX<2:1>=00, LY=0x20
+                        reg_file[0x02] = 0x10;  // RX<0>=0, LT<4:3>=0, RY=0x10
+                        reg_file[0x03] = 0x00;  // LT<2:0>=0, RT=0
+                        reg_file[0x04] = 0xFF;  // buttons unpressed
+                        reg_file[0x05] = 0xFF;
+                    }
                 }
                 cursor = (uint16_t)(cursor + 1) % REG_FILE_SIZE;
             }
@@ -417,6 +512,9 @@ void wii_device_init(wii_device_emulation_t emulate)
     seed_id_bytes(emulate);
     seed_calibration();
     seed_neutral_report();
+
+    printf("[wii_ext] boot format mode = 0x%02X (id[4]=0x%02X)\n",
+           reg_file[0xFE], reg_file[0xFA + 4]);
 
     // Register the router tap so events routed to OUTPUT_TARGET_WII_EXTENSION pack
     // into the report register file. Exclusive mode — router skips its
