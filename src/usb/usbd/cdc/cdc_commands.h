@@ -39,6 +39,12 @@ void cdc_commands_send_player_input(uint8_t player, uint8_t dev_addr,
                                     const char* name, const char* source,
                                     uint32_t buttons, const uint8_t* axes);
 
+// True when input event streaming is currently enabled by a CDC client
+// (web config Input tab open). Apps can use this to skip expensive
+// background work (display flush, etc) that would compete with the
+// stream's CDC bandwidth and command-response latency.
+bool cdc_commands_is_input_streaming(void);
+
 // Per-player output event (merged result)
 void cdc_commands_send_player_output(uint8_t player, uint32_t buttons,
                                      const uint8_t* axes);

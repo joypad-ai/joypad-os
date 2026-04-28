@@ -23,6 +23,19 @@ const NUS_RX_CHAR_UUID = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';  // Write to de
 const NUS_TX_CHAR_UUID = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';  // Notifications from device
 
 /**
+ * Decode "80808080808080" hex string into a 7-byte axes array.
+ * Used to expand the device's compact streaming events.
+ */
+function hexToAxes(hex) {
+    if (typeof hex !== 'string') return [128,128,128,128,128,128,128];
+    const out = new Array(7);
+    for (let i = 0; i < 7; i++) {
+        out[i] = parseInt(hex.substr(i * 2, 2), 16) || 0;
+    }
+    return out;
+}
+
+/**
  * CRC-16-CCITT (poly 0x1021, init 0xFFFF)
  */
 function crc16(data) {
@@ -547,7 +560,31 @@ class CDCProtocol {
                 }
             }
         } else if (type === MSG_EVT) {
-            // Async event
+            // Compact array events (single-USB-packet streaming):
+            //   ["i", player, addr, buttons, "hex axes"]   → input event
+            //   ["o", player, buttons, "hex axes"]         → output event
+            // Expand to the canonical object form so consumers don't care
+            // about wire format. First-event-per-device still arrives as
+            // a full object (with name/source) so the UI can cache it.
+            if (Array.isArray(data)) {
+                const t = data[0];
+                if (t === 'i') {
+                    data = {
+                        type: 'input',
+                        player: data[1],
+                        addr: data[2],
+                        buttons: data[3],
+                        axes: hexToAxes(data[4]),
+                    };
+                } else if (t === 'o') {
+                    data = {
+                        type: 'output',
+                        player: data[1],
+                        buttons: data[2],
+                        axes: hexToAxes(data[3]),
+                    };
+                }
+            }
             for (const cb of this.eventCallbacks) {
                 try {
                     cb(data);

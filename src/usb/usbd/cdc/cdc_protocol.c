@@ -187,8 +187,44 @@ uint16_t cdc_protocol_send_response(cdc_protocol_t* ctx, const char* json)
                              (const uint8_t*)json, strlen(json));
 }
 
+// Cap on how much streaming data can sit in the CDC TX buffer at once.
+// tud_cdc_n_write_flush only sends ONE 64-byte EP packet per call and
+// each USB bulk transfer takes ~1ms. A 110-byte event needs 2 transfers
+// (64 + 46), so even ONE in-flight event leaves residual that the next
+// event has to queue behind. Setting the limit to 0 (FIFO fully empty)
+// guarantees each streaming event has the whole TX path to itself:
+// minimum host-visible latency, no backlog stacking. Drop rate is high
+// when the host polls slowly, but web tool only cares about LATEST
+// state so a dropped event is no worse than not sampling that frame.
+// Command RESPONSES bypass this — they must arrive.
+#ifndef CDC_STREAM_QUEUED_LIMIT
+#define CDC_STREAM_QUEUED_LIMIT 0
+#endif
+
+#if CFG_TUD_CDC
+extern uint32_t tud_cdc_n_write_available(uint8_t itf);
+#ifndef CFG_TUD_CDC_TX_BUFSIZE
+#define CFG_TUD_CDC_TX_BUFSIZE 256
+#endif
+#endif
+
+static bool stream_tx_backlogged(cdc_protocol_t* ctx)
+{
+    // Custom transport (e.g. BLE NUS) — let it manage its own flow.
+    if (ctx->write) return false;
+#if CFG_TUD_CDC
+    uint32_t avail = tud_cdc_n_write_available(0);
+    uint32_t queued = (CFG_TUD_CDC_TX_BUFSIZE > avail)
+                    ? (CFG_TUD_CDC_TX_BUFSIZE - avail) : 0;
+    return queued > CDC_STREAM_QUEUED_LIMIT;
+#else
+    return false;
+#endif
+}
+
 uint16_t cdc_protocol_send_event(cdc_protocol_t* ctx, const char* json)
 {
+    if (stream_tx_backlogged(ctx)) return 0;
     uint8_t seq = ctx->tx_seq++;
     return cdc_protocol_send(ctx, CDC_MSG_EVT, seq,
                              (const uint8_t*)json, strlen(json));

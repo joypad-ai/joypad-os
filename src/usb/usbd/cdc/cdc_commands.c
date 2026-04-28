@@ -2292,6 +2292,14 @@ static stream_throttle_t* get_input_throttle(uint8_t dev_addr) {
     return &input_throttle[0];  // fallback
 }
 
+bool cdc_commands_is_input_streaming(void) {
+    return stream_ctx && stream_ctx->input_streaming;
+}
+
+// (TX backlog gate moved into cdc_protocol_send_event so it applies
+// uniformly to ALL streaming events — input, output, connect, etc.
+// Command responses are NOT gated.)
+
 void cdc_commands_send_player_input(uint8_t player, uint8_t dev_addr,
                                     const char* name, const char* source,
                                     uint32_t buttons, const uint8_t* axes)
@@ -2303,12 +2311,10 @@ void cdc_commands_send_player_input(uint8_t player, uint8_t dev_addr,
     uint32_t now = platform_time_ms();
     uint32_t min_interval = stream_ctx->ble_transport ? 33 : 16;  // 30Hz BLE, 60Hz USB
     bool changed = (buttons != th->buttons || memcmp(axes, th->axes, 7) != 0);
-    if (!changed && (now - th->last_ms) < min_interval) return;
-
     bool first = (th->buttons == 0xFFFFFFFF);
-    th->buttons = buttons;
-    memcpy(th->axes, axes, 7);
-    th->last_ms = now;
+    // Throttle UNCHANGED events only — button presses go through with
+    // single-iteration latency, idle/jitter capped to 60Hz.
+    if (!first && !changed && (now - th->last_ms) < min_interval) return;
 
     if (first) {
         // First event: include name/source for UI to cache
@@ -2319,15 +2325,25 @@ void cdc_commands_send_player_input(uint8_t player, uint8_t dev_addr,
                  (unsigned long)buttons,
                  axes[0], axes[1], axes[2], axes[3], axes[4], axes[5], axes[6]);
     } else {
-        // Compact: ~40 bytes smaller per event
+        // Compact array form: ["i",player,addr,buttons,"hex axes"]
+        // Worst case 39 chars + 7 framing = 46 bytes — fits in ONE 64-byte
+        // USB FS bulk packet, so each event is a single USB transfer.
+        // Multi-packet events (>57 bytes payload) get held by the host's
+        // CDC ACM aggregation timer waiting for "more data on the way",
+        // which is the actual cause of the streaming lag.
         snprintf(response_buf, sizeof(response_buf),
-                 "{\"type\":\"input\",\"player\":%d,\"addr\":%d,"
-                 "\"buttons\":%lu,\"axes\":[%d,%d,%d,%d,%d,%d,%d]}",
-                 player, dev_addr,
-                 (unsigned long)buttons,
+                 "[\"i\",%d,%d,%lu,\"%02X%02X%02X%02X%02X%02X%02X\"]",
+                 player, dev_addr, (unsigned long)buttons,
                  axes[0], axes[1], axes[2], axes[3], axes[4], axes[5], axes[6]);
     }
-    cdc_protocol_send_event(stream_ctx, response_buf);
+    // Only commit the throttle state if the packet actually went out.
+    // If the protocol layer drops on backlog, we want to retry on the
+    // next poll instead of believing we've already sent the new state.
+    if (cdc_protocol_send_event(stream_ctx, response_buf) > 0) {
+        th->buttons = buttons;
+        memcpy(th->axes, axes, 7);
+        th->last_ms = now;
+    }
 }
 
 void cdc_commands_send_player_output(uint8_t player, uint32_t buttons,
@@ -2343,16 +2359,17 @@ void cdc_commands_send_player_output(uint8_t player, uint32_t buttons,
                     memcmp(axes, last_po_axes[player], 7) != 0);
     if (!changed && (now - last_po_ms[player]) < min_interval) return;
 
-    last_po_buttons[player] = buttons;
-    memcpy(last_po_axes[player], axes, 7);
-    last_po_ms[player] = now;
-
+    // Compact array form, fits in ONE USB packet.
     snprintf(response_buf, sizeof(response_buf),
-             "{\"type\":\"output\",\"player\":%d,"
-             "\"buttons\":%lu,\"axes\":[%d,%d,%d,%d,%d,%d,%d]}",
+             "[\"o\",%d,%lu,\"%02X%02X%02X%02X%02X%02X%02X\"]",
              player, (unsigned long)buttons,
              axes[0], axes[1], axes[2], axes[3], axes[4], axes[5], axes[6]);
-    cdc_protocol_send_event(stream_ctx, response_buf);
+    // Only commit state if the packet actually went out (see input variant).
+    if (cdc_protocol_send_event(stream_ctx, response_buf) > 0) {
+        last_po_buttons[player] = buttons;
+        memcpy(last_po_axes[player], axes, 7);
+        last_po_ms[player] = now;
+    }
 }
 
 void cdc_commands_send_connect_event(uint8_t port, const char* name,
