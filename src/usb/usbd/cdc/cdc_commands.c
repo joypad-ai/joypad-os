@@ -2059,6 +2059,70 @@ static void cmd_pad_config_pins(const char* json)
 #endif // CONFIG_PAD_INPUT
 
 // ============================================================================
+// SD CARD COMMANDS (smoke-test surface — proves FatFs + HAL work)
+// ============================================================================
+
+#ifdef CONFIG_SD
+#include "core/services/sd/sd.h"
+#include "ff.h"
+
+static void cmd_sd_info(const char* json)
+{
+    (void)json;
+    if (!sd_mounted()) {
+        snprintf(response_buf, sizeof(response_buf),
+                 "{\"ok\":true,\"mounted\":false}");
+    } else {
+        snprintf(response_buf, sizeof(response_buf),
+                 "{\"ok\":true,\"mounted\":true,"
+                 "\"total_bytes\":%llu,\"free_bytes\":%llu}",
+                 (unsigned long long)sd_total_bytes(),
+                 (unsigned long long)sd_free_bytes());
+    }
+    send_json(response_buf);
+}
+
+static void cmd_sd_list(const char* json)
+{
+    const char* path = "/";
+    char path_buf[64];
+    int path_len = 0;
+    const char* path_in = json_get_string(json, "path", &path_len);
+    if (path_in && path_len > 0 && path_len < (int)sizeof(path_buf)) {
+        memcpy(path_buf, path_in, path_len);
+        path_buf[path_len] = '\0';
+        path = path_buf;
+    }
+    if (!sd_mounted()) {
+        send_error("sd not mounted");
+        return;
+    }
+    DIR dir;
+    if (f_opendir(&dir, path) != FR_OK) {
+        send_error("opendir failed");
+        return;
+    }
+    int pos = snprintf(response_buf, sizeof(response_buf),
+                       "{\"ok\":true,\"path\":\"%s\",\"entries\":[", path);
+    FILINFO info;
+    bool first = true;
+    while (f_readdir(&dir, &info) == FR_OK && info.fname[0]
+           && pos < (int)sizeof(response_buf) - 80) {
+        pos += snprintf(response_buf + pos, sizeof(response_buf) - pos,
+                        "%s{\"name\":\"%.40s\",\"size\":%lu,\"dir\":%s}",
+                        first ? "" : ",",
+                        info.fname,
+                        (unsigned long)info.fsize,
+                        (info.fattrib & AM_DIR) ? "true" : "false");
+        first = false;
+    }
+    f_closedir(&dir);
+    snprintf(response_buf + pos, sizeof(response_buf) - pos, "]}");
+    send_json(response_buf);
+}
+#endif // CONFIG_SD
+
+// ============================================================================
 // COMMAND DISPATCH
 // ============================================================================
 
@@ -2124,6 +2188,10 @@ static const cmd_entry_t commands[] = {
     {"PAD.CONFIG.SET", cmd_pad_config_set},
     {"PAD.CONFIG.RESET", cmd_pad_config_reset},
     {"PAD.CONFIG.PINS", cmd_pad_config_pins},
+#endif
+#ifdef CONFIG_SD
+    {"SD.INFO", cmd_sd_info},
+    {"SD.LIST", cmd_sd_list},
 #endif
     {NULL, NULL}
 };

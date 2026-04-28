@@ -14,6 +14,10 @@
 #include "core/services/leds/leds.h"
 #include "core/services/leds/neopixel/ws2812.h"
 #include "core/services/storage/flash.h"
+#ifdef CONFIG_SD
+#include "platform/platform_sd.h"
+#include "core/services/sd/sd.h"
+#endif
 #include "core/services/profiles/profile.h"
 #include "core/buttons.h"
 #include "platform/platform.h"
@@ -662,6 +666,31 @@ void app_init(void)
         .shared_profiles = NULL,
     };
     profile_init(&profile_cfg);
+
+#ifdef CONFIG_SD
+    // SD card — best-effort init. If no card / wiring fault we just
+    // log and continue; the app stays fully functional without storage.
+    {
+        static const platform_sd_config_t sd_cfg = {
+            .spi_inst = SD_SPI_INST,
+            .sck_pin = SD_SCK_PIN,
+            .mosi_pin = SD_MOSI_PIN,
+            .miso_pin = SD_MISO_PIN,
+            .cs_pin = SD_CS_PIN,
+            .cd_pin = PLATFORM_SD_NO_CD,
+            .init_freq_hz = 200000,
+            .run_freq_hz = 12500000,
+        };
+        platform_sd_t dev = platform_sd_init(&sd_cfg);
+        if (dev && sd_init(dev)) {
+            printf("[app:controller_btusb] SD mounted (%llu bytes free / %llu total)\n",
+                   (unsigned long long)sd_free_bytes(),
+                   (unsigned long long)sd_total_bytes());
+        } else {
+            printf("[app:controller_btusb] SD not mounted (no card or not FAT)\n");
+        }
+    }
+#endif
 
     printf("[app:controller_btusb] Initialization complete\n");
     printf("[app:controller_btusb]   Routing: Sensors → %sUSB Device\n",

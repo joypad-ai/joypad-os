@@ -308,6 +308,20 @@ set(CONTROLLER_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/native/host/uart/uart_host.c
 )
 
+# SD card sources — opt-in. Apps that need filesystem access (VMU saves,
+# config backup, ROM loading, etc.) add ${SD_SOURCES} to target_sources
+# and add ${CMAKE_CURRENT_SOURCE_DIR}/lib/fatfs to target_include_directories.
+# RP2040 builds get the SPI driver; other platforms add their own
+# platform_sd_*.c later.
+set(SD_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/lib/fatfs/ff.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/lib/fatfs/ffsystem.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/lib/fatfs/ffunicode.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/services/sd/sd.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/services/sd/diskio.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/platform/rp2040/platform_sd_rp2040.c
+)
+
 # Common sources (core + USB host)
 set(COMMON_SOURCES ${CORE_SOURCES} ${USB_HOST_SOURCES})
 
@@ -2216,12 +2230,20 @@ target_compile_definitions(joypad_controller_btusb_feather_rp2040 PRIVATE
     CONFIG_CONTROLLER_BTUSB=1
     CONFIG_USB=1
     CONFIG_PAD_INPUT=1
+    CONFIG_SD=1
     DISABLE_USB_HOST=1
     BOARD_FEATHER_RP2040=1
     USE_BOOTSEL_BUTTON=1
     REQUIRE_BLE_OUTPUT=0
     SENSOR_PAD=1
     SENSOR_JOYWING=1
+    # SD card on Adalogger / breakout, SPI0 at standard Feather pins.
+    # CS on D10 (GPIO 10). No card-detect line wired by default.
+    SD_SPI_INST=0
+    SD_SCK_PIN=18
+    SD_MOSI_PIN=19
+    SD_MISO_PIN=20
+    SD_CS_PIN=10
     # Boot-attempts watchdog: hardware watchdog fires if init hangs;
     # after 3 consecutive failed boots, the saved pad config is auto-
     # wiped. Configs persist on normal boot, bricks self-recover.
@@ -2252,11 +2274,13 @@ target_sources(joypad_controller_btusb_feather_rp2040 PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/core/services/display/joy_anim.c
     ${CMAKE_CURRENT_SOURCE_DIR}/core/services/display/eyes_anim.c
     ${CMAKE_CURRENT_SOURCE_DIR}/core/services/display/menu.c
+    ${SD_SOURCES}
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/controller_btusb/app.c
 )
 target_include_directories(joypad_controller_btusb_feather_rp2040 PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/controller_btusb
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd
+    ${CMAKE_CURRENT_SOURCE_DIR}/lib/fatfs
 )
 target_link_libraries(joypad_controller_btusb_feather_rp2040 PRIVATE
     pico_stdlib pico_multicore pico_rand
