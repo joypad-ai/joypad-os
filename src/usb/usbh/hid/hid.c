@@ -210,19 +210,26 @@ void tuh_hid_mount_cb(uint8_t dev_addr, uint8_t instance, uint8_t const* desc_re
     printf("HID has %u reports \r\n", devices[dev_addr].instances[instance].report_count);
   }
 
-  // Fetch USB product string for device name display
-  uint16_t desc_buf[64];
-  if (XFER_RESULT_SUCCESS == tuh_descriptor_get_product_string_sync(dev_addr, LANGUAGE_ID, desc_buf, sizeof(desc_buf))) {
-    // Convert UTF-16LE to ASCII (skip descriptor header: byte 0=bLength, byte 1=bDescriptorType)
-    uint8_t bLength = ((uint8_t*)desc_buf)[0];
-    int char_count = (bLength - 2) / 2;
-    if (char_count > PRODUCT_NAME_LEN - 1) char_count = PRODUCT_NAME_LEN - 1;
-    for (int i = 0; i < char_count; i++) {
-      uint16_t ch = desc_buf[i + 1];  // +1 to skip header word
-      devices[dev_addr].product_name[i] = (ch < 128) ? (char)ch : '?';
+  // Fetch USB product string ONLY for unknown devices — used by the
+  // router as a fallback name. Vendor-driver controllers (Switch Pro,
+  // DualShock, etc.) don't need it and were regressed by this call:
+  // the sync GET_DESCRIPTOR control transfer can collide with an
+  // in-flight vendor handshake started by the driver's init() above
+  // (Switch Pro fails to initialise as a result).
+  if (dev_type == CONTROLLER_UNKNOWN) {
+    uint16_t desc_buf[64];
+    if (XFER_RESULT_SUCCESS == tuh_descriptor_get_product_string_sync(dev_addr, LANGUAGE_ID, desc_buf, sizeof(desc_buf))) {
+      // Convert UTF-16LE to ASCII (skip descriptor header: byte 0=bLength, byte 1=bDescriptorType)
+      uint8_t bLength = ((uint8_t*)desc_buf)[0];
+      int char_count = (bLength - 2) / 2;
+      if (char_count > PRODUCT_NAME_LEN - 1) char_count = PRODUCT_NAME_LEN - 1;
+      for (int i = 0; i < char_count; i++) {
+        uint16_t ch = desc_buf[i + 1];  // +1 to skip header word
+        devices[dev_addr].product_name[i] = (ch < 128) ? (char)ch : '?';
+      }
+      devices[dev_addr].product_name[char_count] = '\0';
+      printf("USB product: %s\n", devices[dev_addr].product_name);
     }
-    devices[dev_addr].product_name[char_count] = '\0';
-    printf("USB product: %s\n", devices[dev_addr].product_name);
   }
 
   // request to receive report
