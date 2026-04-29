@@ -102,16 +102,6 @@ static void __not_in_flash_func(core0_main)(void)
       }
     }
 
-    // Service USB immediately after input polling. Input drivers may have
-    // queued CDC streaming events via router_submit_input → cdc_data_write,
-    // and there's no point letting them sit in the TX buffer through the
-    // output task and app_task — push them out now so web-config sees
-    // input updates with single-iteration latency. Mirrors the same fix
-    // the ESP32 main loop has.
-#if CFG_TUD_ENABLED
-    tud_task();
-#endif
-
     // Run output interface tasks (reads router state populated by input above)
     for (uint8_t i = 0; i < output_count; i++) {
       if (outputs[i] && outputs[i]->task) {

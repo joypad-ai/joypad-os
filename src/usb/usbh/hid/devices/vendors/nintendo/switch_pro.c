@@ -187,7 +187,11 @@ void input_report_switch_pro(uint8_t dev_addr, uint8_t instance, uint8_t const* 
   switch_pro_report_t update_report;
   memcpy(&update_report, report, sizeof(update_report));
 
-  if (update_report.report_id == 0x30) // Switch Controller Report
+  // 0x30 = Standard Full Mode input report
+  // 0x21 = Subcommand reply (carries the same input data prefix as 0x30)
+  // Both should be parsed as input — otherwise once we send any subcommand
+  // (e.g. player LED), the controller switches to 0x21 and we'd ignore it.
+  if (update_report.report_id == 0x30 || update_report.report_id == 0x21)
   {
     switch_devices[dev_addr].instances[instance].usb_enable_ack = true;
 
@@ -521,9 +525,10 @@ void output_switch_pro(uint8_t dev_addr, uint8_t instance, device_output_config_
         // It is possible set up to 15 mini cycles, but we simply just set the LED constantly on after momentary off.
         // See: https://github.com/dekuNukem/Nintendo_Switch_Reverse_Engineering/blob/master/bluetooth_hid_subcommands_notes.md#subcommand-0x38-set-home-light
 
-        switch_devices[dev_addr].instances[instance].home_led_set = true;
-        tuh_hid_send_report(dev_addr, instance, 0, report, report_size);
-        platform_sleep_ms(100);
+        if (tuh_hid_send_report(dev_addr, instance, 0, report, report_size)) {
+          switch_devices[dev_addr].instances[instance].home_led_set = true;
+          platform_sleep_ms(100);
+        }
 
       } else if (!switch_devices[dev_addr].instances[instance].full_report_enabled) {
         TU_LOG1("SWITCH[%d|%d]: CMD_AND_RUMBLE, CMD_MODE, FULL_REPORT_MODE \r\n", dev_addr, instance);
@@ -535,9 +540,10 @@ void output_switch_pro(uint8_t dev_addr, uint8_t instance, device_output_config_
         report[0x0A + 0] = CMD_MODE;                // SUB_COMMAND
         report[0x0A + 1] = SUBCMD_FULL_REPORT_MODE; // SUB_COMMAND ARGS
 
-        switch_devices[dev_addr].instances[instance].full_report_enabled = true;
-        tuh_hid_send_report(dev_addr, instance, 0, report, report_size);
-        platform_sleep_ms(100);
+        if (tuh_hid_send_report(dev_addr, instance, 0, report, report_size)) {
+          switch_devices[dev_addr].instances[instance].full_report_enabled = true;
+          platform_sleep_ms(100);
+        }
 
       // } else if (!switch_devices[dev_addr].instances[instance].imu_enabled) {
       //   TU_LOG1("SWITCH[%d|%d]: CMD_AND_RUMBLE, CMD_GYRO, 1 \r\n", dev_addr, instance);
@@ -557,9 +563,14 @@ void output_switch_pro(uint8_t dev_addr, uint8_t instance, device_output_config_
         // Use player_index from USB output interface config
         int player_index = config->player_index;
 
-        if (config->test ||
+        // Skip LED command before a player slot is assigned (player_index < 0).
+        // Otherwise we spam the controller with LED OFF every loop iteration:
+        // player_led_set (uint8_t 0xFF) != -1 (sign-extended) is always true,
+        // and (-1 cast back to uint8_t) is 0xFF — so the comparison never
+        // becomes false until the slot is assigned.
+        if (player_index >= 0 && (config->test ||
           switch_devices[dev_addr].instances[instance].player_led_set != player_index
-        ) {
+        )) {
           TU_LOG1("SWITCH[%d|%d]: CMD_AND_RUMBLE, CMD_LED, %d (was %d)\r\n",
                   dev_addr, instance, player_index,
                   switch_devices[dev_addr].instances[instance].player_led_set);
@@ -588,11 +599,11 @@ void output_switch_pro(uint8_t dev_addr, uint8_t instance, device_output_config_
             report[0x0A + 1] = (config->test & 0b00001111);
           }
 
-          switch_devices[dev_addr].instances[instance].player_led_set = player_index;
-          switch_devices[dev_addr].instances[instance].rumble_left = config->rumble_left;
-          switch_devices[dev_addr].instances[instance].rumble_right = config->rumble_right;
-
-          tuh_hid_send_report(dev_addr, instance, 0, report, report_size);
+          if (tuh_hid_send_report(dev_addr, instance, 0, report, report_size)) {
+            switch_devices[dev_addr].instances[instance].player_led_set = player_index;
+            switch_devices[dev_addr].instances[instance].rumble_left = config->rumble_left;
+            switch_devices[dev_addr].instances[instance].rumble_right = config->rumble_right;
+          }
         }
         else if (switch_devices[dev_addr].instances[instance].rumble_left != config->rumble_left ||
                  switch_devices[dev_addr].instances[instance].rumble_right != config->rumble_right)
@@ -609,10 +620,10 @@ void output_switch_pro(uint8_t dev_addr, uint8_t instance, device_output_config_
           encode_rumble(config->rumble_left, &report[0x02]);       // Left motor
           encode_rumble(config->rumble_right, &report[0x02 + 4]);  // Right motor
 
-          switch_devices[dev_addr].instances[instance].rumble_left = config->rumble_left;
-          switch_devices[dev_addr].instances[instance].rumble_right = config->rumble_right;
-
-          tuh_hid_send_report(dev_addr, instance, 0, report, report_size);
+          if (tuh_hid_send_report(dev_addr, instance, 0, report, report_size)) {
+            switch_devices[dev_addr].instances[instance].rumble_left = config->rumble_left;
+            switch_devices[dev_addr].instances[instance].rumble_right = config->rumble_right;
+          }
         }
       }
     }

@@ -303,11 +303,11 @@ void tuh_hid_report_received_cb(uint8_t dev_addr, uint8_t instance, uint8_t cons
     device_interfaces[dev_type]->process(dev_addr, instance, report, len);
   }
 
-  // continue to request to receive report
-  if ( !tuh_hid_receive_report(dev_addr, instance) )
-  {
-    printf("Error: cannot request to receive report\r\n");
-  }
+  // continue to request to receive report.
+  // Note: vendor drivers (e.g. switch_pro) may have already re-armed inside
+  // their process() above to avoid stalling between subcommand exchanges.
+  // In that case the claim here will fail — that's expected, not an error.
+  tuh_hid_receive_report(dev_addr, instance);
 }
 
 //--------------------------------------------------------------------+
