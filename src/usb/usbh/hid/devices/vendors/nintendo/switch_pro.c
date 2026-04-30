@@ -40,11 +40,17 @@ typedef struct
   uint8_t instance_count;
   uint8_t instance_root;
   bool is_pro;
-
-  // Joy-Con Grip merging state (for instance_count > 1)
-  input_event_t merged_event;        // Combined input from both Joy-Cons
-  bool left_updated;                 // Left Joy-Con has reported
-  bool right_updated;                // Right Joy-Con has reported
+  // Last-known analog state per side, shared across HID instances of a
+  // Joy-Con Charging Grip. Each side only carries its own stick data in
+  // its report, so when we submit per-instance the router would overwrite
+  // the other side's axes with zero. Populating from this cache on every
+  // submit keeps both sticks live.
+  uint8_t shared_analog[4];  // [0,1] = left X/Y, [2,3] = right X/Y
+  // L/R role per HID instance, detected on the first 0x30/0x21 report from
+  // each instance (left Joy-Con's report has zero in right_stick fields and
+  // vice versa). -1 = unknown, 0 = left, 1 = right. Used by router to
+  // produce "Joy-Con (L)"/"(R)" names.
+  int8_t grip_side[CFG_TUH_HID];
 } switch_device_t;
 
 static switch_device_t switch_devices[MAX_DEVICES] = { 0 };
@@ -329,87 +335,59 @@ void input_report_switch_pro(uint8_t dev_addr, uint8_t instance, uint8_t const* 
                  ((bttn_a1)              ? JP_BUTTON_A1 : 0) |
                  ((bttn_a2)              ? JP_BUTTON_A2 : 0));
 
-      // Joy-Con Grip merging: combine both Joy-Con inputs into one controller
-      if (switch_devices[dev_addr].instance_count > 1) {
-        // Multi-instance device (Joy-Con Grip) - merge before submitting
-        bool is_left_joycon = (!update_report.right_x && !update_report.right_y);
-        bool is_right_joycon = (!update_report.left_x && !update_report.left_y);
+      // Battery: bits 7-4 = level (0/2/4/6/8), bit 3 = charging
+      uint8_t bat_raw = update_report.battery_level_and_connection_info >> 4;
+      uint8_t bat_level = (bat_raw > 8) ? 100 : bat_raw * 12 + 5;
+      bool bat_charging = (update_report.battery_level_and_connection_info & 0x08) != 0;
 
-        if (is_left_joycon) {
-          // Update left Joy-Con portion of merged event
-          switch_devices[dev_addr].merged_event.dev_addr = dev_addr;
-          switch_devices[dev_addr].merged_event.instance = 0;  // Merged instance
-          switch_devices[dev_addr].merged_event.type = INPUT_TYPE_GAMEPAD;
-
-          // Left Joy-Con: D-pad, left stick, L buttons
-          uint32_t left_buttons = (((dpad_up)   ? JP_BUTTON_DU : 0) |
-                                   ((dpad_down) ? JP_BUTTON_DD : 0) |
-                                   ((dpad_left) ? JP_BUTTON_DL : 0) |
-                                   ((dpad_right)? JP_BUTTON_DR : 0) |
-                                   ((bttn_l1)   ? JP_BUTTON_L1 : 0) |
-                                   ((update_report.zl) ? JP_BUTTON_L2 : 0) |
-                                   ((update_report.lstick) ? JP_BUTTON_L3 : 0) |
-                                   ((bttn_s1)   ? JP_BUTTON_S1 : 0));  // Minus button
-
-          switch_devices[dev_addr].merged_event.buttons |= left_buttons;
-          switch_devices[dev_addr].merged_event.analog[0] = leftX;  // Left stick X
-          switch_devices[dev_addr].merged_event.analog[1] = leftY;  // Left stick Y
-          switch_devices[dev_addr].left_updated = true;
-        }
-        else if (is_right_joycon) {
-          // Update right Joy-Con portion of merged event
-          switch_devices[dev_addr].merged_event.dev_addr = dev_addr;
-          switch_devices[dev_addr].merged_event.instance = 0;  // Merged instance
-          switch_devices[dev_addr].merged_event.type = INPUT_TYPE_GAMEPAD;
-
-          // Right Joy-Con: Face buttons, right stick, R buttons
-          uint32_t right_buttons = (((bttn_b1) ? JP_BUTTON_B1 : 0) |
-                                    ((bttn_b2) ? JP_BUTTON_B2 : 0) |
-                                    ((bttn_b3) ? JP_BUTTON_B3 : 0) |
-                                    ((bttn_b4) ? JP_BUTTON_B4 : 0) |
-                                    ((bttn_r1) ? JP_BUTTON_R1 : 0) |
-                                    ((update_report.zr) ? JP_BUTTON_R2 : 0) |
-                                    ((update_report.rstick) ? JP_BUTTON_R3 : 0) |
-                                    ((bttn_s2) ? JP_BUTTON_S2 : 0) |  // Plus button
-                                    ((bttn_a1) ? JP_BUTTON_A1 : 0) |  // Home button
-                                    ((bttn_a2) ? JP_BUTTON_A2 : 0));  // Capture button
-
-          switch_devices[dev_addr].merged_event.buttons |= right_buttons;
-          switch_devices[dev_addr].merged_event.analog[2] = rightX;  // Right stick X
-          switch_devices[dev_addr].merged_event.analog[3] = rightY;  // Right stick Y
-          switch_devices[dev_addr].right_updated = true;
-        }
-
-        // Submit merged event only when BOTH Joy-Cons have reported
-        if (switch_devices[dev_addr].left_updated && switch_devices[dev_addr].right_updated) {
-          router_submit_input(&switch_devices[dev_addr].merged_event);
-
-          // Reset merge state for next frame
-          switch_devices[dev_addr].left_updated = false;
-          switch_devices[dev_addr].right_updated = false;
-          switch_devices[dev_addr].merged_event.buttons = 0x00000000;  // All released
-        }
+      // Update this side's shared analog state. For grip mode, only one
+      // side has stick data per report — leftX/Y are non-zero for left
+      // Joy-Con reports, rightX/Y for right. Standalone Pro Controller
+      // (is_pro) reports both sticks together.
+      if (switch_devices[dev_addr].is_pro) {
+        switch_devices[dev_addr].shared_analog[0] = leftX;
+        switch_devices[dev_addr].shared_analog[1] = leftY;
+        switch_devices[dev_addr].shared_analog[2] = rightX;
+        switch_devices[dev_addr].shared_analog[3] = rightY;
       } else {
-        // Battery: bits 7-4 = level (0/2/4/6/8), bit 3 = charging
-        uint8_t bat_raw = update_report.battery_level_and_connection_info >> 4;
-        uint8_t bat_level = (bat_raw > 8) ? 100 : bat_raw * 12 + 5;
-        bool bat_charging = (update_report.battery_level_and_connection_info & 0x08) != 0;
-
-        // Single instance device (normal Switch Pro controller)
-        input_event_t event = {
-          .dev_addr = dev_addr,
-          .instance = instance,
-          .type = INPUT_TYPE_GAMEPAD,
-          .transport = INPUT_TRANSPORT_USB,
-          .buttons = buttons,
-          .button_count = 10,  // B, A, Y, X, L, R, ZL, ZR, L3, R3
-          .analog = {leftX, leftY, rightX, rightY, 0, 0},
-          .keys = 0,
-          .battery_level = bat_level,
-          .battery_charging = bat_charging,
-        };
-        router_submit_input(&event);
+        bool is_left  = (!update_report.right_x && !update_report.right_y);
+        bool is_right = (!update_report.left_x  && !update_report.left_y);
+        if (is_left) {
+          switch_devices[dev_addr].shared_analog[0] = leftX;
+          switch_devices[dev_addr].shared_analog[1] = leftY;
+          switch_devices[dev_addr].grip_side[instance] = 0;  // Left
+        } else if (is_right) {
+          switch_devices[dev_addr].shared_analog[2] = rightX;
+          switch_devices[dev_addr].shared_analog[3] = rightY;
+          switch_devices[dev_addr].grip_side[instance] = 1;  // Right
+        }
       }
+
+      // Submit per-instance — Joy-Con Charging Grip exposes two HID
+      // interfaces (one per Joy-Con). Treat each as a separate USB
+      // controller and let the router's MERGE mode combine them at the
+      // output. We populate ALL four analog axes from shared_analog so
+      // the router's per-event overwrite preserves the other side's
+      // stick state instead of zeroing it.
+      input_event_t event = {
+        .dev_addr = dev_addr,
+        .instance = instance,
+        .type = INPUT_TYPE_GAMEPAD,
+        .transport = INPUT_TRANSPORT_USB,
+        .buttons = buttons,
+        .button_count = 10,  // B, A, Y, X, L, R, ZL, ZR, L3, R3
+        .analog = {
+          switch_devices[dev_addr].shared_analog[0],
+          switch_devices[dev_addr].shared_analog[1],
+          switch_devices[dev_addr].shared_analog[2],
+          switch_devices[dev_addr].shared_analog[3],
+          0, 0
+        },
+        .keys = 0,
+        .battery_level = bat_level,
+        .battery_charging = bat_charging,
+      };
+      router_submit_input(&event);
 
       prev_report[dev_addr-1][instance] = update_report;
 
@@ -420,13 +398,16 @@ void input_report_switch_pro(uint8_t dev_addr, uint8_t instance, uint8_t const* 
     switch_pro_report_01_t state_report;
     memcpy(&state_report, report, sizeof(state_report));
 
-    // JC_INPUT_USB_RESPONSE (connection events & command acknowledgments)
+    // JC_INPUT_USB_RESPONSE (connection events & command acknowledgments).
+    // We only ack connect — DO NOT treat conn_status=0x03 as a hard
+    // disconnect. The Joy-Con Charging Grip emits 0x81 0x01 0x03 during
+    // normal operation (per-Joy-Con "previous host disconnected" notice),
+    // and acting on it tears down our state mid-session and forces a
+    // re-init that races into duplicate player slots. Real device
+    // removal still arrives via TinyUSB's tuh_hid_umount_cb.
     if (state_report.buf[0] == 0x81 && state_report.buf[1] == 0x01) { // JC_USB_CMD_CONN_STATUS
       if (state_report.buf[2] == 0x00) { // connect
         switch_devices[dev_addr].instances[instance].conn_ack = true;
-      } else if (state_report.buf[2] == 0x03) { // disconnect
-        unmount_switch_pro(dev_addr, instance);
-        remove_players_by_address(dev_addr, instance);
       }
     }
     else if (state_report.buf[0] == 0x81 && state_report.buf[1] == 0x02) { // JC_USB_CMD_HANDSHAKE
@@ -466,13 +447,25 @@ void output_switch_pro(uint8_t dev_addr, uint8_t instance, device_output_config_
 
   if (true/*switch_devices[dev_addr].instances[instance].conn_ack*/) // bug fix for 3rd-party ctrls?
   {
+    // Stagger init when multiple HID interfaces belong to the same device
+    // (Joy-Con Charging Grip exposes one per Joy-Con). Without this gate,
+    // both instances race their handshake/disable_timeout/full_report_mode
+    // commands at the same time and the second one's controller never
+    // makes it to streaming state. Non-root instances wait until the root
+    // has fully initialised.
+    if (switch_devices[dev_addr].instance_count > 1 &&
+        instance != switch_devices[dev_addr].instance_root &&
+        !switch_devices[dev_addr].instances[switch_devices[dev_addr].instance_root].full_report_enabled) {
+      return;
+    }
+
     // set the faster baud rate
     // if (!switch_devices[dev_addr].instances[instance].baud) {
     //   TU_LOG1("SWITCH[%d|%d]: CMD_HID, USB_BAUD\r\n", dev_addr, instance);
 
     //   uint8_t baud_command[2] = {CMD_HID, SUBCMD_USB_BAUD};
 
-    //   switch_devices[dev_addr].instances[instance].baud = 
+    //   switch_devices[dev_addr].instances[instance].baud =
     //    tuh_hid_send_report(dev_addr, instance, 0, baud_command, sizeof(baud_command));
 
     // // wait for baud ask and then send init handshake
@@ -560,8 +553,17 @@ void output_switch_pro(uint8_t dev_addr, uint8_t instance, device_output_config_
 
       // } else if (switch_devices[dev_addr].instances[instance].imu_enabled) {
       } else if (switch_devices[dev_addr].instances[instance].full_report_enabled) {
-        // Use player_index from USB output interface config
+        // Use player_index from USB output interface config. Joy-Con
+        // Charging Grip exposes both Joy-Cons as separate HID interfaces
+        // but they share a single player slot at the root instance — so
+        // for non-root joycons we look the slot up via the root instance
+        // ourselves (hid.c iterates per-instance and would pass -1).
         int player_index = config->player_index;
+        if (switch_devices[dev_addr].instance_count > 1 &&
+            instance != switch_devices[dev_addr].instance_root) {
+          int root_pi = find_player_index(dev_addr, switch_devices[dev_addr].instance_root);
+          if (root_pi >= 0) player_index = root_pi;
+        }
 
         // Skip LED command before a player slot is assigned (player_index < 0).
         // Otherwise we spam the controller with LED OFF every loop iteration:
@@ -654,9 +656,16 @@ static inline bool init_switch_pro(uint8_t dev_addr, uint8_t instance)
   switch_devices[dev_addr].instances[instance].rumble_left = 0xFF;
   switch_devices[dev_addr].instances[instance].rumble_right = 0xFF;
   switch_devices[dev_addr].instances[instance].player_led_set = 0xFF;
+  switch_devices[dev_addr].grip_side[instance] = -1;  // Unknown until first report
 
   if ((++switch_devices[dev_addr].instance_count) == 1) {
     switch_devices[dev_addr].instance_root = instance; // save initial root instance to merge extras into
+    // Default both sticks to center so the side that hasn't reported
+    // yet doesn't look like a stick pinned to (0,0) on the output.
+    switch_devices[dev_addr].shared_analog[0] = 128;
+    switch_devices[dev_addr].shared_analog[1] = 128;
+    switch_devices[dev_addr].shared_analog[2] = 128;
+    switch_devices[dev_addr].shared_analog[3] = 128;
   }
 
   uint16_t vid, pid;
@@ -667,6 +676,13 @@ static inline bool init_switch_pro(uint8_t dev_addr, uint8_t instance)
   }
 
   return true;
+}
+
+// Joy-Con grip side accessor for router naming.
+// Returns 0 = left, 1 = right, -1 = unknown (no input report received yet).
+int switch_pro_get_grip_side(uint8_t dev_addr, uint8_t instance) {
+  if (dev_addr >= MAX_DEVICES || instance >= CFG_TUH_HID) return -1;
+  return switch_devices[dev_addr].grip_side[instance];
 }
 
 DeviceInterface switch_pro_interface = {

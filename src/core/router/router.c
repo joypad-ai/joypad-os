@@ -31,6 +31,7 @@
 #include "tusb.h"
 extern int hid_get_ctrl_type(uint8_t dev_addr, uint8_t instance);
 extern const char* hid_get_product_name(uint8_t dev_addr);
+extern int switch_pro_get_grip_side(uint8_t dev_addr, uint8_t instance);  // 0=L, 1=R, -1=unknown
 #endif
 
 // Device name lookup for Bluetooth
@@ -54,6 +55,25 @@ extern const char* hid_get_product_name(uint8_t dev_addr);
 // Value is distance from center (128). Range 0-127.
 // 50 means stick must move to < 78 or > 178 to trigger (about 40% deflection)
 #define ANALOG_ASSIGN_THRESHOLD 50
+
+// Map a submitted event to the instance value used for player slot lookup.
+// Most devices return event->instance unchanged. Joy-Con Charging Grip
+// (PID 0x200e) exposes both Joy-Cons as separate HID interfaces of the
+// same USB device — both should map to a single shared player slot so
+// they don't show up as Player 1 + Player 2.
+static inline int8_t player_slot_instance(const input_event_t* event) {
+#ifndef DISABLE_USB_HOST
+    if (event->transport == INPUT_TRANSPORT_USB && event->instance > 0) {
+        int ctrl_type = hid_get_ctrl_type(event->dev_addr, event->instance);
+        if (ctrl_type == CONTROLLER_SWITCH) {
+            uint16_t vid, pid;
+            tuh_vid_pid_get(event->dev_addr, &vid, &pid);
+            if (pid == 0x200e) return 0;  // Joy-Con Grip — share root slot
+        }
+    }
+#endif
+    return event->instance;
+}
 
 // Check if any analog stick is moved beyond threshold
 // Returns true if left or right stick is deflected significantly
@@ -88,6 +108,19 @@ static const char* get_device_name(const input_event_t* event) {
                     tuh_vid_pid_get(event->dev_addr, &vid, &pid);
                     if (pid == 0x2073) {  // Switch 2 GameCube PID
                         return "Switch 2 GameCube";
+                    }
+                }
+                // Joy-Con Charging Grip: each HID interface is one Joy-Con.
+                // Driver detects L/R from raw report stick fields and
+                // exposes via switch_pro_get_grip_side().
+                if (ctrl_type == CONTROLLER_SWITCH) {
+                    uint16_t vid, pid;
+                    tuh_vid_pid_get(event->dev_addr, &vid, &pid);
+                    if (pid == 0x200e) {
+                        int side = switch_pro_get_grip_side(event->dev_addr, event->instance);
+                        if (side == 0) return "Joy-Con (L)";
+                        if (side == 1) return "Joy-Con (R)";
+                        return "Joy-Con";  // Not yet detected
                     }
                 }
                 return device_interfaces[ctrl_type]->name;
@@ -537,8 +570,9 @@ static uint8_t router_find_routes(const input_event_t* event, route_entry_t* mat
 
 // SIMPLE MODE: Direct 1:1 pass-through (zero overhead, can be inlined)
 static inline void router_simple_mode(const input_event_t* event, output_target_t output) {
-    // Find or add player
-    int player_index = find_player_index(event->dev_addr, event->instance);
+    // Find or add player (multi-instance devices like Joy-Con Grip share one slot)
+    int8_t slot_inst = player_slot_instance(event);
+    int player_index = find_player_index(event->dev_addr, slot_inst);
 
     if (player_index < 0) {
         // Check if any button pressed or analog stick moved beyond threshold.
@@ -551,10 +585,10 @@ static inline void router_simple_mode(const input_event_t* event, output_target_
                                     event->transport == INPUT_TRANSPORT_GPIO);
         if (buttons_pressed || analog_active || physically_attached) {
             const char* device_name = get_device_name(event);
-            player_index = add_player(event->dev_addr, event->instance, event->transport, device_name);
+            player_index = add_player(event->dev_addr, slot_inst, event->transport, device_name);
             if (player_index >= 0) {
                 printf(LOG_TAG "Player %d assigned: %s (dev_addr=%d, instance=%d)\n",
-                    player_index + 1, device_name, event->dev_addr, event->instance);
+                    player_index + 1, device_name, event->dev_addr, slot_inst);
             }
         }
     }
@@ -589,17 +623,19 @@ static inline void router_simple_mode(const input_event_t* event, output_target_
 
 // MERGE MODE: Multiple inputs → single output
 static inline void router_merge_mode(const input_event_t* event, output_target_t output) {
-    // Register player if not already registered (for LED and rumble support)
-    int player_index = find_player_index(event->dev_addr, event->instance);
+    // Register player if not already registered (for LED and rumble support).
+    // Multi-instance devices (Joy-Con Grip) share one slot via player_slot_instance.
+    int8_t slot_inst = player_slot_instance(event);
+    int player_index = find_player_index(event->dev_addr, slot_inst);
     if (player_index < 0) {
         uint32_t buttons_pressed = event->buttons | event->keys;
         bool analog_active = analog_beyond_threshold(event);
         if (buttons_pressed || analog_active || event->type == INPUT_TYPE_MOUSE) {
             const char* device_name = get_device_name(event);
-            player_index = add_player(event->dev_addr, event->instance, event->transport, device_name);
+            player_index = add_player(event->dev_addr, slot_inst, event->transport, device_name);
             if (player_index >= 0) {
                 printf(LOG_TAG "Player %d assigned in merge mode: %s (dev_addr=%d, instance=%d)\n",
-                    player_index + 1, device_name, event->dev_addr, event->instance);
+                    player_index + 1, device_name, event->dev_addr, slot_inst);
             }
         }
     }
@@ -786,14 +822,26 @@ void router_submit_input(const input_event_t* event) {
             [INPUT_TRANSPORT_I2C]        = "i2c",
             [INPUT_TRANSPORT_GPIO]       = "gpio",
         };
-        int pi = find_player_index(event->dev_addr, event->instance);
-        const char* name = (pi >= 0) ? players[pi].name : get_device_name(event);
+        // Streaming: look up the shared player slot (Joy-Con Grip non-root
+        // remaps to root). Note: stream_addr below still uses event->instance
+        // so each Joy-Con appears as its own input source. Use the per-event
+        // device name (not the player slot's cached name) so the two Joy-Con
+        // sources display "Joy-Con (L)" and "Joy-Con (R)" individually.
+        int pi = find_player_index(event->dev_addr, player_slot_instance(event));
+        const char* name = get_device_name(event);
+        (void)pi;  // pi reserved if needed for future per-player decisions
         const char* src = (event->transport < sizeof(transport_names)/sizeof(transport_names[0]))
                           ? transport_names[event->transport] : "?";
         // In merge mode, all inputs go to output player 0
         int stream_player = (router_config.mode == ROUTING_MODE_MERGE) ? 0
                           : (pi >= 0 ? pi : 0);
-        cdc_commands_send_player_input(stream_player, event->dev_addr,
+        // Encode instance into the high bit of the streaming addr so
+        // multi-interface devices (e.g. Joy-Con Charging Grip — one HID
+        // interface per Joy-Con) appear as distinct input sources in
+        // the web config. Single-instance devices are unaffected
+        // (instance 0 leaves the value unchanged).
+        uint8_t stream_addr = (uint8_t)(event->dev_addr | (event->instance << 7));
+        cdc_commands_send_player_input(stream_player, stream_addr,
                                        name, src,
                                        event->buttons, event->analog);
     }
