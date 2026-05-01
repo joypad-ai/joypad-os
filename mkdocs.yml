@@ -119,7 +119,7 @@ nav:
     - Wiring Guide: hardware/wiring.md
     - DIY Builds: hardware/diy.md
     - Build Guides:
-      - USB2GC (KB2040): hardware/builds/usb2gc-kb2040.md
+      - USB2GC (KB2040 / Pi Pico / RP2040-Zero): hardware/builds/usb2gc.md
       - BT2USB (Pico W): hardware/builds/bt2usb-pico-w.md
       - LodgeNet2USB (Pico): hardware/builds/lodgenet2usb-pico.md
       - SNES2USB (KB2040): hardware/builds/snes2usb-kb2040.md

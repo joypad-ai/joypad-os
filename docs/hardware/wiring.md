@@ -68,7 +68,7 @@ Joypad uses PIO-based USB host (bit-banged via the RP2040's PIO peripheral). Thi
 
 ### What You Need
 
-- **USB-A female breakout board** ([example](https://www.adafruit.com/product/1833)) or a cut USB-A extension cable
+- **USB-A female breakout board** ([example](https://amzn.to/4wn5BnF)) or a cut USB-A extension cable
 - **4 jumper wires** (or 22-26 AWG wire + soldering)
 
 ### Tips

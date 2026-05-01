@@ -101,7 +101,7 @@ Use any USB or Bluetooth controller on retro consoles:
 | Console | Apps | Highlights | Build | Docs |
 |---------|------|-----------|-------|------|
 | **PCEngine / TurboGrafx-16** | usb2pce | Multitap (5 players), mouse, 2/3/6-button | [DIY](docs/hardware/diy.md) | [Guide](docs/apps/usb2pce.md) |
-| **GameCube / Wii** | usb2gc, bt2gc | Profiles, rumble, keyboard mode | [KB2040](docs/hardware/builds/usb2gc-kb2040.md) | [Guide](docs/apps/usb2gc.md) |
+| **GameCube / Wii** | usb2gc, bt2gc | Profiles, rumble, keyboard mode | [Build](docs/hardware/builds/usb2gc.md) | [Guide](docs/apps/usb2gc.md) |
 | **Sega Dreamcast** | usb2dc | Rumble, analog triggers, 4 players | [DIY](docs/hardware/diy.md) | [Guide](docs/apps/usb2dc.md) |
 | **N64** | bt2n64 | Rumble pak emulation, profiles, BT | [DIY](docs/hardware/diy.md) | [Guide](docs/apps/bt2n64.md) |
 | **Nuon DVD Players** | usb2nuon, bt2nuon | Controller, spinner (Tempest 3000), IGR | [DIY](docs/hardware/diy.md) | [Guide](docs/apps/usb2nuon.md) |
