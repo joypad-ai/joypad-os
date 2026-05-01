@@ -275,19 +275,23 @@ static void oled_init(void) {
     }
 
     // FeatherWing buttons: A (GPIO 9), B (GPIO 6), C (GPIO 5)
-    // Button A conflicts with MAX3421E INT on USB host builds — only init if available
+    // On the MAX3421E USB Host FeatherWing build, A (D9→GPIO9) is INT and
+    // B (D6→GPIO8) is MISO — both unavailable, only C is exposed.
 #ifdef OLED_BUTTON_A_PIN
     gpio_init(OLED_BUTTON_A_PIN);
     gpio_set_dir(OLED_BUTTON_A_PIN, GPIO_IN);
     gpio_pull_up(OLED_BUTTON_A_PIN);
 #endif
+#ifdef OLED_BUTTON_B_PIN
     gpio_init(OLED_BUTTON_B_PIN);
     gpio_set_dir(OLED_BUTTON_B_PIN, GPIO_IN);
     gpio_pull_up(OLED_BUTTON_B_PIN);
-
+#endif
+#ifdef OLED_BUTTON_C_PIN
     gpio_init(OLED_BUTTON_C_PIN);
     gpio_set_dir(OLED_BUTTON_C_PIN, GPIO_IN);
     gpio_pull_up(OLED_BUTTON_C_PIN);
+#endif
 
     joy_anim_init();
     eyes_anim_init();
@@ -295,31 +299,29 @@ static void oled_init(void) {
     eyes_anim_event(EYES_EVENT_BOOT);
     oled_current_page = oled_default_page;
 
-    printf("[app:usb2usb] OLED FeatherWing initialized (I2C%d, buttons"
+    printf("[app:usb2usb] OLED FeatherWing initialized (I2C%d", OLED_I2C_INST);
 #ifdef OLED_BUTTON_A_PIN
-           " A=%d"
+    printf(", A=%d", OLED_BUTTON_A_PIN);
 #endif
-           " B=%d C=%d)\n",
-           OLED_I2C_INST,
-#ifdef OLED_BUTTON_A_PIN
-           OLED_BUTTON_A_PIN,
+#ifdef OLED_BUTTON_B_PIN
+    printf(", B=%d", OLED_BUTTON_B_PIN);
 #endif
-           OLED_BUTTON_B_PIN, OLED_BUTTON_C_PIN);
+#ifdef OLED_BUTTON_C_PIN
+    printf(", C=%d", OLED_BUTTON_C_PIN);
+#endif
+    printf(")\n");
 }
 
 static void oled_handle_buttons(void) {
     // Skip when no display present — buttons live on the FeatherWing.
     if (!display_is_initialized()) return;
 
-    static bool last_a = true, last_b = true, last_c = true;  // Active-low (pull-up)
-    static uint32_t debounce_a = 0, debounce_b = 0, debounce_c = 0;
     uint32_t now = platform_time_ms();
 
-    bool b = gpio_get(OLED_BUTTON_B_PIN);
-    bool c = gpio_get(OLED_BUTTON_C_PIN);
-
-    // Button A: page up (when available — conflicts with MAX3421E INT on USB host builds)
+    // Button A: page up (conflicts with MAX3421E INT on USB host builds)
 #ifdef OLED_BUTTON_A_PIN
+    static bool last_a = true;
+    static uint32_t debounce_a = 0;
     bool a = gpio_get(OLED_BUTTON_A_PIN);
     if (!a && last_a && (now - debounce_a > 200)) {
         debounce_a = now;
@@ -328,7 +330,11 @@ static void oled_handle_buttons(void) {
     last_a = a;
 #endif
 
-    // Button B: cycle USB output mode
+    // Button B: cycle USB output mode (conflicts with MAX3421E MISO on USB host builds)
+#ifdef OLED_BUTTON_B_PIN
+    static bool last_b = true;
+    static uint32_t debounce_b = 0;
+    bool b = gpio_get(OLED_BUTTON_B_PIN);
     if (!b && last_b && (now - debounce_b > 200)) {
         debounce_b = now;
         usb_output_mode_t next = usbd_get_next_mode();
@@ -337,13 +343,19 @@ static void oled_handle_buttons(void) {
         usbd_set_mode(next);
     }
     last_b = b;
+#endif
 
     // Button C: page down
+#ifdef OLED_BUTTON_C_PIN
+    static bool last_c = true;
+    static uint32_t debounce_c = 0;
+    bool c = gpio_get(OLED_BUTTON_C_PIN);
     if (!c && last_c && (now - debounce_c > 200)) {
         debounce_c = now;
         oled_page_down();
     }
     last_c = c;
+#endif
 }
 #elif defined(OLED_I2C_DISPLAY)
 static void oled_init(void) {
