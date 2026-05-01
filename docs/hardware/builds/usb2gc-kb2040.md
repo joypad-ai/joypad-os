@@ -15,23 +15,14 @@ USB/Bluetooth controllers to GameCube/Wii via Adafruit KB2040.
 
 The GameCube controller port uses a proprietary connector. Cut a GC extension cable and wire the console-end plug to the KB2040.
 
-| KB2040 Pin | GC Signal | Cable Color (typical) | Notes |
-|------------|-----------|----------------------|-------|
-| GPIO 7 | Data | White or Red | Bidirectional joybus data line |
-| GPIO 6 | 3.3V Sense | -- | Directly to 3.3V on KB2040 (no wire needed -- just connect GPIO 6 to 3V3) |
-| 3V3 | 3.3V | -- | Powers the data line pull-up |
-| GND | GND | Black | Ground |
+| KB2040 Pin | GC Signal | Notes |
+|------------|-----------|-------|
+| GPIO 7 | Data | Bidirectional joybus data line |
+| GND | GND | Common ground |
 
-GPIO 6 is set HIGH to signal "play mode" (GameCube console connected). When GPIO 6 reads LOW, the adapter falls back to USB device mode for configuration.
+Cable wire colors vary by manufacturer — verify with a multimeter against the [GameCube Pinout reference](../../output/gamecube.md) before soldering.
 
-Shield pins (optional, for proper shielding):
-
-| KB2040 Pin | Function |
-|------------|----------|
-| GPIO 4 | Shield pin L |
-| GPIO 5 | Shield pin L+1 |
-| GPIO 26 | Shield pin R |
-| GPIO 27 | Shield pin R+1 |
+The console provides the joybus pull-up internally, so KB2040's 3V3 rail does not need to be wired to the cable. Play/config mode is detected by reading the data line on boot — if it idles HIGH, the console is connected and play mode runs; if LOW, the adapter falls back to USB device + CDC config mode.
 
 ### USB Host Port
 
@@ -56,11 +47,11 @@ KB2040 uses the same pins as Pico for PIO-USB:
 # Build
 make usb2gc_kb2040
 
-# Flash (hold BOOTSEL on KB2040 while connecting USB, or double-tap reset)
+# Flash (hold BOOT on KB2040 while connecting USB, or double-tap reset)
 make flash-usb2gc_kb2040
 ```
 
-Output file: `releases/joypad_<commit>_usb2gc_ada_kb2040.uf2`
+Output file: `releases/joypad_<commit>_usb2gc_kb2040.uf2`
 
 ## Testing
 
