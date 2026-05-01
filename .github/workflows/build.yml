@@ -69,6 +69,9 @@ jobs:
           - controller_fisherprice_v1_kb2040
           - controller_fisherprice_v2_kb2040
           - controller_alpakka_pico
+          - controller_btusb_pico_w
+          - controller_btusb_pico2_w
+          - controller_btusb_rp2040_abb
           - lodgenet2usb_pico
           - lodgenet2usb_pico2
           - lodgenet2n64_pico
@@ -127,8 +130,15 @@ jobs:
         include:
           - app: bt2usb_esp32s3
             idf_target: esp32s3
-            sdkconfig: sdkconfig.defaults
-            bin_path: esp/build/joypad_bt2usb.bin
+            board: xiao_esp32s3
+            config_app: bt2usb
+            bin_name: bt2usb
+            uf2_family: "0xc47e5767"
+          - app: controller_btusb_feather_esp32s3
+            idf_target: esp32s3
+            board: feather_esp32s3
+            config_app: controller_btusb
+            bin_name: controller_btusb
             uf2_family: "0xc47e5767"
 
     steps:
@@ -145,18 +155,23 @@ jobs:
 
       - name: Build ${{ matrix.app }}
         run: |
+          # Compose SDKCONFIG_DEFAULTS so esp/sdkconfig.board.<board> overlays sdkconfig.defaults
+          SDKCFG="sdkconfig.defaults"
+          if [ -f "esp/sdkconfig.board.${{ matrix.board }}" ]; then
+            SDKCFG="$SDKCFG;sdkconfig.board.${{ matrix.board }}"
+          fi
           docker run --rm \
             -v ${{ github.workspace }}:/workspace \
             -w /workspace/esp \
             espressif/idf:v6.0-beta2 \
-            bash -c "SDKCONFIG_DEFAULTS=${{ matrix.sdkconfig }} idf.py build"
+            bash -c "SDKCONFIG_DEFAULTS='$SDKCFG' idf.py -DCONFIG_APP=${{ matrix.config_app }} -DCONFIG_BOARD=${{ matrix.board }} build"
 
           sudo chown -R $(id -u):$(id -g) esp/build/
 
       - name: Generate UF2
         run: |
           mkdir -p releases
-          python3 esp/tools/uf2conv.py ${{ matrix.bin_path }} \
+          python3 esp/tools/uf2conv.py esp/build/joypad_${{ matrix.bin_name }}.bin \
             --base 0 --family ${{ matrix.uf2_family }} \
             --output releases/joypad_${{ steps.commit.outputs.hash }}_${{ matrix.app }}.uf2 \
             --convert
@@ -189,6 +204,9 @@ jobs:
           - app: btusb2usb_feather_nrf52840
             board: adafruit_feather_nrf52840
             app_type: btusb2usb
+          - app: controller_btusb_feather_nrf52840
+            board: adafruit_feather_nrf52840
+            app_type: controller_btusb
 
     steps:
       - name: Checkout code with submodules
@@ -287,7 +305,7 @@ jobs:
           mv artifacts/*.uf2 releases/
 
           # Known board suffixes (order matters - check longer suffixes first)
-          BOARDS="esp32s3 seeed_xiao_nrf52840 feather_nrf52840_max3421 feather_nrf52840 pico2_w pico2 pico_w rp2040zero rp2350usba kb2040 feather_rp2040 feather pico macropad"
+          BOARDS="feather_esp32s3 esp32s3 seeed_xiao_nrf52840 feather_nrf52840_max3421 feather_nrf52840 pico2_w pico2 pico_w rp2040_abb rp2040zero rp2350usba kb2040 feather_rp2040 feather pico macropad"
 
           for file in releases/joypad_*.uf2; do
             if [ -f "$file" ]; then
@@ -508,6 +526,13 @@ jobs:
             organized/controller_fisherprice_v1/*.uf2
             organized/controller_fisherprice_v2/*.uf2
             organized/controller_alpakka/*.uf2
+          if-no-files-found: ignore
+
+      - name: Upload controller_btusb
+        uses: actions/upload-artifact@v4
+        with:
+          name: joypad_${{ steps.commit.outputs.hash }}_controller_btusb
+          path: organized/controller_btusb/*.uf2
           if-no-files-found: ignore
 
       - name: Upload release-firmware
