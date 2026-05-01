@@ -2,6 +2,18 @@
 
 Everything you need to build your own Joypad adapter.
 
+## Step-by-Step Build Guides
+
+Pick a guide for your target adapter — these walk through parts, wiring tables, build, flash, and testing:
+
+- [USB → GameCube (KB2040)](builds/usb2gc-kb2040.md)
+- [SNES → USB (KB2040)](builds/snes2usb-kb2040.md)
+- [N64 → Dreamcast (KB2040)](builds/n642dc-kb2040.md)
+- [Bluetooth → USB (Pico W)](builds/bt2usb-pico-w.md)
+- [LodgeNet → USB (Pico)](builds/lodgenet2usb-pico.md)
+
+For an adapter not listed above, use the general wiring guide and console-specific pinouts below — every Joypad adapter follows the same pattern: USB host on GPIO 16/17 (or onboard), plus the console-specific output pins.
+
 ## General Requirements
 
 1. **Microcontroller board** (see [Supported Boards](boards.md))

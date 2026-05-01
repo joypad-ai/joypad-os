@@ -98,42 +98,42 @@ Output: `releases/joypad_<commit>_<app>_<board>.uf2`
 
 Use any USB or Bluetooth controller on retro consoles:
 
-| Console | Apps | Highlights | Docs |
-|---------|------|-----------|------|
-| **PCEngine / TurboGrafx-16** | usb2pce | Multitap (5 players), mouse, 2/3/6-button | [Guide](docs/apps/usb2pce.md) |
-| **GameCube / Wii** | usb2gc, bt2gc | Profiles, rumble, keyboard mode | [Guide](docs/apps/usb2gc.md) |
-| **Sega Dreamcast** | usb2dc | Rumble, analog triggers, 4 players | [Guide](docs/apps/usb2dc.md) |
-| **N64** | bt2n64 | Rumble pak emulation, profiles, BT | [Guide](docs/apps/bt2n64.md) |
-| **Nuon DVD Players** | usb2nuon, bt2nuon | Controller, spinner (Tempest 3000), IGR | [Guide](docs/apps/usb2nuon.md) |
-| **3DO Interactive Multiplayer** | usb23do | 8 players, mouse, extension passthrough | [Guide](docs/apps/usb23do.md) |
-| **Neo Geo / SuperGun** | usb2neogeo | 7 profiles, 1L6B arcade layouts | [Guide](docs/apps/usb2neogeo.md) |
-| **Casio Loopy** | usb2loopy | 4 players (experimental) | [Guide](docs/apps/usb2loopy.md) |
+| Console | Apps | Highlights | Build | Docs |
+|---------|------|-----------|-------|------|
+| **PCEngine / TurboGrafx-16** | usb2pce | Multitap (5 players), mouse, 2/3/6-button | [DIY](docs/hardware/diy.md) | [Guide](docs/apps/usb2pce.md) |
+| **GameCube / Wii** | usb2gc, bt2gc | Profiles, rumble, keyboard mode | [KB2040](docs/hardware/builds/usb2gc-kb2040.md) | [Guide](docs/apps/usb2gc.md) |
+| **Sega Dreamcast** | usb2dc | Rumble, analog triggers, 4 players | [DIY](docs/hardware/diy.md) | [Guide](docs/apps/usb2dc.md) |
+| **N64** | bt2n64 | Rumble pak emulation, profiles, BT | [DIY](docs/hardware/diy.md) | [Guide](docs/apps/bt2n64.md) |
+| **Nuon DVD Players** | usb2nuon, bt2nuon | Controller, spinner (Tempest 3000), IGR | [DIY](docs/hardware/diy.md) | [Guide](docs/apps/usb2nuon.md) |
+| **3DO Interactive Multiplayer** | usb23do | 8 players, mouse, extension passthrough | [DIY](docs/hardware/diy.md) | [Guide](docs/apps/usb23do.md) |
+| **Neo Geo / SuperGun** | usb2neogeo | 7 profiles, 1L6B arcade layouts | [DIY](docs/hardware/diy.md) | [Guide](docs/apps/usb2neogeo.md) |
+| **Casio Loopy** | usb2loopy | 4 players (experimental) | [DIY](docs/hardware/diy.md) | [Guide](docs/apps/usb2loopy.md) |
 
 ### USB & Wireless Adapters
 
-| Adapter | What It Does | Platforms | Docs |
-|---------|-------------|-----------|------|
-| **USB2USB** | USB/BT controller → USB gamepad (XInput, PS3/4, Switch, etc.) | RP2040, nRF52840 | [Guide](docs/apps/usb2usb.md) |
-| **BT2USB** | Bluetooth controller → wired USB gamepad | Pico W, ESP32-S3, nRF52840 | [Guide](docs/apps/bt2usb.md) |
-| **WiFi2USB** | WiFi controller (JOCP) → USB gamepad | Pico W | [Guide](docs/apps/wifi2usb.md) |
+| Adapter | What It Does | Platforms | Build | Docs |
+|---------|-------------|-----------|-------|------|
+| **USB2USB** | USB/BT controller → USB gamepad (XInput, PS3/4, Switch, etc.) | RP2040, nRF52840 | [DIY](docs/hardware/diy.md) | [Guide](docs/apps/usb2usb.md) |
+| **BT2USB** | Bluetooth controller → wired USB gamepad | Pico W, ESP32-S3, nRF52840 | [Pico W](docs/hardware/builds/bt2usb-pico-w.md) | [Guide](docs/apps/bt2usb.md) |
+| **WiFi2USB** | WiFi controller (JOCP) → USB gamepad | Pico W | [DIY](docs/hardware/diy.md) | [Guide](docs/apps/wifi2usb.md) |
 
 ### Native Controller Adapters
 
 Convert retro controllers to USB or bridge them to other consoles:
 
-| Adapter | From → To | Docs |
-|---------|----------|------|
-| **SNES2USB** | SNES/NES → USB | [Guide](docs/apps/snes2usb.md) |
-| **NES2USB** | NES → USB | [Guide](docs/apps/nes2usb.md) |
-| **N642USB** | N64 → USB | [Guide](docs/apps/n642usb.md) |
-| **GC2USB** | GameCube → USB | [Guide](docs/apps/gc2usb.md) |
-| **NEOGEO2USB** | Neo Geo arcade stick → USB | [Guide](docs/apps/neogeo2usb.md) |
-| **LodgeNet2USB** | LodgeNet hotel controllers → USB | [Guide](docs/apps/lodgenet2usb.md) |
-| **N642DC** | N64 → Dreamcast | [Guide](docs/apps/n642dc.md) |
-| **N642Nuon** | N64 → Nuon | [Guide](docs/apps/n642nuon.md) |
-| **SNES23DO** | SNES → 3DO | [Guide](docs/apps/snes23do.md) |
-| **LodgeNet2N64** | LodgeNet → N64 | [Guide](docs/apps/lodgenet2n64.md) |
-| **LodgeNet2GC** | LodgeNet → GameCube | [Guide](docs/apps/lodgenet2gc.md) |
+| Adapter | From → To | Build | Docs |
+|---------|----------|-------|------|
+| **SNES2USB** | SNES/NES → USB | [KB2040](docs/hardware/builds/snes2usb-kb2040.md) | [Guide](docs/apps/snes2usb.md) |
+| **NES2USB** | NES → USB | [DIY](docs/hardware/diy.md) | [Guide](docs/apps/nes2usb.md) |
+| **N642USB** | N64 → USB | [DIY](docs/hardware/diy.md) | [Guide](docs/apps/n642usb.md) |
+| **GC2USB** | GameCube → USB | [DIY](docs/hardware/diy.md) | [Guide](docs/apps/gc2usb.md) |
+| **NEOGEO2USB** | Neo Geo arcade stick → USB | [DIY](docs/hardware/diy.md) | [Guide](docs/apps/neogeo2usb.md) |
+| **LodgeNet2USB** | LodgeNet hotel controllers → USB | [Pico](docs/hardware/builds/lodgenet2usb-pico.md) | [Guide](docs/apps/lodgenet2usb.md) |
+| **N642DC** | N64 → Dreamcast | [KB2040](docs/hardware/builds/n642dc-kb2040.md) | [Guide](docs/apps/n642dc.md) |
+| **N642Nuon** | N64 → Nuon | [DIY](docs/hardware/diy.md) | [Guide](docs/apps/n642nuon.md) |
+| **SNES23DO** | SNES → 3DO | [DIY](docs/hardware/diy.md) | [Guide](docs/apps/snes23do.md) |
+| **LodgeNet2N64** | LodgeNet → N64 | [DIY](docs/hardware/diy.md) | [Guide](docs/apps/lodgenet2n64.md) |
+| **LodgeNet2GC** | LodgeNet → GameCube | [DIY](docs/hardware/diy.md) | [Guide](docs/apps/lodgenet2gc.md) |
 
 ### Custom Controllers
 
