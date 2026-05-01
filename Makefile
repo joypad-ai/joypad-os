@@ -11,20 +11,23 @@ export
 # Parallel jobs for cmake builds (auto-detect cores, fallback to 4)
 JOBS := $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 
-# Ensure PICO_TOOLCHAIN_PATH is set
+# Ensure PICO_TOOLCHAIN_PATH is set. Prefer the latest ARM GNU Toolchain
+# installed under /Applications/ArmGNUToolchain/ (the cask `gcc-arm-embedded`
+# .pkg, which bundles newlib). Fall back to PATH for Linux/CI/Docker.
+# Note: the brew formula `arm-none-eabi-gcc` is NOT a viable substitute on
+# macOS — it lacks newlib (`nosys.specs` missing) and bare-metal links fail.
+# Docker pins ARM 15.2.rel1 (see Dockerfile); 14.x locally is fine for
+# matching codegen on the d6c02ac pico-pio-usb pin.
 ifndef PICO_TOOLCHAIN_PATH
-    # Try macOS default location
-    TOOLCHAIN_PATH_MACOS := /Applications/ArmGNUToolchain/14.2.rel1/arm-none-eabi
-    # Try Linux/CI location (toolchain in PATH)
+    TOOLCHAIN_PATH_MACOS := $(shell ls -d /Applications/ArmGNUToolchain/*/arm-none-eabi 2>/dev/null | sort -V | tail -1)
     TOOLCHAIN_IN_PATH := $(shell which arm-none-eabi-gcc 2>/dev/null)
 
-    ifneq ($(wildcard $(TOOLCHAIN_PATH_MACOS)),)
+    ifneq ($(TOOLCHAIN_PATH_MACOS),)
         export PICO_TOOLCHAIN_PATH := $(TOOLCHAIN_PATH_MACOS)
     else ifneq ($(TOOLCHAIN_IN_PATH),)
-        # Toolchain is in PATH (Linux/Docker/CI) - pico-sdk will find it automatically
         export PICO_TOOLCHAIN_PATH :=
     else
-        $(error PICO_TOOLCHAIN_PATH not set and toolchain not found in PATH or at $(TOOLCHAIN_PATH_MACOS))
+        $(error No ARM toolchain found. Install with `brew install --cask gcc-arm-embedded` then run the .pkg installer (puts toolchain at /Applications/ArmGNUToolchain/X.Y.relZ/))
     endif
 endif
 
