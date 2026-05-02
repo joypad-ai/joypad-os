@@ -9,6 +9,8 @@ import { registerInputTools } from "./tools/input.js";
 import { registerObserveTools } from "./tools/observe.js";
 import { registerVisionTools } from "./tools/vision.js";
 import { state } from "./state.js";
+import { streamingCamera } from "./capture/streaming_camera.js";
+import { startWebServer, stopWebServer } from "./web/server.js";
 
 const server = new McpServer(
   { name: "joypad-mcp", version: "0.1.0" },
@@ -26,8 +28,11 @@ registerVisionTools(server);
 async function main(): Promise<void> {
   const transport = new StdioServerTransport();
   await server.connect(transport);
+  startWebServer();
 
   const shutdown = async () => {
+    stopWebServer();
+    streamingCamera.stop();
     if (state.conn) {
       try { await state.conn.close(); } catch {}
     }
