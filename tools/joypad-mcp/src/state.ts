@@ -5,12 +5,11 @@
 // firmware doesn't accumulate, it overwrites.
 
 import { Connection } from "./transport.js";
-import { BlendMode, NEUTRAL_ANALOG, decodeInputEvent, decodeVersion } from "./protocol.js";
+import { NEUTRAL_ANALOG, decodeInputEvent, decodeVersion } from "./protocol.js";
 
 export interface SlotState {
   heldButtons: number;
   analog: [number, number, number, number, number, number];
-  blendMode: BlendMode;
   lastInputEvent?: { ts: number; buttons: number; analog: number[]; deltaX: number; deltaY: number };
 }
 
@@ -20,7 +19,6 @@ function freshSlot(): SlotState {
   return {
     heldButtons: 0,
     analog: [...NEUTRAL_ANALOG],
-    blendMode: BlendMode.OFF,
   };
 }
 

@@ -3,14 +3,13 @@
 // `read_state` returns what the MCP last *sent* (held buttons + analog),
 // since the firmware doesn't currently echo applied state back.
 // `read_human_input` returns the most recent INPUT_EVENT we've seen — only
-// meaningful if a real controller is plugged in and the adapter is configured
-// to emit events back over UART (most don't yet; this is forward-looking).
+// meaningful if the adapter is configured to emit events back over UART
+// (most apps don't yet; this is forward-looking).
 // `read_log` returns recent printf lines captured from the same UART stream.
 
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { state } from "../state.js";
-import { BLEND_MODE_NAMES } from "../protocol.js";
 import { maskToNames } from "../buttons.js";
 
 const slotArg = z.number().int().min(0).max(7).optional();
@@ -18,7 +17,7 @@ const slotArg = z.number().int().min(0).max(7).optional();
 export function registerObserveTools(server: McpServer): void {
   server.tool(
     "read_state",
-    "Return the current input state we're driving for a slot: held buttons, analog axes, blend mode. This is what the MCP last sent — it's the desired state, not necessarily what the console actually applied.",
+    "Return the current input state we're driving for a slot: held buttons, analog axes. This is what the MCP last sent — it's the desired state, not necessarily what the console actually applied.",
     { slot: slotArg },
     async ({ slot }) => {
       const i = slot ?? 0;
@@ -33,7 +32,6 @@ export function registerObserveTools(server: McpServer): void {
                 held_buttons: maskToNames(s.heldButtons),
                 buttons_mask: s.heldButtons,
                 analog: { lx: s.analog[0], ly: s.analog[1], rx: s.analog[2], ry: s.analog[3], lt: s.analog[4], rt: s.analog[5] },
-                blend_mode: Object.keys(BLEND_MODE_NAMES).find((k) => BLEND_MODE_NAMES[k] === s.blendMode),
               },
               null,
               2,
@@ -46,7 +44,7 @@ export function registerObserveTools(server: McpServer): void {
 
   server.tool(
     "read_human_input",
-    "Return the most recent INPUT_EVENT from a real controller on this slot, if any. Useful in `observe` or `assist` blend mode for record/replay or co-pilot. Returns null if the adapter has not emitted an event for this slot.",
+    "Return the most recent INPUT_EVENT from a real controller on this slot, if any. Returns null if the adapter has not emitted an event for this slot. (Forward-looking — most apps don't echo INPUT_EVENT back yet.)",
     { slot: slotArg },
     async ({ slot }) => {
       const i = slot ?? 0;

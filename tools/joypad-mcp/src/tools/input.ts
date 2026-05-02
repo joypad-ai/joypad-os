@@ -1,4 +1,4 @@
-// Input tools — every action ultimately becomes one or more AI_INJECT packets.
+// Input tools — every action becomes one or more UART_PKT_INPUT_EVENT packets.
 // We keep per-slot held-button + analog state on the host side so each packet
 // carries the *full* desired state (the firmware overwrites, doesn't merge).
 
@@ -7,11 +7,8 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { state } from "../state.js";
 import {
   PktType,
-  BlendMode,
-  BLEND_MODE_NAMES,
   INPUT_TYPE_GAMEPAD,
   encodeInputEvent,
-  encodeBlendMode,
   NEUTRAL_ANALOG,
 } from "../protocol.js";
 import { parseButtons, parseAxis, AXIS_INDEX, maskToNames } from "../buttons.js";
@@ -269,7 +266,7 @@ export function registerInputTools(server: McpServer): void {
 
   server.tool(
     "release_all",
-    "Safety reset: zero all buttons, recenter all analog axes (128/0), keep blend mode. Good to call if a hold gets stuck.",
+    "Safety reset: zero all buttons, recenter all analog axes (128/0). Good to call if a hold gets stuck.",
     { slot: slotArg },
     async ({ slot }) => {
       const i = slot ?? 0;
@@ -278,24 +275,6 @@ export function registerInputTools(server: McpServer): void {
       s.analog = [...NEUTRAL_ANALOG];
       await applySlot(i);
       return { content: [{ type: "text", text: JSON.stringify({ ok: true, slot: i }) }] };
-    },
-  );
-
-  server.tool(
-    "set_blend_mode",
-    "Choose how the AI input combines with a real player. takeover=AI fully drives, assist=OR with player buttons (good for co-pilot), override=AI wins on conflict, observe=AI ignored but state captured, off=disabled.",
-    {
-      mode: z.enum(["off", "observe", "assist", "override", "takeover"]),
-      slot: slotArg,
-    },
-    async ({ mode, slot }) => {
-      const i = slot ?? 0;
-      const conn = state.requireConn();
-      const m = BLEND_MODE_NAMES[mode];
-      await conn.send(PktType.AI_BLEND_MODE, encodeBlendMode(i, m));
-      state.slot(i).blendMode = m;
-      state.lastCommandAt = Date.now();
-      return { content: [{ type: "text", text: JSON.stringify({ ok: true, mode, slot: i }) }] };
     },
   );
 }

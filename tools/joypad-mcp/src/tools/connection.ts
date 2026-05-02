@@ -5,8 +5,6 @@ import { Connection, DEFAULT_BAUD } from "../transport.js";
 import { state } from "../state.js";
 import {
   PktType,
-  BlendMode,
-  BLEND_MODE_NAMES,
   INPUT_TYPE_GAMEPAD,
   encodeInputEvent,
   NEUTRAL_ANALOG,
@@ -143,7 +141,7 @@ export function registerConnectionTools(server: McpServer): void {
 
   server.tool(
     "info",
-    "Report current connection state, held buttons, blend mode, and recent activity.",
+    "Report current connection state, held buttons, and recent activity.",
     {},
     async () => {
       const conn = state.conn;
@@ -151,7 +149,6 @@ export function registerConnectionTools(server: McpServer): void {
         slot: i,
         held_buttons: s.heldButtons,
         analog: s.analog,
-        blend_mode: Object.keys(BLEND_MODE_NAMES).find((k) => BLEND_MODE_NAMES[k] === s.blendMode),
         last_input_event_ms_ago: s.lastInputEvent ? Date.now() - s.lastInputEvent.ts : null,
       }));
       return {
@@ -165,7 +162,7 @@ export function registerConnectionTools(server: McpServer): void {
                 baud: conn?.baud,
                 last_command_ms_ago: state.lastCommandAt ? Date.now() - state.lastCommandAt : null,
                 adapter: state.adapterInfo,
-                slots: slots.filter((s) => s.held_buttons || s.last_input_event_ms_ago !== null || s.blend_mode !== "off"),
+                slots: slots.filter((s) => s.held_buttons || s.last_input_event_ms_ago !== null),
               },
               null,
               2,

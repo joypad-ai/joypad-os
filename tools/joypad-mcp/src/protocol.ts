@@ -27,27 +27,7 @@ export enum PktType {
   GET_PROFILE = 0x41,
   PROFILE = 0x42,
   SET_MODE = 0x43,
-
-  AI_INJECT = 0x50,
-  AI_BLEND_MODE = 0x51,
-  AI_OBSERVE = 0x52,
 }
-
-export enum BlendMode {
-  OFF = 0,
-  OBSERVE = 1,
-  ASSIST = 2,
-  OVERRIDE = 3,
-  TAKEOVER = 4,
-}
-
-export const BLEND_MODE_NAMES: Record<string, BlendMode> = {
-  off: BlendMode.OFF,
-  observe: BlendMode.OBSERVE,
-  assist: BlendMode.ASSIST,
-  override: BlendMode.OVERRIDE,
-  takeover: BlendMode.TAKEOVER,
-};
 
 // uart_input_event_t — 14 bytes packed
 //   uint8_t  player_index;
@@ -55,7 +35,7 @@ export const BLEND_MODE_NAMES: Record<string, BlendMode> = {
 //   uint32_t buttons;
 //   uint8_t  analog[6];     // LX, LY, RX, RY, LT, RT
 //   int8_t   delta_x, delta_y;
-export interface InputEventPacket {
+export interface InputEvent {
   playerIndex: number;
   deviceType: number;
   buttons: number;
@@ -68,7 +48,7 @@ export interface InputEventPacket {
 // uart_host's INPUT_EVENT branch routes synthesized events as gamepads.
 export const INPUT_TYPE_GAMEPAD = 0;
 
-export function encodeInputEvent(p: InputEventPacket): Uint8Array {
+export function encodeInputEvent(p: InputEvent): Uint8Array {
   const buf = Buffer.alloc(14);
   buf.writeUInt8(p.playerIndex & 0xff, 0);
   buf.writeUInt8(p.deviceType & 0xff, 1);
@@ -77,45 +57,6 @@ export function encodeInputEvent(p: InputEventPacket): Uint8Array {
   buf.writeInt8(p.deltaX | 0, 12);
   buf.writeInt8(p.deltaY | 0, 13);
   return new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
-}
-
-// uart_ai_inject_t kept for future blend-mode work (Phase 3 co-pilot).
-// No firmware consumer wires it into the router today.
-export interface AiInject {
-  playerIndex: number;
-  blendMode: BlendMode;
-  buttons: number;
-  analog: [number, number, number, number, number, number];
-  durationFrames: number;
-}
-
-export function encodeAiInject(p: AiInject): Uint8Array {
-  const buf = Buffer.alloc(13);
-  buf.writeUInt8(p.playerIndex & 0xff, 0);
-  buf.writeUInt8(p.blendMode & 0xff, 1);
-  buf.writeUInt32LE(p.buttons >>> 0, 2);
-  for (let i = 0; i < 6; i++) buf.writeUInt8(p.analog[i] & 0xff, 6 + i);
-  buf.writeUInt8(p.durationFrames & 0xff, 12);
-  return new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
-}
-
-// uart_blend_mode_cmd_t — 2 bytes
-export function encodeBlendMode(playerIndex: number, mode: BlendMode): Uint8Array {
-  return new Uint8Array([playerIndex & 0xff, mode & 0xff]);
-}
-
-// uart_input_event_t — 14 bytes
-//   uint8_t player_index, device_type;
-//   uint32_t buttons;
-//   uint8_t analog[6];
-//   int8_t delta_x, delta_y;
-export interface InputEvent {
-  playerIndex: number;
-  deviceType: number;
-  buttons: number;
-  analog: [number, number, number, number, number, number];
-  deltaX: number;
-  deltaY: number;
 }
 
 export function decodeInputEvent(payload: Uint8Array): InputEvent | null {

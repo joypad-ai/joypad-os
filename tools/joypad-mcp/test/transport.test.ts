@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { crc8, buildFrame, RxParser, SYNC_BYTE } from "../src/transport.js";
-import { encodeAiInject, BlendMode, NEUTRAL_ANALOG, PktType } from "../src/protocol.js";
+import { encodeInputEvent, INPUT_TYPE_GAMEPAD, NEUTRAL_ANALOG, PktType } from "../src/protocol.js";
 
 // Reference CRC-8 implementation copied verbatim from uart_protocol.h.
 // If this test passes, the TS port matches the firmware byte-for-byte.
@@ -52,18 +52,19 @@ test("RxParser: clean packet roundtrip", () => {
   const parser = new RxParser();
   const packets: { type: number; payload: Uint8Array }[] = [];
   parser.on("packet", (p) => packets.push(p));
-  const inject = encodeAiInject({
+  const evt = encodeInputEvent({
     playerIndex: 0,
-    blendMode: BlendMode.TAKEOVER,
+    deviceType: INPUT_TYPE_GAMEPAD,
     buttons: 0x0001,
     analog: [...NEUTRAL_ANALOG],
-    durationFrames: 0,
+    deltaX: 0,
+    deltaY: 0,
   });
-  const frame = buildFrame(PktType.AI_INJECT, inject);
+  const frame = buildFrame(PktType.INPUT_EVENT, evt);
   parser.feed(frame);
   assert.equal(packets.length, 1);
-  assert.equal(packets[0].type, PktType.AI_INJECT);
-  assert.deepEqual(Array.from(packets[0].payload), Array.from(inject));
+  assert.equal(packets[0].type, PktType.INPUT_EVENT);
+  assert.deepEqual(Array.from(packets[0].payload), Array.from(evt));
 });
 
 test("RxParser: ASCII log lines emitted between packets", () => {
