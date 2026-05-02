@@ -874,17 +874,41 @@ target_compile_definitions(joypad_usb_feather_rp2040_usb_host PRIVATE
     PICO_DEFAULT_UART=0
     PICO_DEFAULT_UART_TX_PIN=0
     PICO_DEFAULT_UART_RX_PIN=1
+    # MCP-driven synthetic input over the same UART that carries stdio logs
+    # (UART0 on GPIO0/1, 115200 baud — TX/RX header pins, USB-UART bridge).
+    CONFIG_UART_HOST=1
+    UART_HOST_PERIPHERAL=uart0
+    CONFIG_UART_HOST_TX_PIN=0
+    CONFIG_UART_HOST_RX_PIN=1
+    CONFIG_UART_HOST_BAUD=115200
+    # OLED FeatherWing 128x64 (SH1107) over I2C on STEMMA QT.
+    # No MAX3421E here, so all three buttons (A=D9/GPIO9, B=D6/GPIO8,
+    # C=D5/GPIO7) are free.
+    OLED_I2C_INST=1
+    OLED_I2C_SDA_PIN=2
+    OLED_I2C_SCL_PIN=3
+    OLED_I2C_ADDR=0x3C
+    OLED_BUTTON_A_PIN=9
+    OLED_BUTTON_B_PIN=8
+    OLED_BUTTON_C_PIN=7
+    I2C_PEER_ENABLED=1
 )
 target_sources(joypad_usb_feather_rp2040_usb_host PUBLIC
     ${COMMON_SOURCES}
     ${USB_DEVICE_SOURCES}
+    ${I2C_PEER_SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/services/display/display.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/services/display/display_i2c.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/services/display/joy_anim.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/services/display/eyes_anim.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/host/uart/uart_host.c
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2usb/app.c
 )
 target_include_directories(joypad_usb_feather_rp2040_usb_host PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2usb
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd
 )
-target_link_libraries(joypad_usb_feather_rp2040_usb_host PRIVATE ${COMMON_LIBRARIES} tinyusb_device tinyusb_pico_pio_usb)
+target_link_libraries(joypad_usb_feather_rp2040_usb_host PRIVATE ${COMMON_LIBRARIES} tinyusb_device tinyusb_pico_pio_usb hardware_i2c pico_i2c_slave)
 joypad_target_common(joypad_usb_feather_rp2040_usb_host)
 joypad_add_btstack(joypad_usb_feather_rp2040_usb_host)
 pico_enable_stdio_uart(joypad_usb_feather_rp2040_usb_host 1)
