@@ -108,6 +108,10 @@ typedef struct {
 
 static joywing_instance_t instances[JOYWING_MAX_INSTANCES];
 static uint8_t instance_count = 0;
+// Number of instances that actually responded on I2C — drives single-JoyWing
+// vs dual-JoyWing button/stick mapping. Different from instance_count which
+// only reflects how many were configured.
+static uint8_t initialized_count = 0;
 
 // Single merged input event for all JoyWing instances
 static input_event_t joywing_event;
@@ -161,6 +165,7 @@ static void joywing_init_instance(uint8_t idx)
     jw->initialized = true;
     jw->last_poll = 0;
     any_initialized = true;
+    initialized_count++;
     printf("[joywing:%d] Initialized\n", idx);
 }
 
@@ -196,8 +201,14 @@ static void joywing_poll_instance(uint8_t idx)
     uint32_t gpio = seesaw_gpio_read_bulk(&jw->seesaw);
     if (gpio == 0xFFFFFFFF) return;
 
-    if (idx == 0) {
-        // JoyWing 0: D-pad + S1
+    // Role assignment.
+    //   2 JoyWings: idx 0 = D-pad + Select + LS, idx 1 = face + Start + RS.
+    //   1 JoyWing:  the only JoyWing should be a usable controller on its
+    //               own — face buttons + Start + LS, NOT just a D-pad.
+    bool dpad_role = (initialized_count >= 2 && idx == 0);
+    bool use_left_stick = (initialized_count < 2) || (idx == 0);
+
+    if (dpad_role) {
         // Clear this instance's button bits before setting new ones
         joywing_event.buttons &= ~(JP_BUTTON_DU | JP_BUTTON_DD | JP_BUTTON_DL | JP_BUTTON_DR | JP_BUTTON_S1);
         if (!(gpio & (1u << JOYWING_BTN_Y)))      joywing_event.buttons |= JP_BUTTON_DU;
@@ -206,7 +217,7 @@ static void joywing_poll_instance(uint8_t idx)
         if (!(gpio & (1u << JOYWING_BTN_A)))      joywing_event.buttons |= JP_BUTTON_DR;
         if (!(gpio & (1u << JOYWING_BTN_SELECT))) joywing_event.buttons |= JP_BUTTON_S1;
     } else {
-        // JoyWing 1: face buttons + S2
+        // Face buttons + Start
         joywing_event.buttons &= ~(JP_BUTTON_B1 | JP_BUTTON_B2 | JP_BUTTON_B3 | JP_BUTTON_B4 | JP_BUTTON_S2);
         if (!(gpio & (1u << JOYWING_BTN_B)))      joywing_event.buttons |= JP_BUTTON_B1;
         if (!(gpio & (1u << JOYWING_BTN_A)))      joywing_event.buttons |= JP_BUTTON_B2;
@@ -223,7 +234,7 @@ static void joywing_poll_instance(uint8_t idx)
         platform_sleep_us(500);
         uint16_t raw_y = seesaw_adc_read(&jw->seesaw, JOYWING_ADC_Y);
         if (raw_y != SEESAW_ADC_ERROR) {
-            if (idx == 0) {
+            if (use_left_stick) {
                 joywing_event.analog[ANALOG_LX] = jw_scale_adc(idx, 0, raw_x);
                 joywing_event.analog[ANALOG_LY] = jw_scale_adc(idx, 1, raw_y);
             } else {
