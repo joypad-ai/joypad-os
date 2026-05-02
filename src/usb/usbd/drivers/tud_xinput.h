@@ -64,10 +64,11 @@ typedef enum {
 
 // Check if XInput device is ready to send a report
 bool tud_xinput_ready(void);
+bool tud_xinput_ready_itf(uint8_t itf);
 
 // Send gamepad input report (20 bytes)
 // Returns true if transfer was queued successfully
-bool tud_xinput_send_report(const xinput_in_report_t* report);
+bool tud_xinput_send_report(uint8_t itf, const xinput_in_report_t* report);
 
 // Get rumble/LED output report (8 bytes)
 // Call this to retrieve the latest rumble/LED values from host
@@ -78,7 +79,7 @@ bool tud_xinput_get_output(xinput_out_report_t* output);
 void tud_xinput_xsm3_init(void);
 
 // Process pending XSM3 auth (call from mode task loop)
-void tud_xinput_xsm3_process(void);
+void tud_xinput_xsm3_process(uint8_t player_index);
 
 // Handle vendor control requests for XSM3 auth
 // Called from tud_vendor_control_xfer_cb since TinyUSB routes
