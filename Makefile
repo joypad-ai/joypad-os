@@ -118,6 +118,7 @@ CONSOLE_bt2wiiext := joypad_bt2wiiext
 CONSOLE_controller_btusb := joypad_controller_btusb
 CONSOLE_controller_btusb_rp2040_abb := joypad_controller_btusb_rp2040_abb
 CONSOLE_controller_btusb_feather_rp2040 := joypad_controller_btusb_feather_rp2040
+CONSOLE_controller_btusb_feather_rp2040_usb_host := joypad_controller_btusb_feather_rp2040_usb_host
 CONSOLE_controller_btusb_fisherprice_v1 := joypad_controller_btusb_fisherprice_v1
 CONSOLE_controller_btusb_fisherprice_v2 := joypad_controller_btusb_fisherprice_v2
 CONSOLE_controller_btusb_alpakka := joypad_controller_btusb_alpakka
@@ -199,6 +200,7 @@ APP_controller_btusb_pico_w := pico_w controller_btusb controller_btusb_pico_w J
 APP_controller_btusb_pico2_w := pico2_w controller_btusb controller_btusb_pico2_w JoyWing BLE/USB
 APP_controller_btusb_rp2040_abb := pico controller_btusb_rp2040_abb controller_btusb_rp2040_abb ABB USB
 APP_controller_btusb_feather_rp2040 := feather controller_btusb_feather_rp2040 controller_btusb_feather_rp2040 JoyWing USB
+APP_controller_btusb_feather_rp2040_usb_host := feather_usbhost controller_btusb_feather_rp2040_usb_host controller_btusb_feather_rp2040_usb_host JoyWing USB
 
 
 # All apps (note: controller_macropad not included - build explicitly with 'make controller_macropad')
@@ -939,6 +941,10 @@ controller_btusb_rp2040_abb:
 controller_btusb_feather_rp2040:
 	$(call build_app,controller_btusb_feather_rp2040)
 
+.PHONY: controller_btusb_feather_rp2040_usb_host
+controller_btusb_feather_rp2040_usb_host:
+	$(call build_app,controller_btusb_feather_rp2040_usb_host)
+
 
 .PHONY: nes2usb_kb2040
 nes2usb_kb2040:
@@ -1328,6 +1334,10 @@ flash-controller_btusb_rp2040_abb:
 .PHONY: flash-controller_btusb_feather_rp2040
 flash-controller_btusb_feather_rp2040:
 	@$(MAKE) --no-print-directory _flash_app APP_NAME=controller_btusb_feather_rp2040
+
+.PHONY: flash-controller_btusb_feather_rp2040_usb_host
+flash-controller_btusb_feather_rp2040_usb_host:
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=controller_btusb_feather_rp2040_usb_host
 
 
 .PHONY: flash-nes2usb_kb2040

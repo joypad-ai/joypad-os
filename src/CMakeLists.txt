@@ -2307,6 +2307,68 @@ target_link_libraries(joypad_controller_btusb_feather_rp2040 PRIVATE
 joypad_target_common(joypad_controller_btusb_feather_rp2040)
 pico_enable_stdio_uart(joypad_controller_btusb_feather_rp2040 1)
 
+# Feather RP2040 USB Host (#5723) variant of controller_btusb. Same JoyWing +
+# OLED FeatherWing wiring on STEMMA QT (I2C1 = GP2/3); the onboard PIO USB
+# host port is left unused since this app outputs as a USB device only
+# (DISABLE_USB_HOST=1). Adds CONFIG_UART_HOST so the joypad-mcp can drive
+# synthetic input over the same UART that carries stdio logs.
+add_executable(joypad_controller_btusb_feather_rp2040_usb_host)
+target_compile_definitions(joypad_controller_btusb_feather_rp2040_usb_host PRIVATE
+    CONFIG_CONTROLLER_BTUSB=1
+    CONFIG_USB=1
+    CONFIG_PAD_INPUT=1
+    DISABLE_USB_HOST=1
+    BOARD_FEATHER_RP2040=1
+    USE_BOOTSEL_BUTTON=1
+    REQUIRE_BLE_OUTPUT=0
+    SENSOR_PAD=1
+    SENSOR_JOYWING=1
+    PAD_CONFIG_BOOT_WATCHDOG=1
+    PICO_DEFAULT_UART=0
+    PICO_DEFAULT_UART_TX_PIN=0
+    PICO_DEFAULT_UART_RX_PIN=1
+    # OLED FeatherWing 128x64 (SH1107) over I2C on STEMMA QT
+    OLED_I2C_INST=1
+    OLED_I2C_SDA_PIN=2
+    OLED_I2C_SCL_PIN=3
+    OLED_I2C_ADDR=0x3C
+    OLED_BUTTON_A_PIN=9
+    OLED_BUTTON_B_PIN=8
+    OLED_BUTTON_C_PIN=7
+    # MCP-driven synthetic input over the same UART that carries stdio logs
+    # (UART0 on GPIO0/1, 115200 baud — TX/RX header pins, USB-UART bridge).
+    CONFIG_UART_HOST=1
+    UART_HOST_PERIPHERAL=uart0
+    CONFIG_UART_HOST_TX_PIN=0
+    CONFIG_UART_HOST_RX_PIN=1
+    CONFIG_UART_HOST_BAUD=115200
+)
+target_sources(joypad_controller_btusb_feather_rp2040_usb_host PUBLIC
+    ${CORE_SOURCES}
+    ${USB_DEVICE_SOURCES}
+    ${CONTROLLER_SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/stubs_peripheral.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/drivers/joywing/joywing_input.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/drivers/seesaw/seesaw.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/platform/rp2040/platform_i2c_rp2040.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/services/display/display_i2c.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/services/display/joy_anim.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/services/display/eyes_anim.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/services/display/menu.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/controller_btusb/app.c
+)
+target_include_directories(joypad_controller_btusb_feather_rp2040_usb_host PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/controller_btusb
+    ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd
+)
+target_link_libraries(joypad_controller_btusb_feather_rp2040_usb_host PRIVATE
+    pico_stdlib pico_multicore pico_rand
+    hardware_pio hardware_i2c hardware_adc hardware_pwm hardware_spi
+    tinyusb_device tinyusb_board
+)
+joypad_target_common(joypad_controller_btusb_feather_rp2040_usb_host)
+pico_enable_stdio_uart(joypad_controller_btusb_feather_rp2040_usb_host 1)
+
 # ============================================================================
 # DEBUG BUILD CONFIGURATION
 # ============================================================================
