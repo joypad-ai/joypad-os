@@ -69,6 +69,7 @@ void flash_init(void)
         runtime_settings.sequence = 0;
         runtime_settings.active_profile_index = 0;
         runtime_settings.custom_profile_count = 0;
+        runtime_settings.schema_version = FLASH_SCHEMA_VERSION;
     }
     runtime_settings_loaded = true;
 }
@@ -95,6 +96,13 @@ bool flash_load(flash_t* settings)
         return false;
     }
 
+    if (settings->schema_version != FLASH_SCHEMA_VERSION) {
+        printf("[flash_nrf] schema mismatch (stored=v%u, expected=v%u) — wiping settings\n",
+               (unsigned)settings->schema_version, (unsigned)FLASH_SCHEMA_VERSION);
+        current_sequence = settings->sequence;
+        return false;
+    }
+
     printf("[flash_nrf] Settings loaded\n");
     return true;
 }
@@ -105,6 +113,7 @@ void flash_save(const flash_t* settings)
 
     memcpy(&pending_settings, settings, sizeof(flash_t));
     pending_settings.magic = SETTINGS_MAGIC;
+    pending_settings.schema_version = FLASH_SCHEMA_VERSION;
     save_pending = true;
     last_change_ms = platform_time_ms();
 }
@@ -116,6 +125,7 @@ void flash_save_now(const flash_t* settings)
     static flash_t write_settings;
     memcpy(&write_settings, settings, sizeof(flash_t));
     write_settings.magic = SETTINGS_MAGIC;
+    write_settings.schema_version = FLASH_SCHEMA_VERSION;
     write_settings.sequence = ++current_sequence;
 
     ssize_t len = nvs_write(&nvs, NVS_SETTINGS_KEY, &write_settings, sizeof(flash_t));

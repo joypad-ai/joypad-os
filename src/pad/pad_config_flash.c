@@ -22,6 +22,7 @@ void pad_config_to_flash(const pad_device_config_t* config, pad_config_flash_t* 
 {
     memset(flash, 0, sizeof(pad_config_flash_t));
     flash->magic = PAD_CONFIG_MAGIC;
+    flash->schema_version = PAD_CONFIG_SCHEMA_VERSION;
 
     if (config->name) {
         strncpy(flash->name, config->name, PAD_CONFIG_NAME_LEN - 1);
@@ -215,6 +216,7 @@ const pad_device_config_t* pad_config_from_flash(const pad_config_flash_t* flash
     return &runtime_config;
 }
 
+
 // ============================================================================
 // PUBLIC API (delegates to platform storage)
 // ============================================================================
@@ -258,6 +260,18 @@ const pad_device_config_t* pad_config_load_runtime(void) {
     if (!pad_config_storage_load(&flash_data)) {
         return NULL;
     }
+    // Schema check: a magic-OK record with stale schema means we're reading
+    // a layout from an older firmware (e.g. v1.9.0 where this region didn't
+    // exist, or pre-versioning v2.0.0). The stored bytes can't safely be
+    // mapped to the current struct — pin fields end up at wrong offsets
+    // and configure GPIOs the user never asked for. Discard and let the
+    // app fall back to compile-time defaults.
+    if (flash_data.schema_version != PAD_CONFIG_SCHEMA_VERSION) {
+        printf("[pad_config] schema mismatch (stored=v%u, expected=v%u) — wiping pad config\n",
+               (unsigned)flash_data.schema_version, (unsigned)PAD_CONFIG_SCHEMA_VERSION);
+        pad_config_storage_erase();
+        return NULL;
+    }
     if (!pad_config_flash_valid(&flash_data)) {
         printf("[pad_config] Saved config failed validation — ignoring\n");
         return NULL;
@@ -280,12 +294,14 @@ void pad_config_reset(void) {
 
 bool pad_config_has_custom(void) {
     pad_config_flash_t tmp;
-    return pad_config_storage_load(&tmp);
+    if (!pad_config_storage_load(&tmp)) return false;
+    return tmp.schema_version == PAD_CONFIG_SCHEMA_VERSION;
 }
 
 const char* pad_config_get_name(void) {
     pad_config_flash_t tmp;
     if (!pad_config_storage_load(&tmp)) return NULL;
+    if (tmp.schema_version != PAD_CONFIG_SCHEMA_VERSION) return NULL;
     static char name[PAD_CONFIG_NAME_LEN];
     strncpy(name, tmp.name, PAD_CONFIG_NAME_LEN - 1);
     name[PAD_CONFIG_NAME_LEN - 1] = '\0';

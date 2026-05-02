@@ -19,6 +19,12 @@
 #define PAD_CONFIG_MAGIC    0x50414443  // "PADC"
 #define PAD_CONFIG_NAME_LEN 32
 
+// Schema versioning: bump whenever pad_config_flash_t fields are added,
+// removed, or reinterpreted. On load, magic-OK records with mismatched
+// schema_version are treated as stale. v2.0.0 had no version byte (reads
+// as 0 since reserved was zero-init), so v1 forces a one-time wipe.
+#define PAD_CONFIG_SCHEMA_VERSION 1
+
 // Compact flash representation of pad_device_config_t (256 bytes = 1 flash page)
 // Only stores pin assignments + basic settings — LED colors/button maps are
 // too large and rarely changed, so they stay compile-time for now.
@@ -134,8 +140,13 @@ typedef struct {
     // 0 = disabled (legacy flash compat), >0 = pin number
     int16_t rhat_up, rhat_down, rhat_left, rhat_right;
 
+    // Schema version (1 byte) — must equal PAD_CONFIG_SCHEMA_VERSION on
+    // load. Was reserved[0] in pre-v2.1 firmware (always zero) → reads as
+    // 0 on upgrade from any earlier build, triggering a one-time wipe.
+    uint8_t schema_version;
+
     // Reserved for future use (pad to 256 bytes)
-    uint8_t reserved[86];
+    uint8_t reserved[85];
 } pad_config_flash_t;
 
 _Static_assert(sizeof(pad_config_flash_t) == 256, "pad_config_flash_t size mismatch");

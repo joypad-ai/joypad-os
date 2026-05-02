@@ -197,11 +197,17 @@ void flash_init(void)
         runtime_settings.sequence = 0;
         runtime_settings.active_profile_index = 0;  // Default profile
         runtime_settings.custom_profile_count = 0;
+        runtime_settings.schema_version = FLASH_SCHEMA_VERSION;
     }
     runtime_settings_loaded = true;
 }
 
-// Load settings from flash (returns true if valid settings found)
+// Load settings from flash (returns true if valid settings found).
+// Enforces FLASH_SCHEMA_VERSION: a magic-OK record with mismatched
+// schema_version is treated as stale (likely a v1.9.0/v2.0.0 upgrade
+// where reserved bytes were reinterpreted as new fields). Returns false
+// so the caller falls back to defaults; current_sequence is still
+// advanced past the stale record so the next write supersedes it.
 bool flash_load(flash_t* settings)
 {
     int newest = find_newest_slot();
@@ -210,8 +216,18 @@ bool flash_load(flash_t* settings)
         return false;  // No valid settings in flash
     }
 
-    // Copy settings from flash to RAM
     const flash_t* slot = get_slot(newest);
+    if (slot->schema_version != FLASH_SCHEMA_VERSION) {
+        printf("[flash] schema mismatch (stored=v%u, expected=v%u) — wiping settings\n",
+               (unsigned)slot->schema_version, (unsigned)FLASH_SCHEMA_VERSION);
+        // Advance past the stale record so the migrated defaults win when
+        // the app saves next. The actual sectors stay intact until then —
+        // higher sequence number ensures the new record is preferred.
+        current_sequence = slot->sequence;
+        return false;
+    }
+
+    // Copy settings from flash to RAM
     memcpy(settings, slot, sizeof(flash_t));
     current_sequence = slot->sequence;
 
@@ -224,6 +240,7 @@ void flash_save(const flash_t* settings)
     // Store settings and mark as pending
     memcpy(&pending_settings, settings, sizeof(flash_t));
     pending_settings.magic = SETTINGS_MAGIC;
+    pending_settings.schema_version = FLASH_SCHEMA_VERSION;
     save_pending = true;
     last_change_time = get_absolute_time();
 }
@@ -312,6 +329,7 @@ void flash_save_now(const flash_t* settings)
     static flash_t write_settings;
     memcpy(&write_settings, settings, sizeof(flash_t));
     write_settings.magic = SETTINGS_MAGIC;
+    write_settings.schema_version = FLASH_SCHEMA_VERSION;
     write_settings.sequence = ++current_sequence;
 
     // Find next empty slot

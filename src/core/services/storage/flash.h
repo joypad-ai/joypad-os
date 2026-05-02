@@ -54,6 +54,15 @@ typedef struct {
 // ============================================================================
 // Flash Settings Structure
 // ============================================================================
+//
+// Schema versioning: bump FLASH_SCHEMA_VERSION whenever fields are added,
+// removed, or reinterpreted. On load, a magic-OK record with mismatched
+// schema_version is treated as stale and wiped — see flash_init().
+//
+// Pre-versioning records (v1.9.0 and v2.0.0) have schema_version == 0
+// because the byte was reserved and zero-initialized. Bumping to 1 forces
+// a one-time wipe for those users; subsequent bumps wipe their own range.
+#define FLASH_SCHEMA_VERSION 1
 
 // Settings structure stored in flash (256 bytes = 1 flash page)
 // 16 entries fit in one 4KB sector for journaled writes
@@ -82,8 +91,13 @@ typedef struct {
     uint8_t wii_scl_pin;         // 0 = compile-time default, 1-28 = override GPIO
     uint8_t wii_mode;            // 0 = compile-time default, 1+ = wii_device_emulation_t + 1
 
-    // Reserved for future global settings (10 bytes)
-    uint8_t reserved[10];
+    // Schema version (1 byte) — must equal FLASH_SCHEMA_VERSION on load.
+    // Was reserved[0] in pre-v2.1 firmware (always zero) → reads as 0 on
+    // upgrade from v1.9.0 / v2.0.0, triggering a one-time wipe.
+    uint8_t schema_version;
+
+    // Reserved for future global settings (9 bytes)
+    uint8_t reserved[9];
 
     // Custom profiles (4 x 56 = 224 bytes)
     custom_profile_t profiles[CUSTOM_PROFILE_MAX_COUNT];
