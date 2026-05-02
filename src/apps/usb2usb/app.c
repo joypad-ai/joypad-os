@@ -24,6 +24,10 @@
 #endif
 #include "usb/usbd/usbd.h"
 
+#ifdef CONFIG_UART_HOST
+#include "native/host/uart/uart_host.h"
+#endif
+
 #ifdef ENABLE_BTSTACK
 #include "bt/btstack/btstack_host.h"
 #include "bt/transport/bt_transport.h"
@@ -671,6 +675,16 @@ void app_init(void)
     router_add_route(INPUT_SOURCE_BLE_CENTRAL, OUTPUT_TARGET_USB_DEVICE, 0);
 #endif
 
+#ifdef CONFIG_UART_HOST
+    // UART input host shares the stdio UART (UART0 on GPIO0/1 by default).
+    // RX is consumed by uart_host's parser; TX continues to carry printf logs.
+    // Baud must match what the upstream serial bridge uses — 115200 matches
+    // pico_enable_stdio_uart's default and the existing log path.
+    uart_host_init_pins(CONFIG_UART_HOST_TX_PIN, CONFIG_UART_HOST_RX_PIN,
+                        CONFIG_UART_HOST_BAUD);
+    uart_host_set_mode(UART_HOST_MODE_NORMAL);
+#endif
+
     printf("[app:usb2usb] Initialization complete\n");
     printf("[app:usb2usb]   Routing: USB Host → USB Device (HID Gamepad)\n");
     printf("[app:usb2usb]   Player slots: %d\n", MAX_PLAYER_SLOTS);
@@ -685,6 +699,10 @@ void app_task(void)
 {
     // Process button input
     button_task();
+
+#ifdef CONFIG_UART_HOST
+    uart_host_task();
+#endif
 
     // Update LED color when USB output mode changes
     static usb_output_mode_t last_led_mode = USB_OUTPUT_MODE_COUNT;

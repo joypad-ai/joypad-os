@@ -965,6 +965,13 @@ target_compile_definitions(joypad_usb_feather_rp2040_usb_host_max3421 PRIVATE
     OLED_I2C_ADDR=0x3C
     OLED_BUTTON_C_PIN=7
     I2C_PEER_ENABLED=1
+    # MCP-driven synthetic input over the same UART that carries stdio logs
+    # (UART0 on GPIO0/1, 115200 baud — KB2040 USB-UART bridge).
+    CONFIG_UART_HOST=1
+    UART_HOST_PERIPHERAL=uart0
+    CONFIG_UART_HOST_TX_PIN=0
+    CONFIG_UART_HOST_RX_PIN=1
+    CONFIG_UART_HOST_BAUD=115200
 )
 target_sources(joypad_usb_feather_rp2040_usb_host_max3421 PUBLIC
     ${COMMON_SOURCES}
@@ -974,6 +981,7 @@ target_sources(joypad_usb_feather_rp2040_usb_host_max3421 PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/core/services/display/display_i2c.c
     ${CMAKE_CURRENT_SOURCE_DIR}/core/services/display/joy_anim.c
     ${CMAKE_CURRENT_SOURCE_DIR}/core/services/display/eyes_anim.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/host/uart/uart_host.c
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2usb/app.c
 )
 target_include_directories(joypad_usb_feather_rp2040_usb_host_max3421 PUBLIC
