@@ -3,10 +3,14 @@
 // returns that frame immediately instead of paying the avfoundation handshake
 // cost (~1-2s on Continuity Camera) per call.
 
-import { spawn, ChildProcess } from "node:child_process";
+import { spawn, spawnSync, ChildProcess } from "node:child_process";
 
 const SOI = 0xffd8;
 const EOI = 0xffd9;
+
+// Pkill pattern matching our ffmpeg invocations — the avfoundation +
+// framerate combo is unique enough not to collide with unrelated ffmpegs.
+const FFMPEG_PKILL_PATTERN = "avfoundation -framerate 30";
 
 interface LatestFrame { jpeg: Buffer; ts: number }
 
@@ -54,8 +58,22 @@ export class StreamingCamera {
     };
   }
 
+  // Kill any ffmpeg processes left running from a previous Claude Code
+  // session (parent PID 1 orphans whose exit handlers never fired) or any
+  // straggler the current process started but didn't reap. Belt-and-
+  // suspenders against camera-busy errors when the user opens a new
+  // session.
+  sweepOrphans(): number {
+    const r = spawnSync("pkill", ["-9", "-f", FFMPEG_PKILL_PATTERN], { encoding: "utf8" });
+    return r.status === 0 ? 1 : 0; // 0 = at least one killed; 1 = none found
+  }
+
   start(deviceIndex: number): void {
     this.stop();
+    // After SIGKILL the OS cleans up the file descriptors essentially
+    // instantly, but in case a prior ffmpeg from a crashed session still
+    // holds the camera, sweep before opening.
+    this.sweepOrphans();
     this.deviceIndex = deviceIndex;
     this.buf = Buffer.alloc(0);
     this.latest = null;
@@ -93,7 +111,11 @@ export class StreamingCamera {
 
   stop(): void {
     if (this.proc) {
-      try { this.proc.kill("SIGTERM"); } catch {}
+      // SIGKILL, not SIGTERM — ffmpeg can ignore SIGTERM mid-decode and
+      // keep the camera locked for several seconds. SIGKILL drops it
+      // immediately and we never need a graceful shutdown here (no
+      // output file being finalized).
+      try { this.proc.kill("SIGKILL"); } catch {}
       this.proc = null;
     }
     this.buf = Buffer.alloc(0);

@@ -21,6 +21,8 @@ import { startTetrisLoop, AutoplayHandle } from "../autoplay/tetris.js";
 import { parseMatrix } from "../games/tetris/parser.js";
 import { parseButtons } from "../buttons.js";
 import { encodeInputEvent, INPUT_TYPE_GAMEPAD, NEUTRAL_ANALOG, PktType } from "../protocol.js";
+import { Connection, DEFAULT_BAUD } from "../transport.js";
+import { SerialPort } from "serialport";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const UI_HTML = join(__dirname, "ui.html");
@@ -34,6 +36,8 @@ export interface CalibrationData {
   source_size?: { w: number; h: number };
   camera_device?: number;
   game?: string;
+  joypad_port?: string;
+  joypad_baud?: number;
   saved_at?: number;
 }
 
@@ -179,6 +183,29 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     return;
   }
 
+  if (req.method === "POST" && path === "/api/camera/pause") {
+    streamingCamera.stop();
+    json(res, 200, { ok: true, camera: streamingCamera.stats() });
+    return;
+  }
+
+  if (req.method === "POST" && path === "/api/camera/resume") {
+    try {
+      const dev = calibration.camera_device;
+      if (dev == null) {
+        json(res, 400, { error: "no camera saved — pick one first" });
+        return;
+      }
+      if (!streamingCamera.isOpen() || streamingCamera.currentDevice() !== dev) {
+        streamingCamera.start(dev);
+      }
+      json(res, 200, { ok: true, camera: streamingCamera.stats() });
+    } catch (e: any) {
+      json(res, 400, { error: String(e?.message ?? e) });
+    }
+    return;
+  }
+
   if (req.method === "GET" && path === "/api/state") {
     const live = activeHandle?.status();
     if (live) {
@@ -223,6 +250,61 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       autoplay.last_error = null;
       activeHandle = startTetrisLoop(calibration.matrix);
       json(res, 200, { ok: true, autoplay });
+    } catch (e: any) {
+      json(res, 400, { error: String(e?.message ?? e) });
+    }
+    return;
+  }
+
+  if (req.method === "GET" && path === "/api/joypad/adapters") {
+    try {
+      const ports = await SerialPort.list();
+      // Loose filter: anything with a USB-CDC-style path is a candidate.
+      const candidates = ports
+        .map((p) => ({
+          path: p.path,
+          manufacturer: p.manufacturer,
+          vendorId: p.vendorId,
+          productId: p.productId,
+        }))
+        .filter((p) => p.path.includes("usbmodem") || p.path.includes("ttyACM") || p.path.includes("ttyUSB"));
+      json(res, 200, { adapters: candidates });
+    } catch (e: any) {
+      json(res, 500, { error: String(e?.message ?? e) });
+    }
+    return;
+  }
+
+  if (req.method === "POST" && path === "/api/joypad/connect") {
+    try {
+      const body = await readJsonBody<{ port?: string; baud?: number }>(req);
+      if (!body.port) { json(res, 400, { error: "port required" }); return; }
+      const baud = body.baud ?? DEFAULT_BAUD;
+      if (joypadState.conn) {
+        try { await joypadState.conn.close(); } catch {}
+        joypadState.reset();
+      }
+      const conn = new Connection(body.port, baud);
+      await conn.open();
+      joypadState.attach(conn);
+      joypadState.lastCommandAt = Date.now();
+      calibration.joypad_port = body.port;
+      calibration.joypad_baud = baud;
+      saveCalibration(calibration);
+      json(res, 200, { ok: true, port: body.port, baud });
+    } catch (e: any) {
+      json(res, 400, { error: String(e?.message ?? e) });
+    }
+    return;
+  }
+
+  if (req.method === "POST" && path === "/api/joypad/disconnect") {
+    try {
+      if (joypadState.conn) {
+        try { await joypadState.conn.close(); } catch {}
+        joypadState.reset();
+      }
+      json(res, 200, { ok: true });
     } catch (e: any) {
       json(res, 400, { error: String(e?.message ?? e) });
     }
@@ -282,6 +364,12 @@ export function startWebServer(port = parseInt(process.env.JOYPAD_WEB_PORT ?? "1
     // Avoid stdout — that's the MCP transport. stderr is fine.
     console.error(`[joypad-mcp] web UI on http://localhost:${port}`);
   });
+  // Sweep any ffmpeg orphans left over from a prior Claude Code session
+  // (those have parent PID 1 and our exit handler can't reach them).
+  // Without this, auto-start will hit "camera busy" because the previous
+  // process still holds it.
+  streamingCamera.sweepOrphans();
+
   // Auto-start the saved camera so the UI has a frame waiting on first load.
   if (calibration.camera_device != null && !streamingCamera.isOpen()) {
     try {
@@ -289,6 +377,21 @@ export function startWebServer(port = parseInt(process.env.JOYPAD_WEB_PORT ?? "1
     } catch (e) {
       console.error(`[joypad-mcp] auto-start camera failed:`, e);
     }
+  }
+
+  // Auto-reconnect to the saved joypad adapter so manual button presses
+  // from the web UI work without first running the MCP `connect` tool.
+  if (calibration.joypad_port && !joypadState.conn) {
+    (async () => {
+      try {
+        const conn = new Connection(calibration.joypad_port!, calibration.joypad_baud ?? DEFAULT_BAUD);
+        await conn.open();
+        joypadState.attach(conn);
+        console.error(`[joypad-mcp] reconnected ${calibration.joypad_port}`);
+      } catch (e) {
+        console.error(`[joypad-mcp] auto-reconnect joypad failed:`, e);
+      }
+    })();
   }
 }
 

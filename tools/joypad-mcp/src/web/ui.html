@@ -88,9 +88,21 @@
       <h2>Camera</h2>
       <div class="row">
         <select id="cam-select" style="flex:1;background:#0c0c0c;color:#eee;border:1px solid #3a3a3a;padding:5px;border-radius:4px;"></select>
-        <button id="cam-refresh">↻</button>
+        <button id="cam-refresh" title="Refresh device list">↻</button>
+        <button id="cam-toggle" title="Pause / resume the webcam stream (releases the camera)">⏸</button>
       </div>
       <div class="meta" id="cam-info" style="color:#888;font-size:11px;margin-top:6px"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Joypad adapter</h2>
+      <div id="jp-status" class="meta" style="color:#888;font-size:12px;margin-bottom:8px">checking…</div>
+      <div class="row">
+        <select id="jp-port-select" style="flex:1;background:#0c0c0c;color:#eee;border:1px solid #3a3a3a;padding:5px;border-radius:4px;"></select>
+        <button id="jp-port-refresh" title="Refresh adapter list">↻</button>
+        <button id="jp-connect" class="primary">Connect</button>
+        <button id="jp-disconnect" class="danger">Disconnect</button>
+      </div>
     </div>
 
     <div class="panel">
@@ -196,7 +208,9 @@ let pickingMode = false;
 let pickedCorners = [];   // [[x_pct, y_pct], ...] in image-relative percent
 let imageNaturalSize = { w: 0, h: 0 };
 
+let cameraOpen = true;
 function refreshFrame() {
+  if (!cameraOpen) return; // paused — don't poll a 503 endpoint
   // Cache-bust each tick. Browser keeps the last <img> visible during reload —
   // no flicker if the request takes a moment.
   frame.src = `/api/frame.jpg?t=${Date.now()}`;
@@ -285,6 +299,52 @@ $("#cam-select").addEventListener("change", async (e) => {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ device: parseInt(e.target.value, 10) }),
   });
+  refreshState();
+});
+async function loadAdapters() {
+  const r = await fetch("/api/joypad/adapters");
+  const data = await r.json();
+  const sel = $("#jp-port-select");
+  const currentPort = (await (await fetch("/api/state")).json()).joypad?.port ?? "";
+  sel.innerHTML = "";
+  for (const a of data.adapters ?? []) {
+    const opt = document.createElement("option");
+    opt.value = a.path;
+    opt.textContent = `${a.path}${a.manufacturer ? " (" + a.manufacturer + ")" : ""}`;
+    if (a.path === currentPort) opt.selected = true;
+    sel.appendChild(opt);
+  }
+  if (!sel.options.length) {
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = "no adapters detected";
+    sel.appendChild(opt);
+  }
+}
+$("#jp-port-refresh").addEventListener("click", loadAdapters);
+$("#jp-connect").addEventListener("click", async () => {
+  const port = $("#jp-port-select").value;
+  if (!port) return;
+  const r = await fetch("/api/joypad/connect", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ port }),
+  });
+  const data = await r.json();
+  if (!r.ok) padStatus.textContent = "connect: " + (data.error ?? "error");
+  refreshState();
+});
+$("#jp-disconnect").addEventListener("click", async () => {
+  await fetch("/api/joypad/disconnect", { method: "POST" });
+  refreshState();
+});
+
+$("#cam-toggle").addEventListener("click", async () => {
+  const r = await fetch("/api/state");
+  const s = await r.json();
+  const open = s.camera?.open;
+  const url = open ? "/api/camera/pause" : "/api/camera/resume";
+  await fetch(url, { method: "POST" });
   refreshState();
 });
 
@@ -419,7 +479,29 @@ async function refreshState() {
     const cost = (a.claude_spend_usd ?? 0).toFixed(3);
     const budget = (a.claude_budget_usd ?? 0).toFixed(2);
     const costStyle = a.budget_hit ? "color:#f55;font-weight:600" : (a.claude_spend_usd > a.claude_budget_usd * 0.7 ? "color:#fa3" : "color:#aaa");
-    meta.innerHTML = `cam ${s.camera?.frames ?? 0}f · last frame ${s.camera?.last_frame_ms_ago ?? "—"}ms · <span style="${costStyle}">claude $${cost} / $${budget}</span> (${a.claude_calls ?? 0} calls)${a.budget_hit ? ' · <strong style="color:#f55">BUDGET STOPPED</strong>' : ""}`;
+    const jpStatus = $("#jp-status");
+    if (jpStatus) {
+      if (s.joypad?.connected) {
+        const lastMs = s.joypad.last_command_ms_ago;
+        const lastTxt = lastMs == null ? "no commands sent" : `last cmd ${lastMs}ms ago`;
+        jpStatus.innerHTML = `<span style="color:#2c5">●</span> connected · <code>${s.joypad.port ?? "?"}</code> · ${lastTxt}`;
+      } else {
+        jpStatus.innerHTML = `<span style="color:#888">○</span> not connected`;
+      }
+    }
+
+    cameraOpen = !!s.camera?.open;
+    const camToggle = $("#cam-toggle");
+    if (camToggle) {
+      camToggle.textContent = cameraOpen ? "⏸" : "▶";
+      camToggle.title = cameraOpen
+        ? "Pause webcam stream (releases the camera)"
+        : "Resume webcam stream";
+    }
+    const camStatus = cameraOpen
+      ? `cam ${s.camera?.frames ?? 0}f · last frame ${s.camera?.last_frame_ms_ago ?? "—"}ms`
+      : '<span style="color:#fa3">cam paused</span>';
+    meta.innerHTML = `${camStatus} · <span style="${costStyle}">claude $${cost} / $${budget}</span> (${a.claude_calls ?? 0} calls)${a.budget_hit ? ' · <strong style="color:#f55">BUDGET STOPPED</strong>' : ""}`;
 
     // calibration auto-restore
     if (s.calibration?.matrix?.corners?.length === 4 && pickedCorners.length === 0 && imageNaturalSize.w > 0) {
@@ -475,6 +557,7 @@ setInterval(refreshState, 200);
 refreshFrame();
 refreshState();
 loadCameras();
+loadAdapters();
 </script>
 </body>
 </html>
