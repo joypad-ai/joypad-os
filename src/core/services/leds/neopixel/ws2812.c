@@ -468,8 +468,11 @@ void neopixel_task(int pat)
         switch (neopixel_state) {
             case NEOPIXEL_BLINK_OFF:
                 // Turn all LEDs off (this is what we count)
-                for (uint i = 0; i < NUM_PIXELS; ++i) {
-                    put_pixel(urgb_u32(0x00, 0x00, 0x00));
+                if (absolute_time_diff_us(init_time, current_time) > reset_period) {
+                    for (uint i = 0; i < NUM_PIXELS; ++i) {
+                        put_pixel(urgb_u32(0x00, 0x00, 0x00));
+                    }
+                    init_time = current_time;
                 }
                 if (time_in_state >= BLINK_OFF_TIME_US) {
                     blinks_remaining--;
@@ -487,10 +490,13 @@ void neopixel_task(int pat)
 
             case NEOPIXEL_BLINK_ON:
                 // Show LED using custom colors or pattern based on stored player count
-                if (use_custom_colors) {
-                    pattern_custom(NUM_PIXELS, tic);
-                } else {
-                    pattern_table[stored_pattern].pat(NUM_PIXELS, tic);
+                if (absolute_time_diff_us(init_time, current_time) > reset_period) {
+                    if (use_custom_colors) {
+                        pattern_custom(NUM_PIXELS, tic);
+                    } else {
+                        pattern_table[stored_pattern].pat(NUM_PIXELS, tic);
+                    }
+                    init_time = current_time;
                 }
                 if (time_in_state >= BLINK_ON_TIME_US) {
                     // Back to OFF for the next blink

@@ -18,6 +18,7 @@
 #define USB2NEOGEO_PROFILES_H
 
 #include "core/services/profiles/profile.h"
+#include "core/services/profiles/runtime_profile.h"
 #include "native/device/gpio/neogeo_buttons.h"
 
 // ============================================================================
@@ -313,6 +314,63 @@ static const profile_set_t neogeo_profile_set = {
     .profiles = neogeo_profiles,
     .profile_count = sizeof(neogeo_profiles) / sizeof(neogeo_profiles[0]),
     .default_index = 0,
+};
+
+// ============================================================================
+// RUNTIME PROFILE
+// ============================================================================
+
+static const uint32_t neogeo_runtime_outputs[] = {
+    NEOGEO_BUTTON_B1,
+    NEOGEO_BUTTON_B2,
+    NEOGEO_BUTTON_B3,
+    NEOGEO_BUTTON_B4,
+    NEOGEO_BUTTON_B5,
+    NEOGEO_BUTTON_B6,
+};
+
+static const char* const neogeo_runtime_output_names[] = {
+    "NEOGEO_BUTTON_B1",
+    "NEOGEO_BUTTON_B2",
+    "NEOGEO_BUTTON_B3",
+    "NEOGEO_BUTTON_B4",
+    "NEOGEO_BUTTON_B5",
+    "NEOGEO_BUTTON_B6",
+};
+
+// Face and shoulder buttons only.
+// D-pad, A1 and S1/S2 are excluded (S1/S2 are trigger/cancel).
+#define NEOGEO_RUNTIME_INPUT_MASK \
+    (JP_BUTTON_B1 | JP_BUTTON_B2 | JP_BUTTON_B3 | JP_BUTTON_B4 | \
+     JP_BUTTON_L1 | JP_BUTTON_R1 | JP_BUTTON_L2 | JP_BUTTON_R2 | \
+     JP_BUTTON_L3 | JP_BUTTON_R3 | JP_BUTTON_L4 | JP_BUTTON_R4)
+
+// Runtime profile: built interactively during assignment.
+// button_map is set to the service's internal buffer by runtime_profile_init().
+static profile_t neogeo_runtime_profile = {
+    .name = "runtime",
+    .description = "Runtime profile mapping",
+    .button_map = NULL,
+    .button_map_count = 0,
+    .l2_behavior = TRIGGER_PASSTHROUGH,
+    .r2_behavior = TRIGGER_PASSTHROUGH,
+    .l2_threshold = 128,
+    .r2_threshold = 128,
+    .l2_analog_value = 0,
+    .r2_analog_value = 0,
+    .left_stick_sensitivity = 1.0f,
+    .right_stick_sensitivity = 1.0f,
+    .adaptive_triggers = false,
+    .socd_mode = SOCD_UP_PRIORITY,
+};
+
+static const runtime_profile_output_config_t neogeo_runtime_output_config = {
+    .output_buttons       = neogeo_runtime_outputs,
+    .output_button_count  = sizeof(neogeo_runtime_outputs) / sizeof(neogeo_runtime_outputs[0]),
+    .input_mask           = NEOGEO_RUNTIME_INPUT_MASK,
+    .hold_ms              = 2000,
+    .output_button_names  = neogeo_runtime_output_names,
+    .profile              = &neogeo_runtime_profile,
 };
 
 #endif // USB2NEOGEO_PROFILES_H

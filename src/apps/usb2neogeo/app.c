@@ -9,6 +9,7 @@
 #include "core/router/router.h"
 #include "core/services/players/manager.h"
 #include "core/services/profiles/profile.h"
+#include "core/services/profiles/runtime_profile.h"
 #include "core/input_interface.h"
 #include "core/output_interface.h"
 #include "native/device/gpio/gpio_device.h"
@@ -33,7 +34,6 @@ static gpio_device_config_t gpio_gpio_config[GPIO_MAX_PLAYERS] = {
         .pin_r2 = P1_NEOGEO_B6_PIN,
 
         // Meta Buttons
-
         .pin_s1 = P1_NEOGEO_S1_PIN,
         .pin_s2 = P1_NEOGEO_S2_PIN,
         .pin_a1 = GPIO_DISABLED,
@@ -57,6 +57,12 @@ static const profile_config_t app_profile_config = {
         [OUTPUT_TARGET_GPIO] = &neogeo_profile_set,
     },
     .shared_profiles = NULL,
+};
+
+static const runtime_profile_config_t app_runtime_profile_config = {
+    .output_configs = {
+        [OUTPUT_TARGET_GPIO] = &neogeo_runtime_output_config,
+    },
 };
 
 // ============================================================================
@@ -130,6 +136,9 @@ void app_init(void)
     uint8_t profile_count = profile_get_count(OUTPUT_TARGET_GPIO);
     const char* active_name = profile_get_name(OUTPUT_TARGET_GPIO,
                                                 profile_get_active_index(OUTPUT_TARGET_GPIO));
+
+    // Initialize runtime assignment service
+    runtime_profile_init(&app_runtime_profile_config);
 
     printf("[app:usb2neogeo] Initialization complete\n");
     printf("[app:usb2neogeo]   Routing: %s\n", "SIMPLE (USB → NEOGEO+ adapter 1:1)");

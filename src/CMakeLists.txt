@@ -95,6 +95,7 @@ set(CORE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/core/services/players/feedback.c
     ${CMAKE_CURRENT_SOURCE_DIR}/core/services/profiles/profile.c
     ${CMAKE_CURRENT_SOURCE_DIR}/core/services/profiles/profile_indicator.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/services/profiles/runtime_profile.c
     ${CMAKE_CURRENT_SOURCE_DIR}/platform/rp2040/platform_rp2040.c
 )
 
