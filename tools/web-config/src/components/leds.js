@@ -123,7 +123,12 @@ export class FeedbackCard {
             const enableToggle = this.el.querySelector('#ledEnable');
             const settings = this.el.querySelector('#ledSettings');
 
-            if (savedPin !== undefined && savedPin >= 0) {
+            // Tri-state semantic for savedPin:
+            //   > 0  → enabled, override pin
+            //   == 0 → enabled, use compile-time default (sysPin)
+            //   < 0  → explicitly disabled by user
+            //   undefined → no config loaded; fall back to sysPin if known
+            if (savedPin !== undefined && savedPin > 0) {
                 enableToggle.checked = true;
                 settings.style.display = '';
                 this.el.querySelector('#ledPin').value = savedPin;
@@ -134,10 +139,12 @@ export class FeedbackCard {
                 this.el.querySelector('#ledPin').value = sysPin >= 0 ? sysPin : 0;
                 this.el.querySelector('#ledCount').value = sysCount || 1;
             } else if (sysPin >= 0) {
+                // savedPin == 0 (use default) OR no saved value: show enabled
+                // pre-populated with the board's compile-time pin.
                 enableToggle.checked = true;
                 settings.style.display = '';
                 this.el.querySelector('#ledPin').value = sysPin;
-                this.el.querySelector('#ledCount').value = sysCount || 1;
+                this.el.querySelector('#ledCount').value = (savedCount || sysCount) || 1;
             } else {
                 enableToggle.checked = false;
                 settings.style.display = 'none';
@@ -188,7 +195,16 @@ export class FeedbackCard {
             invert_rx: this.currentConfig.invert_rx || false,
             invert_ry: this.currentConfig.invert_ry || false,
             sinput_rgb: this.el.querySelector('#sinputRgb').checked,
-            led_pin: this.el.querySelector('#ledEnable').checked ? parseInt(this.el.querySelector('#ledPin').value) : -1,
+            // Save semantic mirrors firmware:
+            //   unchecked → -1 (explicitly disabled by user)
+            //   checked + pin == sysPin → 0 (use board default)
+            //   checked + pin != sysPin → pin (override)
+            led_pin: (() => {
+                if (!this.el.querySelector('#ledEnable').checked) return -1;
+                const p = parseInt(this.el.querySelector('#ledPin').value);
+                const sys = this.currentConfig?.sys_led_pin;
+                return (sys != null && p === sys) ? 0 : p;
+            })(),
             led_count: this.el.querySelector('#ledEnable').checked ? parseInt(this.el.querySelector('#ledCount').value) : 0,
             onboard_led: onboardLedVal,
             speaker_pin: this.el.querySelector('#speakerEnable').checked ? parseInt(this.el.querySelector('#speakerPin').value) : -1,

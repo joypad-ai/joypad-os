@@ -66,11 +66,16 @@ export class UsbHostCard {
             }
             card.style.display = '';
             this.visible = true;
-            const dp = config.usb_host_dp !== undefined ? config.usb_host_dp : -1;
-            const sysDp = config.sys_usb_host_dp !== undefined ? config.sys_usb_host_dp : 0;
-            const enabled = dp >= 0;
+            // Tri-state semantic for usb_host_dp:
+            //   > 0  → enabled, override pin
+            //   == 0 → enabled, use compile-time default (sysDp)
+            //   < 0  → explicitly disabled by user
+            const dp = config.usb_host_dp !== undefined ? config.usb_host_dp : 0;
+            const sysDp = config.sys_usb_host_dp !== undefined ? config.sys_usb_host_dp : -1;
+            const enabled = dp >= 0 && (dp > 0 || sysDp >= 0);
+            const shownPin = dp > 0 ? dp : (sysDp >= 0 ? sysDp : 0);
             this.el.querySelector('#usbHostEnabled').checked = enabled;
-            this.el.querySelector('#usbHostDp').value = enabled ? dp : (sysDp >= 0 ? sysDp : 0);
+            this.el.querySelector('#usbHostDp').value = shownPin;
             this.togglePins();
             this.updateDm();
             this.currentConfig = config;
@@ -105,8 +110,16 @@ export class UsbHostCard {
             led_count: this.currentConfig.led_count || 0,
             speaker_pin: this.currentConfig.speaker_pin !== undefined ? this.currentConfig.speaker_pin : -1,
             speaker_enable_pin: this.currentConfig.speaker_enable_pin !== undefined ? this.currentConfig.speaker_enable_pin : -1,
-            usb_host_dp: this.el.querySelector('#usbHostEnabled').checked
-                ? parseInt(this.el.querySelector('#usbHostDp').value) : -1,
+            // Save mirrors firmware tri-state:
+            //   unchecked → -1 (explicitly disabled)
+            //   checked + pin == sysDp → 0 (use board default)
+            //   checked + pin != sysDp → pin (override)
+            usb_host_dp: (() => {
+                if (!this.el.querySelector('#usbHostEnabled').checked) return -1;
+                const p = parseInt(this.el.querySelector('#usbHostDp').value);
+                const sys = this.currentConfig?.sys_usb_host_dp;
+                return (sys != null && p === sys) ? 0 : p;
+            })(),
         };
 
         try {
