@@ -113,9 +113,12 @@ typedef struct {
     // Analog stick deadzone (0-127, applied to center)
     uint8_t deadzone;
 
-    // NeoPixel LED configuration (PAD_PIN_DISABLED = not used)
+    // NeoPixel LED configuration. Tri-state to match the web config UI:
+    //   led_pin == 0  → use compile-time default (board's WS2812_PIN)
+    //   led_pin >  0  → override to this GPIO
+    //   led_pin <  0  → explicitly disabled by user (PAD_PIN_DISABLED)
     int8_t led_pin;
-    uint8_t led_count;          // Number of LEDs
+    uint8_t led_count;          // Number of LEDs (0 = use compile-time default)
 
     // Per-LED colors (RGB, up to 16 LEDs)
     // If led_colors is NULL or all zeros, uses default pattern
@@ -146,8 +149,11 @@ typedef struct {
     int8_t qwiic_rx;            // UART RX pin (QWIIC SCL) / I2C SCL
     int8_t qwiic_i2c_inst;      // I2C instance for peer mode (-1 = UART, 0 = I2C0, 1 = I2C1)
 
-    // USB host PIO-USB (PAD_PIN_DISABLED = no USB host)
-    int8_t usb_host_dp;         // PIO-USB D+ pin (D- is always D+1)
+    // USB host PIO-USB. Same tri-state as led_pin:
+    //   usb_host_dp == 0 → use compile-time default (board's PIO_USB_DP_PIN)
+    //   usb_host_dp >  0 → override D+ to this GPIO (D- always D+1)
+    //   usb_host_dp <  0 → explicitly disabled by user (PAD_PIN_DISABLED)
+    int8_t usb_host_dp;
 
     // JoyWing seesaw I2C (up to 2, PAD_PIN_DISABLED sda = disabled)
     struct {
@@ -256,7 +262,7 @@ extern const InputInterface pad_input_interface;
     .invert_rx = false, \
     .invert_ry = false, \
     .deadzone = 10, \
-    .led_pin = PAD_PIN_DISABLED, \
+    .led_pin = 0, /* 0 = use board default, >0 = override, <0 = explicit disable */ \
     .led_count = 0, \
     .speaker_pin = PAD_PIN_DISABLED, \
     .speaker_enable_pin = PAD_PIN_DISABLED, \
@@ -269,7 +275,7 @@ extern const InputInterface pad_input_interface;
     .qwiic_tx = PAD_PIN_DISABLED, \
     .qwiic_rx = PAD_PIN_DISABLED, \
     .qwiic_i2c_inst = PAD_PIN_DISABLED, \
-    .usb_host_dp = PAD_PIN_DISABLED, \
+    .usb_host_dp = 0, /* 0 = use board default, >0 = override, <0 = explicit disable */ \
     .joywing = { \
         { .i2c_bus = 0, .sda = PAD_PIN_DISABLED, .scl = PAD_PIN_DISABLED, .addr = 0x49 }, \
         { .i2c_bus = 0, .sda = PAD_PIN_DISABLED, .scl = PAD_PIN_DISABLED, .addr = 0x49 }, \

@@ -19,6 +19,8 @@
 #include "platform/platform.h"
 
 #include "tusb.h"
+#include "pico/stdlib.h"
+#include "hardware/clocks.h"
 #include <stdio.h>
 
 #ifdef BTSTACK_USE_CYW43
@@ -387,6 +389,32 @@ void app_init(void)
 {
     printf("[app:controller_btusb] Initializing ControllerBTUSB v%s\n", APP_VERSION);
 
+#ifndef DISABLE_USB_HOST
+    // PIO USB (pico-pio-usb) needs the system clock at a multiple of 12 MHz —
+    // 120 MHz is the standard choice from tinyusb's family.c board_init().
+    // Default is 125 MHz which makes the bit-banged USB timing wrong, so
+    // enumeration of host-side controllers fails.
+    set_sys_clock_khz(120000, true);
+#endif
+
+#if defined(PICO_DEFAULT_PIO_USB_VBUSEN_PIN) && !defined(DISABLE_USB_HOST)
+    // Drive the USB host VBUS load switch high IMMEDIATELY — before any
+    // other init that may reconfigure GPIO state. usbh_init re-asserts
+    // this later, but a USB controller plugged into the host port draws
+    // current as soon as VBUS is on, which may be before usbh_init runs.
+    // PICO_DEFAULT_PIO_USB_VBUSEN_STATE is the active level for the
+    // load switch (1 = active high on Feather RP2040 USB Host).
+    gpio_init(PICO_DEFAULT_PIO_USB_VBUSEN_PIN);
+    gpio_set_dir(PICO_DEFAULT_PIO_USB_VBUSEN_PIN, GPIO_OUT);
+#ifdef PICO_DEFAULT_PIO_USB_VBUSEN_STATE
+    gpio_put(PICO_DEFAULT_PIO_USB_VBUSEN_PIN, PICO_DEFAULT_PIO_USB_VBUSEN_STATE);
+#else
+    gpio_put(PICO_DEFAULT_PIO_USB_VBUSEN_PIN, 1);
+#endif
+    printf("[app:controller_btusb] VBUS asserted on GPIO %d (early)\n",
+           PICO_DEFAULT_PIO_USB_VBUSEN_PIN);
+#endif
+
     // Initialize button service
     button_init();
     button_set_callback(on_button_event);
@@ -416,15 +444,25 @@ void app_init(void)
     watchdog_enable(8000, true);
 #endif
     {
-        // Apply LED config and settings from pad config
+        // Apply LED config and settings from pad config.
+        // Tri-state: >0 = override pin, 0 = use compile-time default,
+        // <0 = explicitly disabled by user.
+        //
+        // leds_init() already ran neopixel_init() at boot with the compile-
+        // time WS2812_PIN. Only reinit if the saved pin is genuinely
+        // different — calling neopixel_init() twice claims a second PIO SM
+        // and double-loads the program, leaving the original SM orphaned
+        // and the LED visually dead.
         const pad_device_config_t* led_cfg = pad_config_load_runtime();
         if (led_cfg) {
-            if (led_cfg->led_pin >= 0) {
+            if (led_cfg->led_pin > 0 && led_cfg->led_pin != WS2812_PIN) {
                 neopixel_set_pin(led_cfg->led_pin);
-                neopixel_init();  // Reinitialize with new pin
-            } else if (led_cfg->led_pin == -1) {
+                neopixel_init();  // Reinitialize with new pin (override)
+            } else if (led_cfg->led_pin < 0) {
                 neopixel_disable();
             }
+            // led_pin == 0 OR matches WS2812_PIN → leave the existing
+            // boot-time init alone.
             sinput_rgb_override = led_cfg->sinput_rgb;
         }
     }
@@ -443,8 +481,11 @@ void app_init(void)
         printf("[app:controller_btusb] Pad: %s (%s)\n", pad_cfg->name,
                pad_config_has_custom() ? "flash" : "default");
 #ifndef DISABLE_USB_HOST
-        // Set PIO-USB D+ pin from pad config (before usbh_init runs)
-        if (pad_cfg->usb_host_dp >= 0) {
+        // Override PIO-USB D+ pin from pad config (before usbh_init runs).
+        // Tri-state: >0 = override, 0 = use compile-time default,
+        // <0 = explicitly disabled by user. Only > 0 sets an override;
+        // the compile-time default in usbh.c handles the 0 case.
+        if (pad_cfg->usb_host_dp > 0) {
             usbh_set_pio_dp_pin(pad_cfg->usb_host_dp);
         }
 #endif
@@ -1062,7 +1103,10 @@ void app_task(void)
                 static bool usb_host_pin_valid = false;
                 if (!usb_host_pin_checked) {
                     const pad_device_config_t* ucfg = pad_config_load_runtime();
-                    usb_host_pin_valid = ucfg && ucfg->usb_host_dp >= 0;
+                    // USB host considered "valid" (active) when pad config
+                    // doesn't explicitly disable it. >=0 covers both the 0
+                    // (use compile-time default) and >0 (override) cases.
+                    usb_host_pin_valid = !ucfg || ucfg->usb_host_dp >= 0;
                     usb_host_pin_checked = true;
                 }
                 if (usb_host_pin_valid) {

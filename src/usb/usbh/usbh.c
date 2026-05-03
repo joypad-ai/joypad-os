@@ -42,14 +42,32 @@ void usbh_set_bt_available(bool available)
 }
 #endif
 
-// PIO USB pin definitions (configurable per board)
+// PIO USB pin definitions (configurable per board).
+//
+// Source of truth is CMake compile_definitions, NOT the pico-sdk board
+// header — those macros (e.g. ADAFRUIT_FEATHER_RP2040_USB_HOST) come from
+// pico/stdlib.h which usbh.c doesn't include, so they aren't reliably
+// visible here. PICO_DEFAULT_PIO_USB_DP_PIN / VBUSEN_PIN ARE on the
+// compile command line per-target, so prefer those.
 #if defined(CONFIG_PIO_USB_DP_PIN)
-    // Use CMake-configured pin (e.g., rp2040zero, custom boards)
     #define PIO_USB_DP_PIN      CONFIG_PIO_USB_DP_PIN
+#elif defined(PICO_DEFAULT_PIO_USB_DP_PIN)
+    #define PIO_USB_DP_PIN      PICO_DEFAULT_PIO_USB_DP_PIN
 #elif defined(ADAFRUIT_FEATHER_RP2040_USB_HOST)
-    // Feather RP2040 USB Host board
-    #define PIO_USB_VBUS_PIN    18  // VBUS enable for USB-A port
-    #define PIO_USB_DP_PIN      16  // D+ pin for PIO USB
+    // Fallback if the board header is visible but no compile def was set
+    #define PIO_USB_DP_PIN      16
+#endif
+
+#if defined(PICO_DEFAULT_PIO_USB_VBUSEN_PIN)
+    #define PIO_USB_VBUS_PIN    PICO_DEFAULT_PIO_USB_VBUSEN_PIN
+#elif defined(ADAFRUIT_FEATHER_RP2040_USB_HOST)
+    #define PIO_USB_VBUS_PIN    18
+#endif
+
+#if defined(PICO_DEFAULT_PIO_USB_VBUSEN_STATE)
+    #define PIO_USB_VBUS_ACTIVE PICO_DEFAULT_PIO_USB_VBUSEN_STATE
+#else
+    #define PIO_USB_VBUS_ACTIVE 1
 #endif
 
 // Runtime D+ pin override (set via pad config before usbh_init)
@@ -84,11 +102,13 @@ void usbh_init(void)
     // Dual USB mode: Host on rhport 1 (PIO USB for boards with separate host port)
 
 #ifdef PIO_USB_VBUS_PIN
-    // Enable VBUS power for USB-A port (required on Feather RP2040 USB Host)
+    // Enable VBUS power for USB-A port (required on Feather RP2040 USB Host
+    // and any board with a VBUS load switch driven by an MCU GPIO).
     gpio_init(PIO_USB_VBUS_PIN);
     gpio_set_dir(PIO_USB_VBUS_PIN, GPIO_OUT);
-    gpio_put(PIO_USB_VBUS_PIN, 1);
-    printf("[usbh] Enabled VBUS on GPIO %d\n", PIO_USB_VBUS_PIN);
+    gpio_put(PIO_USB_VBUS_PIN, PIO_USB_VBUS_ACTIVE);
+    printf("[usbh] Enabled VBUS on GPIO %d (drive=%d)\n",
+           PIO_USB_VBUS_PIN, PIO_USB_VBUS_ACTIVE);
 #endif
 
     // Configure PIO USB - use PIO0 when CYW43 is active (CYW43 SPI uses PIO1),

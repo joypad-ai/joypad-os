@@ -2308,16 +2308,16 @@ joypad_target_common(joypad_controller_btusb_feather_rp2040)
 pico_enable_stdio_uart(joypad_controller_btusb_feather_rp2040 1)
 
 # Feather RP2040 USB Host (#5723) variant of controller_btusb. Same JoyWing +
-# OLED FeatherWing wiring on STEMMA QT (I2C1 = GP2/3); the onboard PIO USB
-# host port is left unused since this app outputs as a USB device only
-# (DISABLE_USB_HOST=1). Adds CONFIG_UART_HOST so the joypad-mcp can drive
-# synthetic input over the same UART that carries stdio logs.
+# OLED FeatherWing wiring on STEMMA QT (I2C1 = GP2/3). The onboard PIO USB
+# host port (DP=GP16, DM=GP17, VBUSEN=GP18) accepts USB HID/X-input
+# controllers as additional input — they merge with JoyWing/pad input into
+# the same composite USB device output. CONFIG_UART_HOST lets joypad-mcp
+# drive synthetic input over the TX/RX header.
 add_executable(joypad_controller_btusb_feather_rp2040_usb_host)
 target_compile_definitions(joypad_controller_btusb_feather_rp2040_usb_host PRIVATE
     CONFIG_CONTROLLER_BTUSB=1
     CONFIG_USB=1
     CONFIG_PAD_INPUT=1
-    DISABLE_USB_HOST=1
     BOARD_FEATHER_RP2040=1
     USE_BOOTSEL_BUTTON=1
     REQUIRE_BLE_OUTPUT=0
@@ -2327,6 +2327,19 @@ target_compile_definitions(joypad_controller_btusb_feather_rp2040_usb_host PRIVA
     PICO_DEFAULT_UART=0
     PICO_DEFAULT_UART_TX_PIN=0
     PICO_DEFAULT_UART_RX_PIN=1
+    # PIO USB host — onboard host port. D+ is GP16 (D- implicitly GP17,
+    # PIO-USB always uses DP+1). VBUS load switch on GP18, active high.
+    # Native USB peripheral is RHPort 0 (we use it as the device output);
+    # PIO USB takes RHPort 1 for host.
+    PICO_DEFAULT_PIO_USB_DP_PIN=16
+    PICO_DEFAULT_PIO_USB_VBUSEN_PIN=18
+    PICO_DEFAULT_PIO_USB_VBUSEN_STATE=1
+    BOARD_TUH_RHPORT=1
+    USBR_CDC_DEBUG=1
+    # PIO assignment on this board (no CYW43): pico-pio-usb on PIO1, NeoPixel
+    # on PIO0 (its default). Do NOT define CONFIG_NEOPIXEL_USE_PIO1 here — it
+    # would put NeoPixel on the same PIO as PIO-USB and break enumeration
+    # (PIO instruction memory + state machine collisions).
     # OLED FeatherWing 128x64 (SH1107) over I2C on STEMMA QT
     OLED_I2C_INST=1
     OLED_I2C_SDA_PIN=2
@@ -2345,6 +2358,7 @@ target_compile_definitions(joypad_controller_btusb_feather_rp2040_usb_host PRIVA
 )
 target_sources(joypad_controller_btusb_feather_rp2040_usb_host PUBLIC
     ${CORE_SOURCES}
+    ${USB_HOST_SOURCES}
     ${USB_DEVICE_SOURCES}
     ${CONTROLLER_SOURCES}
     ${CMAKE_CURRENT_SOURCE_DIR}/stubs_peripheral.c
@@ -2364,7 +2378,7 @@ target_include_directories(joypad_controller_btusb_feather_rp2040_usb_host PUBLI
 target_link_libraries(joypad_controller_btusb_feather_rp2040_usb_host PRIVATE
     pico_stdlib pico_multicore pico_rand
     hardware_pio hardware_i2c hardware_adc hardware_pwm hardware_spi
-    tinyusb_device tinyusb_board
+    tinyusb_device tinyusb_board tinyusb_host tinyusb_pico_pio_usb xinput_host
 )
 joypad_target_common(joypad_controller_btusb_feather_rp2040_usb_host)
 pico_enable_stdio_uart(joypad_controller_btusb_feather_rp2040_usb_host 1)

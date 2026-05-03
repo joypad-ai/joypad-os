@@ -8,33 +8,14 @@
 #include <stdio.h>
 #include <string.h>
 #include "pico/stdlib.h"
+#include "ws2812.h"        // shared WS2812_PIN / WS2812_NUM_PIXELS defaults
 #include "ws2812.pio.h"
 #include "app_config.h"
 
 // Number of NeoPixels (can be overridden in CMakeLists.txt)
-#ifndef WS2812_NUM_PIXELS
-#define WS2812_NUM_PIXELS 1
-#endif
+// WS2812_PIN / WS2812_NUM_PIXELS are resolved in ws2812.h so the web
+// config layer reports the same defaults the driver uses.
 #define NUM_PIXELS WS2812_NUM_PIXELS
-
-// NeoPixel power control and pin configuration (board-specific)
-// WS2812_PIN can be overridden via compile definition
-#ifndef WS2812_PIN
-  #ifdef ADAFRUIT_FEATHER_RP2040_USB_HOST
-    #define WS2812_PIN 21
-    #define WS2812_POWER_PIN 20
-  #elif defined(ADAFRUIT_MACROPAD_RP2040)
-    #define WS2812_PIN 19
-  #elif defined(PICO_DEFAULT_WS2812_PIN)
-    #define WS2812_PIN PICO_DEFAULT_WS2812_PIN
-  #else
-    // No NeoPixel pin known for this board — disable automatically
-    #ifndef CONFIG_NO_NEOPIXEL
-      #define CONFIG_NO_NEOPIXEL 1
-    #endif
-    #define WS2812_PIN 0  // unused, neopixel_init returns early
-  #endif
-#endif
 
 #ifndef IS_RGBW
   #ifdef ADAFRUIT_MACROPAD_RP2040
@@ -415,10 +396,13 @@ void neopixel_init()
 
     // PIO selection:
     // - CONFIG_DC: Use PIO1 SM3 (share with maple_rx which uses SM0/1/2)
+    // - CONFIG_NEOPIXEL_USE_PIO1: Use PIO1 SM3 to leave PIO0 for PIO-USB
+    //   (pico-pio-usb hardcodes PIO0 SM 0/1/2). Only safe when nothing else
+    //   on the build claims PIO1 (e.g. no CYW43 / no maple).
     // - Others: Use PIO0
-#if defined(CONFIG_DC)
-    pio = pio1;  // Share PIO1 with maple_rx (10 instructions + 4 = 14, fits in 32)
-    sm = 3;      // maple_rx uses SM 0,1,2, so we must use SM 3
+#if defined(CONFIG_DC) || defined(CONFIG_NEOPIXEL_USE_PIO1)
+    pio = pio1;
+    sm = 3;
     pio_sm_claim(pio, sm);
 #else
     pio = pio0;

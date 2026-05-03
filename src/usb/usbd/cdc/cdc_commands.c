@@ -9,6 +9,7 @@
 #include "core/app_registry.h"
 #include "core/router/router.h"
 #include "core/services/storage/flash.h"
+#include "core/services/leds/neopixel/ws2812.h"
 #include "core/services/profiles/profile.h"
 #include "core/services/players/manager.h"
 #include "core/services/players/feedback.h"
@@ -1889,34 +1890,39 @@ static void cmd_pad_config_get(const char* json)
                     (flash_data.flags & PAD_FLAG_INVERT_RY) ? "true" : "false",
                     (flash_data.flags & PAD_FLAG_SINPUT_RGB) ? "true" : "false");
 
-    // LED (raw pad config + system defaults)
-    {
-#ifndef WS2812_NUM_PIXELS
-#define WS2812_NUM_PIXELS 0
-#endif
-#ifndef WS2812_PIN
-#define WS2812_PIN -1
-#endif
-        pos += snprintf(response_buf + pos, sizeof(response_buf) - pos,
-                        ",\"led_pin\":%d,\"led_count\":%d,\"sys_led_pin\":%d,\"sys_led_count\":%d"
-                        ",\"onboard_led\":%d",
-                        flash_data.led_pin, flash_data.led_count, WS2812_PIN, WS2812_NUM_PIXELS,
-                        flash_data.onboard_led);
-    }
+    // LED (effective pad config + system defaults).
+    //   stored 0  → reported as sys default (what the firmware actually uses)
+    //   stored >0 → reported as override pin
+    //   stored <0 → reported as -1 (explicitly disabled by user)
+    // This way both old + new web-config JS render the right pin.
+    int report_led_pin   = (flash_data.led_pin == 0) ? WS2812_PIN : flash_data.led_pin;
+    int report_led_count = (flash_data.led_pin == 0 && flash_data.led_count == 0)
+                                ? WS2812_NUM_PIXELS : flash_data.led_count;
+    pos += snprintf(response_buf + pos, sizeof(response_buf) - pos,
+                    ",\"led_pin\":%d,\"led_count\":%d,\"sys_led_pin\":%d,\"sys_led_count\":%d"
+                    ",\"onboard_led\":%d",
+                    report_led_pin, report_led_count, WS2812_PIN, WS2812_NUM_PIXELS,
+                    flash_data.onboard_led);
 
     // Speaker
     pos += snprintf(response_buf + pos, sizeof(response_buf) - pos,
                     ",\"speaker_pin\":%d,\"speaker_enable_pin\":%d",
                     flash_data.speaker_pin, flash_data.speaker_enable_pin);
 
-    // USB host
-#ifndef PIO_USB_DP_PIN_DEFAULT
-#define PIO_USB_DP_PIN_DEFAULT -1
+    // USB host. sys_usb_host_dp must reflect the actual compile-time pin
+    // the firmware uses, not pico-pio-usb's library-internal default.
+    // We set PICO_DEFAULT_PIO_USB_DP_PIN per-target in CMakeLists.txt; if
+    // that isn't defined for this build, USB host isn't wired at all.
+#ifdef PICO_DEFAULT_PIO_USB_DP_PIN
+#define SYS_USB_HOST_DP PICO_DEFAULT_PIO_USB_DP_PIN
+#else
+#define SYS_USB_HOST_DP -1
 #endif
+    int report_usb_host_dp = (flash_data.usb_host_dp == 0) ? SYS_USB_HOST_DP : flash_data.usb_host_dp;
     pos += snprintf(response_buf + pos, sizeof(response_buf) - pos,
                     ",\"usb_host_dp\":%d,\"sys_usb_host_dp\":%d"
                     ",\"joywing\":[[%d,%d,%d,%d],[%d,%d,%d,%d]]",
-                    flash_data.usb_host_dp, PIO_USB_DP_PIN_DEFAULT,
+                    report_usb_host_dp, SYS_USB_HOST_DP,
                     flash_data.joywing[0].i2c_bus, flash_data.joywing[0].sda, flash_data.joywing[0].scl, flash_data.joywing[0].addr,
                     flash_data.joywing[1].i2c_bus, flash_data.joywing[1].sda, flash_data.joywing[1].scl, flash_data.joywing[1].addr);
 
