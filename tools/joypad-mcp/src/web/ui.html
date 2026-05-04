@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>joypad-mcp control</title>
+<title>joypad-mcp</title>
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
@@ -13,7 +13,7 @@
   main { display: grid; grid-template-columns: minmax(0, 2fr) 360px; gap: 14px; padding: 14px; }
   .stage { position: relative; background: #000; border: 1px solid #2a2a2a; border-radius: 6px; overflow: hidden; }
   .stage img { display: block; width: 100%; height: auto; }
-  .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: auto; cursor: crosshair; }
+  .stage .empty { padding: 60px 14px; text-align: center; color: #666; font: 12px ui-monospace, Menlo, monospace; }
   aside { display: flex; flex-direction: column; gap: 12px; }
   .panel { background: #181818; border: 1px solid #2a2a2a; border-radius: 6px; padding: 12px; }
   .panel h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: #aaa; margin: 0 0 8px; font-weight: 600; }
@@ -25,31 +25,7 @@
   button.primary:hover { background: #3d6; }
   button.danger { background: #c33; color: #fff; border-color: #c33; }
   button.danger:hover { background: #d44; }
-  button.active { background: #46c; color: #fff; border-color: #46c; }
-  button:disabled { opacity: 0.4; cursor: not-allowed; }
-  pre { background: #0c0c0c; padding: 10px; border-radius: 4px; font: 11.5px/1.5 ui-monospace, Menlo, monospace; max-height: 320px; overflow: auto; margin: 0; }
-  .kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; font: 12px ui-monospace, Menlo, monospace; color: #ccc; }
-  .kv .k { color: #888; }
-  .phase-row { display: flex; gap: 6px; flex-wrap: wrap; }
-  .phase { padding: 6px 10px; border-radius: 4px; background: #0c0c0c; color: #555; font: 11px ui-monospace, monospace; border: 1px solid #2a2a2a; transition: all 0.15s; }
-  .phase.active { background: #2c5; color: #000; border-color: #2c5; font-weight: 600; }
-  .ticks { font: 11px ui-monospace, Menlo, monospace; max-height: 280px; overflow: auto; }
-  .tick { padding: 5px 8px; border-bottom: 1px solid #222; display: flex; gap: 8px; align-items: center; }
-  .tick .badge { padding: 1px 6px; border-radius: 3px; font-size: 10px; font-weight: 600; }
-  .tick .badge.slow   { background: #c53; color: #fff; }
-  .tick .badge.fast   { background: #2c5; color: #000; }
-  .tick .badge.repeat { background: #46c; color: #fff; }
-  .tick .badge.wait   { background: #555; color: #ccc; }
-  .tick .ms { color: #888; min-width: 56px; }
-  .tick .desc { color: #ccc; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .mode-pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font: 11px ui-monospace, monospace; }
-  .mode-playing  { background: #2c5; color: #000; }
-  .mode-menu     { background: #46c; color: #fff; }
-  .mode-game_over{ background: #c53; color: #fff; }
-  .mode-paused   { background: #fa3; color: #000; }
-  .mode-unknown  { background: #555; color: #ccc; }
-  .pin { position: absolute; width: 14px; height: 14px; margin: -7px 0 0 -7px; border: 2px solid #ff0; background: rgba(255,255,0,0.25); border-radius: 50%; pointer-events: none; font-size: 10px; color: #fff; text-align: center; line-height: 12px; }
-  .quad { position: absolute; inset: 0; pointer-events: none; }
+  pre { background: #0c0c0c; padding: 10px; border-radius: 4px; font: 11.5px/1.5 ui-monospace, Menlo, monospace; max-height: 240px; overflow: auto; margin: 0; }
   /* Manual gamepad controls */
   .pad { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
   .pad-col { display: flex; flex-direction: column; gap: 6px; align-items: center; }
@@ -78,9 +54,8 @@
 
 <main>
   <div class="stage" id="stage">
-    <img id="frame" alt="webcam frame" />
-    <svg class="quad" id="quad"></svg>
-    <div id="pins"></div>
+    <img id="frame" alt="webcam frame" style="display:none" />
+    <div class="empty" id="empty">no camera selected — pick one →</div>
   </div>
 
   <aside>
@@ -151,131 +126,35 @@
     </div>
 
     <div class="panel">
-      <h2>Calibration — matrix region</h2>
-      <p style="color:#aaa;margin:0 0 8px">Click the four corners of the Tetris matrix in this order: top-left, top-right, bottom-right, bottom-left.</p>
-      <div class="row">
-        <button id="cal-start">Start picking</button>
-        <button id="cal-clear">Clear</button>
-        <button id="cal-save" class="primary">Save</button>
-      </div>
-      <div id="cal-info" class="meta" style="color:#888;font-size:11px;margin-top:6px">no calibration loaded</div>
-    </div>
-
-    <div class="panel">
-      <h2>Autoplay</h2>
-      <div class="row" style="margin-bottom:10px">
-        <button id="ap-start" class="primary">▶ Start Tetris</button>
-        <button id="ap-stop" class="danger">■ Stop</button>
-      </div>
-      <div style="margin-bottom:10px">
-        Screen mode: <span id="ap-mode" class="mode-pill mode-unknown">unknown</span>
-      </div>
-      <div class="phase-row" id="ap-phases">
-        <div class="phase" data-phase="capture">📷 capture</div>
-        <div class="phase" data-phase="parse">▦ parse</div>
-        <div class="phase" data-phase="moondream">👁 moondream</div>
-        <div class="phase" data-phase="qwen">🧠 qwen</div>
-        <div class="phase" data-phase="execute">🎮 execute</div>
-        <div class="phase" data-phase="idle">⏸ idle</div>
-      </div>
-      <div class="kv" id="ap-kv" style="margin-top:10px"></div>
-    </div>
-
-    <div class="panel">
-      <h2>Recent ticks (newest first)</h2>
-      <div class="ticks" id="ap-ticks">no ticks yet</div>
-    </div>
-
-    <div class="panel">
       <h2>Raw state</h2>
-      <pre id="state" style="max-height:200px">loading…</pre>
+      <pre id="state">loading…</pre>
     </div>
   </aside>
 </main>
 
 <script type="module">
 const $ = (sel) => document.querySelector(sel);
-const stage = $("#stage");
 const frame = $("#frame");
-const pinsEl = $("#pins");
-const quadEl = $("#quad");
-const calInfo = $("#cal-info");
-const apKv = $("#ap-kv");
+const emptyEl = $("#empty");
 const stateEl = $("#state");
 const meta = $("#meta");
 
-let pickingMode = false;
-let pickedCorners = [];   // [[x_pct, y_pct], ...] in image-relative percent
-let imageNaturalSize = { w: 0, h: 0 };
-
-let cameraOpen = true;
+let cameraOpen = false;
 function refreshFrame() {
-  if (!cameraOpen) return; // paused — don't poll a 503 endpoint
-  // Cache-bust each tick. Browser keeps the last <img> visible during reload —
-  // no flicker if the request takes a moment.
+  if (!cameraOpen) return;
+  // Cache-bust each tick. Browser keeps the last <img> visible during reload.
   frame.src = `/api/frame.jpg?t=${Date.now()}`;
 }
 
 frame.addEventListener("load", () => {
-  imageNaturalSize = { w: frame.naturalWidth, h: frame.naturalHeight };
+  frame.style.display = "block";
+  emptyEl.style.display = "none";
 });
-
 frame.addEventListener("error", () => {
-  meta.textContent = "frame fetch failed (camera not running?)";
+  frame.style.display = "none";
+  emptyEl.style.display = "block";
+  emptyEl.textContent = cameraOpen ? "no frame yet…" : "camera paused";
 });
-
-stage.addEventListener("click", (e) => {
-  if (!pickingMode) return;
-  const r = stage.getBoundingClientRect();
-  const xPct = ((e.clientX - r.left) / r.width) * 100;
-  const yPct = ((e.clientY - r.top) / r.height) * 100;
-  if (pickedCorners.length < 4) {
-    pickedCorners.push([xPct, yPct]);
-    renderPins();
-    if (pickedCorners.length === 4) {
-      pickingMode = false;
-      $("#cal-start").classList.remove("active");
-      $("#cal-start").textContent = "Start picking";
-    }
-  }
-});
-
-function renderPins() {
-  pinsEl.innerHTML = "";
-  pickedCorners.forEach(([x, y], i) => {
-    const pin = document.createElement("div");
-    pin.className = "pin";
-    pin.style.left = x + "%";
-    pin.style.top = y + "%";
-    pin.textContent = i + 1;
-    pinsEl.appendChild(pin);
-  });
-  // Size the SVG to the rendered <img> bounds so user-space pixels match
-  // what the user sees, then plot path in those pixels (pinpercent×width).
-  const r = stage.getBoundingClientRect();
-  quadEl.setAttribute("width", String(r.width));
-  quadEl.setAttribute("height", String(r.height));
-  quadEl.setAttribute("viewBox", `0 0 ${r.width} ${r.height}`);
-  quadEl.innerHTML = "";
-  if (pickedCorners.length >= 2) {
-    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    let d = "";
-    pickedCorners.forEach(([x, y], i) => {
-      const px = (x / 100) * r.width;
-      const py = (y / 100) * r.height;
-      d += (i === 0 ? "M" : "L") + px + "," + py;
-    });
-    if (pickedCorners.length === 4) d += "Z";
-    path.setAttribute("d", d);
-    path.setAttribute("fill", "rgba(255,255,0,0.08)");
-    path.setAttribute("stroke", "rgba(255,255,0,0.85)");
-    path.setAttribute("stroke-width", "1.5");
-    quadEl.appendChild(path);
-  }
-}
-
-// Re-render on resize so the overlay tracks the camera frame.
-window.addEventListener("resize", renderPins);
 
 async function loadCameras() {
   const r = await fetch("/api/cameras");
@@ -301,6 +180,7 @@ $("#cam-select").addEventListener("change", async (e) => {
   });
   refreshState();
 });
+
 async function loadAdapters() {
   const r = await fetch("/api/joypad/adapters");
   const data = await r.json();
@@ -348,62 +228,6 @@ $("#cam-toggle").addEventListener("click", async () => {
   refreshState();
 });
 
-$("#cal-start").addEventListener("click", () => {
-  pickingMode = !pickingMode;
-  if (pickingMode) {
-    pickedCorners = [];
-    renderPins();
-    $("#cal-start").classList.add("active");
-    $("#cal-start").textContent = "picking… (click 4 corners)";
-  } else {
-    $("#cal-start").classList.remove("active");
-    $("#cal-start").textContent = "Start picking";
-  }
-});
-
-$("#cal-clear").addEventListener("click", () => {
-  pickedCorners = [];
-  renderPins();
-});
-
-$("#cal-save").addEventListener("click", async () => {
-  if (pickedCorners.length !== 4) {
-    alert("pick 4 corners first");
-    return;
-  }
-  // Convert percent → source-pixel coords using naturalWidth/Height
-  const corners = pickedCorners.map(([x, y]) => [
-    Math.round((x / 100) * imageNaturalSize.w),
-    Math.round((y / 100) * imageNaturalSize.h),
-  ]);
-  const body = {
-    matrix: { corners },
-    source_size: imageNaturalSize,
-  };
-  const r = await fetch("/api/calibrate", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const data = await r.json();
-  console.log("saved", data);
-  refreshState();
-});
-
-$("#ap-start").addEventListener("click", async () => {
-  await fetch("/api/autoplay/start", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ game: "tetris" }),
-  });
-  refreshState();
-});
-
-$("#ap-stop").addEventListener("click", async () => {
-  await fetch("/api/autoplay/stop", { method: "POST" });
-  refreshState();
-});
-
 const padDur = $("#pad-duration");
 const padDurVal = $("#pad-duration-val");
 const padStatus = $("#pad-status");
@@ -436,49 +260,25 @@ document.querySelectorAll(".pad-btn[data-btn]").forEach((btn) => {
   });
 });
 
-function escape(s) { return String(s).replace(/[&<>]/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;" }[c])); }
-
-function fmtAction(a) {
-  if (!a) return "—";
-  if (a.action === "press_button") return `btn ${a.buttons}`;
-  if (a.action === "place_piece") return `place col ${a.target_col}${a.rotation ? " rot " + a.rotation : ""}`;
-  if (a.action === "wait") return "wait";
-  return a.action;
-}
-
-function renderTicks(ticks) {
-  const el = $("#ap-ticks");
-  if (!ticks || ticks.length === 0) { el.textContent = "no ticks yet"; return; }
-  // newest first
-  el.innerHTML = "";
-  for (let i = ticks.length - 1; i >= 0; i--) {
-    const t = ticks[i];
-    const parts = [];
-    if (t.capture_ms) parts.push(`cap ${t.capture_ms}`);
-    if (t.parse_ms) parts.push(`parse ${t.parse_ms}`);
-    if (t.moondream_ms) parts.push(`md ${t.moondream_ms}`);
-    if (t.qwen_ms) parts.push(`q ${t.qwen_ms}`);
-    if (t.execute_ms) parts.push(`exec ${t.execute_ms}`);
-    const desc = t.error ? `err: ${t.error}` : `${fmtAction(t.action)} · ${t.screen_mode}${t.caption ? " · " + t.caption.slice(0, 60) : ""}`;
-    el.insertAdjacentHTML("beforeend", `
-      <div class="tick">
-        <span class="badge ${t.path}">${t.path}</span>
-        <span class="ms">${t.total_ms}ms</span>
-        <span class="desc" title="${escape(parts.join(" "))}">${escape(desc)}</span>
-      </div>
-    `);
-  }
-}
-
 async function refreshState() {
   try {
     const r = await fetch("/api/state");
     const s = await r.json();
     stateEl.textContent = JSON.stringify(s, null, 2);
-    const a = s.autoplay ?? {};
-    const cost = (a.claude_spend_usd ?? 0).toFixed(3);
-    const budget = (a.claude_budget_usd ?? 0).toFixed(2);
-    const costStyle = a.budget_hit ? "color:#f55;font-weight:600" : (a.claude_spend_usd > a.claude_budget_usd * 0.7 ? "color:#fa3" : "color:#aaa");
+
+    cameraOpen = !!s.camera?.open;
+    const camToggle = $("#cam-toggle");
+    if (camToggle) {
+      camToggle.textContent = cameraOpen ? "⏸" : "▶";
+      camToggle.title = cameraOpen
+        ? "Pause webcam stream (releases the camera)"
+        : "Resume webcam stream";
+    }
+
+    const camStatus = cameraOpen
+      ? `cam ${s.camera?.frames ?? 0}f · last frame ${s.camera?.last_frame_ms_ago ?? "—"}ms`
+      : '<span style="color:#fa3">cam paused</span>';
+
     const jpStatus = $("#jp-status");
     if (jpStatus) {
       if (s.joypad?.connected) {
@@ -490,70 +290,21 @@ async function refreshState() {
       }
     }
 
-    cameraOpen = !!s.camera?.open;
-    const camToggle = $("#cam-toggle");
-    if (camToggle) {
-      camToggle.textContent = cameraOpen ? "⏸" : "▶";
-      camToggle.title = cameraOpen
-        ? "Pause webcam stream (releases the camera)"
-        : "Resume webcam stream";
+    const jpHeader = s.joypad?.connected ? '<span style="color:#2c5">joypad ●</span>' : '<span style="color:#888">joypad ○</span>';
+    meta.innerHTML = `${camStatus} · ${jpHeader}`;
+
+    if (!cameraOpen) {
+      frame.style.display = "none";
+      emptyEl.style.display = "block";
+      emptyEl.textContent = "camera paused — click ▶ to resume";
     }
-    const camStatus = cameraOpen
-      ? `cam ${s.camera?.frames ?? 0}f · last frame ${s.camera?.last_frame_ms_ago ?? "—"}ms`
-      : '<span style="color:#fa3">cam paused</span>';
-    meta.innerHTML = `${camStatus} · <span style="${costStyle}">claude $${cost} / $${budget}</span> (${a.claude_calls ?? 0} calls)${a.budget_hit ? ' · <strong style="color:#f55">BUDGET STOPPED</strong>' : ""}`;
-
-    // calibration auto-restore
-    if (s.calibration?.matrix?.corners?.length === 4 && pickedCorners.length === 0 && imageNaturalSize.w > 0) {
-      pickedCorners = s.calibration.matrix.corners.map(([x, y]) => [
-        (x / imageNaturalSize.w) * 100,
-        (y / imageNaturalSize.h) * 100,
-      ]);
-      renderPins();
-      calInfo.textContent = "calibration loaded from disk";
-    } else if (s.calibration?.matrix?.corners?.length === 4) {
-      calInfo.textContent = "calibration: 4 corners loaded";
-    }
-
-    // screen mode pill
-    const mode = a.screen_mode ?? "unknown";
-    const pill = $("#ap-mode");
-    pill.className = `mode-pill mode-${mode}`;
-    pill.textContent = mode;
-
-    // active phase highlight
-    const phase = a.phase ?? "idle";
-    document.querySelectorAll("#ap-phases .phase").forEach((el) => {
-      el.classList.toggle("active", el.dataset.phase === phase);
-    });
-
-    // kv summary
-    apKv.innerHTML = "";
-    const summary = {
-      running: a.running,
-      pieces_placed: a.pieces_placed,
-      ticks: a.ticks,
-      last_tick_ms: a.last_tick_ms,
-      fast_path_streak: a.fast_path_streak,
-      last_action: fmtAction(a.last_action),
-      last_caption: a.last_caption ? a.last_caption.slice(0, 80) + (a.last_caption.length > 80 ? "…" : "") : null,
-      last_error: a.last_error,
-    };
-    for (const [k, v] of Object.entries(summary)) {
-      apKv.insertAdjacentHTML("beforeend", `<span class="k">${k}</span><span>${escape(String(v ?? "—"))}</span>`);
-    }
-
-    // tick log
-    renderTicks(a.recent_ticks);
   } catch (e) {
     stateEl.textContent = `state fetch failed: ${e.message}`;
   }
 }
 
-// Live polling — frame at 5 Hz (matches camera throttle), state at 5 Hz so
-// the phase highlight tracks moondream/qwen transitions visibly.
 setInterval(refreshFrame, 200);
-setInterval(refreshState, 200);
+setInterval(refreshState, 500);
 refreshFrame();
 refreshState();
 loadCameras();

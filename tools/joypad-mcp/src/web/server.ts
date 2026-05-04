@@ -1,9 +1,14 @@
 // Local control UI for joypad-mcp. Single-process HTTP server embedded in
-// the MCP runtime so the user can:
+// the MCP runtime so the user can monitor and test the rig:
 //   - watch the latest webcam frame
-//   - click-calibrate the matrix region for game-specific parsers
-//   - start/stop autoplay loops without touching a tool from chat
-//   - see live state (camera fps, parsed game state, joypad connection)
+//   - pick / pause / resume a camera
+//   - connect / disconnect the joypad adapter
+//   - send manual button presses for testing
+//
+// Game-specific autoplay loops (tetris.ts etc.) are intentionally NOT
+// wired here — those source files stay on disk for future reference but
+// aren't loaded. Demo flow is conversational: Claude Code drives the
+// MCP from chat using the manual press / screenshot tools.
 //
 // stdio MCP and this HTTP server coexist in one Node process — no extra
 // launcher, no extra port to remember. Default URL: http://localhost:11600
@@ -17,8 +22,6 @@ import { homedir } from "node:os";
 import { streamingCamera } from "../capture/streaming_camera.js";
 import { state as joypadState } from "../state.js";
 import { listAvfVideoDevices, resolveDevice } from "../capture/avf.js";
-import { startTetrisLoop, AutoplayHandle } from "../autoplay/tetris.js";
-import { parseMatrix } from "../games/tetris/parser.js";
 import { parseButtons } from "../buttons.js";
 import { encodeInputEvent, INPUT_TYPE_GAMEPAD, NEUTRAL_ANALOG, PktType } from "../protocol.js";
 import { Connection, DEFAULT_BAUD } from "../transport.js";
@@ -28,56 +31,34 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const UI_HTML = join(__dirname, "ui.html");
 
 const CONFIG_DIR = join(homedir(), ".joypad-mcp");
-const CALIBRATION_FILE = join(CONFIG_DIR, "calibration.json");
+const CONFIG_FILE = join(CONFIG_DIR, "calibration.json");
 
-export interface CalibrationData {
-  matrix?: { corners: [number, number][] }; // 4 corners in source-image pixels: TL, TR, BR, BL
-  next_preview?: { x: number; y: number; w: number; h: number };
-  source_size?: { w: number; h: number };
+// Persisted across restarts: which camera + joypad to auto-attach on boot.
+// Filename kept as calibration.json for backward compat with existing saves
+// even though there's no calibration to speak of in this build.
+export interface SessionConfig {
   camera_device?: number;
-  game?: string;
   joypad_port?: string;
   joypad_baud?: number;
   saved_at?: number;
 }
 
-export const calibration: CalibrationData = loadCalibration();
+export const config: SessionConfig = loadConfig();
 
-function loadCalibration(): CalibrationData {
+function loadConfig(): SessionConfig {
   try {
-    if (existsSync(CALIBRATION_FILE)) {
-      return JSON.parse(readFileSync(CALIBRATION_FILE, "utf8"));
+    if (existsSync(CONFIG_FILE)) {
+      return JSON.parse(readFileSync(CONFIG_FILE, "utf8"));
     }
   } catch {}
   return {};
 }
 
-function saveCalibration(data: CalibrationData): void {
+function saveConfig(data: SessionConfig): void {
   data.saved_at = Date.now();
   if (!existsSync(CONFIG_DIR)) mkdirSync(CONFIG_DIR, { recursive: true });
-  writeFileSync(CALIBRATION_FILE, JSON.stringify(data, null, 2));
+  writeFileSync(CONFIG_FILE, JSON.stringify(data, null, 2));
 }
-
-// Autoplay state — minimal placeholder until the parser/heuristic land.
-export interface AutoplayStatus {
-  running: boolean;
-  game: string | null;
-  pieces_placed: number;
-  started_at: number | null;
-  last_tick_ms: number;
-  last_error: string | null;
-}
-
-const autoplay: AutoplayStatus = {
-  running: false,
-  game: null,
-  pieces_placed: 0,
-  started_at: null,
-  last_tick_ms: 0,
-  last_error: null,
-};
-
-let activeHandle: AutoplayHandle | null = null;
 
 function setCors(res: ServerResponse): void {
   res.setHeader("access-control-allow-origin", "*");
@@ -139,24 +120,6 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     return;
   }
 
-  if (req.method === "GET" && path === "/api/parse") {
-    if (!streamingCamera.isOpen()) { json(res, 503, { error: "camera not running" }); return; }
-    if (!calibration.matrix?.corners) { json(res, 400, { error: "no matrix calibration" }); return; }
-    try {
-      const { jpeg } = await streamingCamera.getFrame(2000);
-      const parsed = await parseMatrix(jpeg, { corners: calibration.matrix.corners });
-      json(res, 200, {
-        ms: parsed.ms,
-        heights: parsed.heights,
-        cells: parsed.cells.map((row) => row.map((b) => (b ? 1 : 0)).join("")),
-        rgb_sample: parsed.rgb?.slice(0, 5).map((row) => row.slice(0, 5)),
-      });
-    } catch (e: any) {
-      json(res, 500, { error: String(e?.message ?? e) });
-    }
-    return;
-  }
-
   if (req.method === "GET" && path === "/api/cameras") {
     try {
       const devices = await listAvfVideoDevices();
@@ -174,8 +137,8 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       if (!streamingCamera.isOpen() || streamingCamera.currentDevice() !== dev.index) {
         streamingCamera.start(dev.index);
       }
-      calibration.camera_device = dev.index;
-      saveCalibration(calibration);
+      config.camera_device = dev.index;
+      saveConfig(config);
       json(res, 200, { ok: true, device: dev, camera: streamingCamera.stats() });
     } catch (e: any) {
       json(res, 400, { error: String(e?.message ?? e) });
@@ -191,7 +154,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
 
   if (req.method === "POST" && path === "/api/camera/resume") {
     try {
-      const dev = calibration.camera_device;
+      const dev = config.camera_device;
       if (dev == null) {
         json(res, 400, { error: "no camera saved — pick one first" });
         return;
@@ -207,13 +170,6 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   }
 
   if (req.method === "GET" && path === "/api/state") {
-    const live = activeHandle?.status();
-    if (live) {
-      autoplay.running = live.running;
-      autoplay.pieces_placed = live.pieces_placed;
-      autoplay.last_tick_ms = live.last_tick_ms;
-      autoplay.last_error = live.last_error;
-    }
     json(res, 200, {
       camera: streamingCamera.stats(),
       joypad: {
@@ -221,45 +177,14 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
         port: joypadState.conn?.path,
         last_command_ms_ago: joypadState.lastCommandAt ? Date.now() - joypadState.lastCommandAt : null,
       },
-      calibration,
-      autoplay: { ...autoplay, ...(live ?? {}) },
+      config,
     });
-    return;
-  }
-
-  if (req.method === "POST" && path === "/api/calibrate") {
-    try {
-      const body = await readJsonBody<CalibrationData>(req);
-      Object.assign(calibration, body);
-      saveCalibration(calibration);
-      json(res, 200, { ok: true, calibration });
-    } catch (e: any) {
-      json(res, 400, { error: String(e?.message ?? e) });
-    }
-    return;
-  }
-
-  if (req.method === "POST" && path === "/api/autoplay/start") {
-    try {
-      const body = await readJsonBody<{ game?: string }>(req);
-      activeHandle?.stop();
-      autoplay.running = true;
-      autoplay.game = body.game ?? "tetris";
-      autoplay.pieces_placed = 0;
-      autoplay.started_at = Date.now();
-      autoplay.last_error = null;
-      activeHandle = startTetrisLoop(calibration.matrix);
-      json(res, 200, { ok: true, autoplay });
-    } catch (e: any) {
-      json(res, 400, { error: String(e?.message ?? e) });
-    }
     return;
   }
 
   if (req.method === "GET" && path === "/api/joypad/adapters") {
     try {
       const ports = await SerialPort.list();
-      // Loose filter: anything with a USB-CDC-style path is a candidate.
       const candidates = ports
         .map((p) => ({
           path: p.path,
@@ -288,9 +213,9 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       await conn.open();
       joypadState.attach(conn);
       joypadState.lastCommandAt = Date.now();
-      calibration.joypad_port = body.port;
-      calibration.joypad_baud = baud;
-      saveCalibration(calibration);
+      config.joypad_port = body.port;
+      config.joypad_baud = baud;
+      saveConfig(config);
       json(res, 200, { ok: true, port: body.port, baud });
     } catch (e: any) {
       json(res, 400, { error: String(e?.message ?? e) });
@@ -341,14 +266,6 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     return;
   }
 
-  if (req.method === "POST" && path === "/api/autoplay/stop") {
-    activeHandle?.stop();
-    activeHandle = null;
-    autoplay.running = false;
-    json(res, 200, { ok: true, autoplay });
-    return;
-  }
-
   json(res, 404, { error: "not found" });
 }
 
@@ -371,9 +288,9 @@ export function startWebServer(port = parseInt(process.env.JOYPAD_WEB_PORT ?? "1
   streamingCamera.sweepOrphans();
 
   // Auto-start the saved camera so the UI has a frame waiting on first load.
-  if (calibration.camera_device != null && !streamingCamera.isOpen()) {
+  if (config.camera_device != null && !streamingCamera.isOpen()) {
     try {
-      streamingCamera.start(calibration.camera_device);
+      streamingCamera.start(config.camera_device);
     } catch (e) {
       console.error(`[joypad-mcp] auto-start camera failed:`, e);
     }
@@ -381,13 +298,13 @@ export function startWebServer(port = parseInt(process.env.JOYPAD_WEB_PORT ?? "1
 
   // Auto-reconnect to the saved joypad adapter so manual button presses
   // from the web UI work without first running the MCP `connect` tool.
-  if (calibration.joypad_port && !joypadState.conn) {
+  if (config.joypad_port && !joypadState.conn) {
     (async () => {
       try {
-        const conn = new Connection(calibration.joypad_port!, calibration.joypad_baud ?? DEFAULT_BAUD);
+        const conn = new Connection(config.joypad_port!, config.joypad_baud ?? DEFAULT_BAUD);
         await conn.open();
         joypadState.attach(conn);
-        console.error(`[joypad-mcp] reconnected ${calibration.joypad_port}`);
+        console.error(`[joypad-mcp] reconnected ${config.joypad_port}`);
       } catch (e) {
         console.error(`[joypad-mcp] auto-reconnect joypad failed:`, e);
       }
@@ -398,8 +315,4 @@ export function startWebServer(port = parseInt(process.env.JOYPAD_WEB_PORT ?? "1
 export function stopWebServer(): void {
   server?.close();
   server = null;
-}
-
-export function getAutoplay(): AutoplayStatus {
-  return autoplay;
 }
