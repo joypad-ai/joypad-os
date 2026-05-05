@@ -126,6 +126,16 @@
     </div>
 
     <div class="panel">
+      <h2>UART log</h2>
+      <div class="row" style="margin-bottom:6px">
+        <input id="log-grep" placeholder="grep (regex)" style="flex:1;background:#0c0c0c;color:#eee;border:1px solid #3a3a3a;padding:4px 6px;border-radius:4px;font:11px ui-monospace,monospace" />
+        <button id="log-clear" title="Clear panel (firmware ring buffer keeps history)">⌫</button>
+        <button id="log-pause" title="Pause / resume tail">⏸</button>
+      </div>
+      <pre id="log" style="max-height:340px">connect joypad…</pre>
+    </div>
+
+    <div class="panel">
       <h2>Raw state</h2>
       <pre id="state">loading…</pre>
     </div>
@@ -303,10 +313,55 @@ async function refreshState() {
   }
 }
 
+const logEl = $("#log");
+const logGrep = $("#log-grep");
+let logPaused = false;
+let lastSeenLines = new Set();
+$("#log-clear").addEventListener("click", () => { logEl.textContent = ""; lastSeenLines.clear(); });
+$("#log-pause").addEventListener("click", (e) => {
+  logPaused = !logPaused;
+  e.target.textContent = logPaused ? "▶" : "⏸";
+});
+async function refreshLog() {
+  if (logPaused) return;
+  try {
+    const grep = logGrep.value.trim();
+    const qs = new URLSearchParams({ since_ms: "60000" });
+    if (grep) qs.set("grep", grep);
+    const r = await fetch("/api/joypad/log?" + qs);
+    if (r.status === 503) {
+      logEl.textContent = "joypad not connected";
+      lastSeenLines.clear();
+      return;
+    }
+    const data = await r.json();
+    const lines = data.lines ?? [];
+    // De-dupe — append only lines we haven't shown yet. Keys are (line, index)
+    // because identical content can repeat (e.g. periodic status prints).
+    const newKey = lines.map((l, i) => `${i}:${l}`);
+    const newSet = new Set(newKey);
+    const toAppend = newKey.filter((k) => !lastSeenLines.has(k));
+    lastSeenLines = newSet;
+    if (logEl.textContent === "joypad not connected" || logEl.textContent === "connect joypad…") {
+      logEl.textContent = lines.join("\n");
+    } else if (toAppend.length > 0) {
+      const justLines = toAppend.map((k) => k.slice(k.indexOf(":") + 1));
+      logEl.textContent += (logEl.textContent ? "\n" : "") + justLines.join("\n");
+      // Trim panel content if it grows huge
+      const all = logEl.textContent.split("\n");
+      if (all.length > 200) logEl.textContent = all.slice(-200).join("\n");
+    }
+    logEl.scrollTop = logEl.scrollHeight;
+  } catch {}
+}
+logGrep.addEventListener("input", () => { lastSeenLines.clear(); logEl.textContent = ""; });
+
 setInterval(refreshFrame, 200);
 setInterval(refreshState, 500);
+setInterval(refreshLog, 500);
 refreshFrame();
 refreshState();
+refreshLog();
 loadCameras();
 loadAdapters();
 </script>

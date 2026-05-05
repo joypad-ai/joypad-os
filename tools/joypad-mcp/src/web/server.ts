@@ -223,6 +223,14 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     return;
   }
 
+  if (req.method === "GET" && path === "/api/joypad/log") {
+    if (!joypadState.conn) { json(res, 503, { error: "joypad not connected" }); return; }
+    const since = parseInt(url.searchParams.get("since_ms") ?? "60000", 10);
+    const grep = url.searchParams.get("grep") || undefined;
+    json(res, 200, { lines: joypadState.conn.recentLogs(since, grep) });
+    return;
+  }
+
   if (req.method === "POST" && path === "/api/joypad/disconnect") {
     try {
       if (joypadState.conn) {
@@ -276,6 +284,10 @@ export function startWebServer(port = parseInt(process.env.JOYPAD_WEB_PORT ?? "1
     handle(req, res).catch((e) => {
       try { json(res, 500, { error: String(e?.message ?? e) }); } catch {}
     });
+  });
+  server.on("error", (e: any) => {
+    console.error(`[joypad-mcp] web UI disabled: ${String(e?.message ?? e)}`);
+    server = null;
   });
   server.listen(port, "127.0.0.1", () => {
     // Avoid stdout — that's the MCP transport. stderr is fine.
