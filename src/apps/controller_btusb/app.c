@@ -20,8 +20,10 @@
 #include "platform/platform.h"
 
 #include "tusb.h"
+#if !defined(PLATFORM_NRF) && !defined(PLATFORM_ESP32)
 #include "pico/stdlib.h"
 #include "hardware/clocks.h"
+#endif
 #include <stdio.h>
 
 #ifdef BTSTACK_USE_CYW43
