@@ -48,6 +48,7 @@ set(SRCS
     "src/display_i2c_nrf.c"
     "${SHARED_SRC}/core/services/display/display.c"
     "${SHARED_SRC}/core/services/display/joy_anim.c"
+    "${SHARED_SRC}/core/services/display/eyes_anim.c"
 
     # --- Core services ---
     "${SHARED_SRC}/core/app_registry.c"
