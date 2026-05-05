@@ -251,12 +251,18 @@ void input_sony_ds4(uint8_t dev_addr, uint8_t instance, uint8_t const* report, u
       // keep analog within range [1-255]
       ensureAllNonZero(&analog_1x, &analog_1y, &analog_2x, &analog_2y);
 
-      // adds deadzone
-      uint8_t deadzone = 40;
-      if (analog_1x > (128-(deadzone/2)) && analog_1x < (128+(deadzone/2))) analog_1x = 128;
-      if (analog_1y > (128-(deadzone/2)) && analog_1y < (128+(deadzone/2))) analog_1y = 128;
-      if (analog_2x > (128-(deadzone/2)) && analog_2x < (128+(deadzone/2))) analog_2x = 128;
-      if (analog_2y > (128-(deadzone/2)) && analog_2y < (128+(deadzone/2))) analog_2y = 128;
+      // Radial dead zone: only snap to center if the stick is inside a
+      // circle of `dz_radius` around (128,128). The previous per-axis
+      // rectangular dead zone caused magnetic-snap-to-cardinals — a
+      // diagonal tilt got one axis zeroed while the other passed through,
+      // turning smooth motion into pure N/S/E/W. The DS4 itself filters
+      // residual analog noise, so this only needs to be a small circle.
+      const int dz_radius = 6;  // ~5% of half-range
+      const int dz_radius_sq = dz_radius * dz_radius;
+      int dx1 = (int)analog_1x - 128, dy1 = (int)analog_1y - 128;
+      if (dx1*dx1 + dy1*dy1 < dz_radius_sq) { analog_1x = 128; analog_1y = 128; }
+      int dx2 = (int)analog_2x - 128, dy2 = (int)analog_2y - 128;
+      if (dx2*dx2 + dy2*dy2 < dz_radius_sq) { analog_2x = 128; analog_2y = 128; }
 
       // add to accumulator and post to the state machine
       // if a scan from the host machine is ongoing, wait
