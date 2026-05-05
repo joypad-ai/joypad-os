@@ -9,12 +9,36 @@
 #include "core/services/players/manager.h"
 #include "core/services/players/feedback.h"
 #include "core/services/profiles/profile.h"
+#include "core/services/button/button.h"
 #include "core/input_interface.h"
 #include "core/output_interface.h"
 #include "usb/usbd/usbd.h"
 #include "native/host/gc/gc_host.h"
 #include "core/services/leds/leds.h"
 #include <stdio.h>
+
+// ============================================================================
+// BUTTON EVENT HANDLER (BOOTSEL on Pico, GP11 on KB2040 — see CMakeLists)
+// ============================================================================
+
+static void on_button_event(button_event_t event)
+{
+    switch (event) {
+        case BUTTON_EVENT_DOUBLE_CLICK: {
+            usb_output_mode_t next = usbd_get_next_mode();
+            printf("[app:gc2usb] Double-click - USB mode → %s\n",
+                   usbd_get_mode_name(next));
+            usbd_set_mode(next);
+            break;
+        }
+        case BUTTON_EVENT_TRIPLE_CLICK:
+            printf("[app:gc2usb] Triple-click - reset to HID mode\n");
+            usbd_reset_to_hid();
+            break;
+        default:
+            break;
+    }
+}
 
 // ============================================================================
 // APP INPUT INTERFACES
@@ -83,6 +107,11 @@ void app_init(void)
     };
     profile_init(&profile_cfg);
 
+    // Button: BOOTSEL on Pico / user button on other boards. Double-click
+    // cycles USB output mode, triple-click resets to HID.
+    button_init();
+    button_set_callback(on_button_event);
+
     printf("[app:gc2usb] Initialization complete\n");
     printf("[app:gc2usb]   Routing: GC -> USB HID Gamepad\n");
     printf("[app:gc2usb]   GC data pin: GPIO%d\n", GC_DATA_PIN);
@@ -95,6 +124,9 @@ void app_init(void)
 
 void app_task(void)
 {
+    // Drive button state machine (single/double/triple click + hold detection)
+    button_task();
+
     // Update LED color when USB output mode changes
     static usb_output_mode_t last_led_mode = USB_OUTPUT_MODE_COUNT;
     usb_output_mode_t mode = usbd_get_mode();

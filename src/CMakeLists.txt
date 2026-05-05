@@ -2013,7 +2013,13 @@ pico_generate_pio_header(joypad_gc2usb_rp2040zero ${CMAKE_CURRENT_LIST_DIR}/lib/
 # GP29 isn't broken out on the standard Pico, so use GP28 (last regular GPIO)
 # for the joybus data line.
 add_executable(joypad_gc2usb_pico)
-target_compile_definitions(joypad_gc2usb_pico PRIVATE CONFIG_GC2USB=1 CONFIG_USB=1 DISABLE_USB_HOST=1 GC_PIN_DATA=28)
+target_compile_definitions(joypad_gc2usb_pico PRIVATE
+    CONFIG_GC2USB=1 CONFIG_USB=1 DISABLE_USB_HOST=1
+    GC_PIN_DATA=28
+    BOARD_LED_PIN=25
+    USE_BOOTSEL_BUTTON=1
+    BOARD_NAME="pico"
+)
 target_sources(joypad_gc2usb_pico PUBLIC ${CORE_SOURCES} ${USB_DEVICE_SOURCES}
     ${GC_HOST_SOURCES}
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/gc2usb/app.c
