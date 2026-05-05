@@ -49,6 +49,18 @@ static uint8_t prev_r_analog[GC_MAX_PORTS] = {0};
 #define GC_STICK_INIT_MAX  215  // Conservative initial max (widens on use)
 #define GC_STICK_DEADZONE  3    // Ignore values within ±3 of center for calibration
 
+// Trigger analog rest bias: GC L/R analog values are not 0 at rest. Per-unit
+// mechanical/calibration variance puts the resting value anywhere from 1 to
+// ~40, and once released the noise floor still drifts a few units above the
+// absolute minimum. Track the lowest value seen per session, then suppress
+// anything within GC_TRIGGER_DEADZONE above it as 0. Pressed values rescale
+// to 0..255 from the dead-zone ceiling.
+#define GC_TRIGGER_INIT_REST 40   // Conservative initial rest cap (narrows on use)
+#define GC_TRIGGER_DEADZONE  10   // Idle drift suppression above tracked rest
+
+static uint8_t trigger_rest[GC_MAX_PORTS][2];  // [port][0=L, 1=R]
+static bool trigger_rest_init = false;
+
 static struct {
     uint8_t min;
     uint8_t max;
@@ -64,6 +76,31 @@ static void stick_range_reset(void)
         }
     }
     stick_range_init = true;
+}
+
+static void trigger_rest_reset(void)
+{
+    for (int p = 0; p < GC_MAX_PORTS; p++) {
+        trigger_rest[p][0] = GC_TRIGGER_INIT_REST;
+        trigger_rest[p][1] = GC_TRIGGER_INIT_REST;
+    }
+    trigger_rest_init = true;
+}
+
+// Subtract tracked rest bias + dead-zone, rescale press range to 0..255.
+// Auto-calibrates: any value below the current rest becomes the new rest.
+static uint8_t trigger_scale(uint8_t raw, uint8_t port, uint8_t which)
+{
+    uint8_t rest = trigger_rest[port][which];
+    if (raw < rest) {
+        trigger_rest[port][which] = raw;
+        rest = raw;
+    }
+    uint16_t floor = (uint16_t)rest + GC_TRIGGER_DEADZONE;
+    if (raw <= floor) return 0;
+    uint16_t span = 255 - floor;
+    if (span == 0) return 255;
+    return (uint8_t)(((uint16_t)(raw - floor) * 255) / span);
 }
 
 // Scale raw value using tracked min/max → 0-255 with 128 center preserved
@@ -238,6 +275,9 @@ void gc_host_task(void)
                     stick_range[port][a].min = GC_STICK_INIT_MIN;
                     stick_range[port][a].max = GC_STICK_INIT_MAX;
                 }
+                // Reset trigger rest bias for this port on fresh connect
+                trigger_rest[port][0] = GC_TRIGGER_INIT_REST;
+                trigger_rest[port][1] = GC_TRIGGER_INIT_REST;
                 printf("[gc_host] Port %d: connected\n", port);
             }
         }
@@ -260,9 +300,10 @@ void gc_host_task(void)
         uint8_t cstick_x = stick_scale(report.cstick_x,          port, 2);
         uint8_t cstick_y = stick_scale(255 - report.cstick_y,    port, 3);
 
-        // Analog triggers (0-255)
-        uint8_t l_analog = report.l_analog;
-        uint8_t r_analog = report.r_analog;
+        // Analog triggers: subtract auto-calibrated rest bias so idle = 0
+        if (!trigger_rest_init) trigger_rest_reset();
+        uint8_t l_analog = trigger_scale(report.l_analog, port, 0);
+        uint8_t r_analog = trigger_scale(report.r_analog, port, 1);
 
         // Always submit input events - USB output needs continuous reports
         // even when controller state hasn't changed (held stick positions)

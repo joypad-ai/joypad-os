@@ -52,7 +52,16 @@ static const profile_t gc2usb_profiles[] = {
         .button_map_count = 0,
         .combo_map = NULL,
         .combo_map_count = 0,
-        PROFILE_TRIGGERS_DEFAULT,
+        // Triggers: passthrough only — GC L/R digital fires from the
+        // physical click at the bottom of the trigger pull (driver's
+        // report->l/r), independent of analog travel. Threshold=0 skips
+        // the analog→digital override entirely.
+        .l2_behavior = TRIGGER_PASSTHROUGH,
+        .r2_behavior = TRIGGER_PASSTHROUGH,
+        .l2_threshold = 0,
+        .r2_threshold = 0,
+        .l2_analog_value = 0,
+        .r2_analog_value = 0,
         PROFILE_ANALOG_DEFAULT,
         .adaptive_triggers = false,
     },
@@ -64,7 +73,16 @@ static const profile_t gc2usb_profiles[] = {
         .button_map_count = sizeof(gc2usb_xbox_map) / sizeof(gc2usb_xbox_map[0]),
         .combo_map = NULL,
         .combo_map_count = 0,
-        PROFILE_TRIGGERS_DEFAULT,
+        // Triggers: passthrough only — GC L/R digital fires from the
+        // physical click at the bottom of the trigger pull (driver's
+        // report->l/r), independent of analog travel. Threshold=0 skips
+        // the analog→digital override entirely.
+        .l2_behavior = TRIGGER_PASSTHROUGH,
+        .r2_behavior = TRIGGER_PASSTHROUGH,
+        .l2_threshold = 0,
+        .r2_threshold = 0,
+        .l2_analog_value = 0,
+        .r2_analog_value = 0,
         PROFILE_ANALOG_DEFAULT,
         .adaptive_triggers = false,
     },
@@ -76,7 +94,16 @@ static const profile_t gc2usb_profiles[] = {
         .button_map_count = sizeof(gc2usb_nintendo_map) / sizeof(gc2usb_nintendo_map[0]),
         .combo_map = NULL,
         .combo_map_count = 0,
-        PROFILE_TRIGGERS_DEFAULT,
+        // Triggers: passthrough only — GC L/R digital fires from the
+        // physical click at the bottom of the trigger pull (driver's
+        // report->l/r), independent of analog travel. Threshold=0 skips
+        // the analog→digital override entirely.
+        .l2_behavior = TRIGGER_PASSTHROUGH,
+        .r2_behavior = TRIGGER_PASSTHROUGH,
+        .l2_threshold = 0,
+        .r2_threshold = 0,
+        .l2_analog_value = 0,
+        .r2_analog_value = 0,
         PROFILE_ANALOG_DEFAULT,
         .adaptive_triggers = false,
     },
