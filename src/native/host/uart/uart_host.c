@@ -10,6 +10,7 @@
 #include "core/input_event.h"
 #include "hardware/uart.h"
 #include "hardware/gpio.h"
+#include "hardware/irq.h"
 #include "pico/stdlib.h"
 #include <string.h>
 #include <stdio.h>
@@ -46,6 +47,17 @@ static uint32_t last_rx_time = 0;
 // Callbacks
 static uart_host_profile_callback_t profile_callback = NULL;
 static uart_host_mode_callback_t output_mode_callback = NULL;
+
+// IRQ-driven RX ring buffer. Without this, blocking calls elsewhere in
+// the main loop (e.g. JoyWing's seesaw I2C polling, ~6 ops × ~ms each)
+// can outrun the 32-byte UART RX FIFO at 115200 baud (~3ms to fill) and
+// drop incoming MCP packets. With it, an IRQ drains the FIFO into a
+// software buffer that survives any amount of main-loop blocking.
+#define RX_RING_SIZE 1024
+static volatile uint8_t rx_ring[RX_RING_SIZE];
+static volatile uint16_t rx_ring_head = 0;  // written by ISR
+static volatile uint16_t rx_ring_tail = 0;  // read by task
+static volatile uint32_t rx_ring_overflow = 0;
 
 // ============================================================================
 // PACKET PROCESSING
@@ -234,6 +246,24 @@ void uart_host_init(void)
     uart_host_init_pins(UART_HOST_TX_PIN, UART_HOST_RX_PIN, UART_PROTOCOL_BAUD_DEFAULT);
 }
 
+// IRQ handler — drain the hardware FIFO into the software ring buffer.
+// Runs even when the main loop is blocked in I2C, so MCP packets don't
+// get lost during JoyWing seesaw polling. Kept tiny — no printf, no
+// state-machine work, just byte copy + head advance.
+static void __not_in_flash_func(uart_host_rx_isr)(void)
+{
+    while (uart_is_readable(uart_port)) {
+        uint8_t b = (uint8_t)uart_get_hw(uart_port)->dr;
+        uint16_t next = (uint16_t)((rx_ring_head + 1) % RX_RING_SIZE);
+        if (next == rx_ring_tail) {
+            rx_ring_overflow++;        // ring full — byte dropped
+        } else {
+            rx_ring[rx_ring_head] = b;
+            rx_ring_head = next;
+        }
+    }
+}
+
 void uart_host_init_pins(uint8_t tx_pin, uint8_t rx_pin, uint32_t baud)
 {
     printf("[uart_host] Initializing UART host\n");
@@ -252,27 +282,47 @@ void uart_host_init_pins(uint8_t tx_pin, uint8_t rx_pin, uint32_t baud)
     // Enable FIFO
     uart_set_fifo_enabled(uart_port, true);
 
+    // Wire up IRQ-driven RX. UART0_IRQ vs UART1_IRQ depending on instance.
+    int irq = (uart_port == uart0) ? UART0_IRQ : UART1_IRQ;
+    irq_set_exclusive_handler(irq, uart_host_rx_isr);
+    irq_set_enabled(irq, true);
+    // Enable RX + RX-timeout IRQs (fires on FIFO threshold OR idle line)
+    uart_set_irqs_enabled(uart_port, true, false);
+
     // Initialize state
     rx_state = RX_STATE_SYNC;
     rx_index = 0;
+    rx_ring_head = rx_ring_tail = 0;
+    rx_ring_overflow = 0;
 
     initialized = true;
-    printf("[uart_host] Initialization complete\n");
+    printf("[uart_host] Initialization complete (IRQ-driven RX, ring=%u)\n",
+           (unsigned)RX_RING_SIZE);
 }
 
 void uart_host_task(void)
 {
     if (!initialized) return;
 
-    // Drain bytes via stdio's buffered stdin. pico_enable_stdio_uart owns
-    // the UART RX path via stdio_uart_in_chars (polling-based — bytes stay
-    // in the hardware FIFO until something pulls). Going through stdin keeps
-    // us compatible with the same surface other apps use for their 'B' →
-    // bootloader idiom, so a single UART can carry both protocol packets
-    // and the manual reset escape.
-    int c;
-    while ((c = getchar_timeout_us(0)) != PICO_ERROR_TIMEOUT) {
-        process_rx_byte((uint8_t)c);
+    // Drain the software ring buffer (filled by uart_host_rx_isr).
+    // Process each byte through the protocol state machine. The buffer
+    // survives main-loop stalls (e.g. seesaw I2C ops) up to RX_RING_SIZE
+    // bytes — beyond that, ISR increments rx_ring_overflow.
+    static uint32_t last_overflow_log = 0;
+    while (rx_ring_tail != rx_ring_head) {
+        uint8_t b = rx_ring[rx_ring_tail];
+        rx_ring_tail = (uint16_t)((rx_ring_tail + 1) % RX_RING_SIZE);
+        process_rx_byte(b);
+    }
+    // Periodic overflow notice (1Hz max) — should be 0 in normal operation
+    if (rx_ring_overflow > 0) {
+        uint32_t now = to_ms_since_boot(get_absolute_time());
+        if (now - last_overflow_log > 1000) {
+            printf("[uart_host] ring overflow: %lu bytes dropped\n",
+                   (unsigned long)rx_ring_overflow);
+            rx_ring_overflow = 0;
+            last_overflow_log = now;
+        }
     }
 }
 

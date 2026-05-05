@@ -208,12 +208,32 @@ static bool touch_read(void) {
 // GPIO HELPERS
 // ============================================================================
 
+// Returns true if `pin` is reserved by another firmware feature and must
+// not be claimed by the pad subsystem (would otherwise kill that feature).
+// Currently guards the UART host RX/TX pair so a saved pad config that
+// happens to map a button onto GPIO 0 / 1 can't disable joypad-mcp's
+// synthetic-input bridge by reconfiguring those pins as digital inputs.
+static bool pad_pin_is_reserved(int16_t pin) {
+#if defined(CONFIG_UART_HOST) && defined(CONFIG_UART_HOST_TX_PIN) && defined(CONFIG_UART_HOST_RX_PIN)
+    if (pin == CONFIG_UART_HOST_TX_PIN || pin == CONFIG_UART_HOST_RX_PIN) {
+        static int8_t warned_pin = -1;
+        if (warned_pin != pin) {
+            printf("[pad] WARNING: pin GP%d is reserved for UART host (joypad-mcp) — ignoring config\n", pin);
+            warned_pin = pin;
+        }
+        return true;
+    }
+#endif
+    return false;
+}
+
 // Initialize a single GPIO pin as input with appropriate pull
 static void pad_init_button_pin(int16_t pin, bool active_high) {
     // Only initialize direct GPIO pins (0-29 on RP2040, 0-48 on ESP32)
     if (pin < 0 || pin > 48) return;
     // I2C expander pins (100+) are not direct GPIO
     if (pin >= 100) return;
+    if (pad_pin_is_reserved(pin)) return;
 
     // Pull opposite to active state
     platform_gpio_init_input(pin, !active_high);
@@ -223,6 +243,7 @@ static void pad_init_button_pin(int16_t pin, bool active_high) {
 // Supports direct GPIO (0-29) and I2C expanders (100-115, 200-215)
 static bool pad_read_button(int16_t pin, bool active_high) {
     if (pin < 0) return false;
+    if (pin < 100 && pad_pin_is_reserved(pin)) return false;
 
     bool state;
 
@@ -356,7 +377,7 @@ static void pad_init_device_pins(const pad_device_config_t* config) {
     // Initialize toggle switch pins
     for (int t = 0; t < 2; t++) {
         int16_t pin = config->toggle[t].pin;
-        if (pin >= 0 && pin <= 48) {
+        if (pin >= 0 && pin <= 48 && !pad_pin_is_reserved(pin)) {
             platform_gpio_init_input(pin, config->toggle[t].invert);
             printf("[pad] Toggle %d on GPIO %d (func=%d%s)\n",
                    t, pin, config->toggle[t].function,

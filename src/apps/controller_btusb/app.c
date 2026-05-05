@@ -6,6 +6,7 @@
 
 #include "app.h"
 #include "core/router/router.h"
+#include "native/host/uart/uart_host.h"
 #include "core/services/players/manager.h"
 #include "core/services/button/button.h"
 #include "core/input_interface.h"
@@ -389,13 +390,10 @@ void app_init(void)
 {
     printf("[app:controller_btusb] Initializing ControllerBTUSB v%s\n", APP_VERSION);
 
-#ifndef DISABLE_USB_HOST
-    // PIO USB (pico-pio-usb) needs the system clock at a multiple of 12 MHz —
-    // 120 MHz is the standard choice from tinyusb's family.c board_init().
-    // Default is 125 MHz which makes the bit-banged USB timing wrong, so
-    // enumeration of host-side controllers fails.
-    set_sys_clock_khz(120000, true);
-#endif
+    // (Do NOT call set_sys_clock_khz here — pico-pio-usb adapts its bit-bang
+    // timing to whatever clk_sys is, and changing the clock after stdio_init
+    // shifts the UART divisor so all subsequent printf becomes garbled at
+    // 115200. usb2usb_feather_rp2040_usb_host works at the default 125 MHz.)
 
 #if defined(PICO_DEFAULT_PIO_USB_VBUSEN_PIN) && !defined(DISABLE_USB_HOST)
     // Drive the USB host VBUS load switch high IMMEDIATELY — before any
@@ -704,6 +702,16 @@ void app_init(void)
     };
     profile_init(&profile_cfg);
 
+#ifdef CONFIG_UART_HOST
+    // UART input host shares the stdio UART (UART0 on GPIO0/1 by default).
+    // RX is consumed by uart_host's parser; TX continues to carry printf
+    // logs. Lets joypad-mcp drive synthetic input on dev_addr 0xD0+slot
+    // through the same TX/RX bridge that carries the boot logs.
+    uart_host_init_pins(CONFIG_UART_HOST_TX_PIN, CONFIG_UART_HOST_RX_PIN,
+                        CONFIG_UART_HOST_BAUD);
+    uart_host_set_mode(UART_HOST_MODE_NORMAL);
+#endif
+
     printf("[app:controller_btusb] Initialization complete\n");
     printf("[app:controller_btusb]   Routing: Sensors → %sUSB Device\n",
            REQUIRE_BLE_OUTPUT ? "BLE Peripheral + " : "");
@@ -716,6 +724,13 @@ void app_init(void)
 
 void app_task(void)
 {
+#ifdef CONFIG_UART_HOST
+    // Drain UART RX → INPUT_EVENT packets → router. Every loop iteration
+    // because the parser is called from main thread; latency is dominated
+    // by tap/press wait times anyway.
+    uart_host_task();
+#endif
+
 #ifdef PAD_CONFIG_BOOT_WATCHDOG
     // Feed the boot-attempt watchdog every iteration. After 5s of
     // running normally, mark this boot as "succeeded" by zeroing the
