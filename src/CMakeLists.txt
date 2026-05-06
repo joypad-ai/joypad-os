@@ -86,6 +86,7 @@ set(CORE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/core/router/router.c
     ${CMAKE_CURRENT_SOURCE_DIR}/core/services/leds/leds.c
     ${CMAKE_CURRENT_SOURCE_DIR}/core/services/leds/neopixel/ws2812.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/services/leds/player_leds_gpio.c
     ${CMAKE_CURRENT_SOURCE_DIR}/core/services/storage/storage.c
     ${CMAKE_CURRENT_SOURCE_DIR}/core/services/storage/flash.c
     ${CMAKE_CURRENT_SOURCE_DIR}/core/services/button/button.c
@@ -128,7 +129,6 @@ set(USB_HOST_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/hid/devices/vendors/microsoft/ms_sidewinder_commander.c
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/hid/devices/generic/sinput_host.c
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/xinput/xinput.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/xbone_auth/xbone_auth.c
 )
 
 # Bluetooth HID device drivers (shared between USB dongle and CYW43 transports)
@@ -231,6 +231,7 @@ set(USB_DEVICE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd/drivers/tud_xinput.c
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd/drivers/tud_xbone.c
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd/drivers/xgip_protocol.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/xbone_auth/xbone_auth.c
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd/kbmouse/kbmouse.c
     # libxsm3 - Xbox Security Method 3 (LGPL-2.1-or-later)
     # https://github.com/InvoxiPlayGames/libxsm3
@@ -1581,6 +1582,16 @@ if (PICO_BOARD STREQUAL "pico_w" OR PICO_BOARD STREQUAL "pico2_w")
         PICO_DEFAULT_PIO_USB_DP_PIN=16
         PIO_USB_DP_PIN_DEFAULT=16
         BOARD_TUH_RHPORT=1
+
+        # Optional: 4-LED player indicator on raw GPIOs (PS3/Switch-style).
+        # Define all four pins to enable. Active-high. LED1↔bit0, LED2↔bit1,
+        # LED3↔bit2, LED4↔bit3 of the PLAYER_LEDS[] bitmap. Player 1 lights
+        # LED1 alone, P5..P10 use the standard combo patterns. See
+        # .dev/docs/player_leds_gpio.md for wiring/usage.
+        # PLAYER_LED_PIN_1=10
+        # PLAYER_LED_PIN_2=11
+        # PLAYER_LED_PIN_3=12
+        # PLAYER_LED_PIN_4=13
     )
     target_sources(joypad_controller_btusb PUBLIC
         ${CORE_SOURCES}

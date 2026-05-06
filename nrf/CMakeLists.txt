@@ -49,11 +49,13 @@ set(SRCS
     "${SHARED_SRC}/core/services/display/display.c"
     "${SHARED_SRC}/core/services/display/joy_anim.c"
     "${SHARED_SRC}/core/services/display/eyes_anim.c"
+    "${SHARED_SRC}/core/services/display/menu.c"
 
     # --- Core services ---
     "${SHARED_SRC}/core/app_registry.c"
     "${SHARED_SRC}/core/router/router.c"
     "${SHARED_SRC}/core/services/leds/leds.c"
+    "${SHARED_SRC}/core/services/leds/player_leds_gpio.c"
     "${SHARED_SRC}/core/services/storage/storage.c"
     "${SHARED_SRC}/core/services/codes/codes.c"
     "${SHARED_SRC}/core/services/hotkeys/hotkeys.c"

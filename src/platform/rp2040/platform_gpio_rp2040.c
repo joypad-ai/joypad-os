@@ -19,6 +19,16 @@ bool platform_gpio_get(uint8_t pin) {
     return gpio_get(pin);
 }
 
+void platform_gpio_init_output(uint8_t pin) {
+    gpio_init(pin);
+    gpio_set_dir(pin, GPIO_OUT);
+    gpio_put(pin, 0);
+}
+
+void platform_gpio_put(uint8_t pin, bool on) {
+    gpio_put(pin, on);
+}
+
 void platform_adc_init(void) {
     adc_init();
 }

@@ -24,6 +24,22 @@ bool platform_gpio_get(uint8_t pin) {
     return gpio_get_level(pin) != 0;
 }
 
+void platform_gpio_init_output(uint8_t pin) {
+    gpio_config_t cfg = {
+        .pin_bit_mask = (1ULL << pin),
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    gpio_config(&cfg);
+    gpio_set_level(pin, 0);
+}
+
+void platform_gpio_put(uint8_t pin, bool on) {
+    gpio_set_level(pin, on ? 1 : 0);
+}
+
 void platform_adc_init(void) {
     if (adc_inited) return;
 

@@ -14,6 +14,9 @@
 #include "usb/usbd/usbd.h"
 #include "core/services/leds/leds.h"
 #include "core/services/leds/neopixel/ws2812.h"
+#ifdef PLAYER_LED_PIN_1
+#include "core/services/leds/player_leds_gpio.h"
+#endif
 #include "core/services/storage/flash.h"
 #include "core/services/profiles/profile.h"
 #include "core/buttons.h"
@@ -714,6 +717,14 @@ void app_init(void)
     uart_host_set_mode(UART_HOST_MODE_NORMAL);
 #endif
 
+#ifdef PLAYER_LED_PIN_1
+    // 4-LED player indicator on raw GPIOs (PS3/Switch-style: LED1..LED4 ↔
+    // bits 0..3 of the PLAYER_LEDS[] bitmap). Active-high. See
+    // .dev/docs/player_leds_gpio.md.
+    player_leds_gpio_init(PLAYER_LED_PIN_1, PLAYER_LED_PIN_2,
+                          PLAYER_LED_PIN_3, PLAYER_LED_PIN_4);
+#endif
+
     printf("[app:controller_btusb] Initialization complete\n");
     printf("[app:controller_btusb]   Routing: Sensors → %sUSB Device\n",
            REQUIRE_BLE_OUTPUT ? "BLE Peripheral + " : "");
@@ -731,6 +742,11 @@ void app_task(void)
     // because the parser is called from main thread; latency is dominated
     // by tap/press wait times anyway.
     uart_host_task();
+#endif
+
+#ifdef PLAYER_LED_PIN_1
+    // Mirror feedback_state.led.pattern (slot 0) onto the 4 GPIO LEDs.
+    player_leds_gpio_task();
 #endif
 
 #ifdef PAD_CONFIG_BOOT_WATCHDOG

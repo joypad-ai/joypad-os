@@ -45,6 +45,22 @@ bool platform_gpio_get(uint8_t pin) {
     return gpio_pin_get(dev, hw_pin) != 0;
 }
 
+void platform_gpio_init_output(uint8_t pin) {
+    const struct device* dev = get_gpio_dev(pin);
+    if (!device_is_ready(dev)) {
+        printf("[gpio] Device not ready for pin %d\n", pin);
+        return;
+    }
+    uint8_t hw_pin = pin < 32 ? pin : (pin - 32);
+    gpio_pin_configure(dev, hw_pin, GPIO_OUTPUT_INACTIVE);
+}
+
+void platform_gpio_put(uint8_t pin, bool on) {
+    const struct device* dev = get_gpio_dev(pin);
+    uint8_t hw_pin = pin < 32 ? pin : (pin - 32);
+    gpio_pin_set(dev, hw_pin, on ? 1 : 0);
+}
+
 // ADC — nRF52840 SAADC with AIN0-AIN7
 #ifdef CONFIG_ADC
 static const struct device* adc_dev = NULL;

@@ -17,6 +17,12 @@ void platform_gpio_init_input(uint8_t pin, bool pull_up);
 // Read digital state of a GPIO pin (true = high)
 bool platform_gpio_get(uint8_t pin);
 
+// Initialize a GPIO pin as digital output, drive low
+void platform_gpio_init_output(uint8_t pin);
+
+// Drive output pin (true = high, false = low)
+void platform_gpio_put(uint8_t pin, bool on);
+
 // Initialize ADC subsystem (call once before any ADC reads)
 void platform_adc_init(void);
 
