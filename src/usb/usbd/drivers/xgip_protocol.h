@@ -10,7 +10,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-#include "descriptors/xbone_descriptors.h"
+#include "../descriptors/xbone_descriptors.h"
 
 // Maximum data buffer size for auth packets
 #define XGIP_MAX_DATA_SIZE 1024

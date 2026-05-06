@@ -7,7 +7,7 @@
 
 #include "tusb.h"
 #include "device/usbd_pvt.h"
-#include "descriptors/xbone_descriptors.h"
+#include "../descriptors/xbone_descriptors.h"
 #include "xgip_protocol.h"
 
 // Xbox One driver state machine

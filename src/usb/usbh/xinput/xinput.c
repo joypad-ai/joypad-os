@@ -19,6 +19,12 @@ __attribute__((weak)) void xbone_auth_register(uint8_t dev_addr, uint8_t instanc
 __attribute__((weak)) void xbone_auth_unregister(uint8_t dev_addr) { (void)dev_addr; }
 __attribute__((weak)) void xbone_auth_report_received(uint8_t dev_addr, uint8_t instance, uint8_t const* report, uint16_t len) { (void)dev_addr; (void)instance; (void)report; (void)len; }
 
+// USB device mode lookup — weak stub for builds without USB device sources.
+// Strong implementation lives in usbd.c. When USB device is not linked
+// (e.g. native console output targets), we just report HID as a non-XBONE
+// default so the Xbox One mode-cycle suppression below stays inert.
+__attribute__((weak)) usb_output_mode_t usbd_get_mode(void) { return USB_OUTPUT_MODE_HID; }
+
 // BTstack driver for Bluetooth dongles
 #if CFG_TUH_BTD
 #include "usb/usbh/btd/hci_transport_h2_tinyusb.h"
