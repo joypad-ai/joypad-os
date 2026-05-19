@@ -24,6 +24,20 @@
 #include <stdbool.h>
 #include "core/buttons.h"
 #include "core/router/router.h"
+// ============================================================================
+// AUTOFIRE
+// ============================================================================
+
+// Number of JP_BUTTON_* slots tracked for autofire timing (JP_BUTTON_R4 = 1<<21 is the highest).
+#define AUTOFIRE_BUTTON_COUNT 22
+
+// Auto-fire periods (ms) for common frequencies (50% duty cycle)
+#define AUTOFIRE_30HZ   33   //  30 Hz →  33ms period
+#define AUTOFIRE_20HZ   50   //  20 Hz →  50ms period
+#define AUTOFIRE_15HZ   67   //  15 Hz →  67ms period
+#define AUTOFIRE_12HZ   83   //  12 Hz →  83ms period
+#define AUTOFIRE_10HZ  100   //  10 Hz → 100ms period
+#define AUTOFIRE_7HZ   133   // 7.5 Hz → 133ms period
 
 // ============================================================================
 // ANALOG OUTPUT TARGETS
@@ -59,10 +73,11 @@ typedef enum {
 // Maps one input button to output(s) - supports advanced mappings
 
 typedef struct {
-    uint32_t input;             // JP_BUTTON_* input (e.g., JP_BUTTON_B1)
-    uint32_t output;            // JP_BUTTON_* output(s) - can OR multiple buttons
-    analog_target_t analog;     // Optional analog output (0 = none)
-    uint8_t analog_value;       // Custom analog value for ANALOG_TARGET_*_CUSTOM
+    uint32_t input;               // JP_BUTTON_* input (e.g., JP_BUTTON_B1)
+    uint32_t output;              // JP_BUTTON_* output(s) - can OR multiple buttons
+    analog_target_t analog;       // Optional analog output (0 = none)
+    uint8_t analog_value;         // Custom analog value for ANALOG_TARGET_*_CUSTOM
+    uint8_t  autofire_period_ms;  // Auto-fire period in ms (0 = off). See AUTOFIRE_*HZ macros.
 } button_map_entry_t;
 
 // ============================================================================
@@ -197,6 +212,11 @@ typedef struct {
     // Order: up, right, down, left, L2, R2, L1, R1, triangle, circle, cross, square
     uint8_t pressure[12];       // 0x00 = released, 0xFF = fully pressed
     bool has_pressure;          // Pressure data is valid
+
+    // Persistent autofire timing — caller keeps this struct alive between calls.
+    // profile_apply reads and writes this each iteration; all fields above are
+    // zeroed on every call, this array is NOT (indexed by __builtin_ctz(entry->input)).
+    uint32_t autofire_start_ms[AUTOFIRE_BUTTON_COUNT];
 
 } profile_output_t;
 
@@ -350,23 +370,33 @@ uint32_t profile_apply_button_map(const profile_t* profile, uint32_t input_butto
 
 // Simple button remap: input → output
 #define MAP_BUTTON(in, out) \
-    { .input = (in), .output = (out), .analog = ANALOG_TARGET_NONE, .analog_value = 0 }
+    { .input = (in), .output = (out), .analog = ANALOG_TARGET_NONE, .analog_value = 0, \
+      .autofire_period_ms = 0 }
+
+// Button remap with auto-fire: input → output toggled at given frequency
+#define MAP_AUTOFIRE(in, out, period_ms) \
+    { .input = (in), .output = (out), .analog = ANALOG_TARGET_NONE, .analog_value = 0, \
+      .autofire_period_ms = (period_ms) }
 
 // Button to multiple buttons: input → out1 | out2
 #define MAP_BUTTON_MULTI(in, out1, out2) \
-    { .input = (in), .output = ((out1) | (out2)), .analog = ANALOG_TARGET_NONE, .analog_value = 0 }
+    { .input = (in), .output = ((out1) | (out2)), .analog = ANALOG_TARGET_NONE, .analog_value = 0, \
+      .autofire_period_ms = 0 }
 
 // Button to button + analog: input → button + analog at value
 #define MAP_BUTTON_ANALOG(in, out, analog_tgt, value) \
-    { .input = (in), .output = (out), .analog = (analog_tgt), .analog_value = (value) }
+    { .input = (in), .output = (out), .analog = (analog_tgt), .analog_value = (value), \
+      .autofire_period_ms = 0 }
 
 // Button to analog only: input → analog axis
 #define MAP_ANALOG_ONLY(in, analog_tgt) \
-    { .input = (in), .output = 0, .analog = (analog_tgt), .analog_value = 0 }
+    { .input = (in), .output = 0, .analog = (analog_tgt), .analog_value = 0, \
+      .autofire_period_ms = 0 }
 
 // Button disabled: input → nothing
 #define MAP_DISABLED(in) \
-    { .input = (in), .output = 0, .analog = ANALOG_TARGET_NONE, .analog_value = 0 }
+    { .input = (in), .output = 0, .analog = ANALOG_TARGET_NONE, .analog_value = 0, \
+      .autofire_period_ms = 0 }
 
 // Button combo: multiple inputs → output (consumes inputs by default)
 #define MAP_COMBO(ins, out) \
