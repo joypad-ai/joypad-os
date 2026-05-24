@@ -29,7 +29,7 @@ static bool __no_inline_not_in_flash_func(read_bootsel_button)(void) {
     hw_write_masked(&ioqspi_hw->io[CS_PIN_INDEX].ctrl,
                     2u << IO_QSPI_GPIO_QSPI_SS_CTRL_OEOVER_LSB,  // GPIO_OVERRIDE_LOW = 2
                     IO_QSPI_GPIO_QSPI_SS_CTRL_OEOVER_BITS);
-    for (volatile int i = 0; i < 1000; ++i);
+    for (volatile int i = 0; i < 10000; ++i);
     bool state = !(sio_hw->gpio_hi_in & (1u << CS_PIN_INDEX));
     hw_write_masked(&ioqspi_hw->io[CS_PIN_INDEX].ctrl,
                     0u << IO_QSPI_GPIO_QSPI_SS_CTRL_OEOVER_LSB,  // GPIO_OVERRIDE_NORMAL = 0
@@ -177,13 +177,17 @@ static uint8_t __not_in_flash_func(build_cd32_byte)(uint32_t buttons) {
 // GPIO HELPERS — open-collector style
 // ============================================================================
 
+// NOTE: BSS138 N-channel FET circuit on USB2AMI board inverts logic:
+// GPIO HIGH → FET ON → DE9 line pulled LOW → signal asserted (pressed)
+// GPIO LOW  → FET OFF → DE9 line HIGH (via Amiga pull-up) → released
 static inline void __not_in_flash_func(pin_press)(uint pin) {
-    gpio_put(pin, 0);
+    gpio_put(pin, 1);
     gpio_set_dir(pin, GPIO_OUT);
 }
 
 static inline void __not_in_flash_func(pin_release)(uint pin) {
-    gpio_set_dir(pin, GPIO_IN);
+    gpio_put(pin, 0);
+    gpio_set_dir(pin, GPIO_OUT);
 }
 
 static inline void __not_in_flash_func(set_dpad)(uint32_t buttons) {
@@ -238,7 +242,7 @@ static void __not_in_flash_func(amiga_gpio_irq)(uint gpio, uint32_t events) {
                 gpio_set_dir(AMIGA_PIN_CLK, GPIO_IN);
                 buttons_isr = buttons_live >> 1;
                 gpio_set_dir(AMIGA_PIN_DATA, GPIO_OUT);
-                gpio_put(AMIGA_PIN_DATA, (buttons_live & 0x01) ? 1 : 0);
+                gpio_put(AMIGA_PIN_DATA, (buttons_live & 0x01) ? 0 : 1);
                 gpio_set_irq_enabled(AMIGA_PIN_CLK, GPIO_IRQ_EDGE_RISE, true);
             }
         } else if (events & GPIO_IRQ_EDGE_RISE) {
@@ -252,8 +256,8 @@ static void __not_in_flash_func(amiga_gpio_irq)(uint gpio, uint32_t events) {
             }
         }
     } else if (gpio == AMIGA_PIN_CLK) {
-        if (buttons_isr & 0x01) gpio_put(AMIGA_PIN_DATA, 1);
-        else                    gpio_put(AMIGA_PIN_DATA, 0);
+        if (buttons_isr & 0x01) gpio_put(AMIGA_PIN_DATA, 0);
+        else                    gpio_put(AMIGA_PIN_DATA, 1);
         buttons_isr >>= 1;
     }
 }
@@ -408,6 +412,7 @@ void amiga_device_task(void) {
             // all interrupts briefly which can cause ghost CD32 button presses
             gpio_set_irq_enabled(AMIGA_PIN_JOYMODE, GPIO_IRQ_EDGE_FALL | GPIO_IRQ_EDGE_RISE, false);
             bool pressed = read_bootsel_button();
+	  
             gpio_set_irq_enabled(AMIGA_PIN_JOYMODE, GPIO_IRQ_EDGE_FALL | GPIO_IRQ_EDGE_RISE, true);
 
             if (pressed && !button_was_pressed) {
@@ -503,13 +508,14 @@ void amiga_device_task(void) {
 // ============================================================================
 
 void amiga_device_init(void) {
-    // All DE9 signal pins start as inputs (open-collector, HIGH-Z = released)
-    gpio_init(AMIGA_PIN_UP);    gpio_put(AMIGA_PIN_UP,    0); gpio_set_dir(AMIGA_PIN_UP,    GPIO_IN);
-    gpio_init(AMIGA_PIN_DOWN);  gpio_put(AMIGA_PIN_DOWN,  0); gpio_set_dir(AMIGA_PIN_DOWN,  GPIO_IN);
-    gpio_init(AMIGA_PIN_LEFT);  gpio_put(AMIGA_PIN_LEFT,  0); gpio_set_dir(AMIGA_PIN_LEFT,  GPIO_IN);
-    gpio_init(AMIGA_PIN_RIGHT); gpio_put(AMIGA_PIN_RIGHT, 0); gpio_set_dir(AMIGA_PIN_RIGHT, GPIO_IN);
-    gpio_init(AMIGA_PIN_CLK);   gpio_put(AMIGA_PIN_CLK,   0); gpio_set_dir(AMIGA_PIN_CLK,   GPIO_IN);
-    gpio_init(AMIGA_PIN_DATA);  gpio_put(AMIGA_PIN_DATA,  0); gpio_set_dir(AMIGA_PIN_DATA,  GPIO_IN);
+    // All DE9 signal pins start as outputs driven LOW (FET off = line released)
+    // BSS138 circuit: GPIO HIGH = FET ON = line asserted, GPIO LOW = FET OFF = released
+    gpio_init(AMIGA_PIN_UP);    gpio_put(AMIGA_PIN_UP,    0); gpio_set_dir(AMIGA_PIN_UP,    GPIO_OUT);
+    gpio_init(AMIGA_PIN_DOWN);  gpio_put(AMIGA_PIN_DOWN,  0); gpio_set_dir(AMIGA_PIN_DOWN,  GPIO_OUT);
+    gpio_init(AMIGA_PIN_LEFT);  gpio_put(AMIGA_PIN_LEFT,  0); gpio_set_dir(AMIGA_PIN_LEFT,  GPIO_OUT);
+    gpio_init(AMIGA_PIN_RIGHT); gpio_put(AMIGA_PIN_RIGHT, 0); gpio_set_dir(AMIGA_PIN_RIGHT, GPIO_OUT);
+    gpio_init(AMIGA_PIN_CLK);   gpio_put(AMIGA_PIN_CLK,   0); gpio_set_dir(AMIGA_PIN_CLK,   GPIO_OUT);
+    gpio_init(AMIGA_PIN_DATA);  gpio_put(AMIGA_PIN_DATA,  0); gpio_set_dir(AMIGA_PIN_DATA,  GPIO_OUT);
 
     // JOYMODE — input with pull-up, interrupt on both edges
     gpio_init(AMIGA_PIN_JOYMODE);

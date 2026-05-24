@@ -2992,6 +2992,45 @@ pico_enable_stdio_uart(joypad_ami_xiao 0)
 pico_enable_stdio_usb(joypad_ami_xiao 0)
 
 # ============================================================================
+# USB2AMI Retro Frog custom PCB (bare RP2040, GP0/GP1 PIO USB)
+# ============================================================================
+
+add_executable(joypad_ami_retrofrog)
+target_compile_definitions(joypad_ami_retrofrog PRIVATE
+    CONFIG_AMIGA=1
+    CONFIG_USB=1
+    CONFIG_PIO_USB_DP_PIN=0
+    PICO_DEFAULT_PIO_USB_DP_PIN=0
+    BOARD_TUH_RHPORT=1
+    WS2812_PIN=12
+    REQUIRE_FLASH_SETTINGS=1
+    DISABLE_BUTTON_SERVICE=1
+    # DE9 signals
+    AMIGA_PIN_UP=2
+    AMIGA_PIN_DOWN=3
+    AMIGA_PIN_LEFT=4
+    AMIGA_PIN_RIGHT=5
+    AMIGA_PIN_CLK=6
+    AMIGA_PIN_DATA=7
+    AMIGA_PIN_JOYMODE=8
+)
+target_sources(joypad_ami_retrofrog PUBLIC ${COMMON_SOURCES}
+    ${USB_DEVICE_SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/device/amiga/amiga_device.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2ami/app.c
+)
+target_include_directories(joypad_ami_retrofrog PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2ami
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/device/amiga
+    ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd
+)
+target_link_libraries(joypad_ami_retrofrog PRIVATE ${COMMON_LIBRARIES} pico_multicore tinyusb_device tinyusb_pico_pio_usb)
+joypad_target_common(joypad_ami_retrofrog)
+joypad_add_btstack(joypad_ami_retrofrog)
+pico_enable_stdio_uart(joypad_ami_retrofrog 0)
+pico_enable_stdio_usb(joypad_ami_retrofrog 0)
+
+# ============================================================================
 # DEBUG BUILD CONFIGURATION
 # ============================================================================
 
