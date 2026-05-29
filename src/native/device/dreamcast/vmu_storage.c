@@ -17,9 +17,16 @@
 #include "pico/flash.h"
 #endif
 
+#ifdef CONFIG_VMU_USB
+#include "tusb.h"
+#include "ff.h"
+#include "msc_host.h"
+#endif
+
 // The 128 KB VMU image and the Core-1-set dirty flag live in vmu.c.
 extern uint8_t vmu_ram[];
 extern volatile bool vmu_dirty_flag;
+extern volatile uint8_t vmu_dirty_blocks[];   // per-block dirty bitmap (USB)
 
 static vmu_backend_t active = VMU_BACKEND_NONE;
 
@@ -105,14 +112,91 @@ static void qspi_task(void) {
 #endif  // CONFIG_VMU_QSPI
 
 // ===========================================================================
+// USB mass-storage backend (flash drive on a hub sharing the host port)
+// ===========================================================================
+#ifdef CONFIG_VMU_USB
+
+#define VMU_USB_FILENAME      "DC_1.VMU"   // interchangeable with the SD file
+#define VMU_USB_WRITEBACK_MS  1500
+#define VMU_USB_MOUNT_WAIT_MS 4000         // drive shares the hub; let it enumerate
+
+static FATFS usb_fs;
+static volatile uint32_t usb_last_write_ms = 0;
+
+static bool usb_init(void) {
+    uint32_t start = to_ms_since_boot(get_absolute_time());
+    while (!msc_host_mounted()) {
+        tuh_task();   // pump enumeration (also services the controller)
+        if (to_ms_since_boot(get_absolute_time()) - start > VMU_USB_MOUNT_WAIT_MS) {
+            return false;   // no drive — fall through to the next backend
+        }
+    }
+    if (f_mount(&usb_fs, "", 1) != FR_OK) {
+        printf("[vmu-usb] f_mount failed\n");
+        return false;
+    }
+    FIL f; UINT n = 0;
+    if (f_open(&f, VMU_USB_FILENAME, FA_READ) == FR_OK) {
+        f_read(&f, vmu_ram, VMU_IMAGE_SIZE, &n);
+        f_close(&f);
+        if (n == VMU_IMAGE_SIZE) {
+            printf("[vmu-usb] Loaded %s\n", VMU_USB_FILENAME);
+            return true;
+        }
+        printf("[vmu-usb] %s wrong size (%u) — recreating\n", VMU_USB_FILENAME, n);
+    }
+    // Seed from the preformat default already sitting in vmu_ram.
+    if (f_open(&f, VMU_USB_FILENAME, FA_WRITE | FA_CREATE_ALWAYS) != FR_OK) {
+        printf("[vmu-usb] failed to create %s\n", VMU_USB_FILENAME);
+        return false;
+    }
+    f_write(&f, vmu_ram, VMU_IMAGE_SIZE, &n);
+    f_close(&f);
+    printf("[vmu-usb] Created %s\n", VMU_USB_FILENAME);
+    return true;
+}
+
+// Write only the blocks the DC actually changed (per-block dirty bitmap),
+// seeking to each within the existing file — a few KB instead of 128 KB, so
+// the maple stall during the blocking USB write stays in the low-ms range.
+static void usb_flush_dirty(void) {
+    FIL f;
+    if (f_open(&f, VMU_USB_FILENAME, FA_WRITE | FA_OPEN_ALWAYS) != FR_OK) return;
+    for (uint16_t blk = 0; blk < VMU_TOTAL_BLOCKS; blk++) {
+        if (!(vmu_dirty_blocks[blk >> 3] & (1u << (blk & 7)))) continue;
+        UINT bw = 0;
+        if (f_lseek(&f, (FSIZE_t)blk * VMU_BLOCK_SIZE) == FR_OK &&
+            f_write(&f, vmu_ram + (uint32_t)blk * VMU_BLOCK_SIZE,
+                    VMU_BLOCK_SIZE, &bw) == FR_OK && bw == VMU_BLOCK_SIZE) {
+            vmu_dirty_blocks[blk >> 3] &= (uint8_t)~(1u << (blk & 7));
+        }
+    }
+    f_sync(&f);
+    f_close(&f);
+}
+
+static void usb_task(void) {
+    if (!vmu_dirty_flag) return;
+    uint32_t now = to_ms_since_boot(get_absolute_time());
+    if (usb_last_write_ms == 0) usb_last_write_ms = now;
+    if (now - usb_last_write_ms < VMU_USB_WRITEBACK_MS) return;
+    vmu_dirty_flag = false;
+    usb_last_write_ms = 0;
+    usb_flush_dirty();
+    printf("[vmu-usb] Flushed changed blocks to %s\n", VMU_USB_FILENAME);
+}
+
+#endif  // CONFIG_VMU_USB
+
+// ===========================================================================
 // Dispatcher
 // ===========================================================================
 
 void vmu_storage_init(void) {
     // Priority: USB flash > SD card > QSPI > RAM-only.
 #ifdef CONFIG_VMU_USB
-    // USB MSC backend (flash drive on a hub sharing the host port) — TODO:
-    // needs hub hardware to validate; falls through for now.
+    if (usb_init()) { active = VMU_BACKEND_USB; }
+    else
 #endif
 #ifdef CONFIG_SD
     if (vmu_sd_init()) { active = VMU_BACKEND_SD; }
@@ -129,6 +213,9 @@ void vmu_storage_init(void) {
 
 void vmu_storage_task(void) {
     switch (active) {
+#ifdef CONFIG_VMU_USB
+        case VMU_BACKEND_USB:  usb_task(); break;
+#endif
 #ifdef CONFIG_SD
         case VMU_BACKEND_SD:   vmu_sd_task(); break;
 #endif

@@ -28,6 +28,12 @@
 // NOTE: RP2040 has 264KB SRAM total — JoypadOS uses ~50KB so this fits
 uint8_t vmu_ram[VMU_TOTAL_BLOCKS * VMU_BLOCK_SIZE];
 volatile bool vmu_dirty_flag = false;  // Set by Core 1, read by Core 0
+// Per-block dirty bitmap (1 bit per 512-byte block). Set by Core 1 on each
+// block write, consumed + cleared by the storage backend on Core 0. Lets the
+// USB backend flush only the handful of changed blocks instead of the whole
+// 128KB image (which would stall maple too long over USB). A torn bit just
+// means a block flushes a cycle late — same race tolerance as vmu_dirty_flag.
+volatile uint8_t vmu_dirty_blocks[VMU_TOTAL_BLOCKS / 8] = {0};
 
 static uint8_t write_buf[VMU_BLOCK_SIZE] __attribute__((aligned(4)));
 static uint16_t write_block  = 0xFFFF;
@@ -254,12 +260,16 @@ void __not_in_flash_func(vmu_handle_block_write)(const uint32_t *pkt, uint32_t n
 
 void __not_in_flash_func(vmu_handle_write_complete)(void) {
     if (write_block == 0xFFFF || write_phases == 0) return;
-    memcpy(vmu_ram + (uint32_t)write_block * VMU_BLOCK_SIZE, write_buf, VMU_BLOCK_SIZE);
+    uint16_t blk = write_block;   // capture before reset for the dirty bitmap
+    memcpy(vmu_ram + (uint32_t)blk * VMU_BLOCK_SIZE, write_buf, VMU_BLOCK_SIZE);
     write_block = 0xFFFF;
     write_phases = 0;
     vmu_status = VMU_STATUS_OK;
-    // Signal Core 0 to flush to SD — use volatile flag, safe from RAM context
+    // Signal Core 0 to flush — coarse flag for SD/QSPI, per-block bit for USB.
     vmu_dirty_flag = true;
+    if (blk < VMU_TOTAL_BLOCKS) {
+        vmu_dirty_blocks[blk >> 3] |= (uint8_t)(1u << (blk & 7));
+    }
 }
 
 void vmu_task(void) {

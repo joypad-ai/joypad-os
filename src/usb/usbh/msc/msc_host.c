@@ -78,16 +78,47 @@ void tuh_msc_umount_cb(uint8_t dev_addr)
     }
 }
 
-// ---- Block IO (stubs for phase 1) -----------------------------------------
+// ---- Block IO --------------------------------------------------------------
+// Synchronous wrapper over the async TinyUSB MSC API: submit the SCSI
+// READ10/WRITE10 and pump tuh_task() until the completion callback fires
+// (which also keeps the HID controller on the same hub serviced) or we time
+// out. Caller is on Core 0 and never inside tuh_task(), so no re-entrancy.
+
+static volatile bool s_io_done;
+static volatile bool s_io_ok;
+
+static bool io_complete_cb(uint8_t dev_addr, tuh_msc_complete_data_t const* cb_data)
+{
+    (void)dev_addr;
+    s_io_ok = (cb_data->csw->status == 0);
+    s_io_done = true;
+    return true;
+}
+
+static bool msc_io(bool write, uint32_t lba, void* buf, uint32_t count)
+{
+    if (!g_msc.mounted || count == 0) return false;
+    s_io_done = false;
+    s_io_ok = false;
+    bool submitted = write
+        ? tuh_msc_write10(g_msc.dev_addr, g_msc.lun, buf, lba, (uint16_t)count, io_complete_cb, 0)
+        : tuh_msc_read10 (g_msc.dev_addr, g_msc.lun, buf, lba, (uint16_t)count, io_complete_cb, 0);
+    if (!submitted) return false;
+
+    uint32_t start = to_ms_since_boot(get_absolute_time());
+    while (!s_io_done) {
+        tuh_task();
+        if (to_ms_since_boot(get_absolute_time()) - start > 3000) return false;  // timeout
+    }
+    return s_io_ok;
+}
 
 bool msc_host_read_blocks(uint32_t lba, void* buf, uint32_t count)
 {
-    (void)lba; (void)buf; (void)count;
-    return false;  // phase 2
+    return msc_io(false, lba, buf, count);
 }
 
 bool msc_host_write_blocks(uint32_t lba, const void* buf, uint32_t count)
 {
-    (void)lba; (void)buf; (void)count;
-    return false;  // phase 2
+    return msc_io(true, lba, (void*)buf, count);
 }

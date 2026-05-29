@@ -355,6 +355,17 @@ set(SD_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/platform/rp2040/platform_sd_rp2040.c
 )
 
+# FatFs core + USB mass-storage glue for the VMU USB-flash backend. FatFs
+# is single-volume, and msc_diskio.c provides disk_* — so a target links
+# this OR SD_SOURCES (which has its own diskio.c), never both.
+set(MSC_VMU_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/lib/fatfs/ff.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/lib/fatfs/ffsystem.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/lib/fatfs/ffunicode.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/msc/msc_host.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/msc/msc_diskio.c
+)
+
 set(COMMON_SOURCES ${CORE_SOURCES} ${USB_HOST_SOURCES})
 
 # Common libraries for USB host apps
@@ -633,8 +644,8 @@ add_executable(joypad_dc)
 # an onboard QSPI partition) is a follow-up; vmu_sd.c compiles to a no-op
 # without CONFIG_SD so a fresh card just reverts to the preformat default
 # (with ICONDATA) each boot.
-target_compile_definitions(joypad_dc PRIVATE CONFIG_DC=1 CONFIG_USB_HOST=1 CONFIG_NO_NEOPIXEL=1 CONFIG_VMU=1 CONFIG_VMU_QSPI=1)
-target_sources(joypad_dc PUBLIC ${COMMON_SOURCES}
+target_compile_definitions(joypad_dc PRIVATE CONFIG_DC=1 CONFIG_USB_HOST=1 CONFIG_NO_NEOPIXEL=1 CONFIG_VMU=1 CONFIG_VMU_QSPI=1 CONFIG_VMU_USB=1 CONFIG_USB_MSC=1)
+target_sources(joypad_dc PUBLIC ${COMMON_SOURCES} ${MSC_VMU_SOURCES}
     ${CMAKE_CURRENT_SOURCE_DIR}/native/device/dreamcast/dreamcast_device.c
     ${CMAKE_CURRENT_SOURCE_DIR}/native/device/dreamcast/maple_state_machine.c
     ${CMAKE_CURRENT_SOURCE_DIR}/native/device/dreamcast/vmu.c
@@ -645,6 +656,8 @@ target_sources(joypad_dc PUBLIC ${COMMON_SOURCES}
 target_include_directories(joypad_dc PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2dc
     ${CMAKE_CURRENT_SOURCE_DIR}/native/device/dreamcast
+    ${CMAKE_CURRENT_SOURCE_DIR}/lib/fatfs
+    ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/msc
 )
 target_link_libraries(joypad_dc PRIVATE ${COMMON_LIBRARIES} hardware_dma)
 joypad_target_common(joypad_dc)
