@@ -85,6 +85,16 @@ typedef struct {
     input_transport_t transport; // Connection type (USB, BT, native)
     controller_layout_t layout; // Physical button layout (for 6-button controllers)
 
+    // Microsecond timestamp when this event was observed. Filled by the
+    // consumer from its monotonic clock — libjoypad parsers leave this at 0
+    // because they have no platform clock. Used by game engines for input
+    // correlation (audio sync, haptics timing, replay determinism).
+    //   - firmware: platform_time_ms() * 1000 at the TinyUSB callback
+    //   - desktop:  clock_gettime(CLOCK_MONOTONIC) when hid_read returns
+    //   - web:      event.timeStamp * 1000 (ms -> us)
+    //   - Unreal:   FPlatformTime::Seconds() * 1e6
+    uint64_t timestamp_us;
+
     // Digital inputs
     uint32_t buttons;           // Button bitmap (JP_BUTTON_* defines from globals.h)
     uint32_t keys;              // Keyboard keys (modifier + scancodes, lossy gamepad-mapping encoding)

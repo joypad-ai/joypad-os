@@ -11,6 +11,7 @@ const Joypad = await createLibjoypadModule();
 // ----- Bind exported WASM functions as plain JS functions -----
 const _isSonyDs5     = Joypad.cwrap('joypad_wasm_is_sony_ds5',     'number', ['number', 'number']);
 const _parseDs5      = Joypad.cwrap('joypad_wasm_parse_ds5',       'number', ['number', 'number']);
+const _setTsUs       = Joypad.cwrap('joypad_wasm_set_timestamp_us', null,    ['number', 'number']);
 const _buttons       = Joypad.cwrap('joypad_wasm_buttons',         'number', []);
 const _analog        = Joypad.cwrap('joypad_wasm_analog',          'number', ['number']);
 const _gyro          = Joypad.cwrap('joypad_wasm_gyro',            'number', ['number']);
@@ -169,6 +170,13 @@ document.getElementById('connect-btn').addEventListener('click', async () => {
       Joypad.HEAPU8[hidBufPtr] = reportId;
       Joypad.HEAPU8.set(new Uint8Array(event.data.buffer, event.data.byteOffset, event.data.byteLength), hidBufPtr + 1);
       if (_parseDs5(hidBufPtr, len)) {
+        // Stamp event with monotonic-ish browser time (microseconds).
+        // event.timeStamp is a DOMHighResTimeStamp in milliseconds.
+        // Split into two 32-bit halves for the WASM 64-bit setter.
+        const ts_us = event.timeStamp * 1000;
+        const hi = Math.floor(ts_us / 0x100000000);
+        const lo = ts_us >>> 0;
+        _setTsUs(hi, lo);
         updateUI();
       }
     });

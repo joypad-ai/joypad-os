@@ -117,6 +117,7 @@ static void test_idle_state(void) {
     EXPECT(ev.gyro_range == 2000,                "Idle: gyro range should be 2000 dps");
     EXPECT(ev.accel_range == 4000,               "Idle: accel range should be 4000 milli-g");
     EXPECT(ev.has_touch,                         "Idle: has_touch should be true");
+    EXPECT(ev.timestamp_us == 0,                 "Idle: parser must leave timestamp_us at 0 (consumer fills)");
 }
 
 static void test_face_buttons(void) {

@@ -58,6 +58,7 @@ void input_sony_ds5(uint8_t dev_addr, uint8_t instance, uint8_t const* report, u
 
     event.dev_addr = dev_addr;
     event.instance = instance;
+    event.timestamp_us = (uint64_t)platform_time_ms() * 1000ULL;
 
     // Touchpad horizontal-swipe delta — mouse-like delta_x for spinner /
     // camera control. Only meaningful while a finger is down. libjoypad's

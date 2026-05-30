@@ -134,6 +134,7 @@ void FJoypadInputDevice::Tick(float DeltaTime)
     input_event_t Event;
     if (joypad_parse_sony_ds5(Buf, (uint16_t)n, &Event))
     {
+        Event.timestamp_us = static_cast<uint64_t>(FPlatformTime::Seconds() * 1e6);
         DispatchEvent(Event);
         PrevEvent = Event;
     }

@@ -35,6 +35,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
+
+static uint64_t monotonic_us(void) {
+    struct timespec ts;
+    if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) return 0;
+    return (uint64_t)ts.tv_sec * 1000000ULL + (uint64_t)(ts.tv_nsec / 1000);
+}
 
 static volatile sig_atomic_t g_stop = 0;
 static void on_sigint(int _sig) { (void)_sig; g_stop = 1; }
@@ -179,6 +186,7 @@ int main(int argc, char** argv) {
 
         input_event_t e;
         if (!joypad_parse_sony_ds5(buf, (uint16_t)n, &e)) continue;
+        e.timestamp_us = monotonic_us();
 
         if (quiet) {
             if (memcmp(&e, &prev, sizeof(e)) == 0) continue;

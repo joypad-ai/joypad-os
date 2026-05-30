@@ -64,6 +64,14 @@ int joypad_wasm_parse_ds5(const uint8_t* buf, int len) {
     return joypad_parse_sony_ds5(buf, (uint16_t)len, &g_event) ? 1 : 0;
 }
 
+// Stamp the most-recently-parsed event with a microsecond timestamp from the
+// consumer's clock. JS calls this with performance.now() * 1000 right after
+// joypad_wasm_parse_ds5 returns 1.
+JOYPAD_WASM_EXPORT
+void joypad_wasm_set_timestamp_us(uint32_t hi, uint32_t lo) {
+    g_event.timestamp_us = ((uint64_t)hi << 32) | (uint64_t)lo;
+}
+
 // Field accessors — read the most-recently-parsed event.
 
 JOYPAD_WASM_EXPORT uint32_t joypad_wasm_buttons(void)        { return g_event.buttons; }

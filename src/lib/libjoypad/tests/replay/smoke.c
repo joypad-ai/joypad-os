@@ -31,6 +31,7 @@ int main(void) {
     if (e.analog[ANALOG_R2] != 0)   return fail("R2 default != 0");
     if (e.buttons != 0)             return fail("buttons not cleared");
     if (e.layout != LAYOUT_MODERN_4FACE) return fail("default layout wrong");
+    if (e.timestamp_us != 0)              return fail("timestamp_us should default to 0 (consumer fills it)");
 
     // Layout helpers
     if (!layout_has_6_buttons(LAYOUT_SEGA_6BUTTON)) return fail("SEGA_6BUTTON should have 6");
