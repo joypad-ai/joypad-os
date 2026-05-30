@@ -1,0 +1,27 @@
+{
+  "FileVersion": 3,
+  "Version": 1,
+  "VersionName": "0.1.0",
+  "FriendlyName": "Joypad Input",
+  "Description": "libjoypad bindings for Unreal Engine. Exposes Sony DualSense advanced features (touchpad, gyro, adaptive triggers, lightbar) through Enhanced Input. Reference example — not yet marketplace-ready.",
+  "Category": "Input Devices",
+  "CreatedBy": "Joypad",
+  "CreatedByURL": "https://github.com/joypad-ai/joypad-os",
+  "DocsURL": "https://github.com/joypad-ai/joypad-os/blob/main/.dev/docs/libjoypad.md",
+  "MarketplaceURL": "",
+  "SupportURL": "",
+  "EngineVersion": "5.3.0",
+  "EnabledByDefault": true,
+  "CanContainContent": false,
+  "IsBetaVersion": true,
+  "IsExperimentalVersion": true,
+  "Installed": false,
+  "Modules": [
+    {
+      "Name": "JoypadInput",
+      "Type": "Runtime",
+      "LoadingPhase": "PreDefault",
+      "PlatformAllowList": [ "Win64", "Mac", "Linux" ]
+    }
+  ]
+}
