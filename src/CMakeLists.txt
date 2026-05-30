@@ -141,6 +141,7 @@ set(USB_HOST_SOURCES
     # libjoypad-portable parsers consumed by the firmware-side glue above.
     # As more drivers migrate into libjoypad their sources land here.
     ${CMAKE_CURRENT_SOURCE_DIR}/lib/libjoypad/src/devices/usb/hid/sony/ds5.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/lib/libjoypad/src/devices/usb/hid/nintendo/switch_pro.c
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/hid/devices/vendors/hori/hori_horipad.c
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/hid/devices/vendors/hori/hori_pokken.c
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/hid/devices/vendors/logitech/logitech_wingman.c

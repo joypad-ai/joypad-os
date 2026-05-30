@@ -27,7 +27,7 @@ project(libjoypad
 
 set(LIBJOYPAD_SOURCES
     src/devices/usb/hid/sony/ds5.c
-    # src/devices/usb/hid/nintendo/switch_pro.c   (next driver)
+    src/devices/usb/hid/nintendo/switch_pro.c
     # src/devices/bt/hid/sony/ds5_bt.c
     # src/registry.c
     # src/sinput.c
@@ -91,4 +91,11 @@ if(LIBJOYPAD_BUILD_TESTS)
         -Wall -Wextra -Wpedantic
     )
     add_test(NAME libjoypad_ds5_input COMMAND libjoypad_ds5_input)
+
+    add_executable(libjoypad_switch_pro_input tests/replay/switch_pro_input.c)
+    target_link_libraries(libjoypad_switch_pro_input PRIVATE libjoypad)
+    target_compile_options(libjoypad_switch_pro_input PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    add_test(NAME libjoypad_switch_pro_input COMMAND libjoypad_switch_pro_input)
 endif()

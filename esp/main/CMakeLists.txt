@@ -121,6 +121,7 @@ elseif(CONFIG_APP STREQUAL "usb2usb")
         "${SHARED_SRC}/usb/usbh/hid/devices/vendors/sony/sony_ds5.c"
         "${SHARED_SRC}/usb/usbh/hid/devices/vendors/sony/sony_psc.c"
         "${SHARED_SRC}/lib/libjoypad/src/devices/usb/hid/sony/ds5.c"
+        "${SHARED_SRC}/lib/libjoypad/src/devices/usb/hid/nintendo/switch_pro.c"
 
         # --- XInput host driver (tusb_xinput library) ---
         "${SHARED_SRC}/lib/tusb_xinput/xinput_host.c"
@@ -191,6 +192,7 @@ elseif(CONFIG_APP STREQUAL "btusb2usb")
         "${SHARED_SRC}/usb/usbh/hid/devices/vendors/sony/sony_ds5.c"
         "${SHARED_SRC}/usb/usbh/hid/devices/vendors/sony/sony_psc.c"
         "${SHARED_SRC}/lib/libjoypad/src/devices/usb/hid/sony/ds5.c"
+        "${SHARED_SRC}/lib/libjoypad/src/devices/usb/hid/nintendo/switch_pro.c"
 
         # --- XInput host driver (tusb_xinput library) ---
         "${SHARED_SRC}/lib/tusb_xinput/xinput_host.c"
