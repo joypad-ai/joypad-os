@@ -1,4 +1,13 @@
 // sony_ds5.c
+//
+// Firmware glue for Sony DualSense controllers. The pure parser and feedback
+// builder live in libjoypad (src/lib/libjoypad/src/devices/usb/hid/sony/ds5.c
+// and joypad/devices/sony/ds5.h). This file does the firmware-side wiring:
+// TinyUSB lifecycle, router submission, player slot LED, console-output
+// safety (ensureAllNonZero), and touchpad-swipe state for spinner mapping.
+//
+// See .dev/docs/libjoypad.md for the boundary plan.
+
 #include "sony_ds5.h"
 #include "core/buttons.h"
 #include "core/router/router.h"
@@ -7,371 +16,179 @@
 #include "core/services/players/feedback.h"
 #include "platform/platform.h"
 #include "app_config.h"
+#include <joypad/devices/sony/ds5.h>
+#include <joypad/feedback.h>
 
+// Touchpad-swipe state for spinner / camera mapping. Firmware-side because
+// libjoypad's parser is stateless; downstream consumers that want raw
+// touchpad coordinates can read event.touch[].
 static uint16_t tpadLastPos;
-static bool tpadDragging;
+static bool     tpadDragging;
 
-// DualSense instance state
-typedef struct TU_ATTR_PACKED
-{
-  uint8_t rumble;
-  uint8_t player;
-  uint8_t led_r, led_g, led_b;
+// DualSense instance state (per-port feedback cache)
+typedef struct TU_ATTR_PACKED {
+    uint8_t rumble;
+    uint8_t player;
+    uint8_t led_r, led_g, led_b;
 } ds5_instance_t;
 
-// Cached device report properties on mount
-typedef struct TU_ATTR_PACKED
-{
-  ds5_instance_t instances[CFG_TUH_HID];
+typedef struct TU_ATTR_PACKED {
+    ds5_instance_t instances[CFG_TUH_HID];
 } ds5_device_t;
 
 static ds5_device_t ds5_devices[MAX_DEVICES] = { 0 };
 
-const char* dpad_str[] = { "N", "NE", "E", "SE", "S", "SW", "W", "NW", "none" };
-
-// check if device is Sony PlayStation 5 controllers
+// VID/PID check — delegates to libjoypad.
 bool is_sony_ds5(uint16_t vid, uint16_t pid) {
-  return (
-    (vid == 0x054c && pid == 0x0ce6) // Sony DualSense
-    || (vid == 0x0e6f && pid == 0x0209) // Victrix Pro FS for PS5
-  );
+    return joypad_is_sony_ds5(vid, pid);
 }
 
-// check if 2 reports are different enough
-bool diff_report_ds5(sony_ds5_report_t const* rpt1, sony_ds5_report_t const* rpt2) {
-  // Check x1 to ry with a threshold
-  if (diff_than_n(rpt1->x1, rpt2->x1, 2) || diff_than_n(rpt1->y1, rpt2->y1, 2) ||
-      diff_than_n(rpt1->x2, rpt2->x2, 2) || diff_than_n(rpt1->y2, rpt2->y2, 2) ||
-      diff_than_n(rpt1->rx, rpt2->rx, 2) || diff_than_n(rpt1->ry, rpt2->ry, 2)) {
-    return true;
-  }
-
-  // check the base buttons dpad -> r3 then
-  // manually check fields up to 'counter'
-  if (memcmp(&rpt1->rz + 1, &rpt2->rz + 1, 2) ||
-      rpt1->ps != rpt2->ps ||
-      rpt1->tpad != rpt2->tpad ||
-      rpt1->mute != rpt2->mute) {
-    return true;
-  }
-
-  // Check tpad_f1_down and tpad_f1_pos
-  if (rpt1->tpad_f1_down != rpt2->tpad_f1_down ||
-    memcmp(rpt1->tpad_f1_pos, rpt2->tpad_f1_pos, sizeof(rpt1->tpad_f1_pos)) != 0) {
-    return true;
-  }
-
-  return false;
-}
-
-// process usb hid input reports
+// USB HID input report → router submission.
+//
+// libjoypad does the wire-format decode (buttons, analog axes, motion,
+// touchpad, battery). This wrapper layers on firmware-specific touches:
+//   - dev_addr / instance assignment
+//   - touchpad horizontal-swipe delta (for spinner mapping)
+//   - keep raw HID values, no nonzero clamping at this layer
 void input_sony_ds5(uint8_t dev_addr, uint8_t instance, uint8_t const* report, uint16_t len) {
-  uint32_t buttons;
-  // previous report used to compare for changes
-  static sony_ds5_report_t prev_report[5] = { 0 };
+    input_event_t event;
+    if (!joypad_parse_sony_ds5(report, len, &event)) {
+        return;
+    }
 
-  uint8_t const report_id = report[0];
-  report++;
-  len--;
+    event.dev_addr = dev_addr;
+    event.instance = instance;
 
-  // all buttons state is stored in ID 1
-  if (report_id == 1)
-  {
-    sony_ds5_report_t ds5_report;
-    memcpy(&ds5_report, report, sizeof(ds5_report));
-
-    // counter is +1, assign to make it easier to compare 2 report
-    prev_report[dev_addr-1].counter = ds5_report.counter;
-
-    if ( diff_report_ds5(&prev_report[dev_addr-1], &ds5_report) )
-    {
-      TU_LOG1("(x1, y1, x2, y2, rx, ry) = (%u, %u, %u, %u, %u, %u)\r\n", ds5_report.x1, ds5_report.y1, ds5_report.x2, ds5_report.y2, ds5_report.rx, ds5_report.ry);
-      TU_LOG1("DPad = %s ", dpad_str[ds5_report.dpad]);
-
-      if (ds5_report.square   ) TU_LOG1("Square ");
-      if (ds5_report.cross    ) TU_LOG1("Cross ");
-      if (ds5_report.circle   ) TU_LOG1("Circle ");
-      if (ds5_report.triangle ) TU_LOG1("Triangle ");
-
-      if (ds5_report.l1       ) TU_LOG1("L1 ");
-      if (ds5_report.r1       ) TU_LOG1("R1 ");
-      if (ds5_report.l2       ) TU_LOG1("L2 ");
-      if (ds5_report.r2       ) TU_LOG1("R2 ");
-
-      if (ds5_report.share    ) TU_LOG1("Share ");
-      if (ds5_report.option   ) TU_LOG1("Option ");
-      if (ds5_report.l3       ) TU_LOG1("L3 ");
-      if (ds5_report.r3       ) TU_LOG1("R3 ");
-
-      if (ds5_report.ps       ) TU_LOG1("PS ");
-      if (ds5_report.tpad     ) TU_LOG1("TPad ");
-      if (ds5_report.mute     ) TU_LOG1("Mute ");
-
-      if (!ds5_report.tpad_f1_down) TU_LOG1("F1 ");
-
-      uint16_t tx = (((ds5_report.tpad_f1_pos[1] & 0x0f) << 8)) | ((ds5_report.tpad_f1_pos[0] & 0xff) << 0);
-      uint16_t ty = (((ds5_report.tpad_f1_pos[1] & 0xf0) >> 4)) | ((ds5_report.tpad_f1_pos[2] & 0xff) << 4);
-      uint16_t tx2 = (((ds5_report.tpad_f2_pos[1] & 0x0f) << 8)) | ((ds5_report.tpad_f2_pos[0] & 0xff) << 0);
-      uint16_t ty2 = (((ds5_report.tpad_f2_pos[1] & 0xf0) >> 4)) | ((ds5_report.tpad_f2_pos[2] & 0xff) << 4);
-      TU_LOG1("\r\n");
-
-      bool dpad_up    = (ds5_report.dpad == 0 || ds5_report.dpad == 1 || ds5_report.dpad == 7);
-      bool dpad_right = (ds5_report.dpad >= 1 && ds5_report.dpad <= 3);
-      bool dpad_down  = (ds5_report.dpad >= 3 && ds5_report.dpad <= 5);
-      bool dpad_left  = (ds5_report.dpad >= 5 && ds5_report.dpad <= 7);
-
-      // Touchpad left/right click detection (touchpad is ~1920 wide, center at 960)
-      bool tpad_left = ds5_report.tpad && !ds5_report.tpad_f1_down && tx < 960;
-      bool tpad_right = ds5_report.tpad && !ds5_report.tpad_f1_down && tx >= 960;
-
-      buttons = (((dpad_up)             ? JP_BUTTON_DU : 0) |
-                 ((dpad_down)           ? JP_BUTTON_DD : 0) |
-                 ((dpad_left)           ? JP_BUTTON_DL : 0) |
-                 ((dpad_right)          ? JP_BUTTON_DR : 0) |
-                 ((ds5_report.cross)    ? JP_BUTTON_B1 : 0) |
-                 ((ds5_report.circle)   ? JP_BUTTON_B2 : 0) |
-                 ((ds5_report.square)   ? JP_BUTTON_B3 : 0) |
-                 ((ds5_report.triangle) ? JP_BUTTON_B4 : 0) |
-                 ((ds5_report.l1)       ? JP_BUTTON_L1 : 0) |
-                 ((ds5_report.r1)       ? JP_BUTTON_R1 : 0) |
-                 ((ds5_report.l2)       ? JP_BUTTON_L2 : 0) |
-                 ((ds5_report.r2)       ? JP_BUTTON_R2 : 0) |
-                 ((ds5_report.share)    ? JP_BUTTON_S1 : 0) |
-                 ((ds5_report.option)   ? JP_BUTTON_S2 : 0) |
-                 ((ds5_report.l3)       ? JP_BUTTON_L3 : 0) |
-                 ((ds5_report.r3)       ? JP_BUTTON_R3 : 0) |
-                 ((ds5_report.ps)       ? JP_BUTTON_A1 : 0) |
-                 ((ds5_report.tpad)     ? JP_BUTTON_A2 : 0) |
-                 ((ds5_report.mute)     ? JP_BUTTON_A3 : 0) |
-                 ((tpad_left)           ? JP_BUTTON_L4 : 0) |
-                 ((tpad_right)          ? JP_BUTTON_R4 : 0));
-
-      // Touch Pad - provides mouse-like delta for horizontal swipes
-      // Can be used for spinners, camera control, etc. (platform-agnostic)
-      int8_t touchpad_delta_x = 0;
-      if (!ds5_report.tpad_f1_down) {
-        // Calculate horizontal swipe delta while finger is down
+    // Touchpad horizontal-swipe delta — mouse-like delta_x for spinner /
+    // camera control. Only meaningful while a finger is down. libjoypad's
+    // parser fills event.touch[]; we derive the swipe from successive
+    // f1.x positions across calls.
+    if (event.has_touch && event.touch[0].active) {
+        uint16_t tx = event.touch[0].x;
         if (tpadDragging) {
-          int16_t delta = 0;
-          if (tx >= tpadLastPos) delta = tx - tpadLastPos;
-          else delta = (-1) * (tpadLastPos - tx);
-
-          // Clamp delta to reasonable range
-          if (delta > 12) delta = 12;
-          if (delta < -12) delta = -12;
-
-          touchpad_delta_x = (int8_t)delta;
+            int16_t delta = (int16_t)tx - (int16_t)tpadLastPos;
+            if (delta >  12) delta =  12;
+            if (delta < -12) delta = -12;
+            event.delta_x = (int8_t)delta;
         }
-
         tpadLastPos = tx;
         tpadDragging = true;
-      } else {
+    } else {
         tpadDragging = false;
-      }
-
-      uint8_t analog_1x = ds5_report.x1;
-      uint8_t analog_1y = ds5_report.y1;  // HID convention: 0=up, 255=down
-      uint8_t analog_2x = ds5_report.x2;
-      uint8_t analog_2y = ds5_report.y2;  // HID convention: 0=up, 255=down
-      uint8_t analog_l = ds5_report.rx;
-      uint8_t analog_r = ds5_report.ry;
-
-      // keep analog within range [1-255]
-      ensureAllNonZero(&analog_1x, &analog_1y, &analog_2x, &analog_2y);
-
-      // Battery: common data offset 52 (after report ID stripped) — bits 0-3 = level (0-10), bits 4-7 = status
-      // Per Linux kernel hid-playstation.c: 0=discharging, 1=charging, 2=full, 0xa/0xb/0xf=error
-      uint8_t bat_level = 0;
-      bool bat_charging = false;
-      if (len >= 53) {
-        uint8_t raw = report[52];
-        uint8_t level = raw & 0x0F;
-        uint8_t status = (raw >> 4) & 0x0F;
-
-        switch (status) {
-            case 0x0:  // Discharging
-                bat_level = (level > 10) ? 100 : level * 10 + 5;
-                bat_charging = false;
-                break;
-            case 0x1:  // Charging
-                bat_level = (level > 10) ? 100 : level * 10 + 5;
-                bat_charging = true;
-                break;
-            case 0x2:  // Full
-                bat_level = 100;
-                bat_charging = false;
-                break;
-            default:   // 0xa=voltage/temp, 0xb=temp, 0xf=charge error
-                bat_level = 0;
-                bat_charging = false;
-                break;
-        }
-      }
-
-      // add to accumulator and post to the state machine
-      // if a scan from the host machine is ongoing, wait
-      input_event_t event = {
-        .dev_addr = dev_addr,
-        .instance = instance,
-        .type = INPUT_TYPE_GAMEPAD,
-        .transport = INPUT_TRANSPORT_USB,
-        .buttons = buttons,
-        .button_count = 10,  // PS5: Cross, Circle, Square, Triangle, L1, R1, L2, R2, L3, R3
-        .analog = {analog_1x, analog_1y, analog_2x, analog_2y, analog_l, analog_r},
-        .delta_x = touchpad_delta_x,  // Touchpad horizontal swipe as mouse-like delta
-        .keys = 0,
-        // Motion data (DS5 has full 3-axis gyro and accel)
-        .has_motion = true,
-        .accel = {ds5_report.accel[0], ds5_report.accel[1], ds5_report.accel[2]},
-        .gyro = {ds5_report.gyro[0], ds5_report.gyro[1], ds5_report.gyro[2]},
-        .battery_level = bat_level,
-        .battery_charging = bat_charging,
-        // Touchpad (2-finger capacitive)
-        .has_touch = true,
-        .touch = {
-          { .x = tx,  .y = ty,  .active = !ds5_report.tpad_f1_down },
-          { .x = tx2, .y = ty2, .active = !ds5_report.tpad_f2_down },
-        },
-      };
-      router_submit_input(&event);
-
-      prev_report[dev_addr-1] = ds5_report;
     }
-  }
+
+    router_submit_input(&event);
 }
 
 // process usb hid output reports
 void output_sony_ds5(uint8_t dev_addr, uint8_t instance, device_output_config_t* config) {
-  ds5_feedback_t ds5_fb = {0};
+    // Build feedback request from canonical sources: feedback_state_t (player
+    // LED / RGB) + config-driven adaptive triggers + rumble flag.
+    joypad_feedback_t fb;
+    joypad_feedback_init(&fb);
 
-  // set flags for trigger_r, trigger_l, lightbar, and player_led
-  ds5_fb.flags |= (1 << 0 | 1 << 1); // haptics
-  ds5_fb.flags |= (1 << 10); // lightbar
-  ds5_fb.flags |= (1 << 12); // player_led
+    // --- Adaptive triggers from console-output threshold config ---
+    if (config->trigger_threshold > 0) {
+        int32_t perc_threshold = (config->trigger_threshold * 100) / 255;
+        uint8_t start = (uint8_t)((perc_threshold * 0x94) / 100);
+        uint8_t effect = (uint8_t)(start + ((0xb4 - start) * perc_threshold) / 100);
 
-  // Adaptive trigger feedback - console-controlled via profile/config
-  // Simulates analog trigger resistance for enhanced tactile feedback
-  if (config->trigger_threshold > 0) {
-    ds5_fb.flags |= (1 << 2); // trigger_r
-    ds5_fb.flags |= (1 << 3); // trigger_l
+        fb.adaptive_left_dirty = true;
+        fb.adaptive_left.mode = JOYPAD_TRIGGER_MODE_RESISTANCE;
+        fb.adaptive_left.params[0] = start;
+        fb.adaptive_left.params[1] = effect;
 
-    // Convert threshold from 0-255 to percentage (0-100)
-    int32_t perc_threshold = (config->trigger_threshold * 100) / 255;
-
-    // Calculate resistance values for analog trigger click simulation
-    uint8_t l2_start_resistance_value = (perc_threshold * 255) / 100;
-    uint8_t r2_start_resistance_value = (perc_threshold * 255) / 100;
-
-    uint8_t l2_trigger_start_resistance = (uint8_t)(0x94 * (l2_start_resistance_value / 255.0));
-    uint8_t l2_trigger_effect_force =
-      (uint8_t)((0xb4 - l2_trigger_start_resistance) * (l2_start_resistance_value / 255.0) + l2_trigger_start_resistance);
-
-    uint8_t r2_trigger_start_resistance = (uint8_t)(0x94 * (r2_start_resistance_value / 255.0));
-    uint8_t r2_trigger_effect_force =
-      (uint8_t)((0xb4 - r2_trigger_start_resistance) * (r2_start_resistance_value / 255.0) + r2_trigger_start_resistance);
-
-    // Configure left trigger haptics
-    ds5_fb.trigger_l.motor_mode = 0x02; // Resistance mode
-    ds5_fb.trigger_l.start_resistance = l2_trigger_start_resistance;
-    ds5_fb.trigger_l.effect_force = l2_trigger_effect_force;
-    ds5_fb.trigger_l.range_force = 0xff;
-
-    // Configure right trigger haptics
-    ds5_fb.trigger_r.motor_mode = 0x02; // Resistance mode
-    ds5_fb.trigger_r.start_resistance = r2_trigger_start_resistance;
-    ds5_fb.trigger_r.effect_force = r2_trigger_effect_force;
-    ds5_fb.trigger_r.range_force = 0xff;
-  }
-
-  // Get RGB and player LED from feedback system (canonical source)
-  int8_t player_idx = find_player_index(dev_addr, instance);
-  feedback_state_t* fb = (player_idx >= 0) ? feedback_get_state(player_idx) : NULL;
-
-  if (fb && (fb->led.r || fb->led.g || fb->led.b)) {
-    ds5_fb.lightbar_r = fb->led.r;
-    ds5_fb.lightbar_g = fb->led.g;
-    ds5_fb.lightbar_b = fb->led.b;
-  } else {
-    // Fallback to app-specific defaults when no feedback RGB set
-    switch (config->player_index+1) {
-    case 1:  ds5_fb.lightbar_r = LED_P1_R; ds5_fb.lightbar_g = LED_P1_G; ds5_fb.lightbar_b = LED_P1_B; break;
-    case 2:  ds5_fb.lightbar_r = LED_P2_R; ds5_fb.lightbar_g = LED_P2_G; ds5_fb.lightbar_b = LED_P2_B; break;
-    case 3:  ds5_fb.lightbar_r = LED_P3_R; ds5_fb.lightbar_g = LED_P3_G; ds5_fb.lightbar_b = LED_P3_B; break;
-    case 4:  ds5_fb.lightbar_r = LED_P4_R; ds5_fb.lightbar_g = LED_P4_G; ds5_fb.lightbar_b = LED_P4_B; break;
-    case 5:  ds5_fb.lightbar_r = LED_P5_R; ds5_fb.lightbar_g = LED_P5_G; ds5_fb.lightbar_b = LED_P5_B; break;
-    case 6:  ds5_fb.lightbar_r = LED_P6_R; ds5_fb.lightbar_g = LED_P6_G; ds5_fb.lightbar_b = LED_P6_B; break;
-    case 7:  ds5_fb.lightbar_r = LED_P7_R; ds5_fb.lightbar_g = LED_P7_G; ds5_fb.lightbar_b = LED_P7_B; break;
-    default: ds5_fb.lightbar_r = LED_DEFAULT_R; ds5_fb.lightbar_g = LED_DEFAULT_G; ds5_fb.lightbar_b = LED_DEFAULT_B; break;
+        fb.adaptive_right_dirty = true;
+        fb.adaptive_right.mode = JOYPAD_TRIGGER_MODE_RESISTANCE;
+        fb.adaptive_right.params[0] = start;
+        fb.adaptive_right.params[1] = effect;
     }
-  }
 
-  // Player LED pattern
-  switch (config->player_index+1) {
-  case 1:  ds5_fb.player_led = LED_P1_PATTERN; break;
-  case 2:  ds5_fb.player_led = LED_P2_PATTERN; break;
-  case 3:  ds5_fb.player_led = LED_P3_PATTERN; break;
-  case 4:  ds5_fb.player_led = LED_P4_PATTERN; break;
-  case 5:  ds5_fb.player_led = LED_P5_PATTERN; break;
-  case 6:  ds5_fb.player_led = LED_P6_PATTERN; break;
-  case 7:  ds5_fb.player_led = LED_P7_PATTERN; break;
-  default: ds5_fb.player_led = LED_DEFAULT_PATTERN; break;
-  }
+    // --- Lightbar RGB from feedback system (player color), or app fallback ---
+    uint8_t r_val, g_val, b_val;
+    int8_t player_idx = find_player_index(dev_addr, instance);
+    feedback_state_t* feedback = (player_idx >= 0) ? feedback_get_state(player_idx) : NULL;
 
-  // test pattern
-  if (config->player_index+1 && config->test) {
-    ds5_fb.player_led = config->test;
-    ds5_fb.lightbar_r = config->test;
-    ds5_fb.lightbar_g = config->test+64;
-    ds5_fb.lightbar_b = config->test+128;
-  }
+    if (feedback && (feedback->led.r || feedback->led.g || feedback->led.b)) {
+        r_val = feedback->led.r;
+        g_val = feedback->led.g;
+        b_val = feedback->led.b;
+    } else {
+        switch (config->player_index + 1) {
+            case 1: r_val = LED_P1_R; g_val = LED_P1_G; b_val = LED_P1_B; break;
+            case 2: r_val = LED_P2_R; g_val = LED_P2_G; b_val = LED_P2_B; break;
+            case 3: r_val = LED_P3_R; g_val = LED_P3_G; b_val = LED_P3_B; break;
+            case 4: r_val = LED_P4_R; g_val = LED_P4_G; b_val = LED_P4_B; break;
+            case 5: r_val = LED_P5_R; g_val = LED_P5_G; b_val = LED_P5_B; break;
+            case 6: r_val = LED_P6_R; g_val = LED_P6_G; b_val = LED_P6_B; break;
+            case 7: r_val = LED_P7_R; g_val = LED_P7_G; b_val = LED_P7_B; break;
+            default: r_val = LED_DEFAULT_R; g_val = LED_DEFAULT_G; b_val = LED_DEFAULT_B; break;
+        }
+    }
 
-  if (config->rumble) {
-    ds5_fb.rumble_l = 192;
-    ds5_fb.rumble_r = 192;
-  } else {
-    ds5_fb.rumble_l = 0;
-    ds5_fb.rumble_r = 0;
-  }
+    fb.lightbar_dirty = true;
+    fb.lightbar.r = r_val;
+    fb.lightbar.g = g_val;
+    fb.lightbar.b = b_val;
 
-  if (ds5_devices[dev_addr].instances[instance].rumble != config->rumble ||
-      ds5_devices[dev_addr].instances[instance].player != ds5_fb.player_led ||
-      ds5_devices[dev_addr].instances[instance].led_r != ds5_fb.lightbar_r ||
-      ds5_devices[dev_addr].instances[instance].led_g != ds5_fb.lightbar_g ||
-      ds5_devices[dev_addr].instances[instance].led_b != ds5_fb.lightbar_b ||
-      config->test)
-  {
-    ds5_devices[dev_addr].instances[instance].rumble = config->rumble;
-    ds5_devices[dev_addr].instances[instance].player = ds5_fb.player_led & 0xff;
-    ds5_devices[dev_addr].instances[instance].led_r = ds5_fb.lightbar_r;
-    ds5_devices[dev_addr].instances[instance].led_g = ds5_fb.lightbar_g;
-    ds5_devices[dev_addr].instances[instance].led_b = ds5_fb.lightbar_b;
-    tuh_hid_send_report(dev_addr, instance, 5, &ds5_fb, sizeof(ds5_fb));
-  }
+    // --- Player index for 5-LED bar ---
+    fb.player_index_dirty = true;
+    fb.player_index = (uint8_t)(config->player_index + 1);
+
+    // --- Test pattern override ---
+    if (config->player_index + 1 && config->test) {
+        fb.lightbar.r = config->test;
+        fb.lightbar.g = (uint8_t)(config->test + 64);
+        fb.lightbar.b = (uint8_t)(config->test + 128);
+    }
+
+    // --- Rumble ---
+    fb.rumble_dirty = true;
+    fb.rumble_low  = config->rumble ? 192 : 0;
+    fb.rumble_high = config->rumble ? 192 : 0;
+
+    // Only send when something actually changed (or test mode forces it).
+    if (ds5_devices[dev_addr].instances[instance].rumble != config->rumble ||
+        ds5_devices[dev_addr].instances[instance].led_r  != fb.lightbar.r   ||
+        ds5_devices[dev_addr].instances[instance].led_g  != fb.lightbar.g   ||
+        ds5_devices[dev_addr].instances[instance].led_b  != fb.lightbar.b   ||
+        config->test)
+    {
+        ds5_devices[dev_addr].instances[instance].rumble = config->rumble;
+        ds5_devices[dev_addr].instances[instance].led_r  = fb.lightbar.r;
+        ds5_devices[dev_addr].instances[instance].led_g  = fb.lightbar.g;
+        ds5_devices[dev_addr].instances[instance].led_b  = fb.lightbar.b;
+
+        uint8_t buf[JOYPAD_SONY_DS5_FEEDBACK_PAYLOAD_LEN];
+        uint16_t n = joypad_build_sony_ds5_feedback(&fb, buf, sizeof(buf));
+        if (n > 0) {
+            tuh_hid_send_report(dev_addr, instance, JOYPAD_SONY_DS5_FEEDBACK_REPORT_ID, buf, n);
+        }
+    }
 }
 
 // process usb hid output reports
 void task_sony_ds5(uint8_t dev_addr, uint8_t instance, device_output_config_t* config) {
-  const uint32_t interval_ms = 20;
-  static uint32_t start_ms = 0;
+    const uint32_t interval_ms = 20;
+    static uint32_t start_ms = 0;
 
-  uint32_t current_time_ms = platform_time_ms();
-  if (current_time_ms - start_ms >= interval_ms) {
-    start_ms = current_time_ms;
-    output_sony_ds5(dev_addr, instance, config);
-  }
+    uint32_t current_time_ms = platform_time_ms();
+    if (current_time_ms - start_ms >= interval_ms) {
+        start_ms = current_time_ms;
+        output_sony_ds5(dev_addr, instance, config);
+    }
 }
 
 // resets default values in case devices are hotswapped
-void unmount_sony_ds5(uint8_t dev_addr, uint8_t instance)
-{
-  ds5_devices[dev_addr].instances[instance].rumble = 0;
-  ds5_devices[dev_addr].instances[instance].player = 0xff;
+void unmount_sony_ds5(uint8_t dev_addr, uint8_t instance) {
+    ds5_devices[dev_addr].instances[instance].rumble = 0;
+    ds5_devices[dev_addr].instances[instance].player = 0xff;
 }
 
 DeviceInterface sony_ds5_interface = {
-  .name = "Sony DualSense",
-  .is_device = is_sony_ds5,
-  .process = input_sony_ds5,
-  .task = task_sony_ds5,
-  .unmount = unmount_sony_ds5,
+    .name = "Sony DualSense",
+    .is_device = is_sony_ds5,
+    .process = input_sony_ds5,
+    .task = task_sony_ds5,
+    .unmount = unmount_sony_ds5,
 };

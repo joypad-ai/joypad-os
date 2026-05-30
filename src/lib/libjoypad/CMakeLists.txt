@@ -26,8 +26,8 @@ project(libjoypad
 # ----------------------------------------------------------------------------
 
 set(LIBJOYPAD_SOURCES
-    # src/devices/usb/hid/sony/ds5.c        (Phase 4)
-    # src/devices/usb/hid/nintendo/switch_pro.c
+    src/devices/usb/hid/sony/ds5.c
+    # src/devices/usb/hid/nintendo/switch_pro.c   (next driver)
     # src/devices/bt/hid/sony/ds5_bt.c
     # src/registry.c
     # src/sinput.c
@@ -83,4 +83,12 @@ if(LIBJOYPAD_BUILD_TESTS)
         -Wno-unused-parameter   # legacy migration helpers
     )
     add_test(NAME libjoypad_smoke COMMAND libjoypad_smoke)
+
+    # Per-driver tests
+    add_executable(libjoypad_ds5_input tests/replay/ds5_input.c)
+    target_link_libraries(libjoypad_ds5_input PRIVATE libjoypad)
+    target_compile_options(libjoypad_ds5_input PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    add_test(NAME libjoypad_ds5_input COMMAND libjoypad_ds5_input)
 endif()
