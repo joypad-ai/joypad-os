@@ -138,6 +138,8 @@ void FJoypadInputDevice::Tick(float DeltaTime)
         DispatchEvent(Event);
         PrevEvent = Event;
     }
+
+    FlushFeedback();
 }
 
 void FJoypadInputDevice::SendControllerEvents()
@@ -216,12 +218,75 @@ void FJoypadInputDevice::DispatchEvent(const input_event_t& Event)
     }
 }
 
-void FJoypadInputDevice::SetChannelValue(int32 /*ControllerId*/, FForceFeedbackChannelType /*ChannelType*/, float /*Value*/)
+// Force feedback dispatch.
+//
+// Unreal exposes four logical channels (LeftLarge, LeftSmall, RightLarge,
+// RightSmall) at 0..1. DualSense has two physical motors (low-frequency on
+// the left grip, high-frequency on the right grip), so we collapse:
+//   - rumble_low  (heavy)  = max(LeftLarge,  RightLarge)
+//   - rumble_high (light) = max(LeftSmall, RightSmall)
+//
+// The staged values get flushed by FlushFeedback() once per Tick if they
+// differ from what was last sent — avoids spamming the device with redundant
+// HID output reports.
+
+static inline uint8 FloatToRumble(float V)
 {
-    // TODO: route to libjoypad feedback builder + hid_write.
+    if (V < 0.f) V = 0.f;
+    if (V > 1.f) V = 1.f;
+    return static_cast<uint8>(V * 255.f);
 }
 
-void FJoypadInputDevice::SetChannelValues(int32 /*ControllerId*/, const FForceFeedbackValues& /*Values*/)
+void FJoypadInputDevice::SetChannelValue(int32 /*ControllerId*/, FForceFeedbackChannelType ChannelType, float Value)
 {
-    // TODO: route to libjoypad feedback builder + hid_write.
+    const uint8 V = FloatToRumble(Value);
+    switch (ChannelType)
+    {
+        case FForceFeedbackChannelType::LEFT_LARGE:
+        case FForceFeedbackChannelType::RIGHT_LARGE:
+            StagedRumbleLow = FMath::Max(StagedRumbleLow, V);
+            break;
+        case FForceFeedbackChannelType::LEFT_SMALL:
+        case FForceFeedbackChannelType::RIGHT_SMALL:
+            StagedRumbleHigh = FMath::Max(StagedRumbleHigh, V);
+            break;
+    }
+}
+
+void FJoypadInputDevice::SetChannelValues(int32 /*ControllerId*/, const FForceFeedbackValues& Values)
+{
+    const uint8 LL = FloatToRumble(Values.LeftLarge);
+    const uint8 LS = FloatToRumble(Values.LeftSmall);
+    const uint8 RL = FloatToRumble(Values.RightLarge);
+    const uint8 RS = FloatToRumble(Values.RightSmall);
+
+    StagedRumbleLow  = FMath::Max(LL, RL);
+    StagedRumbleHigh = FMath::Max(LS, RS);
+}
+
+void FJoypadInputDevice::FlushFeedback()
+{
+    if (!bHaveDevice) return;
+    if (StagedRumbleLow == LastSentRumbleLow && StagedRumbleHigh == LastSentRumbleHigh)
+    {
+        return;
+    }
+
+    joypad_feedback_t fb;
+    joypad_feedback_init(&fb);
+    fb.rumble_dirty = true;
+    fb.rumble_low  = StagedRumbleLow;
+    fb.rumble_high = StagedRumbleHigh;
+
+    // 1-byte report ID + payload.
+    uint8_t Buf[1 + JOYPAD_SONY_DS5_FEEDBACK_PAYLOAD_LEN];
+    Buf[0] = JOYPAD_SONY_DS5_FEEDBACK_REPORT_ID;
+    const uint16_t n = joypad_build_sony_ds5_feedback(&fb, Buf + 1, JOYPAD_SONY_DS5_FEEDBACK_PAYLOAD_LEN);
+    if (n == 0) return;
+
+    if (hid_write(HidDev, Buf, 1 + n) >= 0)
+    {
+        LastSentRumbleLow  = StagedRumbleLow;
+        LastSentRumbleHigh = StagedRumbleHigh;
+    }
 }

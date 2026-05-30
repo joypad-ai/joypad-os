@@ -13,6 +13,7 @@
 extern "C" {
 #include <joypad/input_event.h>
 #include <joypad/buttons.h>
+#include <joypad/feedback.h>
 }
 
 struct hid_device_;
@@ -37,9 +38,18 @@ private:
     void CloseDevice();
     void DispatchEvent(const input_event_t& Event);
 
+    void FlushFeedback();
+
     TSharedRef<FGenericApplicationMessageHandler> MessageHandler;
     hid_device* HidDev = nullptr;
     input_event_t PrevEvent {};
     bool bHaveDevice = false;
     float ReopenAccum = 0.f;
+
+    // Staged feedback state. Updated by SetChannelValue/SetChannelValues; sent
+    // out on the next FlushFeedback() if it differs from what was last sent.
+    uint8_t StagedRumbleLow  = 0;
+    uint8_t StagedRumbleHigh = 0;
+    uint8_t LastSentRumbleLow  = 0;
+    uint8_t LastSentRumbleHigh = 0;
 };
