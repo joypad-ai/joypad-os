@@ -8,6 +8,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
+#include <joypad/layouts.h>
 
 // ============================================================================
 // Device Type Classification
@@ -39,43 +40,10 @@ typedef enum {
 } input_transport_t;
 
 // ============================================================================
-// Controller Button Layout Classification
+// Controller Button Layout
 // ============================================================================
-// Used to describe the physical button arrangement on 6-button controllers.
-// Device drivers set this based on the controller type, and console output
-// code can transform button mappings to match the target console layout.
-//
-// GP2040-CE canonical mapping (our internal standard):
-//   Top row:    [B3][B4][R1]
-//   Bottom row: [B1][B2][R2]
-//
-// Physical layouts:
-//   SEGA_6BUTTON:  Top [X][Y][Z],   Bottom [A][B][C]
-//   PCE_6BUTTON:   Top [IV][V][VI], Bottom [III][II][I]
-//   ASTROCITY:     Top [A][B][C],   Bottom [D][E][F]
-//   3DO_3BUTTON:   Single row [A][B][C]
-
-typedef enum {
-    LAYOUT_UNKNOWN = 0,         // Unknown or default (4-face button modern gamepad)
-    LAYOUT_MODERN_4FACE,        // SNES/PlayStation style (no 6-button row)
-    LAYOUT_NINTENDO_4FACE,      // Nintendo SNES: BAYX face style
-    LAYOUT_NINTENDO_N64,        // Nintendo N64: A/B + C-buttons + Z
-    LAYOUT_GAMECUBE,            // GameCube: AXBY face style
-    LAYOUT_SEGA_6BUTTON,        // Genesis/Saturn: Bottom [A][B][C], Top [X][Y][Z]
-    LAYOUT_PCE_6BUTTON,         // PCEngine Avenue Pad: Bottom [III][II][I], Top [IV][V][VI]
-    LAYOUT_ASTROCITY,           // Astrocity: Bottom [D][E][F], Top [A][B][C]
-    LAYOUT_3DO_3BUTTON,         // 3DO: Single row [A][B][C] (maps to bottom row only)
-    LAYOUT_WII_NUNCHUCK,        // Wii Nunchuck: C/Z + stick + accel
-    LAYOUT_WII_CLASSIC,         // Wii Classic: SNES-like faces + 2 sticks + analog L/R
-    LAYOUT_WII_CLASSIC_PRO,     // Wii Classic Pro: same as Classic but digital L/R only
-    LAYOUT_WII_GUITAR,          // Guitar Hero 3 / World Tour guitar
-    LAYOUT_WII_DRUMS,           // Rock Band / Guitar Hero drums
-    LAYOUT_WII_TURNTABLE,       // DJ Hero turntable
-    LAYOUT_WII_TAIKO,           // Taiko no Tatsujin TaTaCon
-    LAYOUT_WII_UDRAW,           // THQ uDraw tablet
-    LAYOUT_WII_MOTIONPLUS,      // MotionPlus standalone (gyro only)
-    LAYOUT_WII_DUAL_NUNCHUCK,   // Two nunchucks: left C/Z+stick, right C/Z+stick
-} controller_layout_t;
+// controller_layout_t and the LAYOUT_* enumerators live in <joypad/layouts.h>
+// (included above). Glyph-picking and layout-transform helpers also live there.
 
 // ============================================================================
 // Analog Axis Indices (internal agnostic format)
@@ -294,77 +262,11 @@ static inline void mouse_to_input_event(
 }
 
 // ============================================================================
-// Layout Transform Functions
+// Layout Transforms
 // ============================================================================
-// These functions transform button mappings from one physical layout to another.
-// Device drivers output canonical GP2040-CE mapping, and console output code
-// uses these transforms to match the target console's expected layout.
-//
-// GP2040-CE Canonical (internal standard):
-//   Top row:    [B3][B4][R1]   (USBR: B3, B4, R1)
-//   Bottom row: [B1][B2][R2]   (USBR: B1, B2, R2)
-//
-// For 6-button layouts, the mapping is:
-//   Position:    Left-Bot  Mid-Bot  Right-Bot  Left-Top  Mid-Top  Right-Top
-//   GP2040-CE:   B1        B2       R2         B3        B4       R1
-//   PCEngine:    III       II       I          IV        V        VI
-//   Genesis:     A         B        C          X         Y        Z
-//   Astrocity:   D         E        F          A         B        C
-
-// Button masks for 6-button face buttons (excludes D-pad, Start, Select, etc.)
-#define LAYOUT_6BTN_MASK (0x0B230)  // B1|B2|B3|B4|R1|R2
-
-// Helper to extract a button, returning its state (active-high: 1 = pressed)
-#define EXTRACT_BTN(buttons, mask) (((buttons) & (mask)) ? 1 : 0)
-
-// Transform buttons from source layout to PCEngine 6-button layout
-// PCEngine expects: Bottom [III][II][I], Top [IV][V][VI]
-// where III=leftmost, I=rightmost (numbers decrease left to right)
-static inline uint32_t transform_to_pce_layout(uint32_t buttons, controller_layout_t source) {
-    // If source is already PCE layout or unknown, no transform needed
-    if (source == LAYOUT_PCE_6BUTTON || source == LAYOUT_UNKNOWN || source == LAYOUT_MODERN_4FACE) {
-        return buttons;
-    }
-
-    // Extract 6-button states (active-high: 1 = pressed)
-    // GP2040-CE canonical positions:
-    //   Bottom: B1 (left), B2 (mid), R2 (right)
-    //   Top:    B3 (left), B4 (mid), R1 (right)
-
-    // For SEGA_6BUTTON and ASTROCITY, the physical positions match GP2040-CE,
-    // so they map 1:1 to PCEngine positions:
-    //   PCE III = B1 (left-bottom)
-    //   PCE II  = B2 (mid-bottom)
-    //   PCE I   = R2 (right-bottom)
-    //   PCE IV  = B3 (left-top)
-    //   PCE V   = B4 (mid-top)
-    //   PCE VI  = R1 (right-top)
-
-    // Since USBR uses GP2040-CE naming and PCE uses the same physical positions,
-    // the button bits are already correct - no transformation needed for
-    // SEGA_6BUTTON or ASTROCITY when targeting PCEngine.
-
-    // For 3DO (single row), only bottom row is used, top row ignored
-    if (source == LAYOUT_3DO_3BUTTON) {
-        // 3DO A/B/C maps to PCE III/II/I (bottom row)
-        // Top row buttons should be cleared/ignored
-        // No actual bit transformation needed - 3DO uses bottom row only
-        return buttons;
-    }
-
-    return buttons;
-}
-
-// Check if a controller has a 6-button layout (two rows of 3)
-static inline bool layout_has_6_buttons(controller_layout_t layout) {
-    return (layout == LAYOUT_SEGA_6BUTTON ||
-            layout == LAYOUT_PCE_6BUTTON ||
-            layout == LAYOUT_ASTROCITY);
-}
-
-// Check if a controller has a 3-button single row layout
-static inline bool layout_has_3_buttons(controller_layout_t layout) {
-    return (layout == LAYOUT_3DO_3BUTTON);
-}
+// LAYOUT_6BTN_MASK, EXTRACT_BTN, transform_to_pce_layout,
+// layout_has_6_buttons, and layout_has_3_buttons live in <joypad/layouts.h>
+// (included at the top of this file). New code should include layouts.h
+// directly when only layout helpers are needed.
 
 #endif // INPUT_EVENT_H
