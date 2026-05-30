@@ -379,6 +379,7 @@ endif()
 set(INCLUDE_DIRS
     "."
     "${SHARED_SRC}"
+    "${SHARED_SRC}/lib/libjoypad/include"
     "${APP_INCLUDE_DIR}"
     "${SHARED_SRC}/usb/usbd"
     "${SHARED_SRC}/pad"

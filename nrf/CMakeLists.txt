@@ -109,6 +109,7 @@ set(SRCS
 set(INCLUDE_DIRS
     "src"
     "${SHARED_SRC}"
+    "${SHARED_SRC}/lib/libjoypad/include"
     "${SHARED_SRC}/usb/usbd"
     "${SHARED_SRC}/lib/libxsm3"
     # TinyUSB

@@ -389,7 +389,7 @@ function(joypad_target_common TARGET)
     target_compile_options(${TARGET} PRIVATE -O3)
     pico_add_extra_outputs(${TARGET})
     pico_generate_pio_header(${TARGET} ${CMAKE_CURRENT_LIST_DIR}/core/services/leds/neopixel/ws2812.pio)
-    target_include_directories(${TARGET} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/common ${CMAKE_CURRENT_SOURCE_DIR}/lib/libxsm3)
+    target_include_directories(${TARGET} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/common ${CMAKE_CURRENT_SOURCE_DIR}/lib/libxsm3 ${CMAKE_CURRENT_SOURCE_DIR}/lib/libjoypad/include)
     # Add version and build info to all targets
     target_compile_definitions(${TARGET} PRIVATE
         JOYPAD_VERSION="${JOYPAD_VERSION}"
