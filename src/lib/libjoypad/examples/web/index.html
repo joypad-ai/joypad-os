@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>libjoypad — Web Example</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      max-width: 880px;
+      margin: 2em auto;
+      padding: 0 1em;
+      line-height: 1.4;
+    }
+    h1 { margin-bottom: 0.1em; }
+    .tagline { color: #888; margin-top: 0; }
+    button {
+      font-size: 1em;
+      padding: 0.5em 1em;
+      border-radius: 6px;
+      border: 1px solid #888;
+      background: #f8f8f8;
+      cursor: pointer;
+    }
+    button:hover { background: #eee; }
+    #status { margin: 1em 0; padding: 0.7em 1em; border-radius: 6px;
+              background: #eef; }
+    #status.error { background: #fee; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.5em 2em;
+      margin-top: 1.5em;
+    }
+    .grid div { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+    .row { display: flex; align-items: center; gap: 1em; margin: 0.4em 0; }
+    .bar { display: inline-block; width: 200px; height: 14px;
+           background: #eee; border-radius: 7px; overflow: hidden;
+           border: 1px solid #ccc; vertical-align: middle; }
+    .bar > span { display: block; height: 100%; background: #58a; }
+    .stick { width: 120px; height: 120px; border: 1px solid #888;
+             border-radius: 50%; position: relative;
+             background: #f5f5f5; }
+    .stick .dot { width: 18px; height: 18px; background: #58a;
+                  border-radius: 50%; position: absolute;
+                  transform: translate(-50%, -50%);
+                  top: 50%; left: 50%; transition: top 60ms, left 60ms; }
+    .stick-row { display: flex; gap: 2em; margin: 1em 0; }
+    .stick-cell { text-align: center; }
+    #buttons { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+    .btn-chip { display: inline-block; padding: 0.2em 0.6em;
+                margin: 0.2em; border-radius: 4px;
+                background: #ddd; color: #888; }
+    .btn-chip.on { background: #58a; color: white; }
+    .feedback-controls { margin: 2em 0; padding: 1em; border: 1px solid #ddd;
+                         border-radius: 8px; }
+    input[type=range] { vertical-align: middle; }
+    label { user-select: none; }
+  </style>
+</head>
+<body>
+  <h1>libjoypad — Web Example</h1>
+  <p class="tagline">Same C parser as joypad-os firmware, compiled to WebAssembly. WebHID for transport.</p>
+
+  <div id="status">Click <b>Connect controller</b> and select a Sony DualSense.</div>
+
+  <button id="connect-btn">Connect controller</button>
+  <small style="margin-left: 1em">Chrome / Edge required (Firefox + Safari do not implement WebHID).</small>
+
+  <div class="stick-row">
+    <div class="stick-cell">
+      <div>Left stick</div>
+      <div class="stick"><div class="dot" id="left-stick"></div></div>
+      <div id="left-stick-vals">128, 128</div>
+    </div>
+    <div class="stick-cell">
+      <div>Right stick</div>
+      <div class="stick"><div class="dot" id="right-stick"></div></div>
+      <div id="right-stick-vals">128, 128</div>
+    </div>
+  </div>
+
+  <div class="row">
+    L2 <span class="bar"><span id="l2-bar" style="width:0%"></span></span>
+    <span id="l2-val">0</span>
+  </div>
+  <div class="row">
+    R2 <span class="bar"><span id="r2-bar" style="width:0%"></span></span>
+    <span id="r2-val">0</span>
+  </div>
+
+  <h3>Buttons</h3>
+  <div id="buttons"></div>
+
+  <div class="grid">
+    <div>Gyro: <span id="gyro">—</span></div>
+    <div>Accel: <span id="accel">—</span></div>
+    <div>Touchpad 1: <span id="touch1">—</span></div>
+    <div>Touchpad 2: <span id="touch2">—</span></div>
+    <div>Battery: <span id="battery">—</span></div>
+    <div>Frame: <span id="frame-count">0</span></div>
+  </div>
+
+  <div class="feedback-controls">
+    <h3>Feedback (only takes effect when connected)</h3>
+    <div class="row">
+      Lightbar:
+      <input type="color" id="lightbar-color" value="#0040ff" />
+      <button id="set-lightbar">Set</button>
+    </div>
+    <div class="row">
+      <label>Rumble low: <input type="range" id="rumble-low" min="0" max="255" value="0" /></label>
+      <span id="rumble-low-val">0</span>
+    </div>
+    <div class="row">
+      <label>Rumble high: <input type="range" id="rumble-high" min="0" max="255" value="0" /></label>
+      <span id="rumble-high-val">0</span>
+    </div>
+    <div class="row">
+      <button id="apply-rumble">Apply rumble</button>
+      <button id="clear-rumble">Stop rumble</button>
+    </div>
+    <div class="row">
+      Player index:
+      <select id="player-index">
+        <option value="0">0 (off)</option>
+        <option value="1" selected>1</option>
+        <option value="2">2</option>
+        <option value="3">3</option>
+        <option value="4">4</option>
+        <option value="5">5</option>
+      </select>
+      <button id="set-player">Set</button>
+    </div>
+  </div>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
