@@ -1,5 +1,6 @@
 // sony_ds3.c
 #include "sony_ds3.h"
+#include <joypad/devices/sony/ds3.h>
 #include "core/buttons.h"
 #include "core/services/players/manager.h"
 #include "core/router/router.h"
@@ -64,9 +65,7 @@ void ds3_on_get_report_complete(uint8_t dev_addr, uint8_t instance) {
 
 // check if device is Sony PlayStation 3 controllers
 bool is_sony_ds3(uint16_t vid, uint16_t pid) {
-  return (
-    (vid == 0x054c && pid == 0x0268)    // Sony DualShock3
-  ); 
+    return joypad_is_sony_ds3(vid, pid);
 }
 
 // check if 2 reports are different enough
@@ -92,192 +91,24 @@ bool diff_report_ds3(sony_ds3_report_t const* rpt1, sony_ds3_report_t const* rpt
 
 // process input input reports
 void input_sony_ds3(uint8_t dev_addr, uint8_t instance, uint8_t const* report, uint16_t len) {
-  uint32_t buttons;
-  // previous report used to compare for changes
-  static sony_ds3_report_t prev_report[5] = { 0 };
-
-  // Mark that we've received input (DS3 is active and ready)
-  ds3_devices[dev_addr].instances[instance].input_received = true;
-
-  // Check if any button is pressed (bytes 1 and 2 are button bytes, byte 3 is PS)
-  // report[0] is reportId, report[1-3] are button bytes
-  if (len >= 4 && (report[1] != 0 || report[2] != 0 || report[3] != 0)) {
-    ds3_devices[dev_addr].instances[instance].button_pressed = true;
-  }
-
-  uint8_t const report_id = report[0];
-  report++;
-  len--;
-
-  // all buttons state is stored in ID 1
-  if (report_id == 1)
-  {
-    sony_ds3_report_t ds3_report;
-    // Only copy actual report size (48 bytes after report ID stripped), not full struct size
-    memcpy(&ds3_report, report, len < sizeof(ds3_report) ? len : sizeof(ds3_report));
-
-    // counter is +1, assign to make it easier to compare 2 report
-    prev_report[dev_addr-1].counter = ds3_report.counter;
-
-    // Check if buttons/sticks changed (for debug logging)
-    bool buttons_changed = diff_report_ds3(&prev_report[dev_addr-1], &ds3_report);
-
-    // Parse motion data (SIXAXIS)
-    // DS3 motion is at bytes 41-48 in original report (1-indexed with report ID at byte 0)
-    // After report++ strips report ID, motion is at indices 40-47
-    int16_t accel_x = 0, accel_y = 0, accel_z = 0, gyro_z = 0;
-    bool has_motion = false;
-    if (len >= 48) {
-      // DS3 accelerometer: big-endian 16-bit values centered at ~512
-      // DS3 gyro: 10-bit centered at ~512, range ±100 dps
-      int16_t raw_accel_x = (int16_t)((report[40] << 8) | report[41]);
-      int16_t raw_accel_y = (int16_t)((report[42] << 8) | report[43]);
-      int16_t raw_accel_z = (int16_t)((report[44] << 8) | report[45]);
-      int16_t raw_gyro_z  = (int16_t)((report[46] << 8) | report[47]);
-
-      // Normalize gyro to SInput convention: ±32767 = ±2000 dps
-      // DS3 gyro: centered at 512, ±512 = ±100 dps
-      // Conversion: normalized = (raw - 512) * 32767 / 10240
-      // This maps DS3's ±100 dps to ±1638 in SInput units (since 100/2000 * 32767 ≈ 1638)
-      gyro_z = (int16_t)(((int32_t)(raw_gyro_z - 512) * 32767) / 10240);
-
-      // Normalize accel to SInput convention: ±32767 = ±4g
-      // DS3 accel: centered at ~512, ±512 = ±2g
-      // Conversion: normalized = (raw - 512) * 32767 / 1024
-      // This maps DS3's ±2g to ±16384 in SInput units (since 2/4 * 32767 ≈ 16384)
-      accel_x = (int16_t)(((int32_t)(raw_accel_x - 512) * 32767) / 1024);
-      accel_y = (int16_t)(((int32_t)(raw_accel_y - 512) * 32767) / 1024);
-      accel_z = (int16_t)(((int32_t)(raw_accel_z - 512) * 32767) / 1024);
-
-      has_motion = true;
+    // Mark that we've received input (DS3 is active and ready).
+    ds3_devices[dev_addr].instances[instance].input_received = true;
+    if (len >= 4 && (report[1] != 0 || report[2] != 0 || report[3] != 0)) {
+        ds3_devices[dev_addr].instances[instance].button_pressed = true;
     }
 
-    // Always submit events when motion is available, or when buttons/sticks changed
-    if (has_motion || buttons_changed)
-    {
-      uint8_t analog_1x = ds3_report.lx;
-      uint8_t analog_1y = ds3_report.ly;  // HID convention: 0=up, 255=down
-      uint8_t analog_2x = ds3_report.rx;
-      uint8_t analog_2y = ds3_report.ry;  // HID convention: 0=up, 255=down
+    input_event_t event;
+    if (!joypad_parse_sony_ds3(report, len, &event)) return;
 
-      // Use L2/R2 pressure sensors for analog trigger values
-      // DS3 has digital L2/R2 buttons, but pressure-sensitive sensors
-      uint8_t analog_l = ds3_report.pressure[8];  // L2 pressure
-      uint8_t analog_r = ds3_report.pressure[9];  // R2 pressure
+    event.dev_addr = dev_addr;
+    event.instance = instance;
+    event.timestamp_us = (uint64_t)platform_time_ms() * 1000ULL;
 
-      if (buttons_changed) {
-        TU_LOG1("(lx, ly, rx, ry, l, r) = (%u, %u, %u, %u, %u, %u)\r\n", analog_1x, analog_1y, analog_2x, analog_2y, analog_l, analog_r);
-        TU_LOG1("DPad = ");
+    // Console-output safety: avoid raw 0 on analog stick axes.
+    ensureAllNonZero(&event.analog[ANALOG_LX], &event.analog[ANALOG_LY],
+                     &event.analog[ANALOG_RX], &event.analog[ANALOG_RY]);
 
-        if (ds3_report.up       ) TU_LOG1("Up ");
-        if (ds3_report.down     ) TU_LOG1("Down ");
-        if (ds3_report.left     ) TU_LOG1("Left ");
-        if (ds3_report.right    ) TU_LOG1("Right ");
-
-        if (ds3_report.square   ) TU_LOG1("Square ");
-        if (ds3_report.cross    ) TU_LOG1("Cross ");
-        if (ds3_report.circle   ) TU_LOG1("Circle ");
-        if (ds3_report.triangle ) TU_LOG1("Triangle ");
-
-        if (ds3_report.l1       ) TU_LOG1("L1 ");
-        if (ds3_report.r1       ) TU_LOG1("R1 ");
-        if (ds3_report.l2       ) TU_LOG1("L2 ");
-        if (ds3_report.r2       ) TU_LOG1("R2 ");
-
-        if (ds3_report.select   ) TU_LOG1("Select ");
-        if (ds3_report.start    ) TU_LOG1("Start ");
-        if (ds3_report.l3       ) TU_LOG1("L3 ");
-        if (ds3_report.r3       ) TU_LOG1("R3 ");
-
-        if (ds3_report.ps       ) TU_LOG1("PS ");
-
-        TU_LOG1("\r\n");
-      }
-
-      // All shoulder buttons passed as digital (platform-agnostic)
-      // Consoles handle analog trigger thresholds in their router_submit_input()
-      buttons = (((ds3_report.up)       ? JP_BUTTON_DU : 0) |
-                 ((ds3_report.down)     ? JP_BUTTON_DD : 0) |
-                 ((ds3_report.left)     ? JP_BUTTON_DL : 0) |
-                 ((ds3_report.right)    ? JP_BUTTON_DR : 0) |
-                 ((ds3_report.cross)    ? JP_BUTTON_B1 : 0) |
-                 ((ds3_report.circle)   ? JP_BUTTON_B2 : 0) |
-                 ((ds3_report.square)   ? JP_BUTTON_B3 : 0) |
-                 ((ds3_report.triangle) ? JP_BUTTON_B4 : 0) |
-                 ((ds3_report.l1)       ? JP_BUTTON_L1 : 0) |
-                 ((ds3_report.r1)       ? JP_BUTTON_R1 : 0) |
-                 ((ds3_report.l2)       ? JP_BUTTON_L2 : 0) |
-                 ((ds3_report.r2)       ? JP_BUTTON_R2 : 0) |
-                 ((ds3_report.select)   ? JP_BUTTON_S1 : 0) |
-                 ((ds3_report.start)    ? JP_BUTTON_S2 : 0) |
-                 ((ds3_report.l3)       ? JP_BUTTON_L3 : 0) |
-                 ((ds3_report.r3)       ? JP_BUTTON_R3 : 0) |
-                 ((ds3_report.ps)       ? JP_BUTTON_A1 : 0));
-
-      // keep analog within range [1-255]
-      ensureAllNonZero(&analog_1x, &analog_1y, &analog_2x, &analog_2y);
-
-      // Battery: report[29] (after report ID stripped)
-      // Per Linux kernel hid-sony.c: 0-5 = discharge lookup, 0xEE = charging, 0xEF = full
-      uint8_t bat_level = 0;
-      bool bat_charging = false;
-      if (len > 29) {
-        static const uint8_t ds3_battery[] = { 0, 1, 25, 50, 75, 100 };
-        uint8_t charge = report[29];
-        if (charge >= 0xEE) {
-            bat_level = 100;
-            bat_charging = (charge & 0x01) == 0;  // 0xEE=charging, 0xEF=full
-        } else if (charge <= 5) {
-            bat_level = ds3_battery[charge];
-        }
-      }
-
-      // add to accumulator and post to the state machine
-      // if a scan from the host machine is ongoing, wait
-      input_event_t event = {
-        .dev_addr = dev_addr,
-        .instance = instance,
-        .type = INPUT_TYPE_GAMEPAD,
-        .transport = INPUT_TRANSPORT_USB,
-        .transport = INPUT_TRANSPORT_USB,
-        .transport = INPUT_TRANSPORT_USB,
-        .transport = INPUT_TRANSPORT_USB,
-        .buttons = buttons,
-        .button_count = 10,  // PS3: Cross, Circle, Square, Triangle, L1, R1, L2, R2, L3, R3
-        .analog = {analog_1x, analog_1y, analog_2x, analog_2y, analog_l, analog_r},
-        .keys = 0,
-        .has_motion = has_motion,
-        .accel = {accel_x, accel_y, accel_z},
-        .gyro = {0, 0, gyro_z},  // DS3 only has Z-axis gyro
-        .gyro_range = 100,   // DS3 gyro is ±100 dps
-        .accel_range = 2000, // DS3 accel is ±2g (2000 milli-g)
-        .battery_level = bat_level,
-        .battery_charging = bat_charging,
-        .has_pressure = true,
-        // DS3 pressure mapping: struct indices are shifted due to report ID stripping
-        // D-pad: up, right, down, left at pressure[4-7]
-        // Triggers: L2, R2, L1, R1 at pressure[8-11]
-        // Face buttons: triangle, circle, cross, square at unused[0-3]
-        .pressure = {
-          ds3_report.pressure[4],  // up
-          ds3_report.pressure[5],  // right
-          ds3_report.pressure[6],  // down
-          ds3_report.pressure[7],  // left
-          ds3_report.pressure[8],  // L2
-          ds3_report.pressure[9],  // R2
-          ds3_report.pressure[10], // L1
-          ds3_report.pressure[11], // R1
-          ds3_report.unused[0],    // triangle
-          ds3_report.unused[1],    // circle
-          ds3_report.unused[2],    // cross
-          ds3_report.unused[3],    // square
-        },
-      };
-      router_submit_input(&event);
-
-      prev_report[dev_addr-1] = ds3_report;
-    }
-  }
+    router_submit_input(&event);
 }
 
 // process output report for rumble and player LED assignment

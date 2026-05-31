@@ -141,6 +141,7 @@ set(USB_HOST_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/hid/devices/vendors/sony/sony_psc.c
     # libjoypad-portable parsers consumed by the firmware-side glue above.
     # As more drivers migrate into libjoypad their sources land here.
+    ${CMAKE_CURRENT_SOURCE_DIR}/lib/libjoypad/src/devices/usb/hid/sony/ds3.c
     ${CMAKE_CURRENT_SOURCE_DIR}/lib/libjoypad/src/devices/usb/hid/sony/ds4.c
     ${CMAKE_CURRENT_SOURCE_DIR}/lib/libjoypad/src/devices/usb/hid/sony/ds5.c
     ${CMAKE_CURRENT_SOURCE_DIR}/lib/libjoypad/src/devices/usb/hid/sony/psc.c
