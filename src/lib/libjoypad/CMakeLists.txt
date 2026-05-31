@@ -98,4 +98,18 @@ if(LIBJOYPAD_BUILD_TESTS)
         -Wall -Wextra -Wpedantic
     )
     add_test(NAME libjoypad_switch_pro_input COMMAND libjoypad_switch_pro_input)
+
+    # Fixture replay — runs against tests/fixtures/<vendor>/<device>/captured/
+    # when real-hardware captures are present; otherwise the runner exits OK
+    # with a notice so it stays a green CI step until a capture session lands.
+    add_executable(libjoypad_ds5_fixture_replay tests/replay/ds5_fixture_replay.c)
+    target_link_libraries(libjoypad_ds5_fixture_replay PRIVATE libjoypad)
+    target_compile_options(libjoypad_ds5_fixture_replay PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    add_test(
+        NAME libjoypad_ds5_fixture_replay
+        COMMAND libjoypad_ds5_fixture_replay
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    )
 endif()
