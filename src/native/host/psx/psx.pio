@@ -1,0 +1,56 @@
+; psx.pio - PS1 / PS2 controller host SIO clock engine (clean-room)
+;
+; Drives a full poll transaction in hardware so the CPU never bit-bangs / blocks:
+;   - idles with CLK, ATT high (DAT released/input)
+;   - blocks on `pull` until the CPU pushes a 32-bit command word (trigger)
+;   - drops ATT, then clocks 21 bytes LSB-first:
+;       * first 4 bytes shift CMD out from the 32-bit word: 0x01, 0x42, then the
+;         small-motor (on/off) and large-motor (PWM) rumble bytes
+;       * remaining 17 bytes just clock to read DAT (CMD idles low = 0x00)
+;   - ACTIVE PULL-UP: each bit, DAT is briefly DRIVEN high (weak 2mA) then released
+;     to input before sampling. The 2mA charge wins on a released '1' bit (fast rise
+;     despite the weak internal pull-up + cable capacitance) but loses to the
+;     controller's strong pull-down on a '0' bit, so the read stays correct with
+;     only ~2mA of brief contention. This lets old analog pads (e.g. Sony SCPH-110)
+;     read clean analog at the fast clock instead of corrupting at the 0x00/0xFF
+;     extremes where DAT can't rise in time.
+;   - autopushes each received byte to the RX FIFO (a DMA channel drains it)
+;   - returns to idle (ATT high) and waits for the next trigger
+;
+; Pin map (configured in psx_host.c). CLK/ATT must be consecutive (CLK, CLK+1):
+;   side-set (2): bit0 = CLK, bit1 = ATT   (side-base = CLK gpio)
+;   set  pins (1): DAT                      (driven high then released each bit)
+;   out  pins (1): CMD
+;   in   pins (1): DAT
+; Side-set values used: 0b11 = CLK1/ATT1 (idle), 0b01 = CLK1/ATT0, 0b00 = CLK0/ATT0.
+
+.program psx
+.side_set 2
+
+.wrap_target
+    set y, 3         side 0b11 [7]      ; 4 command bytes (0x01,0x42,smallMotor,largeMotor); idle CLK=1 ATT=1
+    pull             side 0b11 [7]      ; wait for CPU trigger word (idle high)
+    nop              side 0b01 [7]      ; ATT low -> select (CLK stays high)
+
+cmd_byte:
+    set x, 7         side 0b01 [7]      ; 8 bits per byte (CLK high)
+cmd_bit:
+    out pins, 1      side 0b01          ; drive CMD bit (LSB first), CLK high
+    set pindirs, 1   side 0b00          ; DAT -> output, CLK=0 (falling)
+    set pins, 1      side 0b00          ; DAT=1 (active pull-up charge)
+    set pindirs, 0   side 0b00 [2]      ; DAT -> input (release) + settle
+    in pins, 1       side 0b00          ; sample DAT (CLK still low)
+    jmp x-- cmd_bit  side 0b01          ; CLK=1 (rising edge)
+    jmp y-- cmd_byte side 0b01
+    set y, 16        side 0b01          ; 17 more data bytes (4 cmd + 17 = 21 = PSX_HW_BYTES)
+
+data_byte:
+    set x, 7         side 0b01 [7]
+data_bit:
+    set pindirs, 1   side 0b00          ; DAT -> output, CLK=0 (falling)
+    set pins, 1      side 0b00          ; DAT=1 (active pull-up charge)
+    set pindirs, 0   side 0b00 [2]      ; DAT -> input (release) + settle
+    in pins, 1       side 0b00          ; sample DAT
+    jmp x-- data_bit side 0b01          ; CLK=1 (rising edge)
+    jmp y-- data_byte side 0b01
+.wrap

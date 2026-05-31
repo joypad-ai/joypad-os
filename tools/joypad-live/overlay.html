@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>joypad-live • viewer overlay</title>
+  <style>
+    :root {
+      --bg:        rgba(13, 17, 23, 0.78);  /* translucent dark for OBS overlay */
+      --panel:     rgba(22, 27, 34, 0.92);
+      --border:    rgba(255, 255, 255, 0.10);
+      --fg:        #e6edf3;
+      --muted:     #8b949e;
+      --accent:    #58a6ff;
+      --press:     #f1c40f;   /* yellow — buttons */
+      --effect:    #ff7b72;   /* red    — profile swap chaos */
+      --overlay:   #d2a8ff;   /* purple — overlay tweaks */
+      --reset:     #3fb950;   /* green  — back to neutral */
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0;
+      background: transparent;            /* OBS browser source needs transparency */
+      color: var(--fg);
+      font: 12px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text",
+                     Inter, system-ui, sans-serif;
+      width: 100%;
+      overflow: hidden;
+    }
+    /* Compact panel — sizes to content, doesn't dim surrounding video. */
+    .frame {
+      background: var(--bg);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      border-radius: 12px;
+      padding: 8px 10px;
+      margin: 6px;
+      max-width: 320px;
+      display: flex; flex-direction: column; gap: 6px;
+    }
+    header {
+      display: flex; align-items: center; gap: 6px;
+      padding-bottom: 4px;
+      border-bottom: 1px solid var(--border);
+    }
+    header .logo {
+      width: 18px; height: 15px;
+      color: #fff;
+      fill: currentColor;
+      filter: drop-shadow(0 0 4px rgba(255,255,255,0.35));
+      flex-shrink: 0;
+    }
+    header h1 {
+      font-size: 10px; margin: 0;
+      letter-spacing: 0.08em; text-transform: uppercase;
+      color: var(--accent); font-weight: 700;
+    }
+    header .subtitle {
+      font-size: 9px; color: var(--muted);
+      margin-left: auto;
+    }
+    .active-banner {
+      display: flex; align-items: center; gap: 6px;
+      padding: 5px 8px;
+      background: var(--panel);
+      border-left: 2px solid var(--accent);
+      border-radius: 5px;
+      font-size: 11px; font-weight: 600;
+      transition: all 0.3s;
+      opacity: 0.45;
+    }
+    .active-banner.live {
+      opacity: 1;
+      border-left-color: var(--effect);
+      box-shadow: 0 0 12px rgba(255, 123, 114, 0.35);
+    }
+    .active-banner .label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .active-banner .timer {
+      font-variant-numeric: tabular-nums;
+      color: var(--muted); font-size: 10px;
+    }
+
+    h2 {
+      font-size: 8px; margin: 2px 0 0;
+      color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.14em;
+      font-weight: 700;
+    }
+    /* Commands as a single compact line, comma-separated. */
+    .commands {
+      font: 10.5px "SF Mono", Menlo, monospace;
+      color: var(--muted);
+      line-height: 1.55;
+      letter-spacing: -0.02em;
+    }
+    .commands code {
+      color: var(--accent);
+      background: rgba(88,166,255,0.10);
+      padding: 1px 4px;
+      border-radius: 3px;
+    }
+
+    .feed {
+      max-height: 160px;
+      min-height: 50px;
+      display: flex; flex-direction: column-reverse;
+      gap: 4px;
+      overflow: hidden;
+      mask-image: linear-gradient(to bottom, transparent 0%, black 16%, black 100%);
+    }
+    .feed-row {
+      display: flex; align-items: center; gap: 6px;
+      padding: 4px 7px;
+      background: var(--panel);
+      border-left: 2px solid var(--muted);
+      border-radius: 4px;
+      font-size: 10.5px;
+      animation: slidein 0.35s cubic-bezier(.2, .8, .2, 1);
+    }
+    .feed-row.press   { border-left-color: var(--press); }
+    .feed-row.effect  { border-left-color: var(--effect); }
+    .feed-row.overlay { border-left-color: var(--overlay); }
+    .feed-row.reset   { border-left-color: var(--reset); }
+    .feed-row .icon { font-size: 14px; }
+    .feed-row .user {
+      color: var(--accent); font-weight: 600;
+    }
+    .feed-row .platform {
+      color: var(--muted); font-size: 8.5px; font-weight: 500;
+      padding: 0 4px;
+      border: 1px solid var(--border); border-radius: 3px;
+      text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    .feed-row .what { color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .feed-row .when { margin-left: auto; color: var(--muted); font-size: 9px; flex-shrink: 0; }
+
+    .empty-feed {
+      color: var(--muted); font-size: 10px; text-align: center; padding: 12px;
+      font-style: italic;
+    }
+
+    footer {
+      display: flex; gap: 6px; align-items: center;
+      padding-top: 4px; border-top: 1px solid var(--border);
+      font-size: 9px; color: var(--muted);
+    }
+    .dot {
+      display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+      background: var(--muted); transition: background 0.3s;
+    }
+    .dot.live { background: var(--reset); box-shadow: 0 0 5px var(--reset); }
+    footer .count { margin-left: auto; }
+
+    @keyframes slidein {
+      from { transform: translateX(-8px); opacity: 0; }
+      to   { transform: translateX(0);    opacity: 1; }
+    }
+    @keyframes pulse {
+      0%,100% { transform: scale(1); }
+      50%     { transform: scale(1.05); }
+    }
+    .pulse { animation: pulse 0.3s ease-out; }
+  </style>
+</head>
+<body>
+  <div class="frame">
+
+    <header>
+      <svg class="logo" viewBox="0 0 397.996 338.084" xmlns="http://www.w3.org/2000/svg" aria-label="joypad" role="img">
+        <path d="m 357.42694,336.26777 c -33.29773,7.65631 -58.60821,-12.8291 -64.8002,-41.89658 -4.48505,-21.05435 -20.13989,-34.43521 -41.64267,-34.63198 -35.81799,-0.32776 -71.64902,-0.46286 -107.45952,0.17117 -16.81291,0.2977 -28.84124,9.37384 -35.26535,25.06463 -2.06651,5.04749 -3.14345,10.49817 -4.70241,15.75571 C 92.47487,338.10447 48.214921,350.35316 19.49904,324.00224 2.3782892,308.29151 -3.3464188,289.08967 1.8456132,266.52741 13.130883,217.48661 24.260575,168.40934 35.758531,119.41845 41.699815,94.103585 65.213212,76.120155 91.349534,76.120575 c 70.810436,0.001 141.620866,-0.002 212.431286,-0.005 29.53644,-0.001 52.57718,17.43982 59.25794,46.037985 11.45129,49.01944 22.09143,98.22827 33.52347,147.25235 6.99435,29.99414 -12.48102,58.94345 -39.13529,66.86151 M 153.75275,149.73896 c -6.47266,-0.77316 -12.96955,-0.46731 -19.45481,-0.33981 -3.36865,0.0662 -4.86082,-1.19422 -4.72943,-4.68344 0.17527,-4.65428 0.0739,-9.32071 0.027,-13.98127 -0.0957,-9.51214 -6.65008,-16.22579 -15.85301,-16.29043 -9.43478,-0.0663 -15.460557,5.79492 -15.753373,15.50749 -0.150436,4.98958 -0.175247,9.9915 -0.0054,14.9793 0.120132,3.52676 -1.409073,4.69064 -4.772553,4.61303 -5.818893,-0.13421 -11.644653,-0.0309 -17.466537,0.0471 -3.683167,0.0494 -6.735764,1.59052 -9.27301,4.23148 -4.798401,4.99463 -5.626892,11.02649 -3.325043,17.11899 2.554291,6.76077 8.402298,9.66821 15.352402,10.08001 4.976852,0.29486 9.988968,0.20282 14.976806,0.0331 3.494309,-0.11898 4.755905,1.36326 4.661988,4.73822 -0.134247,4.82273 -0.128479,9.6569 0.0363,14.4787 0.285034,8.34024 6.90223,14.71125 15.08773,14.71564 8.74415,0.005 16.07367,-6.65323 16.31498,-14.95099 0.12578,-4.32449 0.26415,-8.67181 -0.0339,-12.97903 -0.3071,-4.43854 1.07463,-6.3848 5.8245,-6.05216 4.96763,0.3479 9.99564,0.26584 14.97196,-0.0401 8.31787,-0.51132 15.25345,-6.24441 16.22265,-13.01742 1.24622,-8.70853 -2.80777,-14.84137 -12.80935,-18.20847 m 28.2222,70.17832 c 15.358,9.13894 32.99548,5.45126 41.95092,-8.77118 3.77106,-5.98896 4.19269,-10.54364 1.21595,-13.13559 -3.19434,-2.78144 -6.75226,-1.79251 -12.41864,3.45175 -8.28373,7.66662 -17.43286,8.17944 -26.62705,1.46945 -1.33987,-0.97787 -2.55823,-2.129 -3.93219,-3.05197 -2.59918,-1.74606 -5.25973,-2.8364 -8.22378,-0.58182 -2.99842,2.28067 -3.32166,5.1991 -2.18378,8.45502 1.77234,5.07129 5.35449,8.70398 10.21857,12.16434 M 313.73923,180.2425 c 8.46167,2.1272 16.84469,-1.26254 20.44534,-8.26733 3.26596,-6.35367 1.62393,-14.59317 -3.79037,-19.01956 -5.57144,-4.5549 -16.42383,-4.93912 -21.90763,-0.63227 -11.26416,8.84653 -6.0187,24.54767 5.25266,27.91916 m -39.43555,-62.06541 c -1.01434,1.0946 -2.19107,2.07957 -3.01629,3.30186 -4.81101,7.12615 -3.69187,16.7283 2.51577,22.31 5.79819,5.21353 15.05744,5.11368 21.57416,-0.23267 4.99408,-4.0972 6.3049,-15.55795 2.48221,-21.70279 -4.49716,-7.22909 -14.27606,-8.97506 -23.55585,-3.6764 m -40.17813,52.27363 c 0.69843,1.3165 1.26712,2.72431 2.11789,3.93363 3.56171,5.06274 10.74133,7.83771 16.74127,6.35614 6.47077,-1.59787 11.10974,-5.49201 12.53684,-12.10977 1.44037,-6.67917 -0.40808,-12.51383 -6.23276,-16.6623 -4.68259,-3.33508 -14.66824,-3.57449 -19.46439,-0.28116 -6.48922,4.45591 -7.73813,10.77408 -5.69885,18.76346 m 51.035,11.48157 c -9.00347,0.6756 -14.87844,5.52841 -16.58459,13.69916 -1.56174,7.47912 3.39087,15.92853 10.63126,18.13739 8.26126,2.52029 17.8012,-1.29242 19.65615,-8.98352 2.55808,-10.60669 1.81437,-19.13825 -13.70282,-22.85303 z"/>
+        <path d="m 210.48465,2.5678654 c 13.41632,7.6261496 18.76877,21.5245196 13.3393,33.9345496 -5.45383,12.46577 -19.63974,19.00038 -32.70649,15.0659 -13.78192,-4.14982 -21.9725,-18.98614 -18.04123,-32.67973 3.84998,-13.4101896 19.15308,-21.7896196 32.8375,-17.95630961 1.43341,0.40153001 2.82132,0.96552001 4.57092,1.63559001 z"/>
+      </svg>
+      <h1>chat is in control</h1>
+      <span class="subtitle" id="subtitle">connecting…</span>
+    </header>
+
+    <div id="active" class="active-banner">
+      <span class="label" id="active-label">no active effect — try one below</span>
+      <span class="timer" id="active-timer"></span>
+    </div>
+
+    <h2>commands</h2>
+    <div class="commands">
+      <code>!chaos</code> <code>!aswap</code> <code>!swap</code>
+      <code>!invertx</code> <code>!inverty</code> <code>!invertall</code>
+      <code>!fullchaos</code> <code>!neutral</code>
+      <code>!press &lt;btn&gt;</code> <code>!hold &lt;btn&gt;</code>
+      <code>!mash &lt;btn&gt;</code> <code>!effects</code>
+    </div>
+
+    <h2>live feed</h2>
+    <div id="feed" class="feed">
+      <div class="empty-feed" id="empty">waiting for chat to do something…</div>
+    </div>
+
+    <footer>
+      <span class="dot" id="dot"></span>
+      <span id="conn-text">disconnected</span>
+      <span class="count" id="count">0 events</span>
+    </footer>
+  </div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const feed = $('feed');
+const KIND_ICONS  = { press: '🎮', effect: '💥', overlay: '🔄', reset: '🛑' };
+const KIND_LABELS = { press: 'pressed', effect: 'triggered', overlay: 'tweaked', reset: 'reset' };
+
+let total = 0;
+let active = null;       // { label, kind, expiresAt, kindClass }
+let timerInterval = null;
+
+function setConn(ok) {
+  $('dot').classList.toggle('live', ok);
+  $('conn-text').textContent = ok ? 'live' : 'disconnected';
+  $('subtitle').textContent  = ok ? 'use chat — twitch.tv/ffpsx' : 'reconnecting…';
+}
+
+function renderActive() {
+  const banner = $('active');
+  const label = $('active-label');
+  const timer = $('active-timer');
+  if (!active || (active.expiresAt && Date.now() >= active.expiresAt)) {
+    banner.classList.remove('live');
+    label.textContent = 'no active effect — try one below';
+    timer.textContent = '';
+    return;
+  }
+  banner.classList.add('live');
+  label.textContent = active.label;
+  if (active.expiresAt) {
+    const sec = Math.max(0, Math.ceil((active.expiresAt - Date.now()) / 1000));
+    timer.textContent = `↻ ${sec}s`;
+  } else {
+    timer.textContent = '';
+  }
+}
+
+function pushEvent(ev) {
+  // remove the empty placeholder once events arrive
+  const empty = $('empty');
+  if (empty) empty.remove();
+
+  total++;
+  $('count').textContent = `${total} event${total === 1 ? '' : 's'}`;
+
+  // Update active banner for state-bearing events
+  if (ev.kind === 'effect' || ev.kind === 'overlay' || ev.kind === 'press') {
+    if (ev.kind === 'press') {
+      // press is transient — only show for ~1s in the banner, no countdown
+      active = { label: `${ev.user} → ${ev.label}`, expiresAt: Date.now() + 1000, kindClass: ev.kind };
+    } else {
+      // effects/overlays have a duration on the bot side; we don't know exact
+      // expiry but the bot will fire a 'reset' kind when it fires.
+      active = { label: `${ev.user} → ${ev.label}`, expiresAt: null, kindClass: ev.kind };
+    }
+    renderActive();
+  } else if (ev.kind === 'reset') {
+    active = null;
+    renderActive();
+  }
+
+  // Render in feed (skip purely-automatic timer resets to keep the feed clean —
+  // the banner already shows "no active effect" when those happen)
+  if (ev.kind === 'reset' && ev.user === 'system') return;
+
+  const row = document.createElement('div');
+  row.className = `feed-row ${ev.kind || ''}`;
+  const when = new Date(ev.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  row.innerHTML = `
+    <span class="icon">${KIND_ICONS[ev.kind] || '•'}</span>
+    <span class="user">${escapeHtml(ev.user || '?')}</span>
+    <span class="platform">${escapeHtml(ev.platform || '?')}</span>
+    <span class="what">${KIND_LABELS[ev.kind] || ''} <strong>${escapeHtml(ev.label || '')}</strong></span>
+    <span class="when">${when}</span>
+  `;
+  feed.appendChild(row);
+  // cap visible rows
+  while (feed.children.length > 12) feed.removeChild(feed.firstChild);
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// Tick the active banner timer every 200ms
+setInterval(renderActive, 200);
+
+// ----- SSE connection with auto-reconnect -----
+function connect() {
+  const es = new EventSource('/events');
+  es.onopen    = () => setConn(true);
+  es.onerror   = () => { setConn(false); es.close(); setTimeout(connect, 1500); };
+  es.onmessage = (m) => {
+    try {
+      const ev = JSON.parse(m.data);
+      pushEvent(ev);
+    } catch (e) { /* ignore */ }
+  };
+}
+connect();
+</script>
+</body>
+</html>

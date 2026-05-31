@@ -187,6 +187,14 @@ static const char* get_device_name(const input_event_t* event) {
                 case LAYOUT_WII_UDRAW:        return "uDraw Tablet";
                 case LAYOUT_WII_MOTIONPLUS:   return "MotionPlus";
                 case LAYOUT_WII_DUAL_NUNCHUCK: return "Dual Nunchuck";
+                case LAYOUT_PSX_DIGITAL:      return "PS1 Controller";
+                case LAYOUT_PSX_DUALSHOCK:    return "DualShock";
+                case LAYOUT_PSX_DUALSHOCK2:   return "DualShock 2";
+                case LAYOUT_PSX_NEGCON:       return "neGcon";
+                case LAYOUT_PSX_FLIGHTSTICK:  return "Analog Joystick";
+                case LAYOUT_PSX_GUNCON:       return "GunCon";
+                case LAYOUT_PSX_JOGCON:       return "JogCon";
+                case LAYOUT_PSX_MOUSE:        return "PlayStation Mouse";
                 default:                      return "Native";
             }
 #ifdef I2C_PEER_ENABLED
@@ -222,11 +230,13 @@ static router_config_t router_config;
 
 // Global d-pad mode (0=dpad, 1=left stick, 2=right stick)
 static uint8_t global_dpad_mode = 0;
+static bool global_shoulder_swap = false;  // swap L1<->L2, R1<->R2
 
 // Global button combo hotkeys
 static struct {
     uint32_t input_mask;
     uint32_t output_mask;
+    uint8_t required_layout;   // controller_layout_t, 0 = any layout
     bool fired;
 } router_combos[ROUTER_COMBO_MAX];
 
@@ -806,13 +816,32 @@ static inline void router_merge_mode(const input_event_t* event, output_target_t
 }
 
 // Main input submission function (called by input drivers)
+// Host-side synthetic button overlay (INPUT.INJECT). OR'd into every real
+// input event before profile/overlay processing. RAM only, never persisted.
+static uint32_t s_inject_buttons = 0;
+
+void router_set_inject_buttons(uint32_t buttons) {
+    s_inject_buttons = buttons;
+}
+
+uint32_t router_get_inject_buttons(void) {
+    return s_inject_buttons;
+}
+
 void router_submit_input(const input_event_t* event) {
     if (!event) return;
     if (route_count == 0) return;
 
-    // Stream input to CDC for web config (if enabled)
+    // Stream input to CDC for web config (only when a host is actively
+    // consuming the stream). Without this gate the prep work below —
+    // notably get_device_name(), which reaches into tuh_vid_pid_get() and
+    // the HID registry — runs on every USB controller report (~1 kHz on a
+    // native HID pad) even on output modes whose USB device is in HOST
+    // mode (usb2gc, usb2dc, etc.) where CDC isn't enumerated at all and
+    // the callee returns immediately anyway. Tight per-event loop matters
+    // for high-precision input like Melee dash dancing.
 #ifdef CONFIG_USB
-    {
+    if (cdc_commands_is_input_streaming()) {
         static const char* transport_names[] = {
             [INPUT_TRANSPORT_NONE]       = "none",
             [INPUT_TRANSPORT_USB]        = "usb",
@@ -847,10 +876,24 @@ void router_submit_input(const input_event_t* event) {
     }
 #endif
 
-    // Apply custom profile (button remap, stick sens, SOCD, flags, thresholds).
-    // Done here in the router so it applies uniformly to ALL output interfaces.
+    // Working copy used by every layer below (custom profile, overlay,
+    // host-injected buttons, hotkey combos).
     static input_event_t remapped;
     bool did_remap = false;
+
+    // Host-side synthetic button overlay (INPUT.INJECT) — OR'd into the
+    // real event so chat-driven button presses merge with the streamer's
+    // controller regardless of routing mode (works on SIMPLE, MERGE,
+    // BROADCAST). Buttons-only for now; analog injection lives below.
+    if (s_inject_buttons) {
+        remapped = *event;
+        remapped.buttons |= s_inject_buttons;
+        did_remap = true;
+        event = &remapped;
+    }
+
+    // Apply custom profile (button remap, stick sens, SOCD, flags, thresholds).
+    // Done here in the router so it applies uniformly to ALL output interfaces.
     {
         const custom_profile_t* cp = flash_get_active_custom_profile();
         if (cp) {
@@ -890,6 +933,13 @@ void router_submit_input(const input_event_t* event) {
             if (cp->flags & PROFILE_FLAG_INVERT_RY) {
                 remapped.analog[ANALOG_RY] = 255 - remapped.analog[ANALOG_RY];
             }
+            // Invert X axes
+            if (cp->flags & PROFILE_FLAG_INVERT_LX) {
+                remapped.analog[ANALOG_LX] = 255 - remapped.analog[ANALOG_LX];
+            }
+            if (cp->flags & PROFILE_FLAG_INVERT_RX) {
+                remapped.analog[ANALOG_RX] = 255 - remapped.analog[ANALOG_RX];
+            }
 
             // SOCD cleaning
             if (cp->socd_mode > 0 && cp->socd_mode <= 3) {
@@ -916,10 +966,89 @@ void router_submit_input(const input_event_t* event) {
         }
     }
 
+    // Apply runtime overlay (OVERLAY.SET) — composes ON TOP of whatever
+    // profile is active, including the output device's built-in profile_t
+    // (the overlay's stick/SOCD/threshold tweaks run before output dispatch).
+    // Lets joypad-live add things like "invert LX" without disturbing the
+    // active profile's button_map. Fields with value 0 are skipped, so the
+    // overlay is strictly additive.
+    {
+        const runtime_overlay_t* ov = flash_get_overlay();
+        if (ov) {
+            if (!did_remap) {
+                remapped = *event;
+            }
+            // Stick sensitivity (replace if non-zero)
+            if (ov->left_stick_sens != 0 && ov->left_stick_sens != 100) {
+                float sens = ov->left_stick_sens / 100.0f;
+                int16_t rx = (int16_t)remapped.analog[ANALOG_LX] - 128;
+                int16_t ry = (int16_t)remapped.analog[ANALOG_LY] - 128;
+                remapped.analog[ANALOG_LX] = (uint8_t)(128 + (int16_t)(rx * sens));
+                remapped.analog[ANALOG_LY] = (uint8_t)(128 + (int16_t)(ry * sens));
+            }
+            if (ov->right_stick_sens != 0 && ov->right_stick_sens != 100) {
+                float sens = ov->right_stick_sens / 100.0f;
+                int16_t rx = (int16_t)remapped.analog[ANALOG_RX] - 128;
+                int16_t ry = (int16_t)remapped.analog[ANALOG_RY] - 128;
+                remapped.analog[ANALOG_RX] = (uint8_t)(128 + (int16_t)(rx * sens));
+                remapped.analog[ANALOG_RY] = (uint8_t)(128 + (int16_t)(ry * sens));
+            }
+            // Swap sticks
+            if (ov->flags & PROFILE_FLAG_SWAP_STICKS) {
+                uint8_t tx = remapped.analog[ANALOG_LX], ty = remapped.analog[ANALOG_LY];
+                remapped.analog[ANALOG_LX] = remapped.analog[ANALOG_RX];
+                remapped.analog[ANALOG_LY] = remapped.analog[ANALOG_RY];
+                remapped.analog[ANALOG_RX] = tx;
+                remapped.analog[ANALOG_RY] = ty;
+            }
+            // Invert axes
+            if (ov->flags & PROFILE_FLAG_INVERT_LY) {
+                remapped.analog[ANALOG_LY] = 255 - remapped.analog[ANALOG_LY];
+            }
+            if (ov->flags & PROFILE_FLAG_INVERT_RY) {
+                remapped.analog[ANALOG_RY] = 255 - remapped.analog[ANALOG_RY];
+            }
+            if (ov->flags & PROFILE_FLAG_INVERT_LX) {
+                remapped.analog[ANALOG_LX] = 255 - remapped.analog[ANALOG_LX];
+            }
+            if (ov->flags & PROFILE_FLAG_INVERT_RX) {
+                remapped.analog[ANALOG_RX] = 255 - remapped.analog[ANALOG_RX];
+            }
+            // SOCD cleaning
+            if (ov->socd_mode > 0 && ov->socd_mode <= 3) {
+                remapped.buttons = apply_socd(remapped.buttons,
+                    (socd_mode_t)ov->socd_mode, 0);
+            }
+            // L2/R2 thresholds
+            if (ov->l2_threshold != 0) {
+                remapped.buttons &= ~JP_BUTTON_L2;
+                if (remapped.analog[ANALOG_L2] >= ov->l2_threshold) {
+                    remapped.buttons |= JP_BUTTON_L2;
+                }
+            }
+            if (ov->r2_threshold != 0) {
+                remapped.buttons &= ~JP_BUTTON_R2;
+                if (remapped.analog[ANALOG_R2] >= ov->r2_threshold) {
+                    remapped.buttons |= JP_BUTTON_R2;
+                }
+            }
+            did_remap = true;
+            event = &remapped;
+        }
+    }
+
     // Apply button combo hotkeys
     for (int c = 0; c < ROUTER_COMBO_MAX; c++) {
         uint32_t in = router_combos[c].input_mask;
         if (!in) continue;
+
+        // Layout filter: a combo can be restricted to one controller type
+        // (e.g. GameCube S2+dpad vs GBA S1+dpad on the same gc2usb app).
+        if (router_combos[c].required_layout &&
+            event->layout != router_combos[c].required_layout) {
+            router_combos[c].fired = false;
+            continue;
+        }
 
         bool held = (event->buttons & in) == in;
         if (!held) {
@@ -972,6 +1101,14 @@ void router_submit_input(const input_event_t* event) {
                 }
                 remapped.buttons &= ~in;
                 break;
+            case 7:  // Toggle shoulder swap (L1<->L2, R1<->R2)
+                if (!router_combos[c].fired) {
+                    global_shoulder_swap = !global_shoulder_swap;
+                    flash_set_shoulder_swap(global_shoulder_swap);  // persist
+                    router_combos[c].fired = true;
+                }
+                remapped.buttons &= ~in;
+                break;
         }
     }
     if (did_remap) event = &remapped;
@@ -1005,6 +1142,21 @@ void router_submit_input(const input_event_t* event) {
                 remapped.analog[3] = ay;
             }
         }
+        event = &remapped;
+    }
+
+    // Apply global shoulder swap (L1<->L2, R1<->R2). Swaps the digital button
+    // bits; the analog trigger values aren't touched (GBA shoulders are
+    // digital-only, which is the use case this serves).
+    if (global_shoulder_swap) {
+        if (!did_remap) { remapped = *event; did_remap = true; }
+        uint32_t b = remapped.buttons;
+        uint32_t swapped = b & ~(JP_BUTTON_L1 | JP_BUTTON_R1 | JP_BUTTON_L2 | JP_BUTTON_R2);
+        if (b & JP_BUTTON_L1) swapped |= JP_BUTTON_L2;
+        if (b & JP_BUTTON_R1) swapped |= JP_BUTTON_R2;
+        if (b & JP_BUTTON_L2) swapped |= JP_BUTTON_L1;
+        if (b & JP_BUTTON_R2) swapped |= JP_BUTTON_R1;
+        remapped.buttons = swapped;
         event = &remapped;
     }
 
@@ -1347,5 +1499,15 @@ void router_set_combo(uint8_t index, uint32_t input_mask, uint32_t output_mask) 
     if (index >= ROUTER_COMBO_MAX) return;
     router_combos[index].input_mask = input_mask;
     router_combos[index].output_mask = output_mask;
+    router_combos[index].required_layout = 0;  // any layout by default
     router_combos[index].fired = false;
+}
+
+void router_set_combo_layout(uint8_t index, uint8_t required_layout) {
+    if (index >= ROUTER_COMBO_MAX) return;
+    router_combos[index].required_layout = required_layout;
+}
+
+void router_set_shoulder_swap(bool on) {
+    global_shoulder_swap = on;
 }

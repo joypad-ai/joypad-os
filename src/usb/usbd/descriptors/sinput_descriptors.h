@@ -145,15 +145,19 @@ static const uint8_t sinput_report_descriptor[] = {
     0x09, 0x05,        // Usage (Game Pad)
     0xA1, 0x01,        // Collection (Application)
 
-    // === Feature Response Report (12 bytes) ===
-    // Sent as Input report in response to feature request command
+    // === Feature Response Report (63 bytes payload → 64 on the wire) ===
+    // Sent as an Input report in response to a feature request command.
+    // SDL's SInput driver (RetrieveSDLFeatures) requires this reply to be a
+    // full 64-byte packet: [report id][command echo][24-byte struct][pad].
+    // Declaring fewer bytes makes the host read a short packet and the
+    // handshake fails, so the SInput driver drops the device.
     0x85, SINPUT_REPORT_ID_FEATURES,  // Report ID (2)
     0x06, 0x00, 0xFF,  //   Usage Page (Vendor Defined)
     0x09, 0x05,        //   Usage (Vendor Usage 5) - Feature Response
     0x15, 0x00,        //   Logical Minimum (0)
     0x26, 0xFF, 0x00,  //   Logical Maximum (255)
     0x75, 0x08,        //   Report Size (8)
-    0x95, 0x18,        //   Report Count (24)
+    0x95, 0x3F,        //   Report Count (63)
     0x81, 0x02,        //   Input (Data,Var,Abs)
 
     // === Input Report (64 bytes) ===

@@ -163,4 +163,5 @@ USB device output does not have console-specific profiles. Button remapping is h
 | `neogeo2usb` | Neo Geo controllers to USB HID |
 | `lodgenet2usb` | LodgeNet controllers to USB HID |
 | `nuon2usb` | Nuon controllers to USB HID (experimental) |
+| `psx2usb` | PSX/PS2 controllers to USB HID |
 | `controller_*` | Custom GPIO controllers to USB HID |

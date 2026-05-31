@@ -209,6 +209,22 @@ static void on_button_event(button_event_t event)
     }
 }
 
+#ifdef ENABLE_BTSTACK
+// PS3 "Turn off controller" override. The PS3 fires this when the user
+// selects Settings -> Accessory Settings -> Turn off controller in PS3
+// output mode. usb2usb may also be bridging a BT controller (via a USB
+// BT dongle on the Feather USB-Host wing, or built-in CYW43 on Pico W
+// variants), so route the intent to a BT disconnect the same way bt2usb
+// does. Wired (USB) controllers attached to the host port simply stay
+// powered through the cable as usual.
+void app_on_console_shutdown(void)
+{
+    if (!bt_is_ready()) return;
+    printf("[app:usb2usb] Console shutdown -> disconnecting bridged BT controller\n");
+    btstack_host_disconnect_all_devices();
+}
+#endif
+
 // ============================================================================
 // APP INPUT INTERFACES
 // ============================================================================

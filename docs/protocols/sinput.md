@@ -71,6 +71,8 @@ Single HID collection (Game Pad) with three reports:
 
 Sent as an input report in response to a feature request command (output report with command 0x02), or automatically when the connected device changes.
 
+**Framing:** the on-wire input report is `[report ID 0x02][command echo 0x02][24-byte struct][zero pad]` (64 bytes total). SDL's hidapi path reads the report ID at `data[0]`, the echo at `data[1]`, and the struct from `data[2]`. A WebHID host (which strips the report ID) sees the echo at byte 0 and must read the struct from byte 1. The offsets below are relative to the start of the 24-byte struct.
+
 | Offset | Size | Field | Notes |
 |--------|------|-------|-------|
 | 0-1 | 2 | Protocol version | uint16 LE (currently 0x0100 = v1.0) |
@@ -88,6 +90,8 @@ Sent as an input report in response to a feature request command (output report 
 
 ### Gamepad Type Enum (byte 4)
 
+Matches Handheld Legend's canonical `sinput_sdl_gamepad_type_t`.
+
 | Value | Type |
 |-------|------|
 | 0 | Unknown |
@@ -97,13 +101,14 @@ Sent as an input report in response to a feature request command (output report 
 | 4 | PS3 |
 | 5 | PS4 |
 | 6 | PS5 |
-| 7 | Switch Pro |
+| 7 | Switch Pro (Nintendo Pro) |
 | 8 | Joy-Con L |
 | 9 | Joy-Con R |
 | 10 | Joy-Con Pair |
 | 11 | GameCube |
-| 12 | N64 |
-| 13 | SNES |
+| 12 | Steam |
+
+N64/SNES are not canonical SInput types — those inputs are reported as `Standard` with Nintendo face style (BAYX).
 
 ### Face Style Enum (byte 5, upper 3 bits)
 
@@ -111,9 +116,9 @@ Sent as an input report in response to a feature request command (output report 
 |-------|-------|--------|
 | 0 | Unknown | -- |
 | 1 | Xbox | ABXY |
-| 2 | Nintendo | BAYX |
-| 3 | Sony | Cross/Circle/Square/Triangle |
-| 4 | GameCube | AXBY |
+| 2 | GameCube | AXBY |
+| 3 | Nintendo | BAYX |
+| 4 | Sony | Cross/Circle/Square/Triangle |
 
 ## Output Report (ID 0x03, 48 bytes)
 

@@ -46,9 +46,11 @@ typedef enum {
     INPUT_SOURCE_NATIVE_LODGENET,
     INPUT_SOURCE_NATIVE_NUON,
     INPUT_SOURCE_NATIVE_WII,
+    INPUT_SOURCE_NATIVE_PSX,        // PS1/PS2 controller (bit-bang SIO)
     INPUT_SOURCE_GPIO,
     INPUT_SOURCE_SENSORS,
     INPUT_SOURCE_I2C_PEER,
+    INPUT_SOURCE_UART_PEER,         // Inter-MCU UART link (dual-RP2040 boards)
 } input_source_t;
 
 typedef enum {
@@ -137,15 +139,31 @@ void router_init(const router_config_t* config);
 // NOTE: This is the ONLY function input drivers should call!
 void router_submit_input(const input_event_t* event);
 
+// Host-side synthetic input "press overlay" — buttons set via INPUT.INJECT
+// are OR'd into every real input event as it passes through the router.
+// Works in any routing mode (SIMPLE, MERGE, BROADCAST). Pass 0 to release.
+// Lets joypad-live chat-driven button presses merge with the streamer's
+// real controller regardless of how the app is configured for player slots.
+void router_set_inject_buttons(uint32_t buttons);
+uint32_t router_get_inject_buttons(void);
+
 // Set global d-pad mode (applies to all inputs in router)
 // 0=d-pad, 1=left stick, 2=right stick
 void router_set_dpad_mode(uint8_t mode);
 
-// Set button combo hotkeys (up to 4)
+// Set global shoulder swap (L1<->L2, R1<->R2) applied to all inputs.
+void router_set_shoulder_swap(bool on);
+
+// Set button combo hotkeys (up to ROUTER_COMBO_MAX)
 // input_mask: buttons that must all be held (0 = disabled)
 // output_mask: upper byte = action, lower 22 bits = output buttons
-#define ROUTER_COMBO_MAX 4
+#define ROUTER_COMBO_MAX 8
 void router_set_combo(uint8_t index, uint32_t input_mask, uint32_t output_mask);
+// Restrict a combo to events from a specific controller layout
+// (controller_layout_t cast to uint8_t). 0 = LAYOUT_UNKNOWN = match any.
+// Lets one app give different controllers different hotkey modifiers
+// (e.g. GameCube uses S2+dpad, GBA uses S1+dpad).
+void router_set_combo_layout(uint8_t index, uint8_t required_layout);
 
 // ============================================================================
 // OUTPUT RETRIEVAL (Core 1 - Poll or Event Driven)

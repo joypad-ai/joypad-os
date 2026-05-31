@@ -45,6 +45,7 @@ jobs:
           - usb2usb_rp2350usba
           - bt2usb_pico_w
           - bt2usb_pico2_w
+          - bt2usb_waveshare_rp2350b_plus_w
           - bt2n64_pico_w
           - bt2n64_pico2_w
           - btusb2usb_pico_w

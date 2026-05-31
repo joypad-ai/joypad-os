@@ -33,6 +33,11 @@
     #define WS2812_PIN 19
   #elif defined(PICO_DEFAULT_WS2812_PIN)
     #define WS2812_PIN PICO_DEFAULT_WS2812_PIN
+    // Boards like the QT Py RP2040 gate NeoPixel VCC behind a load switch
+    // (GPIO11); without driving it high the pixel stays dark.
+    #if defined(PICO_DEFAULT_WS2812_POWER_PIN)
+      #define WS2812_POWER_PIN PICO_DEFAULT_WS2812_POWER_PIN
+    #endif
   #else
     // No NeoPixel pin known for this board — driver auto-disables.
     #ifndef CONFIG_NO_NEOPIXEL

@@ -268,3 +268,61 @@ void flash_set_dpad_mode(uint8_t mode)
     runtime_settings.router_saved = 1;
     flash_save(&runtime_settings);
 }
+
+// Shoulder-swap persistence — referenced by core/router for the L1<->L2 /
+// R1<->R2 toggle. NVS-backed so the choice survives a reboot, mirroring the
+// RP2040 flash_set_shoulder_swap contract.
+void flash_set_shoulder_swap(uint8_t on)
+{
+    on = on ? 1 : 0;
+    if (!runtime_settings_loaded) return;
+    if (runtime_settings.shoulder_swap == on && runtime_settings.router_saved) return;
+    runtime_settings.shoulder_swap = on;
+    runtime_settings.router_saved = 1;
+    flash_save(&runtime_settings);
+}
+
+// ----------------------------------------------------------------------------
+// RAM-only ephemeral state for joypad-live (PROFILE.SELECT, PROFILE.APPLY,
+// OVERLAY.SET) — mirrors src/core/services/storage/flash.c. No NVS writes,
+// state lives only until reboot.
+// ----------------------------------------------------------------------------
+
+static runtime_overlay_t overlay_slot;
+static bool              overlay_active_flag = false;
+static custom_profile_t  ephemeral_profile;
+static bool              ephemeral_active = false;
+static int8_t            ephemeral_active_idx = -1;   // -1 = no PROFILE.SELECT override
+
+void flash_select_active_profile_index(uint8_t index)
+{
+    ephemeral_active = false;
+    if (!runtime_settings_loaded) return;
+    uint8_t max_index = runtime_settings.custom_profile_count;
+    if (index > max_index) index = max_index;
+    ephemeral_active_idx = (int8_t)index;
+}
+
+void flash_apply_ephemeral_profile(const custom_profile_t* cp)
+{
+    if (!cp) { ephemeral_active = false; return; }
+    ephemeral_profile = *cp;
+    ephemeral_active = true;
+}
+
+void flash_clear_ephemeral_profile(void) { ephemeral_active = false; }
+bool flash_has_ephemeral_profile(void)   { return ephemeral_active; }
+
+void flash_set_overlay(const runtime_overlay_t* o)
+{
+    if (!o) { overlay_active_flag = false; return; }
+    overlay_slot = *o;
+    overlay_active_flag = true;
+}
+
+void flash_clear_overlay(void) { overlay_active_flag = false; }
+
+const runtime_overlay_t* flash_get_overlay(void)
+{
+    return overlay_active_flag ? &overlay_slot : NULL;
+}

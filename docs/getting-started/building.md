@@ -159,6 +159,7 @@ Convert USB/Bluetooth controllers to USB HID gamepad output:
 make usb2usb                # USB → USB HID (Feather USB Host)
 make usb2usb_rp2040zero     # USB → USB HID (RP2040-Zero)
 make snes2usb               # SNES controller → USB HID
+make psx2usb_qtpy           # PSX/PS2 controller → USB HID (QT Py)
 ```
 
 ### Custom Controller Apps
@@ -232,6 +233,7 @@ make clean         # Clean build artifacts
 | `usb2usb` | Feather USB Host | USB/BT | USB HID | USB gamepad passthrough |
 | `usb2usb_rp2040zero` | RP2040-Zero | USB/BT | USB HID | Compact USB passthrough |
 | `snes2usb` | KB2040 | SNES | USB HID | SNES to USB adapter |
+| `psx2usb` | QT Py / KB2040 / Pico | PSX/PS2 | USB HID | PSX/PS2 to USB adapter |
 
 ### Custom Controllers
 

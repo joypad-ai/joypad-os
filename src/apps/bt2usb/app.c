@@ -54,6 +54,56 @@ extern const bt_transport_t bt_transport_cyw43;
 #endif
 
 // ============================================================================
+// USB BUS SUSPEND / RESUME
+// ============================================================================
+// When the USB host (e.g. PS3) enters sleep, the bus suspends (no SOF >3 ms).
+// We drop the active BT link so the bridged controller (e.g. DS4) auto-sleeps
+// instead of staying powered forever — the PS3 keeps VBUS hot during sleep so
+// nothing else would tell the controller to power down. On resume, the existing
+// scan loop reconnects when the controller advertises again.
+
+static volatile bool usb_bus_suspended = false;
+static bool          usb_bus_suspended_seen = false;   // mirror for edge detect
+
+void tud_suspend_cb(bool remote_wakeup_en)
+{
+    (void)remote_wakeup_en;
+    usb_bus_suspended = true;
+}
+
+void tud_resume_cb(void)
+{
+    usb_bus_suspended = false;
+}
+
+// Called from app_task; performs the actual BT disconnect on a suspend edge so
+// btstack APIs run from the main-loop context they expect (not the USB IRQ).
+static void usb_suspend_check(void)
+{
+    bool now = usb_bus_suspended;
+    if (now == usb_bus_suspended_seen) return;
+    usb_bus_suspended_seen = now;
+    if (now) {
+        printf("[app:bt2usb] USB bus suspended -> disconnecting BT to let controller sleep\n");
+        btstack_host_disconnect_all_devices();
+    } else {
+        printf("[app:bt2usb] USB bus resumed -> scan/reconnect will pick the controller back up when it advertises\n");
+    }
+}
+
+// PS3 "Turn off controller" override. The PS3 fires this when the user
+// selects Settings -> Accessory Settings -> Turn off controller while we
+// are in PS3 output mode. The wired DS3 surface can't actually disappear
+// (we stay plugged in), so propagate the intent to the BT side -- a real
+// DS4/DS3 bridged over Bluetooth loses its host and auto-sleeps within a
+// minute. User presses the controller's PS button to wake + re-pair.
+void app_on_console_shutdown(void)
+{
+    printf("[app:bt2usb] Console shutdown -> disconnecting bridged BT controller\n");
+    btstack_host_disconnect_all_devices();
+}
+
+// ============================================================================
 // LED STATUS
 // ============================================================================
 
@@ -386,6 +436,9 @@ void app_init(void)
 
 void app_task(void)
 {
+    // Handle USB suspend/resume edges (PS3 sleep -> drop BT, PS3 wake -> rescan)
+    usb_suspend_check();
+
     // Process button input
     button_task();
 

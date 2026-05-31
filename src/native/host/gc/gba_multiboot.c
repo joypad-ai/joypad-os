@@ -509,7 +509,11 @@ gba_mb_result_t gba_mb_upload(joybus_port_t* port,
 
             // Pump USB device task every 256 bytes (64 words) to prevent
             // panic from EP-claim-while-stack-starved during the long upload.
+            // No-op for builds without a USB device (e.g. gc2dc, native input
+            // + native output, no usbd to pump).
+#ifdef CONFIG_USB
             if ((i & 0xFF) == 0) usbd_task();
+#endif
         }
     }
 

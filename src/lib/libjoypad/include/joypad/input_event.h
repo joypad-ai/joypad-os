@@ -37,6 +37,7 @@ typedef enum {
     INPUT_TRANSPORT_NATIVE,     // Native protocol (3DO, SNES, etc.)
     INPUT_TRANSPORT_I2C,        // I2C peer (STEMMA QT / QWIIC)
     INPUT_TRANSPORT_GPIO,       // Direct GPIO buttons/analog (pad input)
+    INPUT_TRANSPORT_UART,       // UART peer (inter-MCU link, dual-RP2040 boards)
 } input_transport_t;
 
 // ============================================================================

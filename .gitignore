@@ -6,6 +6,7 @@
 src/build
 .DS_Store
 releases/
+backups/
 src/build/
 .dev
 node_modules/

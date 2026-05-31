@@ -188,6 +188,7 @@ void tuh_hid_mount_cb(uint8_t dev_addr, uint8_t instance, uint8_t const* desc_re
   case CONTROLLER_SWITCH2:
   case CONTROLLER_SINPUT:
   case CONTROLLER_SIDEWINDER_COMMANDER:
+  case CONTROLLER_STEAM_2:
     device_interfaces[dev_type]->init(dev_addr, instance);
     break;
   case CONTROLLER_DUALSHOCK4:
@@ -263,6 +264,7 @@ void tuh_hid_umount_cb(uint8_t dev_addr, uint8_t instance)
   case CONTROLLER_SWITCH:
   case CONTROLLER_SWITCH2:
   case CONTROLLER_SINPUT:
+  case CONTROLLER_STEAM_2:
     device_interfaces[dev_type]->unmount(dev_addr, instance);
     break;
   default:

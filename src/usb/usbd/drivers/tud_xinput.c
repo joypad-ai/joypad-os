@@ -17,6 +17,7 @@
 #include "tud_xinput.h"
 #include <string.h>
 #include "lib/libxsm3/xsm3.h"
+#include "platform/platform.h"
 
 // ============================================================================
 // INTERNAL STATE
@@ -52,6 +53,14 @@ static uint8_t _auth_buffer[48];    // Receive buffer for 0x82/0x87 data
 static uint8_t _auth_response[48];  // Response buffer for 0x83
 static uint8_t _auth_response_len;  // Response length for 0x83
 static uint8_t _auth_request_id;    // Which request triggered processing
+
+// Per-board copy of the XSM3 identification packet. The serial-number field
+// (12 bytes at offset 5) is patched from the chip's unique ID so that two
+// adapters report distinct XSM3 identities. An Xbox 360 console tracks wired
+// controllers by this serial; two controllers sharing the static serial cause
+// the console to accept the first and reject the second. Populated in
+// tud_xinput_xsm3_init() and served verbatim for GET_SERIAL (0x81).
+static uint8_t _xsm3_id_data[XSM3_SERIAL_LEN];
 
 // ============================================================================
 // CLASS DRIVER CALLBACKS
@@ -216,10 +225,10 @@ bool tud_xinput_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage, tusb_contr
 
         switch (request->bRequest) {
             case XSM3_REQ_GET_SERIAL: {
-                // 0x81: Return 29-byte identification data
+                // 0x81: Return 29-byte identification data (per-board serial)
                 TU_LOG1("[XINPUT] Auth: GET_SERIAL\r\n");
                 tud_control_xfer(rhport, request,
-                                 (void*)xsm3_id_data_ms_controller,
+                                 (void*)_xsm3_id_data,
                                  XSM3_SERIAL_LEN);
                 return true;
             }
@@ -382,8 +391,29 @@ bool tud_xinput_get_output(xinput_out_report_t* output)
 
 void tud_xinput_xsm3_init(void)
 {
+    // Build a per-board identification packet so multiple adapters present
+    // distinct XSM3 serials to the console (otherwise the console rejects the
+    // second controller as a duplicate of the first).
+    memcpy(_xsm3_id_data, xsm3_id_data_ms_controller, XSM3_SERIAL_LEN);
+
+    // Overwrite the 12-byte serial field (offset 5) with the chip unique ID,
+    // matching the unique USB iSerialNumber string the device already reports.
+    char board_id[XSM3_SERIAL_LEN];
+    platform_get_serial(board_id, sizeof(board_id));
+    for (uint8_t i = 0; i < 12; i++) {
+        char c = board_id[i];
+        _xsm3_id_data[5 + i] = (c != '\0') ? (uint8_t)c : (uint8_t)'0';
+    }
+
+    // Recompute the packet checksum (XOR of bytes [5 .. len), stored at the
+    // last byte) so the patched serial passes the console's validation.
+    uint8_t end = _xsm3_id_data[0x4] + 0x5;  // 0x17 + 0x5 = 0x1C
+    uint8_t checksum = 0x00;
+    for (uint8_t i = 0x5; i < end; i++) checksum ^= _xsm3_id_data[i];
+    _xsm3_id_data[end] = checksum;
+
     xsm3_initialise_state();
-    xsm3_set_identification_data(xsm3_id_data_ms_controller);
+    xsm3_set_identification_data(_xsm3_id_data);
     _auth_state = XSM3_AUTH_IDLE;
     _auth_response_len = 0;
     _auth_request_id = 0;

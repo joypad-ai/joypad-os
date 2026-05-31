@@ -882,16 +882,18 @@ void __not_in_flash_func(dreamcast_update_output)(void)
         dc_state[port].joy2_x = event->analog[ANALOG_RX];
         dc_state[port].joy2_y = event->analog[ANALOG_RY];
 
-        // L trigger: L2 (analog + digital) - consistent with GC/N64 mapping
-        // N64 L -> L2, GC L -> L2, USB L2 -> L2
+        // L trigger: pass the analog level through. Only force full from the
+        // digital L2 bit when there's no analog data (a digital-only pad whose
+        // analog axis stays 0). Otherwise the bit — which the router sets at
+        // the "any press" threshold of 1 — would snap an analog trigger to
+        // full the instant it's touched.
         uint8_t lt = event->analog[ANALOG_L2];
-        if (event->buttons & JP_BUTTON_L2) lt = 255;
+        if ((event->buttons & JP_BUTTON_L2) && lt == 0) lt = 255;
         dc_state[port].lt = lt;
 
-        // R trigger: R2 (analog + digital) - consistent with GC/N64 mapping
-        // N64 R -> R2, GC R -> R2, USB R2 -> R2
+        // R trigger: same rule.
         uint8_t rt = event->analog[ANALOG_R2];
-        if (event->buttons & JP_BUTTON_R2) rt = 255;
+        if ((event->buttons & JP_BUTTON_R2) && rt == 0) rt = 255;
         dc_state[port].rt = rt;
     }
 }

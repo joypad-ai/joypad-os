@@ -59,6 +59,7 @@ BOARD_SCRIPT_feather := boards/build_ada_feather.sh
 BOARD_SCRIPT_macropad := boards/build_ada_macropad.sh
 BOARD_SCRIPT_rp2350usba := boards/build_waveshare_rp2350_usb_a.sh
 BOARD_SCRIPT_rp2040_eth := boards/build_waveshare_rp2040_eth.sh
+BOARD_SCRIPT_waveshare_rp2350b_plus_w := boards/build_waveshare_rp2350b_plus_w.sh
 
 # Console targets (cmake target names)
 CONSOLE_3do := joypad_3do
@@ -86,6 +87,9 @@ CONSOLE_n642nuon_pico := joypad_n642nuon
 CONSOLE_n642nuon_aries64 := joypad_n642nuon_aries64
 CONSOLE_snes3do := joypad_snes3do
 CONSOLE_uart := joypad_uart
+CONSOLE_usb2usb_remapper_v7_b := joypad_usb2usb_remapper_v7_b
+CONSOLE_usb2usb_remapper_v7_a := joypad_usb2usb_remapper_v7_a
+CONSOLE_usb2usb_remapper_v7 := joypad_usb2usb_remapper_v7
 CONSOLE_usb_feather_rp2040 := joypad_usb_feather_rp2040
 CONSOLE_usb_feather_rp2040_usb_host := joypad_usb_feather_rp2040_usb_host
 CONSOLE_usb_feather_rp2040_max3421 := joypad_usb_feather_rp2040_max3421
@@ -101,6 +105,7 @@ CONSOLE_usb2ble := joypad_usb2ble
 CONSOLE_n64 := joypad_n64
 CONSOLE_wifi2usb := joypad_wifi2usb
 CONSOLE_snes2usb := joypad_snes2usb
+CONSOLE_psx2usb := joypad_psx2usb
 CONSOLE_nes2usb := joypad_nes2usb
 CONSOLE_n642usb := joypad_n642usb
 CONSOLE_nuon2usb := joypad_nuon2usb
@@ -151,6 +156,7 @@ APP_usb2neogeo_rp2040zero := rp2040zero neogeo_rp2040zero usb2neogeo_rp2040zero 
 APP_usb2neogeo_retrofrog := rp2040zero neogeo_retrofrog usb2neogeo_retrofrog USB/BT NEOGEO
 APP_n642dc_kb2040 := kb2040 n642dc n642dc_kb2040 N64 Dreamcast
 APP_n642dc_pico2_w := pico2_w n642dc_pico2_w n642dc_pico2_w N64 Dreamcast
+APP_gc2dc_kb2040 := kb2040 gc2dc gc2dc_kb2040 GameCube Dreamcast
 APP_nes2usb_kb2040 := kb2040 nes2usb nes2usb_kb2040 NES USB
 APP_nes2usb_pico_w := pico_w nes2usb nes2usb_pico_w NES USB
 APP_n642nuon_pico := pico n642nuon n642nuon_pico N64 Nuon
@@ -166,9 +172,15 @@ APP_usb2usb_feather_rp2040_usb_host := feather_usbhost usb_feather_rp2040_usb_ho
 APP_usb2usb_feather_rp2040_max3421 := feather usb_feather_rp2040_max3421 usb2usb_feather_rp2040_max3421 USB/BT USB
 APP_usb2usb_feather_rp2040_usb_host_max3421 := feather_usbhost usb_feather_rp2040_usb_host_max3421 usb2usb_feather_rp2040_usb_host_max3421 USB/BT USB
 APP_usb2usb_rp2040zero := rp2040zero usb_rp2040zero usb2usb_rp2040zero USB/BT USB
+# Dual-RP2040 (HID-Remapper v7 / IcemanFGC) — loose-Pico dev rig uses board=pico
+APP_usb2usb_remapper_v7_b := pico usb2usb_remapper_v7_b usb2usb_remapper_v7_b USB UART-link
+APP_usb2usb_remapper_v7_a := pico usb2usb_remapper_v7_a usb2usb_remapper_v7_a UART-link USB
+# Combined single-UF2 (A flash + flash_b_side RAM stage that SWD-flashes B) — flash to the board's USB-C
+APP_usb2usb_remapper_v7 := pico usb2usb_remapper_v7 usb2usb_remapper_v7 USB USB
 APP_usb2usb_rp2350usba := rp2350usba usb_rp2350usba usb2usb_rp2350usba USB/BT USB
 APP_bt2usb_pico_w := pico_w bt2usb bt2usb_pico_w Bluetooth USB
 APP_bt2usb_pico2_w := pico2_w bt2usb bt2usb_pico2_w Bluetooth USB
+APP_bt2usb_waveshare_rp2350b_plus_w := waveshare_rp2350b_plus_w bt2usb bt2usb_waveshare_rp2350b_plus_w Bluetooth USB
 APP_bt2loopy_pico_w := pico_w bt2loopy bt2loopy_pico_w Bluetooth Loopy
 APP_bt2nuon_pico_w := pico_w bt2nuon bt2nuon_pico_w Bluetooth Nuon
 APP_bt2nuon_pico2_w := pico2_w bt2nuon bt2nuon_pico2_w Bluetooth Nuon
@@ -185,6 +197,9 @@ APP_usb2n64_kb2040 := kb2040 n64 usb2n64_kb2040 USB/BT N64
 APP_wifi2usb_pico_w := pico_w wifi2usb wifi2usb_pico_w WiFi USB
 APP_wifi2usb_pico2_w := pico2_w wifi2usb wifi2usb_pico2_w WiFi USB
 APP_snes2usb_kb2040 := kb2040 snes2usb snes2usb_kb2040 SNES USB
+APP_psx2usb_qtpy := qtpy psx2usb psx2usb_qtpy PS1/PS2 USB
+APP_psx2usb_kb2040 := kb2040 psx2usb psx2usb_kb2040 PS1/PS2 USB
+APP_psx2usb_pico := pico psx2usb psx2usb_pico PS1/PS2 USB
 APP_n642usb_kb2040 := kb2040 n642usb n642usb_kb2040 N64 USB
 APP_nuon2usb_kb2040 := kb2040 nuon2usb nuon2usb_kb2040 Nuon USB
 APP_nuon2usb_pico_w := pico_w nuon2usb nuon2usb_pico_w Nuon USB
@@ -485,6 +500,10 @@ usb2neogeo_retrofrog:
 n642dc_kb2040:
 	$(call build_app,n642dc_kb2040)
 
+.PHONY: gc2dc_kb2040
+gc2dc_kb2040:
+	$(call build_app,gc2dc_kb2040)
+
 .PHONY: n642dc_pico2_w
 n642dc_pico2_w:
 	$(call build_app,n642dc_pico2_w)
@@ -529,6 +548,20 @@ usb2usb_feather_rp2040:
 usb2usb_feather_rp2040_usb_host:
 	$(call build_app,usb2usb_feather_rp2040_usb_host)
 
+.PHONY: usb2usb_remapper_v7_b
+usb2usb_remapper_v7_b:
+	$(call build_app,usb2usb_remapper_v7_b)
+
+.PHONY: usb2usb_remapper_v7_a
+usb2usb_remapper_v7_a:
+	$(call build_app,usb2usb_remapper_v7_a)
+
+.PHONY: usb2usb_remapper_v7
+usb2usb_remapper_v7:
+	$(call build_app,usb2usb_remapper_v7)
+	@echo "$(YELLOW)  NOTE: dual-RP2040 board — after flashing, disconnect and$(NC)"
+	@echo "$(YELLOW)        reconnect the board once so the host (B) MCU boots.$(NC)"
+
 .PHONY: usb2usb_feather_rp2040_max3421
 usb2usb_feather_rp2040_max3421:
 	$(call build_app,usb2usb_feather_rp2040_max3421)
@@ -552,6 +585,10 @@ bt2usb_pico_w:
 .PHONY: bt2usb_pico2_w
 bt2usb_pico2_w:
 	$(call build_app,bt2usb_pico2_w)
+
+.PHONY: bt2usb_waveshare_rp2350b_plus_w
+bt2usb_waveshare_rp2350b_plus_w:
+	$(call build_app,bt2usb_waveshare_rp2350b_plus_w)
 
 .PHONY: bt2loopy_pico_w
 bt2loopy_pico_w:
@@ -877,6 +914,18 @@ wifi2usb_pico2_w:
 snes2usb_kb2040:
 	$(call build_app,snes2usb_kb2040)
 
+.PHONY: psx2usb_qtpy
+psx2usb_qtpy:
+	$(call build_app,psx2usb_qtpy)
+
+.PHONY: psx2usb_kb2040
+psx2usb_kb2040:
+	$(call build_app,psx2usb_kb2040)
+
+.PHONY: psx2usb_pico
+psx2usb_pico:
+	$(call build_app,psx2usb_pico)
+
 .PHONY: n642usb_kb2040
 n642usb_kb2040:
 	$(call build_app,n642usb_kb2040)
@@ -1171,6 +1220,10 @@ flash-usb2dc_rp2040zero:
 flash-n642dc_kb2040:
 	@$(MAKE) --no-print-directory _flash_app APP_NAME=n642dc_kb2040
 
+.PHONY: flash-gc2dc_kb2040
+flash-gc2dc_kb2040:
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=gc2dc_kb2040
+
 .PHONY: flash-n642dc_pico2_w
 flash-n642dc_pico2_w:
 	@$(MAKE) --no-print-directory _flash_app APP_NAME=n642dc_pico2_w
@@ -1239,6 +1292,10 @@ flash-bt2usb_pico_w:
 flash-bt2usb_pico2_w:
 	@$(MAKE) --no-print-directory _flash_app APP_NAME=bt2usb_pico2_w
 
+.PHONY: flash-bt2usb_waveshare_rp2350b_plus_w
+flash-bt2usb_waveshare_rp2350b_plus_w:
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=bt2usb_waveshare_rp2350b_plus_w
+
 .PHONY: flash-bt2loopy_pico_w
 flash-bt2loopy_pico_w:
 	@$(MAKE) --no-print-directory _flash_app APP_NAME=bt2loopy_pico_w
@@ -1302,6 +1359,18 @@ flash-wifi2usb_pico2_w:
 .PHONY: flash-snes2usb_kb2040
 flash-snes2usb_kb2040:
 	@$(MAKE) --no-print-directory _flash_app APP_NAME=snes2usb_kb2040
+
+.PHONY: flash-psx2usb_qtpy
+flash-psx2usb_qtpy:
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=psx2usb_qtpy
+
+.PHONY: flash-psx2usb_kb2040
+flash-psx2usb_kb2040:
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=psx2usb_kb2040
+
+.PHONY: flash-psx2usb_pico
+flash-psx2usb_pico:
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=psx2usb_pico
 
 .PHONY: flash-n642usb_kb2040
 flash-n642usb_kb2040:

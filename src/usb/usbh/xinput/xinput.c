@@ -146,6 +146,29 @@ void tuh_xinput_report_received_cb(uint8_t dev_addr, uint8_t instance, xinputh_i
         .chatpad = {xid_itf->chatpad_data[0], xid_itf->chatpad_data[1], xid_itf->chatpad_data[2]},
         .has_chatpad = xid_itf->chatpad_enabled && xid_itf->chatpad_inited
       };
+
+      // Original Xbox (Duke / S-controller) reports per-button analog pressure
+      // on the face + shoulder buttons (the 360 and One are pure digital
+      // there). Forward those values into the router's pressure[] block in
+      // the canonical W3C / PS slot order so any output that consumes
+      // pressure (e.g. PS3 DS3 output) gets the real analog values.
+      if (xid_itf->type == XBOXOG) {
+        // Order: U, R, D, L, L2, R2, L1, R1, triangle, circle, cross, square
+        event.pressure[0]  = 0;                 // d-pad up    (digital on OG)
+        event.pressure[1]  = 0;                 // d-pad right (digital on OG)
+        event.pressure[2]  = 0;                 // d-pad down  (digital on OG)
+        event.pressure[3]  = 0;                 // d-pad left  (digital on OG)
+        event.pressure[4]  = p->bLeftTrigger;   // L2  <- LT
+        event.pressure[5]  = p->bRightTrigger;  // R2  <- RT
+        event.pressure[6]  = p->pressure_white; // L1  <- White (Duke left shoulder)
+        event.pressure[7]  = p->pressure_black; // R1  <- Black (Duke right shoulder)
+        event.pressure[8]  = p->pressure_y;     // triangle <- Y
+        event.pressure[9]  = p->pressure_b;     // circle   <- B
+        event.pressure[10] = p->pressure_a;     // cross    <- A
+        event.pressure[11] = p->pressure_x;     // square   <- X
+        event.has_pressure = true;
+      }
+
       router_submit_input(&event);
     }
   }

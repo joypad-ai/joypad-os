@@ -4435,8 +4435,20 @@ void btstack_host_disconnect_all_devices(void)
     printf("[BTSTACK_HOST] Disconnecting all devices...\n");
 
     for (int i = 0; i < MAX_CLASSIC_CONNECTIONS; i++) {
-        if (classic_state.connections[i].active && classic_state.connections[i].hid_cid) {
-            hid_host_disconnect(classic_state.connections[i].hid_cid);
+        classic_connection_t* c = &classic_state.connections[i];
+        if (!c->active || !c->hid_cid) continue;
+        // Drop the underlying ACL link, not just the HID profile. Closing
+        // only HID (hid_host_disconnect) leaves the ACL up and some pads
+        // (notably the DS4) hold their "connected to host" state past the
+        // HID drop -- lightbar stays solid blue and the controller never
+        // sleeps. Disconnecting the ACL via gap_disconnect() forces the
+        // pad into its post-disconnect state where idle-sleep kicks in.
+        hci_connection_t* hci_conn = hci_connection_for_bd_addr_and_type(
+            c->addr, BD_ADDR_TYPE_ACL);
+        if (hci_conn) {
+            gap_disconnect(hci_conn->con_handle);
+        } else {
+            hid_host_disconnect(c->hid_cid);  // fallback
         }
     }
     for (int i = 0; i < MAX_BLE_CONNECTIONS; i++) {

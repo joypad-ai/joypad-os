@@ -239,6 +239,8 @@ static const tusb_desc_device_t ps3_device_descriptor = {
     .bLength            = sizeof(tusb_desc_device_t),
     .bDescriptorType    = TUSB_DESC_DEVICE,
     .bcdUSB             = 0x0200,  // USB 2.0
+    // Authentic DS3 is a single-HID device (class from interface). A real PS3
+    // rejects a CDC composite / MISC-IAD class, so console modes get no CDC.
     .bDeviceClass       = 0x00,    // Use class from interface
     .bDeviceSubClass    = 0x00,
     .bDeviceProtocol    = 0x00,
@@ -331,7 +333,8 @@ static const uint8_t ps3_report_descriptor[] = {
     0xC0,              // End Collection
 };
 
-// Configuration descriptor (41 bytes)
+// Configuration descriptor (41 bytes). Authentic DS3: single HID interface only.
+// A real PS3 rejects a CDC composite, so no CDC config port in PS3 mode.
 #define PS3_CONFIG_TOTAL_LEN  (TUD_CONFIG_DESC_LEN + TUD_HID_INOUT_DESC_LEN)
 
 static const uint8_t ps3_config_descriptor[] = {

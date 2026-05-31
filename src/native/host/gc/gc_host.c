@@ -511,6 +511,7 @@ void gc_host_task(void)
         event.dev_addr = 0xD0 + port;  // Use 0xD0+ range for GC native inputs
         event.instance = 0;
         event.type = INPUT_TYPE_GAMEPAD;
+        event.layout = LAYOUT_GAMECUBE;  // AXBY face style + gates GC hotkeys
         event.buttons = buttons;
         event.analog[ANALOG_LX] = stick_x;
         event.analog[ANALOG_LY] = stick_y;

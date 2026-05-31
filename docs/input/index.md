@@ -20,6 +20,7 @@ Every input -- whether a USB gamepad, a Bluetooth controller, a SNES pad wired d
 | LodgeNet | PIO | `src/native/host/lodgenet/` | PIO state machine | LodgeNet hotel system controllers. Supports N64, GameCube, and SNES controller types on the LodgeNet bus. |
 | 3DO Host | PIO | `src/native/host/3do/` | PIO state machine | Reads 3DO controllers directly. |
 | Nuon Host | Polyface (PIO) | (experimental) | PIO state machine | Reads Nuon controllers. Experimental support. |
+| PSX/PS2 | SIO (PIO+DMA) | `src/native/host/psx/` | PIO+DMA, 500 kHz w/ active pull-up | PlayStation 1/2 controllers. Auto-detects digital, DualShock, DS2 (pressure), neGcon, flightstick, GunCon, JogCon, and PS Mouse. |
 | GPIO | GPIO pins | `src/native/device/gpio/` | GPIO polling | Custom-wired buttons and analog sticks for bespoke controller builds (Fisher Price, Alpakka, etc.). |
 | UART | Serial | `src/native/host/uart/` | UART RX | Input bridge from external microcontrollers (e.g., ESP32 Bluetooth bridge). |
 

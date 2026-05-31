@@ -3,6 +3,8 @@
 
 #include "vmu.h"
 #include "vmu_sd.h"
+#include "vmu_storage.h"
+#include "vmu_default_icondata.h"
 #include "dreamcast_device.h"
 #include "pico/stdlib.h"
 #include <string.h>
@@ -144,6 +146,8 @@ void vmu_build_packets(uint8_t port_addr) {
 
 // Pre-format vmu_ram exactly like MaplePad's CheckFormatted()
 // The DC sees an already-formatted card and skips the format operation.
+// Also drops a default ICONDATA_VMS file so the freshly-initialized card
+// shows a Joypad OS logo in the DC BIOS instead of the no-icon placeholder.
 static void vmu_preformat(void) {
     const uint16_t ROOT_BLOCK = 255, FAT_BLOCK = 254, DIR_BLOCK = 253, DIR_SIZE = 13;
     uint16_t start_sys = DIR_BLOCK - DIR_SIZE + 1; // 241
@@ -167,6 +171,29 @@ static void vmu_preformat(void) {
     uint16_t *fat = (uint16_t *)&vmu_ram[FAT_BLOCK * VMU_BLOCK_SIZE];
     for (int i = 0; i < 241; i++) fat[i] = 0xFFFC;  // free
     for (int i = 241; i < 256; i++) fat[i] = 0xFFFA;  // system (EOF)
+
+    // --- Default ICONDATA_VMS ----------------------------------------------
+    // Occupies the first two save-area blocks (0, 1) and is described by a
+    // single DATA-type directory entry. The DC BIOS picks it up by filename
+    // ("ICONDATA_VMS") and renders the mono + 16-color icons it contains.
+    // Save data written by games claims free blocks starting from the top
+    // (block 240 down), so reserving the bottom 2 blocks doesn't crowd them.
+    memcpy(&vmu_ram[0 * VMU_BLOCK_SIZE], vmu_default_icondata,
+           VMU_DEFAULT_ICONDATA_SIZE);
+    fat[0] = 0x0001;   // block 0 -> next is block 1
+    fat[1] = 0xFFFA;   // block 1 -> EOF
+
+    // Directory entry 0 lives at the start of block 253. 32 bytes wide.
+    uint8_t *dir = &vmu_ram[DIR_BLOCK * VMU_BLOCK_SIZE];
+    dir[0x00] = 0x33;                              // file type: DATA
+    dir[0x01] = 0x00;                              // copy protection: none
+    dir[0x02] = 0x00; dir[0x03] = 0x00;            // first block (LE16) = 0
+    memcpy(&dir[0x04], "ICONDATA_VMS", 12);        // 12-byte filename
+    memcpy(&dir[0x10], ts, 8);                     // BCD creation timestamp
+    dir[0x18] = 0x02; dir[0x19] = 0x00;            // file size in blocks (LE16) = 2
+    dir[0x1A] = 0x00; dir[0x1B] = 0x00;            // header offset (LE16) = 0
+    dir[0x1C] = 0x00; dir[0x1D] = 0x00;            // reserved
+    dir[0x1E] = 0x00; dir[0x1F] = 0x00;
 }
 
 void vmu_init(uint8_t port_addr) {
@@ -179,11 +206,12 @@ void vmu_init(uint8_t port_addr) {
     printf("[VMU] Initialized (SD load deferred)\n");
 }
 
-// Called after controller enumerates with DC — loads saved VMU from SD
-// Separated from vmu_init() to avoid blocking Maple Bus enumeration
+// Called after controller enumerates with DC — selects a persistence backend
+// (USB flash > SD > QSPI > RAM) and loads any saved image. Deferred from
+// vmu_init() to avoid blocking Maple Bus enumeration.
 void vmu_sd_load(void) {
-    vmu_sd_init();
-    printf("[VMU] SD load complete\n");
+    vmu_storage_init();
+    printf("[VMU] Storage load complete\n");
 }
 
 void vmu_set_slot(uint8_t slot)  { (void)slot; }
@@ -235,6 +263,6 @@ void __not_in_flash_func(vmu_handle_write_complete)(void) {
 }
 
 void vmu_task(void) {
-    // Flush dirty VMU RAM to SD card when writeback timer expires
-    vmu_sd_task();
+    // Flush dirty VMU RAM to the active backend when its writeback timer expires
+    vmu_storage_task();
 }

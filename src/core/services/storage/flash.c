@@ -77,6 +77,21 @@ static uint32_t current_sequence = 0;  // Current sequence number
 static flash_t runtime_settings;
 static bool runtime_settings_loaded = false;
 
+// Ephemeral PROFILE.APPLY override (RAM-only button_map) — see
+// flash_get_active_custom_profile() and the public flash_apply_ephemeral_*
+// functions further down for the full semantics.
+static custom_profile_t ephemeral_profile;
+static bool ephemeral_active = false;
+
+// Ephemeral PROFILE.SELECT override (RAM-only index, sidecar so a later
+// flash_save() can't accidentally persist it). -1 = no ephemeral selection.
+static int8_t ephemeral_active_idx = -1;
+
+// Runtime overlay (OVERLAY.SET) — RAM-only "live tweak" layer. Composes
+// on top of whatever profile is active. Fields with value 0 are skipped.
+static runtime_overlay_t overlay_slot;
+static bool overlay_active_flag = false;
+
 // Get flash offset for a slot index (0-31)
 // Slots 0-15 are in sector A, slots 16-31 are in sector B
 static uint32_t get_slot_offset(uint8_t slot_index)
@@ -489,11 +504,17 @@ flash_t* flash_get_settings(void)
     return &runtime_settings;
 }
 
-// Get active custom profile index (0=Default/passthrough, 1-4=custom profiles)
+// Get active custom profile index (0=Default/passthrough, 1-4=custom profiles).
+// Returns the effective current index: PROFILE.SELECT override if set, else
+// the persisted runtime_settings value. PROFILE.APPLY does NOT change this
+// (it overrides the button_map, not the indexed selection).
 uint8_t flash_get_active_profile_index(void)
 {
     if (!runtime_settings_loaded) {
         return 0;
+    }
+    if (ephemeral_active_idx >= 0) {
+        return (uint8_t)ephemeral_active_idx;
     }
     return runtime_settings.active_profile_index;
 }
@@ -519,9 +540,35 @@ void flash_set_dpad_mode(uint8_t mode)
     flash_save(&runtime_settings);
 }
 
-// Set active custom profile index (saves to flash with debouncing)
+// Persist the shoulder-swap toggle (L1<->L2, R1<->R2). Idempotent.
+void flash_set_shoulder_swap(uint8_t on)
+{
+    on = on ? 1 : 0;
+    if (!runtime_settings_loaded) {
+        flash_t tmp;
+        if (!flash_load(&tmp)) memset(&tmp, 0, sizeof(tmp));
+        tmp.shoulder_swap = on;
+        tmp.router_saved = 1;
+        flash_save(&tmp);
+        return;
+    }
+    if (runtime_settings.shoulder_swap == on && runtime_settings.router_saved) {
+        return;
+    }
+    runtime_settings.shoulder_swap = on;
+    runtime_settings.router_saved = 1;
+    flash_save(&runtime_settings);
+}
+
+// Set active custom profile index (saves to flash with debouncing).
+// Persistent — clears any ephemeral override (APPLY + SELECT) so the
+// persisted value is what the device boots to.
 void flash_set_active_profile_index(uint8_t index)
 {
+    // Explicit persistent selection trumps both ephemeral overrides.
+    ephemeral_active = false;
+    ephemeral_active_idx = -1;
+
     if (!runtime_settings_loaded) {
         return;
     }
@@ -534,10 +581,34 @@ void flash_set_active_profile_index(uint8_t index)
 
     if (runtime_settings.active_profile_index != index) {
         runtime_settings.active_profile_index = index;
-        flash_save(&runtime_settings);
-
-        printf("[flash] Active profile set to %d\n", index);
+        // Immediate commit (no debouncing). PROFILE.SET is now the rare
+        // "deliberate config change" path — hot-loop switching goes via
+        // PROFILE.SELECT — so we want this to land before the next command
+        // or reboot, not 5s later.
+        flash_save_now(&runtime_settings);
+        printf("[flash] Active profile set to %d (persisted)\n", index);
     }
+}
+
+// Ephemeral variant: update a RAM-only sidecar, do not write to flash and
+// do NOT mutate runtime_settings.active_profile_index (any later flash_save
+// from another setting would otherwise persist the ephemeral value). The
+// persistent boot default is untouched — after reboot, whatever was last
+// persisted via flash_set_active_profile_index comes back.
+void flash_select_active_profile_index(uint8_t index)
+{
+    // PROFILE.APPLY override (button_map) is cleared by explicit selection.
+    ephemeral_active = false;
+
+    if (!runtime_settings_loaded) {
+        return;
+    }
+    uint8_t max_index = runtime_settings.custom_profile_count;
+    if (index > max_index) {
+        index = max_index;
+    }
+    ephemeral_active_idx = (int8_t)index;
+    printf("[flash] Active profile selected to %d (RAM only)\n", index);
 }
 
 // Get total profile count (1 default + custom_profile_count)
@@ -549,20 +620,76 @@ uint8_t flash_get_total_profile_count(void)
     return 1 + runtime_settings.custom_profile_count;
 }
 
-// Get active custom profile (returns NULL for index 0/default or if invalid)
+// Get active custom profile (returns NULL for index 0/default or if invalid).
+// Precedence: (1) PROFILE.APPLY button_map override, (2) PROFILE.SELECT index
+// override (RAM only), (3) persisted runtime_settings.active_profile_index.
 const custom_profile_t* flash_get_active_custom_profile(void)
 {
+    // 1. PROFILE.APPLY ephemeral button_map wins — RAM only, not persisted.
+    if (ephemeral_active) {
+        return &ephemeral_profile;
+    }
+
     if (!runtime_settings_loaded) {
         return NULL;
     }
 
-    uint8_t index = runtime_settings.active_profile_index;
+    // 2. PROFILE.SELECT ephemeral index, else 3. persisted value.
+    uint8_t index = (ephemeral_active_idx >= 0)
+                    ? (uint8_t)ephemeral_active_idx
+                    : runtime_settings.active_profile_index;
     if (index == 0) {
         return NULL;  // Default profile (passthrough)
     }
-
-    // Custom profiles are stored at indices 0-3 for user indices 1-4
     return flash_get_custom_profile(&runtime_settings, index - 1);
+}
+
+// ----------------------------------------------------------------------------
+// Ephemeral Runtime Profile Override (PROFILE.APPLY) — see flash.h
+// ----------------------------------------------------------------------------
+
+void flash_apply_ephemeral_profile(const custom_profile_t* cp)
+{
+    if (!cp) {
+        ephemeral_active = false;
+        return;
+    }
+    ephemeral_profile = *cp;
+    ephemeral_active = true;
+}
+
+void flash_clear_ephemeral_profile(void)
+{
+    ephemeral_active = false;
+}
+
+bool flash_has_ephemeral_profile(void)
+{
+    return ephemeral_active;
+}
+
+// ----------------------------------------------------------------------------
+// Runtime Overlay (OVERLAY.SET / OVERLAY.CLEAR) — see flash.h
+// ----------------------------------------------------------------------------
+
+void flash_set_overlay(const runtime_overlay_t* o)
+{
+    if (!o) {
+        overlay_active_flag = false;
+        return;
+    }
+    overlay_slot = *o;
+    overlay_active_flag = true;
+}
+
+void flash_clear_overlay(void)
+{
+    overlay_active_flag = false;
+}
+
+const runtime_overlay_t* flash_get_overlay(void)
+{
+    return overlay_active_flag ? &overlay_slot : NULL;
 }
 
 // Cycle to next profile (wraps around)

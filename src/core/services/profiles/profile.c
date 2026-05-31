@@ -6,6 +6,7 @@
 #include "profile.h"
 #include "platform/platform.h"
 #include <stdio.h>
+#include <stddef.h>
 #include <string.h>
 
 // External dependencies (feedback and visual indication)
@@ -201,7 +202,12 @@ const profile_t* profile_get_by_index(output_target_t output, uint8_t index)
 // PROFILE SWITCHING
 // ============================================================================
 
-void profile_set_active(output_target_t output, uint8_t index)
+// Shared core for the persistent (profile_set_active) and ephemeral
+// (profile_select_active) variants. persist=true writes the new index to
+// flash; persist=false updates RAM and triggers feedback only. The latter
+// is for joypad-live / crowd-control flows where flash writes per switch
+// would burn out the chip over thousands of changes per session.
+static void profile_set_active_internal(output_target_t output, uint8_t index, bool persist)
 {
     const profile_set_t* set = get_profile_set(output);
     if (!set || set->profile_count == 0 || index >= set->profile_count) {
@@ -223,11 +229,26 @@ void profile_set_active(output_target_t output, uint8_t index)
     uint8_t player_count = get_player_count ? get_player_count() : 0;
     profile_indicator_trigger(index, player_count);
 
-    // Save to flash
-    profile_save_to_flash(output);
+    if (persist) {
+        profile_save_to_flash(output);
+    }
 
     const char* name = profile_get_name(output, index);
-    printf("[profile] Switched to: %s (output=%d)\n", name ? name : "(unknown)", output);
+    printf("[profile] %s: %s (output=%d)\n",
+           persist ? "Switched" : "Selected (RAM only)",
+           name ? name : "(unknown)", output);
+}
+
+void profile_set_active(output_target_t output, uint8_t index)
+{
+    profile_set_active_internal(output, index, /*persist=*/true);
+}
+
+// Ephemeral variant: same effect for the current session, no flash write.
+// On reboot, the previously-persisted selection comes back.
+void profile_select_active(output_target_t output, uint8_t index)
+{
+    profile_set_active_internal(output, index, /*persist=*/false);
 }
 
 void profile_cycle_next(output_target_t output)
@@ -813,8 +834,8 @@ void profile_apply(const profile_t* profile,
         input_buttons &= ~JP_BUTTON_DR;   // D-pad Right
     }
 
-    // Initialize output with passthrough values
-    memset(output, 0, sizeof(profile_output_t));
+    // Zero output fields only — autofire_start_ms at the end is preserved across calls.
+    memset(output, 0, offsetof(profile_output_t, autofire_start_ms));
     output->buttons = input_buttons;  // Start with passthrough
     output->left_x = lx;
     output->left_y = ly;
@@ -913,6 +934,23 @@ void profile_apply(const profile_t* profile,
 
         // Check if input button is pressed (includes threshold-based L2/R2)
         bool pressed = ((buttons_with_triggers & entry->input) != 0);
+
+        if (entry->autofire_period_ms > 0) {
+            uint8_t bit = __builtin_ctz(entry->input);
+            if (bit < AUTOFIRE_BUTTON_COUNT) {
+                if (pressed) {
+                    if (output->autofire_start_ms[bit] == 0)
+                        output->autofire_start_ms[bit] = platform_time_ms();
+                    uint32_t elapsed = platform_time_ms() - output->autofire_start_ms[bit];
+                    // Time within the current cycle = elapsed % period (ms).
+                    // Button ON for the first half, OFF for the second half.
+                    // e.g. 30 Hz (period=33ms): 0-16ms ON, 17-32ms OFF, 33ms new cycle ...
+                    pressed = (elapsed % entry->autofire_period_ms) < (entry->autofire_period_ms / 2);
+                } else {
+                    output->autofire_start_ms[bit] = 0;
+                }
+            }
+        }
 
         if (pressed) {
             // Set output button(s)

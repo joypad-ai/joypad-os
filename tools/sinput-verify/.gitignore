@@ -1,0 +1,6 @@
+# Compiled binaries and debug bundles
+hidread
+cdcsend
+sinput-verify
+sinput-verify-main
+*.dSYM/

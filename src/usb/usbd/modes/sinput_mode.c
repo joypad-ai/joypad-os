@@ -27,15 +27,21 @@ extern int hid_get_ctrl_type(uint8_t dev_addr, uint8_t instance);
 // SINPUT FACE STYLES
 // ============================================================================
 
-// Face style values (byte 5, upper 3 bits) - per SInput spec
-// Must match joypad-web SINPUT_FACE_STYLE enum
+// Face style values (byte 5, upper 3 bits) - per canonical SInput spec
+// (HandHeldLegend SINPUT-LIB-HID sinput_lib_types.h: sinput_sdl_face_style_t)
+// NOTE: GameCube/Nintendo/Sony order was previously wrong (NINTENDO=2, SONY=3,
+// GAMECUBE=4) which caused Steam to render wrong face button labels.
 #define SINPUT_FACE_UNKNOWN      0
-#define SINPUT_FACE_XBOX         1  // ABXY (default)
-#define SINPUT_FACE_NINTENDO     2  // BAYX
-#define SINPUT_FACE_SONY         3  // Cross/Circle/Square/Triangle
-#define SINPUT_FACE_GAMECUBE     4  // AXBY
+#define SINPUT_FACE_XBOX         1  // ABXY
+#define SINPUT_FACE_GAMECUBE     2  // AXBY
+#define SINPUT_FACE_NINTENDO     3  // BAYX
+#define SINPUT_FACE_SONY         4  // Cross/Circle/Square/Triangle
 
-// Gamepad physical type values (byte 4) - per SInput spec
+// Gamepad physical type values (byte 4) - per canonical SInput spec
+// (HandHeldLegend SINPUT-LIB-HID sinput_lib_types.h: sinput_sdl_gamepad_type_t).
+// SDL3 clamps to SDL_GAMEPAD_TYPE_COUNT — values >12 collapse to UNKNOWN.
+// N64=12 and SNES=13 were non-canonical (12 silently meant STEAM in SDL3);
+// native N64/SNES inputs now fall back to STANDARD with NINTENDO face style.
 #define SINPUT_TYPE_UNKNOWN      0
 #define SINPUT_TYPE_STANDARD     1
 #define SINPUT_TYPE_XBOX360      2
@@ -48,8 +54,7 @@ extern int hid_get_ctrl_type(uint8_t dev_addr, uint8_t instance);
 #define SINPUT_TYPE_JOYCON_R     9
 #define SINPUT_TYPE_JOYCON_PAIR  10
 #define SINPUT_TYPE_GAMECUBE     11
-#define SINPUT_TYPE_N64          12
-#define SINPUT_TYPE_SNES         13
+#define SINPUT_TYPE_STEAM        12
 
 // ============================================================================
 // STATE
@@ -70,6 +75,7 @@ static uint8_t cached_face_style = SINPUT_FACE_XBOX;
 static uint8_t cached_gamepad_type = SINPUT_TYPE_STANDARD;
 static bool cached_has_motion = false;
 static bool cached_has_touch = false;
+static controller_layout_t cached_layout = LAYOUT_UNKNOWN;  // last native layout (for feature refresh)
 static int16_t last_dev_addr = -1;  // Track connected device for auto feature report
 
 // ============================================================================
@@ -144,11 +150,24 @@ static void update_device_info(uint8_t dev_addr, int8_t instance, input_transpor
             cached_face_style = SINPUT_FACE_GAMECUBE;
             cached_gamepad_type = SINPUT_TYPE_GAMECUBE;
         } else if (layout == LAYOUT_NINTENDO_N64) {
+            // N64 isn't a canonical SInput type — fall back to STANDARD with
+            // Nintendo face style (BAYX) so Steam shows correct button labels.
             cached_face_style = SINPUT_FACE_NINTENDO;
-            cached_gamepad_type = SINPUT_TYPE_N64;
+            cached_gamepad_type = SINPUT_TYPE_STANDARD;
         } else if (layout == LAYOUT_NINTENDO_4FACE) {
+            // SNES isn't a canonical SInput type — STANDARD + Nintendo face.
             cached_face_style = SINPUT_FACE_NINTENDO;
-            cached_gamepad_type = SINPUT_TYPE_SNES;
+            cached_gamepad_type = SINPUT_TYPE_STANDARD;
+        } else if (layout == LAYOUT_PSX_DIGITAL ||
+                   layout == LAYOUT_PSX_DUALSHOCK ||
+                   layout == LAYOUT_PSX_DUALSHOCK2 ||
+                   layout == LAYOUT_PSX_NEGCON ||
+                   layout == LAYOUT_PSX_FLIGHTSTICK ||
+                   layout == LAYOUT_PSX_GUNCON ||
+                   layout == LAYOUT_PSX_JOGCON) {
+            // PlayStation controllers: Sony face style (Cross/Circle/Square/Triangle)
+            cached_face_style = SINPUT_FACE_SONY;
+            cached_gamepad_type = SINPUT_TYPE_STANDARD;
         } else {
             cached_face_style = SINPUT_FACE_XBOX;
             cached_gamepad_type = SINPUT_TYPE_STANDARD;
@@ -278,8 +297,26 @@ static bool sinput_mode_send_report(uint8_t player_index,
 {
     (void)player_index;
 
+    // Relative pointers (e.g. PlayStation Mouse) go out the SInput composite's
+    // mouse interface, not the gamepad report.
+    if (event->type == INPUT_TYPE_MOUSE) {
+#ifdef PLATFORM_ESP32
+        return false;  // ESP32 SInput has no mouse interface (FIFO limit)
+#else
+        if (!tud_hid_n_ready(ITF_NUM_HID_MOUSE)) return false;
+        uint8_t mb = 0;
+        if (event->buttons & JP_BUTTON_B1) mb |= MOUSE_BUTTON_LEFT;
+        if (event->buttons & JP_BUTTON_B2) mb |= MOUSE_BUTTON_RIGHT;
+        if (event->buttons & JP_BUTTON_B3) mb |= MOUSE_BUTTON_MIDDLE;
+        return tud_hid_n_mouse_report(ITF_NUM_HID_MOUSE, 0, mb,
+                                      event->delta_x, event->delta_y,
+                                      event->delta_wheel, 0);
+#endif
+    }
+
     // Update device face style from connected controller
     uint8_t prev_type = cached_gamepad_type;
+    cached_layout = event->layout;   // remember for the feature-response refresh
     update_device_info(event->dev_addr, event->instance, event->transport, event->layout);
 
     // Track capabilities from input device
@@ -336,18 +373,19 @@ static bool sinput_mode_send_report(uint8_t player_index,
         sinput_report.gyro_z = 0;
     }
 
-    // Touchpad data
+    // Touchpad data — SDL3 reads pressure as Uint16 and divides by 32768.0f to
+    // normalize to [0,1]. 0xFFFF would saturate to 2.0; cap at 0x7FFF (32767).
     if (event->has_touch) {
         int16_t t1x = event->touch[0].active ? (int16_t)event->touch[0].x : 0;
         int16_t t1y = event->touch[0].active ? (int16_t)event->touch[0].y : 0;
-        uint16_t t1p = event->touch[0].active ? 0xFFFF : 0;
+        uint16_t t1p = event->touch[0].active ? 0x7FFF : 0;
         memcpy(sinput_report.touchpad1, &t1x, 2);
         memcpy(sinput_report.touchpad1 + 2, &t1y, 2);
         memcpy(sinput_report.touchpad1 + 4, &t1p, 2);
 
         int16_t t2x = event->touch[1].active ? (int16_t)event->touch[1].x : 0;
         int16_t t2y = event->touch[1].active ? (int16_t)event->touch[1].y : 0;
-        uint16_t t2p = event->touch[1].active ? 0xFFFF : 0;
+        uint16_t t2p = event->touch[1].active ? 0x7FFF : 0;
         memcpy(sinput_report.touchpad2, &t2x, 2);
         memcpy(sinput_report.touchpad2 + 2, &t2y, 2);
         memcpy(sinput_report.touchpad2 + 4, &t2p, 2);
@@ -356,9 +394,22 @@ static bool sinput_mode_send_report(uint8_t player_index,
         memset(sinput_report.touchpad2, 0, 6);
     }
 
-    // Battery status
+    // Battery status — SInput plug_status enum (verified against SDL3
+    // SDL_hidapi_sinput.c switch at data[1]):
+    //   0 = UNKNOWN — SDL skips SDL_SendJoystickPowerInfo entirely (no indicator)
+    //   1 = NO_BATTERY — SDL reports NO_BATTERY at 0%, which Steam renders as a
+    //       depleted/"low 0%" battery (bad for a wired adapter with no battery)
+    //   2 = CHARGING, 3 = CHARGED (100%), 4 = ON_BATTERY
+    // event->battery_level is already 0-100 percent. Wired/no-battery devices use
+    // 0 so Steam shows no battery indicator at all (was 1 -> showed "low 0%").
     sinput_report.charge_level = event->battery_level;
-    sinput_report.plug_status = event->battery_charging ? 1 : 0;
+    if (event->battery_charging) {
+        sinput_report.plug_status = (event->battery_level >= 100) ? 3 : 2;
+    } else if (event->battery_level > 0) {
+        sinput_report.plug_status = 4;
+    } else {
+        sinput_report.plug_status = 0;   // unknown -> SDL/Steam shows no battery
+    }
 
     // Send report on gamepad interface (skip report_id byte since TinyUSB handles it)
     return tud_hid_n_report(ITF_NUM_HID_GAMEPAD, SINPUT_REPORT_ID_INPUT,
@@ -492,92 +543,119 @@ static void sinput_mode_task(void)
         update_device_info((uint8_t)players[0].dev_addr,
                            (int8_t)players[0].instance,
                            players[0].transport,
-                           LAYOUT_UNKNOWN);
+                           cached_layout);   // native pads need the real layout, not UNKNOWN
     }
 
-    // Build feature response (24 bytes per SInput spec)
+    // Build the feature response framed exactly as SDL's SInput HIDAPI driver
+    // expects. RetrieveSDLFeatures() requires the reply to be a full 64-byte
+    // packet where (on the host, via hidapi):
+    //   data[0] = report ID (0x02)
+    //   data[1] = command echo (0x02 = FEATURES)
+    //   data[2..25] = the 24-byte feature struct
+    // hidapi prepends the report ID, so the payload we hand TinyUSB (after the
+    // report ID) must be [command echo][24-byte struct][zero pad] = 63 bytes,
+    // making the on-wire packet 64 bytes. Sending just the 24-byte struct (the
+    // old behavior) made the handshake fail — SDL then dropped the SInput
+    // driver and the device fell back to an unmapped generic joystick, which is
+    // why Steam "detected" it but no buttons worked.
+    //
+    // 24-byte struct layout (f[0] == data[2] on the host):
     // Bytes 0-1:   Protocol version (uint16 LE)
-    // Byte 2:      Capability flags 1 (bit 0=rumble, bit 1=player LED, bit 2=accel, bit 3=gyro)
-    // Byte 3:      Capability flags 2 (bit 1=RGB LED)
-    // Byte 4:      Gamepad type (1=standard)
-    // Byte 5:      Upper 3 bits=face style (1=Xbox), lower 5 bits=sub product
-    // Bytes 6-7:   Polling rate micros (uint16 LE) - 8000us = 125Hz
-    // Bytes 8-9:   Accel range (uint16 LE) - 0 = not supported
-    // Bytes 10-11: Gyro range (uint16 LE) - 0 = not supported
-    // Bytes 12-15: Button usage masks (1 byte per button byte, bits = active buttons)
+    // Byte 2:      Capability flags 1 (bit0=rumble,1=playerLED,2=accel,3=gyro,
+    //              4=LX,5=RX,6=LT,7=RT)
+    // Byte 3:      Capability flags 2 (bit0=touchpad,1=RGB LED,2=handheld)
+    // Byte 4:      Gamepad type
+    // Byte 5:      Upper 3 bits=face style, lower 5 bits=sub product
+    // Bytes 6-7:   Polling rate micros (uint16 LE)
+    // Bytes 8-9:   Accel range (uint16 LE)
+    // Bytes 10-11: Gyro range (uint16 LE)
+    // Bytes 12-15: Button usage masks
     // Byte 16:     Touchpad count
     // Byte 17:     Touchpad finger count
-    // Bytes 18-23: MAC address / serial number (6 bytes)
-    uint8_t feature_response[24] = {0};
+    // Bytes 18-23: Serial number (6 bytes)
+    uint8_t feature_response[63] = {0};
+    feature_response[0] = SINPUT_CMD_FEATURES;  // command echo → host data[1]
+    uint8_t* f = &feature_response[1];          // 24-byte struct → host data[2]+
 
     // Protocol version 1.0
-    feature_response[0] = 0x00;
-    feature_response[1] = 0x01;
+    f[0] = 0x00;
+    f[1] = 0x01;
 
-    // Capability flags 1: bit 0=rumble, bit 1=player LED, bit 2=accel, bit 3=gyro
-    feature_response[2] = 0x03;  // rumble + player LED always
+    // Capability flags 1: bit 0=rumble, bit 1=player LED, bit 2=accel, bit 3=gyro,
+    //                     bit 4=LX/LY stick, bit 5=RX/RY stick,
+    //                     bit 6=LT analog trigger, bit 7=RT analog trigger
+    // SDL3's SInput driver reads stick/trigger presence from bits 4-7 here, not
+    // from the input report — without these set, Steam reports 0 axes.
+    f[2] = 0xF3;  // rumble + player LED + both sticks + both triggers
     if (cached_has_motion) {
-        feature_response[2] |= 0x0C;  // bit 2 = accel, bit 3 = gyro
+        f[2] |= 0x0C;  // bit 2 = accel, bit 3 = gyro
     }
 
-    // Capability flags 2: RGB LED supported
-    feature_response[3] = 0x02;  // bit 1 = RGB LED
+    // Capability flags 2: bit 0=touchpad, bit 1=RGB LED, bit 2=is_handheld
+    // SDL3 gates touchpad processing on bit 0 — touchpad_count at byte 16 is
+    // ignored without it.
+    f[3] = 0x02;  // bit 1 = RGB LED always
+    if (cached_has_touch) {
+        f[3] |= 0x01;  // bit 0 = touchpad supported
+    }
 
     // Gamepad type (from connected device)
-    feature_response[4] = cached_gamepad_type;
+    f[4] = cached_gamepad_type;
 
     // Face style (from connected device) | sub product (0)
-    feature_response[5] = (cached_face_style << 5);
+    f[5] = (cached_face_style << 5);
 
-    // Polling rate: 8000 microseconds (125Hz)
-    feature_response[6] = 0x40;  // 8000 & 0xFF
-    feature_response[7] = 0x1F;  // 8000 >> 8
+    // Polling rate: 1000 microseconds (1000Hz) — matches the 1ms HID endpoint
+    // bInterval. SDL also derives its gyro/accel sensor rate from this value.
+    f[6] = 0xE8;  // 1000 & 0xFF
+    f[7] = 0x03;  // 1000 >> 8
 
     // Accel/Gyro ranges (uint16 LE): 0 = not supported
     if (cached_has_motion) {
         // Accel range: 4 (+/- 4G, typical for DS4/DS5)
-        feature_response[8] = 4;
-        feature_response[9] = 0;
+        f[8] = 4;
+        f[9] = 0;
         // Gyro range: 2000 (+/- 2000 dps, typical for DS4/DS5)
-        feature_response[10] = 0xD0;  // 2000 & 0xFF
-        feature_response[11] = 0x07;  // 2000 >> 8
+        f[10] = 0xD0;  // 2000 & 0xFF
+        f[11] = 0x07;  // 2000 >> 8
     } else {
-        feature_response[8] = 0;
-        feature_response[9] = 0;
-        feature_response[10] = 0;
-        feature_response[11] = 0;
+        f[8] = 0;
+        f[9] = 0;
+        f[10] = 0;
+        f[11] = 0;
     }
 
     // Button usage masks: which buttons are active per byte
     // Byte 0: EAST|SOUTH|NORTH|WEST|DU|DD|DL|DR = all 8 bits
-    feature_response[12] = 0xFF;
+    f[12] = 0xFF;
     // Byte 1: L3|R3|L1|R1|L2|R2|L_PADDLE1|R_PADDLE1 = all 8 bits
-    feature_response[13] = 0xFF;
+    f[13] = 0xFF;
     // Byte 2: START|BACK|GUIDE|CAPTURE = lower 4 bits
-    feature_response[14] = 0x0F;
+    f[14] = 0x0F;
     // Byte 3: MISC4 (mute/assistant) + MISC5
-    feature_response[15] = 0x06;
+    f[15] = 0x06;
 
     // Touchpad
     if (cached_has_touch) {
-        feature_response[16] = 1;  // 1 touchpad
-        feature_response[17] = 2;  // 2 fingers max
+        f[16] = 1;  // 1 touchpad
+        f[17] = 2;  // 2 fingers max
     } else {
-        feature_response[16] = 0;  // no touchpads
-        feature_response[17] = 0;
+        f[16] = 0;  // no touchpads
+        f[17] = 0;
     }
 
     // Serial number from board unique ID (last 6 bytes of 8-byte ID)
     uint8_t board_id[8];
     platform_get_unique_id(board_id, sizeof(board_id));
-    feature_response[18] = board_id[2];
-    feature_response[19] = board_id[3];
-    feature_response[20] = board_id[4];
-    feature_response[21] = board_id[5];
-    feature_response[22] = board_id[6];
-    feature_response[23] = board_id[7];
+    f[18] = board_id[2];
+    f[19] = board_id[3];
+    f[20] = board_id[4];
+    f[21] = board_id[5];
+    f[22] = board_id[6];
+    f[23] = board_id[7];
 
-    tud_hid_n_report(ITF_NUM_HID_GAMEPAD, SINPUT_REPORT_ID_FEATURES, feature_response, sizeof(feature_response));
+    tud_hid_n_report(ITF_NUM_HID_GAMEPAD, SINPUT_REPORT_ID_FEATURES,
+                     feature_response, sizeof(feature_response));
 }
 
 // ============================================================================

@@ -517,15 +517,18 @@ static void cmd_profile_list(const char* json)
     flash_t* settings = flash_get_settings();
     uint8_t custom_count = settings ? settings->custom_profile_count : 0;
 
-    // Determine active profile in unified indexing
+    // Determine active profile in unified indexing. Use the public getters so
+    // an active PROFILE.SELECT ephemeral override is visible in PROFILE.LIST
+    // (matches the runtime's view of "what's actually in effect right now").
     int active;
     if (builtin_count > 0) {
         // Use built-in profile active index, or offset for custom
         active = profile_get_active_index(get_profile_target());
         // TODO: Handle custom profile selection for apps with built-in profiles
     } else {
-        // No built-in profiles - use flash active index (already 0-based with virtual default)
-        active = settings ? settings->active_profile_index : 0;
+        // No built-in profiles — flash_get_active_profile_index() returns the
+        // PROFILE.SELECT sidecar if set, else the persisted value.
+        active = flash_get_active_profile_index();
     }
 
     int pos = snprintf(response_buf, sizeof(response_buf),
@@ -1005,6 +1008,206 @@ static void cmd_profile_clone(const char* json)
     int new_unified_idx = custom_to_unified_index(new_custom_idx);
     snprintf(response_buf, sizeof(response_buf),
              "{\"ok\":true,\"index\":%d,\"name\":\"%.11s\"}", new_unified_idx, new_profile->name);
+    send_json(response_buf);
+}
+
+// PROFILE.SELECT - Set active profile in RAM only (no flash write).
+// Same effect as PROFILE.SET for the current session, but the persistent boot
+// default is untouched — designed for live-control flows (joypad-live) that
+// would otherwise burn flash with thousands of profile switches per stream.
+// On reboot, whatever was last persisted via PROFILE.SET (or the web config)
+// is what comes back. Clears any PROFILE.APPLY override.
+static void cmd_profile_select(const char* json)
+{
+    int index;
+    if (!json_get_int(json, "index", &index)) {
+        send_error("missing index");
+        return;
+    }
+
+    uint8_t total = get_total_count();
+    if (index < 0 || index >= total) {
+        send_error("invalid index");
+        return;
+    }
+
+    uint8_t builtin_count = get_builtin_count();
+
+    if (builtin_count > 0 && index < builtin_count) {
+        // Ephemeral built-in selection (no flash write).
+        profile_select_active(get_profile_target(), index);
+        const char* name = profile_get_name(get_profile_target(), index);
+        snprintf(response_buf, sizeof(response_buf),
+                 "{\"ok\":true,\"index\":%d,\"name\":\"%s\",\"persisted\":false}",
+                 index, name ? name : "Default");
+    } else {
+        // Ephemeral custom (or virtual-Default) selection.
+        int custom_idx = unified_to_custom_index(index);
+        int flash_idx = (custom_idx < 0) ? 0 : custom_idx + 1;
+        flash_select_active_profile_index((uint8_t)flash_idx);
+
+        flash_t* settings = flash_get_settings();
+        const char* name = "Default";
+        if (custom_idx >= 0 && settings && custom_idx < settings->custom_profile_count) {
+            name = settings->profiles[custom_idx].name;
+        }
+        snprintf(response_buf, sizeof(response_buf),
+                 "{\"ok\":true,\"index\":%d,\"name\":\"%.11s\",\"persisted\":false}",
+                 index, name);
+    }
+    send_json(response_buf);
+}
+
+// PROFILE.APPLY - Apply an ephemeral runtime profile (RAM only, no flash write).
+// Designed for crowd-control / live-remap use cases: many unique button maps
+// over short windows, no flash wear, no 4-slot ceiling. Any explicit profile
+// selection (PROFILE.SET, on-device SELECT+D-pad cycling) drops the override.
+//
+// Body: { "button_map":[18 ints], "name":"...", optional left/right_stick_sens,
+//         flags, socd_mode, l2_threshold, r2_threshold }
+// Missing fields default to passthrough / 100% sens / no SOCD / no thresholds.
+static void cmd_profile_apply(const char* json)
+{
+    custom_profile_t cp;
+    memset(&cp, 0, sizeof(cp));
+    cp.left_stick_sens = 100;
+    cp.right_stick_sens = 100;
+    // button_map defaults to all-zero = BUTTON_MAP_PASSTHROUGH per memset above.
+
+    // Optional name (12 chars, null-terminated). Falls back to "Ephemeral".
+    int name_len;
+    const char* name = json_get_string(json, "name", &name_len);
+    if (name && name_len > 0) {
+        int copy_len = name_len < CUSTOM_PROFILE_NAME_LEN - 1
+                       ? name_len : CUSTOM_PROFILE_NAME_LEN - 1;
+        memcpy(cp.name, name, copy_len);
+        cp.name[copy_len] = '\0';
+    } else {
+        snprintf(cp.name, CUSTOM_PROFILE_NAME_LEN, "Ephemeral");
+    }
+
+    // button_map is optional — without it, this acts as a stick/SOCD-only override.
+    uint8_t button_map[CUSTOM_PROFILE_BUTTON_COUNT];
+    int map_count = json_get_int_array(json, "button_map", button_map,
+                                       CUSTOM_PROFILE_BUTTON_COUNT);
+    if (map_count == CUSTOM_PROFILE_BUTTON_COUNT) {
+        memcpy(cp.button_map, button_map, CUSTOM_PROFILE_BUTTON_COUNT);
+    }
+
+    int v;
+    if (json_get_int(json, "left_stick_sens", &v))
+        cp.left_stick_sens = (uint8_t)(v > 200 ? 200 : (v < 0 ? 0 : v));
+    if (json_get_int(json, "right_stick_sens", &v))
+        cp.right_stick_sens = (uint8_t)(v > 200 ? 200 : (v < 0 ? 0 : v));
+    if (json_get_int(json, "flags", &v))
+        cp.flags = (uint8_t)v;
+    if (json_get_int(json, "socd_mode", &v))
+        cp.socd_mode = (uint8_t)(v > 3 ? 0 : (v < 0 ? 0 : v));
+    if (json_get_int(json, "l2_threshold", &v))
+        cp.l2_threshold = (uint8_t)(v > 255 ? 255 : (v < 0 ? 0 : v));
+    if (json_get_int(json, "r2_threshold", &v))
+        cp.r2_threshold = (uint8_t)(v > 255 ? 255 : (v < 0 ? 0 : v));
+
+    flash_apply_ephemeral_profile(&cp);
+
+    snprintf(response_buf, sizeof(response_buf),
+             "{\"ok\":true,\"ephemeral\":true,\"name\":\"%.11s\"}", cp.name);
+    send_json(response_buf);
+}
+
+// PROFILE.CLEAR - Drop the ephemeral runtime override, resume the flash-stored
+// active profile. Idempotent (no-op if no override is set).
+static void cmd_profile_clear(const char* json)
+{
+    (void)json;
+    flash_clear_ephemeral_profile();
+    send_json("{\"ok\":true,\"ephemeral\":false}");
+}
+
+// OVERLAY.SET - Apply a RAM-only "live tweak" layer on top of whatever
+// profile is active (built-in, custom, or PROFILE.APPLY'd). Unlike
+// PROFILE.APPLY, the overlay does NOT replace the active button_map —
+// it only adds stick / SOCD / threshold transforms. Fields set to 0 are
+// skipped (strictly additive). Replaces any previously-set overlay.
+//
+// Body: { "flags":N, "left_stick_sens":N, "right_stick_sens":N,
+//         "socd_mode":N, "l2_threshold":N, "r2_threshold":N } — all optional.
+static void cmd_overlay_set(const char* json)
+{
+    runtime_overlay_t ov;
+    memset(&ov, 0, sizeof(ov));
+    int v;
+    if (json_get_int(json, "flags", &v))
+        ov.flags = (uint8_t)v;
+    if (json_get_int(json, "left_stick_sens", &v))
+        ov.left_stick_sens = (uint8_t)(v > 200 ? 200 : (v < 0 ? 0 : v));
+    if (json_get_int(json, "right_stick_sens", &v))
+        ov.right_stick_sens = (uint8_t)(v > 200 ? 200 : (v < 0 ? 0 : v));
+    if (json_get_int(json, "socd_mode", &v))
+        ov.socd_mode = (uint8_t)(v > 3 ? 0 : (v < 0 ? 0 : v));
+    if (json_get_int(json, "l2_threshold", &v))
+        ov.l2_threshold = (uint8_t)(v > 255 ? 255 : (v < 0 ? 0 : v));
+    if (json_get_int(json, "r2_threshold", &v))
+        ov.r2_threshold = (uint8_t)(v > 255 ? 255 : (v < 0 ? 0 : v));
+
+    flash_set_overlay(&ov);
+
+    snprintf(response_buf, sizeof(response_buf),
+             "{\"ok\":true,\"overlay\":true,\"flags\":%d,"
+             "\"left_stick_sens\":%d,\"right_stick_sens\":%d,"
+             "\"socd_mode\":%d,\"l2_threshold\":%d,\"r2_threshold\":%d}",
+             ov.flags, ov.left_stick_sens, ov.right_stick_sens,
+             ov.socd_mode, ov.l2_threshold, ov.r2_threshold);
+    send_json(response_buf);
+}
+
+// OVERLAY.CLEAR - Drop the runtime overlay. Idempotent.
+static void cmd_overlay_clear(const char* json)
+{
+    (void)json;
+    flash_clear_overlay();
+    send_json("{\"ok\":true,\"overlay\":false}");
+}
+
+// INPUT.INJECT - Submit a synthetic gamepad event into the router from the
+// host. Lets joypad-live let chat actually press buttons (not just remap
+// the streamer's input): a chat command like "!press a" → POST /press/a →
+// INPUT.INJECT { buttons: 1 }. The synthetic event arrives at the router as
+// a separate slot in the 0xD8..0xDF range, so it composes with the
+// streamer's real controller via the merge router mode rather than
+// replacing it.
+//
+// Body: {
+//   "buttons": <uint32 JP_BUTTON_* mask>,        required
+//   "slot":    0..7,                             optional, default 0
+//   "analog":  [LX,LY,RX,RY,L2,R2,RZ],           optional, defaults to neutral
+// }
+//
+// Stateful: each INPUT.INJECT call replaces the synthetic slot's full
+// state (matches how real controllers report). For a tap, the host sends
+// {buttons:N} then {buttons:0} after a few ms.
+static void cmd_input_inject(const char* json)
+{
+    int buttons_val;
+    if (!json_get_int(json, "buttons", &buttons_val)) {
+        send_error("missing buttons");
+        return;
+    }
+    int slot = 0;
+    json_get_int(json, "slot", &slot);
+    if (slot < 0 || slot > 7) slot = 0;
+
+    (void)slot;  // reserved; today we OR a single global mask into events
+
+    // Cache the synthetic button state in the router. Each real input event
+    // (PSX poll, USB poll, BT notification) gets `buttons |= s_inject_buttons`
+    // applied at the top of router_submit_input — works regardless of the
+    // app's routing mode (SIMPLE, MERGE, BROADCAST). Pass buttons=0 to release.
+    router_set_inject_buttons((uint32_t)buttons_val);
+
+    snprintf(response_buf, sizeof(response_buf),
+             "{\"ok\":true,\"buttons\":%u}",
+             (unsigned)buttons_val);
     send_json(response_buf);
 }
 
@@ -2519,6 +2722,12 @@ static const cmd_entry_t commands[] = {
     {"PROFILE.SAVE", cmd_profile_save},
     {"PROFILE.DELETE", cmd_profile_delete},
     {"PROFILE.CLONE", cmd_profile_clone},
+    {"PROFILE.APPLY", cmd_profile_apply},
+    {"PROFILE.CLEAR", cmd_profile_clear},
+    {"PROFILE.SELECT", cmd_profile_select},
+    {"OVERLAY.SET", cmd_overlay_set},
+    {"OVERLAY.CLEAR", cmd_overlay_clear},
+    {"INPUT.INJECT", cmd_input_inject},
     // Legacy CPROFILE.* aliases (deprecated - redirect to unified commands)
     {"CPROFILE.LIST", cmd_cprofile_list},
     {"CPROFILE.GET", cmd_cprofile_get},

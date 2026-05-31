@@ -1,0 +1,3 @@
+# Local SDL3 source checkout used to test the SInput HIDAPI driver
+# (clone with: git clone --depth 1 https://github.com/libsdl-org/SDL.git sdl-main)
+sdl-main/
