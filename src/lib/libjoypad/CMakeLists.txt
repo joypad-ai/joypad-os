@@ -26,6 +26,7 @@ project(libjoypad
 # ----------------------------------------------------------------------------
 
 set(LIBJOYPAD_SOURCES
+    src/devices/usb/hid/sony/ds4.c
     src/devices/usb/hid/sony/ds5.c
     src/devices/usb/hid/sony/psc.c
     src/devices/usb/hid/nintendo/switch_pro.c
@@ -106,6 +107,13 @@ if(LIBJOYPAD_BUILD_TESTS)
         -Wall -Wextra -Wpedantic
     )
     add_test(NAME libjoypad_psc_input COMMAND libjoypad_psc_input)
+
+    add_executable(libjoypad_ds4_input tests/replay/ds4_input.c)
+    target_link_libraries(libjoypad_ds4_input PRIVATE libjoypad)
+    target_compile_options(libjoypad_ds4_input PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    add_test(NAME libjoypad_ds4_input COMMAND libjoypad_ds4_input)
 
     # Fixture replay — runs against tests/fixtures/<vendor>/<device>/captured/
     # when real-hardware captures are present; otherwise the runner exits OK
