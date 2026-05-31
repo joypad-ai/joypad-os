@@ -80,24 +80,24 @@ typedef struct {
 // ============================================================================
 
 // Amiga — warm amber/orange (JoypadOS default)
-#define LED_AMIGA_R     64
-#define LED_AMIGA_G     24
+#define LED_AMIGA_R     12
+#define LED_AMIGA_G     4
 #define LED_AMIGA_B     0
 
 // C64 — deep blue
 #define LED_C64_R       0
 #define LED_C64_G       0
-#define LED_C64_B       64
+#define LED_C64_B       12
 
 // Atari ST — green
 #define LED_ATARI_ST_R  0
-#define LED_ATARI_ST_G  48
+#define LED_ATARI_ST_G  10
 #define LED_ATARI_ST_B  0
 
 // DPI adjustment mode — purple
-#define LED_DPI_R       48
+#define LED_DPI_R       10
 #define LED_DPI_G       0
-#define LED_DPI_B       48
+#define LED_DPI_B       10
 
 // ============================================================================
 // DPI SETTINGS
