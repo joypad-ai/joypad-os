@@ -31,6 +31,7 @@ set(LIBJOYPAD_SOURCES
     src/devices/usb/hid/sony/ds5.c
     src/devices/usb/hid/sony/psc.c
     src/devices/usb/hid/nintendo/switch_pro.c
+    src/devices/usb/xinput/xinput.c
     # src/devices/bt/hid/sony/ds5_bt.c
     # src/registry.c
     # src/sinput.c
@@ -122,6 +123,13 @@ if(LIBJOYPAD_BUILD_TESTS)
         -Wall -Wextra -Wpedantic
     )
     add_test(NAME libjoypad_ds3_input COMMAND libjoypad_ds3_input)
+
+    add_executable(libjoypad_xinput_input tests/replay/xinput_input.c)
+    target_link_libraries(libjoypad_xinput_input PRIVATE libjoypad)
+    target_compile_options(libjoypad_xinput_input PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    add_test(NAME libjoypad_xinput_input COMMAND libjoypad_xinput_input)
 
     # Fixture replay — runs against tests/fixtures/<vendor>/<device>/captured/
     # when real-hardware captures are present; otherwise the runner exits OK

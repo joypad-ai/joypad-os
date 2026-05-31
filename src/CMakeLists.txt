@@ -146,6 +146,7 @@ set(USB_HOST_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/lib/libjoypad/src/devices/usb/hid/sony/ds5.c
     ${CMAKE_CURRENT_SOURCE_DIR}/lib/libjoypad/src/devices/usb/hid/sony/psc.c
     ${CMAKE_CURRENT_SOURCE_DIR}/lib/libjoypad/src/devices/usb/hid/nintendo/switch_pro.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/lib/libjoypad/src/devices/usb/xinput/xinput.c
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/hid/devices/vendors/hori/hori_horipad.c
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/hid/devices/vendors/hori/hori_pokken.c
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/hid/devices/vendors/logitech/logitech_wingman.c

@@ -10,6 +10,7 @@
 #include "chatpad.h"
 #include "core/input_event.h"
 #include "usb/usbd/usbd.h"  // for usbd_get_mode() / USB_OUTPUT_MODE_XBONE
+#include <joypad/devices/microsoft/xinput.h>
 
 // Xbox One auth passthrough - weak stubs for non-USB-device builds
 // These are overridden by xbone_auth.c when linked (usb2usb build)
@@ -102,72 +103,46 @@ void tuh_xinput_report_received_cb(uint8_t dev_addr, uint8_t instance, xinputh_i
 
     if (xid_itf->connected && xid_itf->new_pad_data)
     {
-      // TU_LOG1("[%02x, %02x], Type: %s, Buttons %04x, LT: %02x RT: %02x, LX: %d, LY: %d, RX: %d, RY: %d\n",
-      //   dev_addr, instance, type_str, p->wButtons, p->bLeftTrigger, p->bRightTrigger, p->sThumbLX, p->sThumbLY, p->sThumbRX, p->sThumbRY);
-
-      // Scale Xbox analog values to [1-255] range (platform-agnostic)
-      // XInput uses positive Y = UP, but internal format uses Y: 0=UP, 255=DOWN
-      // So we invert Y-axis values to match HID convention
-      uint8_t analog_1x = byteScaleAnalog(p->sThumbLX);
-      uint8_t analog_1y = 256 - byteScaleAnalog(p->sThumbLY);  // Invert Y
-      uint8_t analog_2x = byteScaleAnalog(p->sThumbRX);
-      uint8_t analog_2y = 256 - byteScaleAnalog(p->sThumbRY);  // Invert Y
-      uint8_t analog_l = p->bLeftTrigger;
-      uint8_t analog_r = p->bRightTrigger;
-
-      buttons = (((p->wButtons & XINPUT_GAMEPAD_DPAD_UP)       ? JP_BUTTON_DU : 0) |
-                ((p->wButtons & XINPUT_GAMEPAD_DPAD_DOWN)      ? JP_BUTTON_DD : 0) |
-                ((p->wButtons & XINPUT_GAMEPAD_DPAD_LEFT)      ? JP_BUTTON_DL : 0) |
-                ((p->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT)     ? JP_BUTTON_DR : 0) |
-                ((p->wButtons & XINPUT_GAMEPAD_A)              ? JP_BUTTON_B1 : 0) |
-                ((p->wButtons & XINPUT_GAMEPAD_B)              ? JP_BUTTON_B2 : 0) |
-                ((p->wButtons & XINPUT_GAMEPAD_X)              ? JP_BUTTON_B3 : 0) |
-                ((p->wButtons & XINPUT_GAMEPAD_Y)              ? JP_BUTTON_B4 : 0) |
-                ((p->wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER)  ? JP_BUTTON_L1 : 0) |
-                ((p->wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER) ? JP_BUTTON_R1 : 0) |
-                // Note: No threshold-based L2/R2 - let output profiles handle analog-to-digital
-                // Xbox triggers are purely analog; digital behavior is profile/output dependent
-                ((p->wButtons & XINPUT_GAMEPAD_BACK)           ? JP_BUTTON_S1 : 0) |
-                ((p->wButtons & XINPUT_GAMEPAD_START)          ? JP_BUTTON_S2 : 0) |
-                ((p->wButtons & XINPUT_GAMEPAD_LEFT_THUMB)     ? JP_BUTTON_L3 : 0) |
-                ((p->wButtons & XINPUT_GAMEPAD_RIGHT_THUMB)    ? JP_BUTTON_R3 : 0) |
-                ((p->wButtons & XINPUT_GAMEPAD_GUIDE)          ? JP_BUTTON_A1 : 0) |
-                ((p->wButtons & XINPUT_GAMEPAD_SHARE)          ? JP_BUTTON_A2 : 0));
-
-      input_event_t event = {
-        .dev_addr = dev_addr,
-        .instance = instance,
-        .type = INPUT_TYPE_GAMEPAD,
-        .transport = INPUT_TRANSPORT_USB,
-        .buttons = buttons,
-        .button_count = 10,  // Xbox: A, B, X, Y, LB, RB, LT, RT, L3, R3
-        .analog = {analog_1x, analog_1y, analog_2x, analog_2y, analog_l, analog_r},
-        .keys = 0,
-        .chatpad = {xid_itf->chatpad_data[0], xid_itf->chatpad_data[1], xid_itf->chatpad_data[2]},
-        .has_chatpad = xid_itf->chatpad_enabled && xid_itf->chatpad_inited
+      // Copy the TinyUSB xinput_gamepad_t into libjoypad's struct (same
+      // field names, but explicit so the firmware doesn't depend on memory
+      // layout matching). libjoypad then produces a canonical input_event_t.
+      joypad_xinput_gamepad_t jp_pad = {
+        .wButtons       = p->wButtons,
+        .bLeftTrigger   = p->bLeftTrigger,
+        .bRightTrigger  = p->bRightTrigger,
+        .sThumbLX       = p->sThumbLX,
+        .sThumbLY       = p->sThumbLY,
+        .sThumbRX       = p->sThumbRX,
+        .sThumbRY       = p->sThumbRY,
+        .pressure_a     = p->pressure_a,
+        .pressure_b     = p->pressure_b,
+        .pressure_x     = p->pressure_x,
+        .pressure_y     = p->pressure_y,
+        .pressure_black = p->pressure_black,
+        .pressure_white = p->pressure_white,
       };
 
-      // Original Xbox (Duke / S-controller) reports per-button analog pressure
-      // on the face + shoulder buttons (the 360 and One are pure digital
-      // there). Forward those values into the router's pressure[] block in
-      // the canonical W3C / PS slot order so any output that consumes
-      // pressure (e.g. PS3 DS3 output) gets the real analog values.
-      if (xid_itf->type == XBOXOG) {
-        // Order: U, R, D, L, L2, R2, L1, R1, triangle, circle, cross, square
-        event.pressure[0]  = 0;                 // d-pad up    (digital on OG)
-        event.pressure[1]  = 0;                 // d-pad right (digital on OG)
-        event.pressure[2]  = 0;                 // d-pad down  (digital on OG)
-        event.pressure[3]  = 0;                 // d-pad left  (digital on OG)
-        event.pressure[4]  = p->bLeftTrigger;   // L2  <- LT
-        event.pressure[5]  = p->bRightTrigger;  // R2  <- RT
-        event.pressure[6]  = p->pressure_white; // L1  <- White (Duke left shoulder)
-        event.pressure[7]  = p->pressure_black; // R1  <- Black (Duke right shoulder)
-        event.pressure[8]  = p->pressure_y;     // triangle <- Y
-        event.pressure[9]  = p->pressure_b;     // circle   <- B
-        event.pressure[10] = p->pressure_a;     // cross    <- A
-        event.pressure[11] = p->pressure_x;     // square   <- X
-        event.has_pressure = true;
+      joypad_xinput_type_t jp_type;
+      switch (xid_itf->type) {
+        case XBOXONE:         jp_type = JOYPAD_XINPUT_TYPE_XBOX_ONE;          break;
+        case XBOX360_WIRELESS: jp_type = JOYPAD_XINPUT_TYPE_XBOX_360_WIRELESS; break;
+        case XBOX360_WIRED:   jp_type = JOYPAD_XINPUT_TYPE_XBOX_360_WIRED;    break;
+        case XBOXOG:          jp_type = JOYPAD_XINPUT_TYPE_XBOX_OG;           break;
+        default:              jp_type = JOYPAD_XINPUT_TYPE_UNKNOWN;           break;
       }
+
+      input_event_t event;
+      joypad_xinput_gamepad_to_event(&jp_pad, jp_type, &event);
+
+      event.dev_addr = dev_addr;
+      event.instance = instance;
+      event.timestamp_us = (uint64_t)platform_time_ms() * 1000ULL;
+
+      // Chatpad data is firmware-specific; libjoypad doesn't surface it.
+      event.chatpad[0] = xid_itf->chatpad_data[0];
+      event.chatpad[1] = xid_itf->chatpad_data[1];
+      event.chatpad[2] = xid_itf->chatpad_data[2];
+      event.has_chatpad = xid_itf->chatpad_enabled && xid_itf->chatpad_inited;
 
       router_submit_input(&event);
     }
