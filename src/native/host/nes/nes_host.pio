@@ -13,7 +13,7 @@ wait_irq:
     nop                     side SIDE_LATCH_HIGH [5] ; hold (6 cycles)
 
 bitloop:
-    in pins, 1              side SIDE_BOTH_LOW [5]   ; sample DATA while CLK low LATCH low (6 cycles)
+    in pins, 4              side SIDE_BOTH_LOW [5]   ; sample 4 DATA lines while CLK low LATCH low (6 cycles)
     nop                     side SIDE_CLK_HIGH [4]   ; CLK high LATCH low (5 cycles)
     jmp x-- bitloop         side SIDE_CLK_HIGH       ; CLK low LATCH low and loop (1 cycle)
     irq clear 0             side SIDE_BOTH_LOW 

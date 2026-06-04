@@ -20,8 +20,17 @@
 #ifndef NES_PIN_DATA0
 #define NES_PIN_DATA0 8
 #endif
+#ifndef NES_PIN_DATA1
+#define NES_PIN_DATA1 9
+#endif
+#ifndef NES_PIN_DATA2
+#define NES_PIN_DATA2 10
+#endif
+#ifndef NES_PIN_DATA3
+#define NES_PIN_DATA3 11
+#endif
 
-#define NES_MAX_PORTS 1
+#define NES_MAX_PORTS 4
 
 void nes_host_init(void);
 
