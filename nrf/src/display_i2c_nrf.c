@@ -29,7 +29,7 @@ static void i2c_write_data(const uint8_t* data, size_t len)
     // I2C data write: control byte 0x40 followed by data
     static uint8_t buf[129];  // 1 control + 128 data max
     buf[0] = 0x40;  // Co=0, D/C#=1 (data)
-    size_t chunk = (len > 128) ? 128 : len;
+    size_t chunk = (len > (sizeof(buf) - 1)) ? (sizeof(buf) - 1) : len;
     memcpy(buf + 1, data, chunk);
     i2c_write(i2c_dev, buf, chunk + 1, i2c_addr);
 }
