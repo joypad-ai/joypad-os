@@ -98,10 +98,23 @@ static volatile int16_t mouse_accum_wheel = 0;
 static volatile uint32_t mouse_buttons   = 0;
 static volatile bool mouse_active        = false;
 static volatile bool device_connected    = false;  // track first connection for LED
+static volatile bool cd32_detected       = false;  // set when console initiates CD32 transfer
 
 // Quadrature state
 static uint8_t quad_x = 0;
 static uint8_t quad_y = 0;
+
+// Turbo state
+#define TURBO_HZ            8
+#define TURBO_PERIOD_MS     (1000 / TURBO_HZ / 2)   // 62ms half-period
+#define TURBO_BLINK_MS      3000                      // double-blink every 3s
+#define STICK_DEADZONE      80                        // analog stick threshold (out of 128)
+
+static uint32_t turbo_mask       = 0;    // which buttons have turbo enabled
+static bool     turbo_state      = false; // current turbo on/off toggle state
+static uint32_t turbo_last_ms    = 0;    // last turbo toggle time
+static uint32_t turbo_blink_ms   = 0;   // last turbo LED blink time
+static uint8_t  turbo_blink_count = 0;  // blink counter
 
 // ============================================================================
 // FLASH HELPERS
@@ -243,6 +256,7 @@ static void __not_in_flash_func(amiga_gpio_irq)(uint gpio, uint32_t events) {
                 current_platform == AMIGA_PLATFORM_AMIGA &&
                 !mouse_active) {
                 amiga_state.mode = AMIGA_MODE_CD32;
+                cd32_detected = true;
                 gpio_set_dir(AMIGA_PIN_CLK, GPIO_IN);
                 buttons_isr = buttons_live >> 1;
                 gpio_set_dir(AMIGA_PIN_DATA, GPIO_OUT);
@@ -339,6 +353,8 @@ static void __not_in_flash_func(amiga_tap_callback)(output_target_t output,
         device_connected = false;
         mouse_active = false;
         dpi_adjust_mode = false;
+        cd32_detected = false;
+        turbo_mask = 0;
         leds_set_color(0, 0, 0);
         return;
     }
@@ -422,20 +438,85 @@ static void __not_in_flash_func(amiga_tap_callback)(output_target_t output,
         }
 
         uint32_t buttons = event->buttons;
-        amiga_state.buttons = buttons;
+        uint32_t physical_buttons = buttons;  // physical presses only, before stick injection
 
+        // ----------------------------------------------------------------
+        // Select + face button = turbo toggle
+        // All platforms: B1 only on C64/Atari ST, all 4 face buttons on Amiga
+        // ----------------------------------------------------------------
+        static bool select_was_held = false;
+        static uint32_t select_combo_handled = 0;
+
+        if (buttons & JP_BUTTON_S1) {
+            const uint32_t turbo_buttons[] = {
+                JP_BUTTON_B1, JP_BUTTON_B2, JP_BUTTON_B3, JP_BUTTON_B4
+            };
+            int max_turbo = (current_platform == AMIGA_PLATFORM_AMIGA) ? 4 : 1;
+            for (int i = 0; i < max_turbo; i++) {
+                uint32_t b = turbo_buttons[i];
+                if ((buttons & b) && !(select_combo_handled & b)) {
+                    turbo_mask ^= b;
+                    select_combo_handled |= b;
+                    turbo_blink_ms = to_ms_since_boot(get_absolute_time());
+                    turbo_blink_count = 0;
+                }
+            }
+            select_was_held = true;
+            buttons &= ~JP_BUTTON_S1;
+            buttons &= ~select_combo_handled;
+        } else {
+            if (select_was_held) {
+                select_combo_handled = 0;
+                select_was_held = false;
+            }
+        }
+
+        // ----------------------------------------------------------------
+        // CD32 mode analog stick mappings (only once CD32 console detected)
+        // Left stick duplicates dpad; Right stick maps to face buttons
+        // ----------------------------------------------------------------
+        if (current_platform == AMIGA_PLATFORM_AMIGA && cd32_detected) {
+            // Left stick → dpad (additive)
+            uint8_t lx = event->analog[ANALOG_LX];
+            uint8_t ly = event->analog[ANALOG_LY];
+            if (ly < (128 - STICK_DEADZONE)) buttons |= JP_BUTTON_DU;
+            if (ly > (128 + STICK_DEADZONE)) buttons |= JP_BUTTON_DD;
+            if (lx < (128 - STICK_DEADZONE)) buttons |= JP_BUTTON_DL;
+            if (lx > (128 + STICK_DEADZONE)) buttons |= JP_BUTTON_DR;
+
+            // Right stick → face buttons
+            // Up=Green(B4) Right=Blue(B2) Down=Red(B1) Left=Yellow(B3)
+            uint8_t rx = event->analog[ANALOG_RX];
+            uint8_t ry = event->analog[ANALOG_RY];
+            if (ry < (128 - STICK_DEADZONE)) buttons |= JP_BUTTON_B4;  // Up    = Green
+            if (rx > (128 + STICK_DEADZONE)) buttons |= JP_BUTTON_B2;
+            if (ry > (128 + STICK_DEADZONE)) buttons |= JP_BUTTON_B1;
+            if (rx < (128 - STICK_DEADZONE)) buttons |= JP_BUTTON_B3;  // Left  = Yellow
+        }
+
+        amiga_state.buttons = physical_buttons;
         set_dpad(buttons);
-        buttons_live = build_cd32_byte(buttons);
+
+        // Apply turbo — when a turbo-enabled button is physically held,
+        // pulse it at TURBO_HZ by gating with turbo_state
+        uint32_t effective_buttons = buttons;
+        if (turbo_mask != 0) {
+            uint32_t turbo_held = turbo_mask & physical_buttons;  // turbo buttons currently held
+            if (turbo_state) effective_buttons |=  turbo_held;    // on phase: pass through
+            else             effective_buttons &= ~turbo_held;    // off phase: suppress
+        }
+
+        buttons_live = build_cd32_byte(effective_buttons);
 
         if (amiga_state.mode == AMIGA_MODE_JOYSTICK) {
             // Fire1 — all platforms
-            if (buttons & JP_BUTTON_B1) pin_press(AMIGA_PIN_CLK);
-            else                        pin_release(AMIGA_PIN_CLK);
+            if (effective_buttons & JP_BUTTON_B1) pin_press(AMIGA_PIN_CLK);
+            else                                  pin_release(AMIGA_PIN_CLK);
 
             // Fire2 — Amiga only (C64 and Atari ST are single button)
             if (current_platform == AMIGA_PLATFORM_AMIGA) {
-                if (buttons & JP_BUTTON_B2) pin_press(AMIGA_PIN_DATA);
-                else                        pin_release(AMIGA_PIN_DATA);
+                if (effective_buttons & JP_BUTTON_B2) pin_press(AMIGA_PIN_DATA);
+                else                                  pin_release(AMIGA_PIN_DATA);
             }
         }
     }
@@ -474,6 +555,8 @@ void amiga_device_task(void) {
                 if (held >= 1000) {
                     // Hold 1s+ — cycle platform
                     current_platform = (amiga_platform_t)((current_platform + 1) % AMIGA_PLATFORM_COUNT);
+                    turbo_mask = 0;
+                    cd32_detected = false;
                     save_settings();
                     update_led();
                     printf("[amiga] Platform: %d\n", current_platform);
@@ -518,6 +601,37 @@ void amiga_device_task(void) {
 
             gpio_set_irq_enabled(AMIGA_PIN_JOYMODE,
                 GPIO_IRQ_EDGE_FALL | GPIO_IRQ_EDGE_RISE, true);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Turbo fire — toggle turbo_state at TURBO_HZ; actual pin driving happens
+    // in the tap callback on each input event
+    // -------------------------------------------------------------------------
+    if (turbo_mask != 0 && !mouse_active) {
+        uint32_t now = to_ms_since_boot(get_absolute_time());
+
+        if ((now - turbo_last_ms) >= TURBO_PERIOD_MS) {
+            turbo_last_ms = now;
+            turbo_state = !turbo_state;
+        }
+
+        // Double-blink LED every TURBO_BLINK_MS to indicate turbo active
+        if (!dpi_adjust_mode) {
+            uint32_t now2 = to_ms_since_boot(get_absolute_time());
+            if (turbo_blink_count == 0 && (now2 - turbo_blink_ms) >= TURBO_BLINK_MS) {
+                turbo_blink_ms = now2;
+                turbo_blink_count = 4;  // 4 half-cycles = 2 blinks
+            }
+            if (turbo_blink_count > 0) {
+                static uint32_t last_blink_step = 0;
+                if ((now2 - last_blink_step) >= 80) {
+                    last_blink_step = now2;
+                    turbo_blink_count--;
+                    if (turbo_blink_count % 2 == 1) leds_set_color(0, 0, 0);
+                    else                             update_led();
+                }
+            }
         }
     }
 }
