@@ -497,26 +497,29 @@ static void __not_in_flash_func(amiga_tap_callback)(output_target_t output,
         amiga_state.buttons = physical_buttons;
         set_dpad(buttons);
 
-        // Apply turbo — when a turbo-enabled button is physically held,
-        // pulse it at TURBO_HZ by gating with turbo_state
+        // Apply turbo to CD32 byte (affects serial protocol for B3/B4)
         uint32_t effective_buttons = buttons;
         if (turbo_mask != 0) {
-            uint32_t turbo_held = turbo_mask & physical_buttons;  // turbo buttons currently held
-            if (turbo_state) effective_buttons |=  turbo_held;    // on phase: pass through
-            else             effective_buttons &= ~turbo_held;    // off phase: suppress
+            uint32_t turbo_held = turbo_mask & physical_buttons;
+            if (turbo_state) effective_buttons |=  turbo_held;
+            else             effective_buttons &= ~turbo_held;
         }
 
         buttons_live = build_cd32_byte(effective_buttons);
 
         if (amiga_state.mode == AMIGA_MODE_JOYSTICK) {
-            // Fire1 — all platforms
-            if (effective_buttons & JP_BUTTON_B1) pin_press(AMIGA_PIN_CLK);
-            else                                  pin_release(AMIGA_PIN_CLK);
+            // Fire1 — skip if turbo active on B1 (task handles it)
+            if (!(turbo_mask & JP_BUTTON_B1)) {
+                if (buttons & JP_BUTTON_B1) pin_press(AMIGA_PIN_CLK);
+                else                        pin_release(AMIGA_PIN_CLK);
+            }
 
-            // Fire2 — Amiga only (C64 and Atari ST are single button)
+            // Fire2 — Amiga only, skip if turbo active on B2 (task handles it)
             if (current_platform == AMIGA_PLATFORM_AMIGA) {
-                if (effective_buttons & JP_BUTTON_B2) pin_press(AMIGA_PIN_DATA);
-                else                                  pin_release(AMIGA_PIN_DATA);
+                if (!(turbo_mask & JP_BUTTON_B2)) {
+                    if (buttons & JP_BUTTON_B2) pin_press(AMIGA_PIN_DATA);
+                    else                        pin_release(AMIGA_PIN_DATA);
+                }
             }
         }
     }
@@ -605,8 +608,8 @@ void amiga_device_task(void) {
     }
 
     // -------------------------------------------------------------------------
-    // Turbo fire — toggle turbo_state at TURBO_HZ; actual pin driving happens
-    // in the tap callback on each input event
+    // Turbo fire — toggle state at TURBO_HZ and drive pins directly from task
+    // so controllers that don't send continuous reports still get turbo output
     // -------------------------------------------------------------------------
     if (turbo_mask != 0 && !mouse_active) {
         uint32_t now = to_ms_since_boot(get_absolute_time());
@@ -614,6 +617,34 @@ void amiga_device_task(void) {
         if ((now - turbo_last_ms) >= TURBO_PERIOD_MS) {
             turbo_last_ms = now;
             turbo_state = !turbo_state;
+
+            // Drive turbo pins directly — only pulse when button is physically held
+            if (amiga_state.mode == AMIGA_MODE_JOYSTICK) {
+                if (turbo_mask & JP_BUTTON_B1) {
+                    if (amiga_state.buttons & JP_BUTTON_B1) {
+                        if (turbo_state) pin_press(AMIGA_PIN_CLK);
+                        else             pin_release(AMIGA_PIN_CLK);
+                    } else {
+                        pin_release(AMIGA_PIN_CLK);
+                    }
+                }
+                if (current_platform == AMIGA_PLATFORM_AMIGA &&
+                        (turbo_mask & JP_BUTTON_B2)) {
+                    if (amiga_state.buttons & JP_BUTTON_B2) {
+                        if (turbo_state) pin_press(AMIGA_PIN_DATA);
+                        else             pin_release(AMIGA_PIN_DATA);
+                    } else {
+                        pin_release(AMIGA_PIN_DATA);
+                    }
+                }
+            }
+
+            // Rebuild CD32 byte with turbo state for B3/B4
+            uint32_t turbo_buttons = amiga_state.buttons;
+            uint32_t b34_held = turbo_mask & amiga_state.buttons & (JP_BUTTON_B3 | JP_BUTTON_B4);
+            if (turbo_state) turbo_buttons |=  b34_held;
+            else             turbo_buttons &= ~b34_held;
+            buttons_live = build_cd32_byte(turbo_buttons);
         }
 
         // Double-blink LED every TURBO_BLINK_MS to indicate turbo active
