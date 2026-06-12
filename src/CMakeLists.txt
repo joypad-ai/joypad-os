@@ -2992,30 +2992,29 @@ pico_enable_stdio_uart(joypad_ami_xiao 0)
 pico_enable_stdio_usb(joypad_ami_xiao 0)
 
 # ============================================================================
-# USB2AMI Retro Frog custom PCB (bare RP2040, GP0/GP1 PIO USB)
+# USB4AMI (USB -> Amiga/Atari/C64 DE9, Retro Frog v2 RP2354A PCB)
+# DE9: CLK=GP0 UP=GP1 DOWN=GP2 LEFT=GP3 RIGHT=GP4 JOYMODE=GP5 DATA=GP11
+# LED: WS2812B GP12
+# RP2354A: 5V-tolerant GPIO, native USB host, built-in flash, no level shifters
 # ============================================================================
-
 add_executable(joypad_ami_retrofrog)
 target_compile_definitions(joypad_ami_retrofrog PRIVATE
     CONFIG_AMIGA=1
-    CONFIG_USB=1
-    CONFIG_PIO_USB_DP_PIN=0
-    PICO_DEFAULT_PIO_USB_DP_PIN=0
-    BOARD_TUH_RHPORT=1
-    WS2812_PIN=12
+    CONFIG_USB_HOST=1
+    USE_BOOTSEL_BUTTON=1
     REQUIRE_FLASH_SETTINGS=1
     DISABLE_BUTTON_SERVICE=1
+    WS2812_PIN=12
     # DE9 signals
-    AMIGA_PIN_UP=2
-    AMIGA_PIN_DOWN=3
-    AMIGA_PIN_LEFT=4
-    AMIGA_PIN_RIGHT=5
-    AMIGA_PIN_CLK=6
-    AMIGA_PIN_DATA=7
-    AMIGA_PIN_JOYMODE=8
+    AMIGA_PIN_CLK=0
+    AMIGA_PIN_UP=1
+    AMIGA_PIN_DOWN=2
+    AMIGA_PIN_LEFT=3
+    AMIGA_PIN_RIGHT=4
+    AMIGA_PIN_JOYMODE=5
+    AMIGA_PIN_DATA=11
 )
 target_sources(joypad_ami_retrofrog PUBLIC ${COMMON_SOURCES}
-    ${USB_DEVICE_SOURCES}
     ${CMAKE_CURRENT_SOURCE_DIR}/native/device/amiga/amiga_device.c
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2ami/app.c
 )
@@ -3023,7 +3022,7 @@ target_include_directories(joypad_ami_retrofrog PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2ami
     ${CMAKE_CURRENT_SOURCE_DIR}/native/device/amiga
 )
-target_link_libraries(joypad_ami_retrofrog PRIVATE ${COMMON_LIBRARIES} pico_multicore tinyusb_device tinyusb_pico_pio_usb)
+target_link_libraries(joypad_ami_retrofrog PRIVATE ${COMMON_LIBRARIES} pico_multicore)
 joypad_target_common(joypad_ami_retrofrog)
 joypad_add_btstack(joypad_ami_retrofrog)
 pico_enable_stdio_uart(joypad_ami_retrofrog 0)

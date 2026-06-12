@@ -30,7 +30,11 @@ static bool __no_inline_not_in_flash_func(read_bootsel_button)(void) {
                     2u << IO_QSPI_GPIO_QSPI_SS_CTRL_OEOVER_LSB,  // GPIO_OVERRIDE_LOW = 2
                     IO_QSPI_GPIO_QSPI_SS_CTRL_OEOVER_BITS);
     for (volatile int i = 0; i < 10000; ++i);
+#if PICO_RP2350
+    bool state = !(sio_hw->gpio_hi_in & SIO_GPIO_HI_IN_QSPI_CSN_BITS);
+#else
     bool state = !(sio_hw->gpio_hi_in & (1u << CS_PIN_INDEX));
+#endif
     hw_write_masked(&ioqspi_hw->io[CS_PIN_INDEX].ctrl,
                     0u << IO_QSPI_GPIO_QSPI_SS_CTRL_OEOVER_LSB,  // GPIO_OVERRIDE_NORMAL = 0
                     IO_QSPI_GPIO_QSPI_SS_CTRL_OEOVER_BITS);
@@ -271,8 +275,51 @@ static void __not_in_flash_func(amiga_gpio_irq)(uint gpio, uint32_t events) {
 // ============================================================================
 
 void __not_in_flash_func(amiga_core1_task)(void) {
+    // Drain the mouse quadrature accumulator at a fixed rate on Core 1,
+    // independent of Core 0's USB/BTstack workload. One tick per iteration,
+    // with a fixed inter-tick delay to give the Amiga CIA time to sample.
+#define QUAD_STEP_US 200
+
     while (true) {
-        tight_loop_contents();
+        if (!mouse_active || amiga_state.mode != AMIGA_MODE_JOYSTICK ||
+                (mouse_accum_x == 0 && mouse_accum_y == 0)) {
+            busy_wait_us(QUAD_STEP_US);
+            continue;
+        }
+
+        bool moved = false;
+
+        if (mouse_accum_x > 0) {
+            quad_x = (quad_x + QUAD_STEPS - 1) % QUAD_STEPS;
+            mouse_accum_x--;
+            moved = true;
+        } else if (mouse_accum_x < 0) {
+            quad_x = (quad_x + 1) % QUAD_STEPS;
+            mouse_accum_x++;
+            moved = true;
+        }
+
+        if (mouse_accum_y > 0) {
+            quad_y = (quad_y + QUAD_STEPS - 1) % QUAD_STEPS;
+            mouse_accum_y--;
+            moved = true;
+        } else if (mouse_accum_y < 0) {
+            quad_y = (quad_y + 1) % QUAD_STEPS;
+            mouse_accum_y++;
+            moved = true;
+        }
+
+        if (moved) {
+            if (current_platform == AMIGA_PLATFORM_ATARI_ST) {
+                set_quad_x_st(QUAD_TABLE[quad_x]);
+                set_quad_y_st(QUAD_TABLE[quad_y]);
+            } else {
+                set_quad_x(QUAD_TABLE[quad_x]);
+                set_quad_y(QUAD_TABLE[quad_y]);
+            }
+        }
+
+        busy_wait_us(QUAD_STEP_US);
     }
 }
 
@@ -472,34 +519,6 @@ void amiga_device_task(void) {
             gpio_set_irq_enabled(AMIGA_PIN_JOYMODE,
                 GPIO_IRQ_EDGE_FALL | GPIO_IRQ_EDGE_RISE, true);
         }
-    }
-
-    // Process mouse movement
-    if (!mouse_active || (mouse_accum_x == 0 && mouse_accum_y == 0)) return;
-
-    if (mouse_accum_x > 0) {
-        quad_x = (quad_x + QUAD_STEPS - 1) % QUAD_STEPS;
-        mouse_accum_x--;
-    } else if (mouse_accum_x < 0) {
-        quad_x = (quad_x + 1) % QUAD_STEPS;
-        mouse_accum_x++;
-    }
-
-    if (mouse_accum_y > 0) {
-        quad_y = (quad_y + QUAD_STEPS - 1) % QUAD_STEPS;
-        mouse_accum_y--;
-    } else if (mouse_accum_y < 0) {
-        quad_y = (quad_y + 1) % QUAD_STEPS;
-        mouse_accum_y++;
-    }
-
-    // Use platform-specific quadrature
-    if (current_platform == AMIGA_PLATFORM_ATARI_ST) {
-        set_quad_x_st(QUAD_TABLE[quad_x]);
-        set_quad_y_st(QUAD_TABLE[quad_y]);
-    } else {
-        set_quad_x(QUAD_TABLE[quad_x]);
-        set_quad_y(QUAD_TABLE[quad_y]);
     }
 }
 
