@@ -34,6 +34,9 @@ static bool __no_inline_not_in_flash_func(read_bootsel_button)(void) {
     bool state = !(sio_hw->gpio_hi_in & SIO_GPIO_HI_IN_QSPI_CSN_BITS);
 #else
     bool state = !(sio_hw->gpio_hi_in & (1u << CS_PIN_INDEX));
+#if PICO_RP2350
+    state = !(sio_hw->gpio_hi_in & SIO_GPIO_HI_IN_QSPI_CSN_BITS);
+#endif
 #endif
     hw_write_masked(&ioqspi_hw->io[CS_PIN_INDEX].ctrl,
                     0u << IO_QSPI_GPIO_QSPI_SS_CTRL_OEOVER_LSB,  // GPIO_OVERRIDE_NORMAL = 0
@@ -46,6 +49,7 @@ static bool __no_inline_not_in_flash_func(read_bootsel_button)(void) {
 #include "hardware/gpio.h"
 #include "hardware/sync.h"
 #include "pico/stdlib.h"
+#include "pico/time.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -98,23 +102,27 @@ static volatile int16_t mouse_accum_wheel = 0;
 static volatile uint32_t mouse_buttons   = 0;
 static volatile bool mouse_active        = false;
 static volatile bool device_connected    = false;  // track first connection for LED
-static volatile bool cd32_detected       = false;  // set when console initiates CD32 transfer
 
 // Quadrature state
 static uint8_t quad_x = 0;
 static uint8_t quad_y = 0;
 
+// CD32 detection
+static volatile bool cd32_detected       = false;
+static volatile bool cd32_transfer_active = false;
+
 // Turbo state
 #define TURBO_HZ            8
-#define TURBO_PERIOD_MS     (1000 / TURBO_HZ / 2)   // 62ms half-period
-#define TURBO_BLINK_MS      3000                      // double-blink every 3s
-#define STICK_DEADZONE      80                        // analog stick threshold (out of 128)
+#define TURBO_BLINK_MS      3000
+#define STICK_DEADZONE      80
 
-static uint32_t turbo_mask       = 0;    // which buttons have turbo enabled
-static bool     turbo_state      = false; // current turbo on/off toggle state
-static uint32_t turbo_last_ms    = 0;    // last turbo toggle time
-static uint32_t turbo_blink_ms   = 0;   // last turbo LED blink time
-static uint8_t  turbo_blink_count = 0;  // blink counter
+static uint32_t turbo_mask        = 0;
+static bool     turbo_state       = false;
+static uint32_t turbo_blink_ms    = 0;
+static uint8_t  turbo_blink_count = 0;
+static repeating_timer_t turbo_timer;
+static bool turbo_timer_running   = false;
+static bool turbo_timer_cb(repeating_timer_t *rt);  // forward declaration
 
 // ============================================================================
 // FLASH HELPERS
@@ -257,6 +265,7 @@ static void __not_in_flash_func(amiga_gpio_irq)(uint gpio, uint32_t events) {
                 !mouse_active) {
                 amiga_state.mode = AMIGA_MODE_CD32;
                 cd32_detected = true;
+                cd32_transfer_active = true;
                 gpio_set_dir(AMIGA_PIN_CLK, GPIO_IN);
                 buttons_isr = buttons_live >> 1;
                 gpio_set_dir(AMIGA_PIN_DATA, GPIO_OUT);
@@ -264,6 +273,7 @@ static void __not_in_flash_func(amiga_gpio_irq)(uint gpio, uint32_t events) {
                 gpio_set_irq_enabled(AMIGA_PIN_CLK, GPIO_IRQ_EDGE_RISE, true);
             }
         } else if (events & GPIO_IRQ_EDGE_RISE) {
+            cd32_transfer_active = false;
             if (amiga_state.mode == AMIGA_MODE_CD32) {
                 gpio_set_irq_enabled(AMIGA_PIN_CLK, GPIO_IRQ_EDGE_RISE, false);
                 if (amiga_state.buttons & JP_BUTTON_B1) pin_press(AMIGA_PIN_CLK);
@@ -289,40 +299,18 @@ static void __not_in_flash_func(amiga_gpio_irq)(uint gpio, uint32_t events) {
 // ============================================================================
 
 void __not_in_flash_func(amiga_core1_task)(void) {
-    // Drain the mouse quadrature accumulator at a fixed rate on Core 1,
-    // independent of Core 0's USB/BTstack workload. One tick per iteration,
-    // with a fixed inter-tick delay to give the Amiga CIA time to sample.
 #define QUAD_STEP_US 200
-
     while (true) {
         if (!mouse_active || amiga_state.mode != AMIGA_MODE_JOYSTICK ||
                 (mouse_accum_x == 0 && mouse_accum_y == 0)) {
             busy_wait_us(QUAD_STEP_US);
             continue;
         }
-
         bool moved = false;
-
-        if (mouse_accum_x > 0) {
-            quad_x = (quad_x + QUAD_STEPS - 1) % QUAD_STEPS;
-            mouse_accum_x--;
-            moved = true;
-        } else if (mouse_accum_x < 0) {
-            quad_x = (quad_x + 1) % QUAD_STEPS;
-            mouse_accum_x++;
-            moved = true;
-        }
-
-        if (mouse_accum_y > 0) {
-            quad_y = (quad_y + QUAD_STEPS - 1) % QUAD_STEPS;
-            mouse_accum_y--;
-            moved = true;
-        } else if (mouse_accum_y < 0) {
-            quad_y = (quad_y + 1) % QUAD_STEPS;
-            mouse_accum_y++;
-            moved = true;
-        }
-
+        if (mouse_accum_x > 0) { quad_x = (quad_x + QUAD_STEPS - 1) % QUAD_STEPS; mouse_accum_x--; moved = true; }
+        else if (mouse_accum_x < 0) { quad_x = (quad_x + 1) % QUAD_STEPS; mouse_accum_x++; moved = true; }
+        if (mouse_accum_y > 0) { quad_y = (quad_y + QUAD_STEPS - 1) % QUAD_STEPS; mouse_accum_y--; moved = true; }
+        else if (mouse_accum_y < 0) { quad_y = (quad_y + 1) % QUAD_STEPS; mouse_accum_y++; moved = true; }
         if (moved) {
             if (current_platform == AMIGA_PLATFORM_ATARI_ST) {
                 set_quad_x_st(QUAD_TABLE[quad_x]);
@@ -332,7 +320,6 @@ void __not_in_flash_func(amiga_core1_task)(void) {
                 set_quad_y(QUAD_TABLE[quad_y]);
             }
         }
-
         busy_wait_us(QUAD_STEP_US);
     }
 }
@@ -355,6 +342,10 @@ static void __not_in_flash_func(amiga_tap_callback)(output_target_t output,
         dpi_adjust_mode = false;
         cd32_detected = false;
         turbo_mask = 0;
+        if (turbo_timer_running) {
+            cancel_repeating_timer(&turbo_timer);
+            turbo_timer_running = false;
+        }
         leds_set_color(0, 0, 0);
         return;
     }
@@ -363,6 +354,7 @@ static void __not_in_flash_func(amiga_tap_callback)(output_target_t output,
         // Set LED on first connection or when switching from gamepad
         if (!mouse_active || !device_connected) {
             device_connected = true;
+            turbo_mask = 0;
             update_led();
         }
         mouse_active = true;
@@ -438,19 +430,21 @@ static void __not_in_flash_func(amiga_tap_callback)(output_target_t output,
         }
 
         uint32_t buttons = event->buttons;
-        uint32_t physical_buttons = buttons;  // physical presses only, before stick injection
+        uint32_t physical_buttons = buttons;
 
-        // ----------------------------------------------------------------
+        // Debounce JP_BUTTON_S2 (Start/Pause) — require 2 consecutive reports
+        static uint8_t s2_count = 0;
+        if (physical_buttons & JP_BUTTON_S2) {
+            if (s2_count < 2) { s2_count++; physical_buttons &= ~JP_BUTTON_S2; buttons &= ~JP_BUTTON_S2; }
+        } else {
+            s2_count = 0;
+        }
+
         // Select + face button = turbo toggle
-        // All platforms: B1 only on C64/Atari ST, all 4 face buttons on Amiga
-        // ----------------------------------------------------------------
         static bool select_was_held = false;
         static uint32_t select_combo_handled = 0;
-
         if (buttons & JP_BUTTON_S1) {
-            const uint32_t turbo_buttons[] = {
-                JP_BUTTON_B1, JP_BUTTON_B2, JP_BUTTON_B3, JP_BUTTON_B4
-            };
+            const uint32_t turbo_buttons[] = { JP_BUTTON_B1, JP_BUTTON_B2, JP_BUTTON_B3, JP_BUTTON_B4 };
             int max_turbo = (current_platform == AMIGA_PLATFORM_AMIGA) ? 4 : 1;
             for (int i = 0; i < max_turbo; i++) {
                 uint32_t b = turbo_buttons[i];
@@ -459,24 +453,26 @@ static void __not_in_flash_func(amiga_tap_callback)(output_target_t output,
                     select_combo_handled |= b;
                     turbo_blink_ms = to_ms_since_boot(get_absolute_time());
                     turbo_blink_count = 0;
+                    // Start timer when first turbo button enabled, cancel when all disabled
+                    if (turbo_mask != 0 && !turbo_timer_running) {
+                        add_repeating_timer_us(-(1000000 / TURBO_HZ / 2), turbo_timer_cb, NULL, &turbo_timer);
+                        turbo_timer_running = true;
+                    } else if (turbo_mask == 0 && turbo_timer_running) {
+                        cancel_repeating_timer(&turbo_timer);
+                        turbo_timer_running = false;
+                    }
                 }
             }
             select_was_held = true;
             buttons &= ~JP_BUTTON_S1;
             buttons &= ~select_combo_handled;
+            physical_buttons = buttons;
         } else {
-            if (select_was_held) {
-                select_combo_handled = 0;
-                select_was_held = false;
-            }
+            if (select_was_held) { select_combo_handled = 0; select_was_held = false; }
         }
 
-        // ----------------------------------------------------------------
-        // CD32 mode analog stick mappings (only once CD32 console detected)
-        // Left stick duplicates dpad; Right stick maps to face buttons
-        // ----------------------------------------------------------------
+        // CD32 analog stick mappings (only once CD32 console detected)
         if (current_platform == AMIGA_PLATFORM_AMIGA && cd32_detected) {
-            // Left stick → dpad (additive)
             uint8_t lx = event->analog[ANALOG_LX];
             uint8_t ly = event->analog[ANALOG_LY];
             if (ly < (128 - STICK_DEADZONE)) buttons |= JP_BUTTON_DU;
@@ -484,37 +480,33 @@ static void __not_in_flash_func(amiga_tap_callback)(output_target_t output,
             if (lx < (128 - STICK_DEADZONE)) buttons |= JP_BUTTON_DL;
             if (lx > (128 + STICK_DEADZONE)) buttons |= JP_BUTTON_DR;
 
-            // Right stick → face buttons
-            // Up=Green(B4) Right=Blue(B2) Down=Red(B1) Left=Yellow(B3)
             uint8_t rx = event->analog[ANALOG_RX];
             uint8_t ry = event->analog[ANALOG_RY];
             if (ry < (128 - STICK_DEADZONE)) buttons |= JP_BUTTON_B4;  // Up    = Green
-            if (rx > (128 + STICK_DEADZONE)) buttons |= JP_BUTTON_B2;
-            if (ry > (128 + STICK_DEADZONE)) buttons |= JP_BUTTON_B1;
+            if (rx > (128 + STICK_DEADZONE)) buttons |= JP_BUTTON_B2;  // Right = Blue
+            if (ry > (128 + STICK_DEADZONE)) buttons |= JP_BUTTON_B1;  // Down  = Red
             if (rx < (128 - STICK_DEADZONE)) buttons |= JP_BUTTON_B3;  // Left  = Yellow
         }
 
         amiga_state.buttons = physical_buttons;
         set_dpad(buttons);
 
-        // Apply turbo to CD32 byte (affects serial protocol for B3/B4)
+        // Build CD32 byte — turbo buttons handled by timer callback
         uint32_t effective_buttons = buttons;
         if (turbo_mask != 0) {
             uint32_t turbo_held = turbo_mask & physical_buttons;
             if (turbo_state) effective_buttons |=  turbo_held;
             else             effective_buttons &= ~turbo_held;
         }
-
         buttons_live = build_cd32_byte(effective_buttons);
 
         if (amiga_state.mode == AMIGA_MODE_JOYSTICK) {
-            // Fire1 — skip if turbo active on B1 (task handles it)
+            // Fire1 — skip if turbo active (timer handles it)
             if (!(turbo_mask & JP_BUTTON_B1)) {
                 if (buttons & JP_BUTTON_B1) pin_press(AMIGA_PIN_CLK);
                 else                        pin_release(AMIGA_PIN_CLK);
             }
-
-            // Fire2 — Amiga only, skip if turbo active on B2 (task handles it)
+            // Fire2 — Amiga only, skip if turbo active
             if (current_platform == AMIGA_PLATFORM_AMIGA) {
                 if (!(turbo_mask & JP_BUTTON_B2)) {
                     if (buttons & JP_BUTTON_B2) pin_press(AMIGA_PIN_DATA);
@@ -526,46 +518,92 @@ static void __not_in_flash_func(amiga_tap_callback)(output_target_t output,
 }
 
 // ============================================================================
+// TURBO TIMER CALLBACK
+// ============================================================================
+
+static bool __not_in_flash_func(turbo_timer_cb)(repeating_timer_t *rt) {
+    (void)rt;
+    if (turbo_mask == 0 || mouse_active || cd32_transfer_active) return true;
+
+    turbo_state = !turbo_state;
+
+    // Rebuild CD32 byte for all turbo buttons
+    uint32_t turbo_buttons = amiga_state.buttons;
+    uint32_t turbo_held = turbo_mask & amiga_state.buttons;
+    if (turbo_state) turbo_buttons |=  turbo_held;
+    else             turbo_buttons &= ~turbo_held;
+    buttons_live = build_cd32_byte(turbo_buttons);
+
+    // Drive CLK/DATA pins for B1/B2 in joystick mode
+    if (amiga_state.mode == AMIGA_MODE_JOYSTICK) {
+        if (turbo_mask & JP_BUTTON_B1) {
+            if (amiga_state.buttons & JP_BUTTON_B1) {
+                if (turbo_state) pin_press(AMIGA_PIN_CLK);
+                else             pin_release(AMIGA_PIN_CLK);
+            } else {
+                pin_release(AMIGA_PIN_CLK);
+            }
+        }
+        if (current_platform == AMIGA_PLATFORM_AMIGA && (turbo_mask & JP_BUTTON_B2)) {
+            if (amiga_state.buttons & JP_BUTTON_B2) {
+                if (turbo_state) pin_press(AMIGA_PIN_DATA);
+                else             pin_release(AMIGA_PIN_DATA);
+            } else {
+                pin_release(AMIGA_PIN_DATA);
+            }
+        }
+    }
+    return true;
+}
+
+// ============================================================================
 // DEVICE TASK
 // ============================================================================
 
 void amiga_device_task(void) {
-    // BOOTSEL button handling — throttled to 20Hz to limit QSPI disruption
+    // Load settings on first task call — storage_init() has run by then
+    static bool settings_loaded = false;
+    if (!settings_loaded) {
+        settings_loaded = true;
+        load_settings();
+        update_led();
+    }
+
+    // BOOTSEL button handling — only during first 10 seconds after power-on
+    // After that, QSPI manipulation interferes with CD32 CLK timing
     {
+#define BOOTSEL_WINDOW_MS 10000
         static uint32_t last_button_read = 0;
         static bool button_was_pressed = false;
         static uint32_t button_press_start = 0;
+        static bool window_open = true;
 
         uint32_t now = to_ms_since_boot(get_absolute_time());
-        if (now - last_button_read >= 50) {
-            last_button_read = now;
-            // Temporarily disable JOYMODE IRQ — read_bootsel_button() disables
-            // all interrupts briefly which can cause ghost CD32 button presses
-            gpio_set_irq_enabled(AMIGA_PIN_JOYMODE, GPIO_IRQ_EDGE_FALL | GPIO_IRQ_EDGE_RISE, false);
-            bool pressed = read_bootsel_button();
-	  
-            gpio_set_irq_enabled(AMIGA_PIN_JOYMODE, GPIO_IRQ_EDGE_FALL | GPIO_IRQ_EDGE_RISE, true);
 
-            if (pressed && !button_was_pressed) {
-                // Button just pressed
-                button_press_start = now;
-                button_was_pressed = true;
-            } else if (!pressed && button_was_pressed) {
-                // Button just released
-                uint32_t held = now - button_press_start;
-                button_was_pressed = false;
+        if (window_open) {
+            if (now >= BOOTSEL_WINDOW_MS || cd32_detected) {
+                window_open = false;
+            } else if (now - last_button_read >= 50) {
+                last_button_read = now;
+                gpio_set_irq_enabled(AMIGA_PIN_JOYMODE, GPIO_IRQ_EDGE_FALL | GPIO_IRQ_EDGE_RISE, false);
+                bool pressed = read_bootsel_button();
+                gpio_set_irq_enabled(AMIGA_PIN_JOYMODE, GPIO_IRQ_EDGE_FALL | GPIO_IRQ_EDGE_RISE, true);
 
-                if (held >= 1000) {
-                    // Hold 1s+ — cycle platform
-                    current_platform = (amiga_platform_t)((current_platform + 1) % AMIGA_PLATFORM_COUNT);
-                    turbo_mask = 0;
-                    cd32_detected = false;
-                    save_settings();
-                    update_led();
-                    printf("[amiga] Platform: %d\n", current_platform);
+                if (pressed && !button_was_pressed) {
+                    button_press_start = now;
+                    button_was_pressed = true;
+                } else if (!pressed && button_was_pressed) {
+                    uint32_t held = now - button_press_start;
+                    button_was_pressed = false;
+                    if (held >= 1000) {
+                        current_platform = (amiga_platform_t)((current_platform + 1) % AMIGA_PLATFORM_COUNT);
+                        turbo_mask = 0;
+                        cd32_detected = false;
+                        save_settings();
+                        update_led();
+                        printf("[amiga] Platform: %d\n", current_platform);
+                    }
                 }
-            } else if (pressed) {
-                // Still pressed — could track for visual feedback later
             }
         }
     }
@@ -607,61 +645,20 @@ void amiga_device_task(void) {
         }
     }
 
-    // -------------------------------------------------------------------------
-    // Turbo fire — toggle state at TURBO_HZ and drive pins directly from task
-    // so controllers that don't send continuous reports still get turbo output
-    // -------------------------------------------------------------------------
-    if (turbo_mask != 0 && !mouse_active) {
+    // Turbo LED blink — double-blink every TURBO_BLINK_MS when turbo active
+    if (turbo_mask != 0 && !mouse_active && !dpi_adjust_mode) {
         uint32_t now = to_ms_since_boot(get_absolute_time());
-
-        if ((now - turbo_last_ms) >= TURBO_PERIOD_MS) {
-            turbo_last_ms = now;
-            turbo_state = !turbo_state;
-
-            // Drive turbo pins directly — only pulse when button is physically held
-            if (amiga_state.mode == AMIGA_MODE_JOYSTICK) {
-                if (turbo_mask & JP_BUTTON_B1) {
-                    if (amiga_state.buttons & JP_BUTTON_B1) {
-                        if (turbo_state) pin_press(AMIGA_PIN_CLK);
-                        else             pin_release(AMIGA_PIN_CLK);
-                    } else {
-                        pin_release(AMIGA_PIN_CLK);
-                    }
-                }
-                if (current_platform == AMIGA_PLATFORM_AMIGA &&
-                        (turbo_mask & JP_BUTTON_B2)) {
-                    if (amiga_state.buttons & JP_BUTTON_B2) {
-                        if (turbo_state) pin_press(AMIGA_PIN_DATA);
-                        else             pin_release(AMIGA_PIN_DATA);
-                    } else {
-                        pin_release(AMIGA_PIN_DATA);
-                    }
-                }
-            }
-
-            // Rebuild CD32 byte with turbo state for B3/B4
-            uint32_t turbo_buttons = amiga_state.buttons;
-            uint32_t b34_held = turbo_mask & amiga_state.buttons & (JP_BUTTON_B3 | JP_BUTTON_B4);
-            if (turbo_state) turbo_buttons |=  b34_held;
-            else             turbo_buttons &= ~b34_held;
-            buttons_live = build_cd32_byte(turbo_buttons);
+        if (turbo_blink_count == 0 && (now - turbo_blink_ms) >= TURBO_BLINK_MS) {
+            turbo_blink_ms = now;
+            turbo_blink_count = 4;
         }
-
-        // Double-blink LED every TURBO_BLINK_MS to indicate turbo active
-        if (!dpi_adjust_mode) {
-            uint32_t now2 = to_ms_since_boot(get_absolute_time());
-            if (turbo_blink_count == 0 && (now2 - turbo_blink_ms) >= TURBO_BLINK_MS) {
-                turbo_blink_ms = now2;
-                turbo_blink_count = 4;  // 4 half-cycles = 2 blinks
-            }
-            if (turbo_blink_count > 0) {
-                static uint32_t last_blink_step = 0;
-                if ((now2 - last_blink_step) >= 80) {
-                    last_blink_step = now2;
-                    turbo_blink_count--;
-                    if (turbo_blink_count % 2 == 1) leds_set_color(0, 0, 0);
-                    else                             update_led();
-                }
+        if (turbo_blink_count > 0) {
+            static uint32_t last_blink_step = 0;
+            if ((now - last_blink_step) >= 80) {
+                last_blink_step = now;
+                turbo_blink_count--;
+                if (turbo_blink_count % 2 == 1) leds_set_color(0, 0, 0);
+                else                             update_led();
             }
         }
     }
@@ -689,16 +686,13 @@ void amiga_device_init(void) {
         GPIO_IRQ_EDGE_FALL | GPIO_IRQ_EDGE_RISE, true, amiga_gpio_irq);
     gpio_set_irq_enabled(AMIGA_PIN_CLK, GPIO_IRQ_EDGE_RISE, false);
 
-    // Load settings from flash
-    load_settings();
-
     router_set_tap(OUTPUT_TARGET_AMIGA, amiga_tap_callback);
 
     amiga_state.mode = AMIGA_MODE_JOYSTICK;
+
     amiga_initialized = true;
 
-    printf("[amiga] Init complete — platform=%d dpi=%d\n",
-           current_platform, dpi[current_platform]);
+    printf("[amiga] Init complete\n");
 }
 
 // ============================================================================
