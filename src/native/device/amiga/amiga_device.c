@@ -213,31 +213,36 @@ static void update_led(void) {
 // Timer resolution: 1us (hardware timer), close enough to 0.5us ticks.
 // ============================================================================
 
+static volatile bool c1351_x_done = false;
+static volatile bool c1351_y_done = false;
+
 static void __not_in_flash_func(c1351_alarm_x_irq)(uint alarm_num) {
     (void)alarm_num;
-    // Release JOYMODE pin (POTX = DE9 pin 5)
+    // alarm_x always releases JOYMODE (POTY = DE9 pin 5)
     gpio_set_dir(AMIGA_PIN_JOYMODE, GPIO_IN);
     gpio_pull_up(AMIGA_PIN_JOYMODE);
+    c1351_x_done = true;
+    if (c1351_y_done) { c1351_busy = false; c1351_x_done = false; c1351_y_done = false; }
 }
 
 static void __not_in_flash_func(c1351_alarm_y_irq)(uint alarm_num) {
     (void)alarm_num;
-    // Release DATA pin (POTY = DE9 pin 9) and clear busy
+    // alarm_y always releases DATA (POTX = DE9 pin 9)
     gpio_set_dir(AMIGA_PIN_DATA, GPIO_IN);
     gpio_pull_up(AMIGA_PIN_DATA);
-    // Safety: also ensure JOYMODE is released
-    gpio_set_dir(AMIGA_PIN_JOYMODE, GPIO_IN);
-    gpio_pull_up(AMIGA_PIN_JOYMODE);
-    c1351_busy = false;
+    c1351_y_done = true;
+    if (c1351_x_done) { c1351_busy = false; c1351_x_done = false; c1351_y_done = false; }
 }
 
 static void __not_in_flash_func(c1351_release_all)(void) {
-    // Emergency release — force both pins high and clear busy
+    // Emergency release — force both pins high and clear all state
     gpio_set_dir(AMIGA_PIN_JOYMODE, GPIO_IN);
     gpio_pull_up(AMIGA_PIN_JOYMODE);
     gpio_set_dir(AMIGA_PIN_DATA, GPIO_IN);
     gpio_pull_up(AMIGA_PIN_DATA);
     c1351_busy = false;
+    c1351_x_done = false;
+    c1351_y_done = false;
 }
 
 static void c1351_init_alarms(void) {
@@ -336,6 +341,8 @@ static void __not_in_flash_func(amiga_gpio_irq)(uint gpio, uint32_t events) {
                 // C1351 proportional mouse: SID is starting a POT measurement
                 if (c1351_alarm_x < 0) c1351_init_alarms();  // lazy init
                 c1351_busy = true;
+                c1351_x_done = false;
+                c1351_y_done = false;
 
                 // Clamp accumulator to prevent overflow
                 if (c1351_accum_x >  127) c1351_accum_x =  127;
@@ -358,14 +365,14 @@ static void __not_in_flash_func(amiga_gpio_irq)(uint gpio, uint32_t events) {
                 gpio_put(AMIGA_PIN_JOYMODE, 0); gpio_set_dir(AMIGA_PIN_JOYMODE, GPIO_OUT);
                 gpio_put(AMIGA_PIN_DATA,    0); gpio_set_dir(AMIGA_PIN_DATA,    GPIO_OUT);
 
-                // Schedule individual pin releases based on position
-                // pin with smaller delay releases first, larger delay releases last
-                // alarm_y callback also clears busy flag
-                uint32_t delay_joymode = C1351_OFFSET + (uint32_t)c1351_pos_y;
-                uint32_t delay_data    = C1351_OFFSET + (uint32_t)c1351_pos_x;
+                // Schedule pin releases: each pin released at its own delay
+                // JOYMODE = POTY (pos_y), DATA = POTX (pos_x)
+                uint32_t delay_poty = C1351_OFFSET + (uint32_t)c1351_pos_y;
+                uint32_t delay_potx = C1351_OFFSET + (uint32_t)c1351_pos_x;
                 uint64_t now = time_us_64();
-                if (c1351_alarm_x >= 0) hardware_alarm_set_target(c1351_alarm_x, now + delay_joymode);
-                if (c1351_alarm_y >= 0) hardware_alarm_set_target(c1351_alarm_y, now + delay_data);
+                // alarm_x fires at smaller delay, alarm_y at larger (clears busy)
+                if (c1351_alarm_x >= 0) hardware_alarm_set_target(c1351_alarm_x, now + delay_poty);
+                if (c1351_alarm_y >= 0) hardware_alarm_set_target(c1351_alarm_y, now + delay_potx);
 
             } else if (amiga_state.mode == AMIGA_MODE_JOYSTICK &&
                 current_platform == AMIGA_PLATFORM_AMIGA &&
@@ -522,7 +529,7 @@ static void __not_in_flash_func(amiga_tap_callback)(output_target_t output,
         uint8_t d = dpi[current_platform];
         if (current_platform == AMIGA_PLATFORM_C64) {
             // C1351 proportional mode — update absolute position
-            c1351_update_position(event->delta_x / d, event->delta_y / d);
+            c1351_update_position(event->delta_x / d, -(event->delta_y / d));
         } else {
             // Amiga/Atari ST — quadrature accumulation (Core 1 drains)
             mouse_accum_x += event->delta_x / d;
@@ -682,7 +689,8 @@ void amiga_device_task(void) {
     if (!settings_loaded) {
         settings_loaded = true;
         load_settings();
-        update_led();
+        // Don't call update_led() here — let framework breathing animation run
+        // at full range until first controller connects
     }
 
     // BOOTSEL button handling — only during first 10 seconds after power-on
