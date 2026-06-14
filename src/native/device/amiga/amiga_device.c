@@ -215,16 +215,29 @@ static void update_led(void) {
 
 static void __not_in_flash_func(c1351_alarm_x_irq)(uint alarm_num) {
     (void)alarm_num;
-    // Release POTX (AMIGA_PIN_JOYMODE = DE9 pin 5) high
+    // Release JOYMODE pin (POTX = DE9 pin 5)
+    gpio_set_dir(AMIGA_PIN_JOYMODE, GPIO_IN);
+    gpio_pull_up(AMIGA_PIN_JOYMODE);
+}
+
+static void __not_in_flash_func(c1351_alarm_y_irq)(uint alarm_num) {
+    (void)alarm_num;
+    // Release DATA pin (POTY = DE9 pin 9) and clear busy
+    gpio_set_dir(AMIGA_PIN_DATA, GPIO_IN);
+    gpio_pull_up(AMIGA_PIN_DATA);
+    // Safety: also ensure JOYMODE is released
     gpio_set_dir(AMIGA_PIN_JOYMODE, GPIO_IN);
     gpio_pull_up(AMIGA_PIN_JOYMODE);
     c1351_busy = false;
 }
 
-static void __not_in_flash_func(c1351_alarm_y_irq)(uint alarm_num) {
-    (void)alarm_num;
+static void __not_in_flash_func(c1351_release_all)(void) {
+    // Emergency release — force both pins high and clear busy
+    gpio_set_dir(AMIGA_PIN_JOYMODE, GPIO_IN);
+    gpio_pull_up(AMIGA_PIN_JOYMODE);
     gpio_set_dir(AMIGA_PIN_DATA, GPIO_IN);
     gpio_pull_up(AMIGA_PIN_DATA);
+    c1351_busy = false;
 }
 
 static void c1351_init_alarms(void) {
@@ -324,7 +337,13 @@ static void __not_in_flash_func(amiga_gpio_irq)(uint gpio, uint32_t events) {
                 if (c1351_alarm_x < 0) c1351_init_alarms();  // lazy init
                 c1351_busy = true;
 
-                // Drain one unit from accumulator per SID sample for smooth movement
+                // Clamp accumulator to prevent overflow
+                if (c1351_accum_x >  127) c1351_accum_x =  127;
+                if (c1351_accum_x < -127) c1351_accum_x = -127;
+                if (c1351_accum_y >  127) c1351_accum_y =  127;
+                if (c1351_accum_y < -127) c1351_accum_y = -127;
+
+                // Drain one unit from accumulator per SID sample
                 if (c1351_accum_x > 0) { c1351_pos_x++; c1351_accum_x--; }
                 else if (c1351_accum_x < 0) { c1351_pos_x--; c1351_accum_x++; }
                 if (c1351_pos_x < C1351_POS_MIN) c1351_pos_x += 128;
@@ -335,16 +354,18 @@ static void __not_in_flash_func(amiga_gpio_irq)(uint gpio, uint32_t events) {
                 if (c1351_pos_y < C1351_POS_MIN) c1351_pos_y += 128;
                 else if (c1351_pos_y > C1351_POS_MAX) c1351_pos_y -= 128;
 
-                // Pull both POT pins LOW immediately, then release after timed delay
+                // Pull both POT pins LOW immediately
                 gpio_put(AMIGA_PIN_JOYMODE, 0); gpio_set_dir(AMIGA_PIN_JOYMODE, GPIO_OUT);
                 gpio_put(AMIGA_PIN_DATA,    0); gpio_set_dir(AMIGA_PIN_DATA,    GPIO_OUT);
 
-                // Schedule release: (OFFSET + pos) microseconds from now
-                uint32_t delay_x = C1351_OFFSET + (uint32_t)c1351_pos_y;
-                uint32_t delay_y = C1351_OFFSET + (uint32_t)c1351_pos_x;
+                // Schedule individual pin releases based on position
+                // pin with smaller delay releases first, larger delay releases last
+                // alarm_y callback also clears busy flag
+                uint32_t delay_joymode = C1351_OFFSET + (uint32_t)c1351_pos_y;
+                uint32_t delay_data    = C1351_OFFSET + (uint32_t)c1351_pos_x;
                 uint64_t now = time_us_64();
-                if (c1351_alarm_x >= 0) hardware_alarm_set_target(c1351_alarm_x, now + delay_x);
-                if (c1351_alarm_y >= 0) hardware_alarm_set_target(c1351_alarm_y, now + delay_y);
+                if (c1351_alarm_x >= 0) hardware_alarm_set_target(c1351_alarm_x, now + delay_joymode);
+                if (c1351_alarm_y >= 0) hardware_alarm_set_target(c1351_alarm_y, now + delay_data);
 
             } else if (amiga_state.mode == AMIGA_MODE_JOYSTICK &&
                 current_platform == AMIGA_PLATFORM_AMIGA &&
@@ -740,6 +761,21 @@ void amiga_device_task(void) {
 
             gpio_set_irq_enabled(AMIGA_PIN_JOYMODE,
                 GPIO_IRQ_EDGE_FALL | GPIO_IRQ_EDGE_RISE, true);
+        }
+    }
+
+    // C1351 watchdog — if busy flag stuck for >2ms, force-release pins
+    {
+        static uint32_t c1351_busy_since = 0;
+        if (c1351_busy && current_platform == AMIGA_PLATFORM_C64) {
+            uint32_t now_ms = to_ms_since_boot(get_absolute_time());
+            if (c1351_busy_since == 0) c1351_busy_since = now_ms;
+            else if (now_ms - c1351_busy_since > 2) {
+                c1351_release_all();
+                c1351_busy_since = 0;
+            }
+        } else {
+            c1351_busy_since = 0;
         }
     }
 
