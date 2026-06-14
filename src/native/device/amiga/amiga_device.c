@@ -50,6 +50,7 @@ static bool __no_inline_not_in_flash_func(read_bootsel_button)(void) {
 #include "hardware/sync.h"
 #include "pico/stdlib.h"
 #include "pico/time.h"
+#include "hardware/timer.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -110,6 +111,20 @@ static uint8_t quad_y = 0;
 // CD32 detection
 static volatile bool cd32_detected       = false;
 static volatile bool cd32_transfer_active = false;
+
+// C1351 proportional mouse state (C64 platform only)
+#define C1351_OFFSET        200
+#define C1351_POS_CENTER    128
+#define C1351_POS_MIN       63
+#define C1351_POS_MAX       192
+
+static volatile bool c1351_busy = false;  // true while alarm is pending
+static volatile int16_t c1351_pos_x = C1351_POS_CENTER;
+static volatile int16_t c1351_pos_y = C1351_POS_CENTER;
+static volatile int16_t c1351_accum_x = 0;
+static volatile int16_t c1351_accum_y = 0;
+static int c1351_alarm_x = -1;
+static int c1351_alarm_y = -1;
 
 // Turbo state
 #define TURBO_HZ            8
@@ -186,6 +201,51 @@ static void update_led(void) {
 // HELPER: Build CD32 byte from button bitmap
 // ============================================================================
 
+// ============================================================================
+// C1351 PROPORTIONAL MOUSE TIMING (C64 platform)
+//
+// Protocol: SID pulls POTX low every 512 C64 clocks (~256us).
+// We detect this falling edge, immediately pull both POT pins low,
+// then release each pin after (OFFSET + position) * 0.5us.
+// SID measures the time from its release to our release = position.
+//
+// We use two hardware alarms: one per axis.
+// Timer resolution: 1us (hardware timer), close enough to 0.5us ticks.
+// ============================================================================
+
+static void __not_in_flash_func(c1351_alarm_x_irq)(uint alarm_num) {
+    (void)alarm_num;
+    // Release POTX (AMIGA_PIN_JOYMODE = DE9 pin 5) high
+    gpio_set_dir(AMIGA_PIN_JOYMODE, GPIO_IN);
+    gpio_pull_up(AMIGA_PIN_JOYMODE);
+    c1351_busy = false;
+}
+
+static void __not_in_flash_func(c1351_alarm_y_irq)(uint alarm_num) {
+    (void)alarm_num;
+    gpio_set_dir(AMIGA_PIN_DATA, GPIO_IN);
+    gpio_pull_up(AMIGA_PIN_DATA);
+}
+
+static void c1351_init_alarms(void) {
+    if (c1351_alarm_x >= 0) return;  // already initialized
+    c1351_alarm_x = hardware_alarm_claim_unused(false);
+    c1351_alarm_y = hardware_alarm_claim_unused(false);
+    if (c1351_alarm_x >= 0) hardware_alarm_set_callback(c1351_alarm_x, c1351_alarm_x_irq);
+    if (c1351_alarm_y >= 0) hardware_alarm_set_callback(c1351_alarm_y, c1351_alarm_y_irq);
+}
+
+static void c1351_free_alarms(void) {
+    if (c1351_alarm_x >= 0) { hardware_alarm_cancel(c1351_alarm_x); hardware_alarm_unclaim(c1351_alarm_x); c1351_alarm_x = -1; }
+    if (c1351_alarm_y >= 0) { hardware_alarm_cancel(c1351_alarm_y); hardware_alarm_unclaim(c1351_alarm_y); c1351_alarm_y = -1; }
+}
+
+static void c1351_update_position(int8_t dx, int8_t dy) {
+    // Accumulate deltas — ISR drains one unit per SID sample for smooth movement
+    c1351_accum_x += dx;
+    c1351_accum_y += dy;
+}
+
 static uint8_t __not_in_flash_func(build_cd32_byte)(uint32_t buttons) {
     uint8_t b = 0xFF;
     if (buttons & JP_BUTTON_B1) b &= ~(1 << CD32_BIT_RED);
@@ -259,13 +319,40 @@ static void __not_in_flash_func(amiga_gpio_irq)(uint gpio, uint32_t events) {
     if (!amiga_initialized) return;
     if (gpio == AMIGA_PIN_JOYMODE) {
         if (events & GPIO_IRQ_EDGE_FALL) {
-            // Only enter CD32 mode on Amiga platform, not during mouse use
-            if (amiga_state.mode == AMIGA_MODE_JOYSTICK &&
+            if (current_platform == AMIGA_PLATFORM_C64 && mouse_active) {
+                // C1351 proportional mouse: SID is starting a POT measurement
+                if (c1351_alarm_x < 0) c1351_init_alarms();  // lazy init
+                c1351_busy = true;
+
+                // Drain one unit from accumulator per SID sample for smooth movement
+                if (c1351_accum_x > 0) { c1351_pos_x++; c1351_accum_x--; }
+                else if (c1351_accum_x < 0) { c1351_pos_x--; c1351_accum_x++; }
+                if (c1351_pos_x < C1351_POS_MIN) c1351_pos_x += 128;
+                else if (c1351_pos_x > C1351_POS_MAX) c1351_pos_x -= 128;
+
+                if (c1351_accum_y > 0) { c1351_pos_y++; c1351_accum_y--; }
+                else if (c1351_accum_y < 0) { c1351_pos_y--; c1351_accum_y++; }
+                if (c1351_pos_y < C1351_POS_MIN) c1351_pos_y += 128;
+                else if (c1351_pos_y > C1351_POS_MAX) c1351_pos_y -= 128;
+
+                // Pull both POT pins LOW immediately, then release after timed delay
+                gpio_put(AMIGA_PIN_JOYMODE, 0); gpio_set_dir(AMIGA_PIN_JOYMODE, GPIO_OUT);
+                gpio_put(AMIGA_PIN_DATA,    0); gpio_set_dir(AMIGA_PIN_DATA,    GPIO_OUT);
+
+                // Schedule release: (OFFSET + pos) microseconds from now
+                uint32_t delay_x = C1351_OFFSET + (uint32_t)c1351_pos_y;
+                uint32_t delay_y = C1351_OFFSET + (uint32_t)c1351_pos_x;
+                uint64_t now = time_us_64();
+                if (c1351_alarm_x >= 0) hardware_alarm_set_target(c1351_alarm_x, now + delay_x);
+                if (c1351_alarm_y >= 0) hardware_alarm_set_target(c1351_alarm_y, now + delay_y);
+
+            } else if (amiga_state.mode == AMIGA_MODE_JOYSTICK &&
                 current_platform == AMIGA_PLATFORM_AMIGA &&
                 !mouse_active) {
+                // CD32 mode entry
                 amiga_state.mode = AMIGA_MODE_CD32;
-                cd32_detected = true;
                 cd32_transfer_active = true;
+                // cd32_detected set on first CLK edge (confirms CD32 not C64 SID poll)
                 gpio_set_dir(AMIGA_PIN_CLK, GPIO_IN);
                 buttons_isr = buttons_live >> 1;
                 gpio_set_dir(AMIGA_PIN_DATA, GPIO_OUT);
@@ -284,6 +371,7 @@ static void __not_in_flash_func(amiga_gpio_irq)(uint gpio, uint32_t events) {
             }
         }
     } else if (gpio == AMIGA_PIN_CLK) {
+        cd32_detected = true;  // confirmed CD32 console (not C64 SID poll)
         if (buttons_isr & 0x01) gpio_put(AMIGA_PIN_DATA, 1);
         else                    gpio_put(AMIGA_PIN_DATA, 0);
         buttons_isr >>= 1;
@@ -302,6 +390,7 @@ void __not_in_flash_func(amiga_core1_task)(void) {
 #define QUAD_STEP_US 200
     while (true) {
         if (!mouse_active || amiga_state.mode != AMIGA_MODE_JOYSTICK ||
+                current_platform == AMIGA_PLATFORM_C64 ||
                 (mouse_accum_x == 0 && mouse_accum_y == 0)) {
             busy_wait_us(QUAD_STEP_US);
             continue;
@@ -410,8 +499,14 @@ static void __not_in_flash_func(amiga_tap_callback)(output_target_t output,
 
         // Normal mouse operation — accumulate deltas with DPI divider
         uint8_t d = dpi[current_platform];
-        mouse_accum_x += event->delta_x / d;
-        mouse_accum_y += event->delta_y / d;
+        if (current_platform == AMIGA_PLATFORM_C64) {
+            // C1351 proportional mode — update absolute position
+            c1351_update_position(event->delta_x / d, event->delta_y / d);
+        } else {
+            // Amiga/Atari ST — quadrature accumulation (Core 1 drains)
+            mouse_accum_x += event->delta_x / d;
+            mouse_accum_y += event->delta_y / d;
+        }
         mouse_accum_wheel += event->delta_wheel;
         mouse_buttons = event->buttons;
 
@@ -575,7 +670,6 @@ void amiga_device_task(void) {
 #define BOOTSEL_WINDOW_MS 10000
         static uint32_t last_button_read = 0;
         static bool button_was_pressed = false;
-        static uint32_t button_press_start = 0;
         static bool window_open = true;
 
         uint32_t now = to_ms_since_boot(get_absolute_time());
@@ -590,19 +684,17 @@ void amiga_device_task(void) {
                 gpio_set_irq_enabled(AMIGA_PIN_JOYMODE, GPIO_IRQ_EDGE_FALL | GPIO_IRQ_EDGE_RISE, true);
 
                 if (pressed && !button_was_pressed) {
-                    button_press_start = now;
                     button_was_pressed = true;
                 } else if (!pressed && button_was_pressed) {
-                    uint32_t held = now - button_press_start;
                     button_was_pressed = false;
-                    if (held >= 1000) {
-                        current_platform = (amiga_platform_t)((current_platform + 1) % AMIGA_PLATFORM_COUNT);
-                        turbo_mask = 0;
-                        cd32_detected = false;
-                        save_settings();
-                        update_led();
-                        printf("[amiga] Platform: %d\n", current_platform);
-                    }
+                    // Tap to cycle platform — no hold required
+                    current_platform = (amiga_platform_t)((current_platform + 1) % AMIGA_PLATFORM_COUNT);
+                    turbo_mask = 0;
+                    cd32_detected = false;
+                    c1351_free_alarms();
+                    save_settings();
+                    update_led();
+                    printf("[amiga] Platform: %d\n", current_platform);
                 }
             }
         }
@@ -615,8 +707,14 @@ void amiga_device_task(void) {
         if (mouse_buttons & JP_BUTTON_B1) pin_press(AMIGA_PIN_CLK);
         else                              pin_release(AMIGA_PIN_CLK);
 
-        if (mouse_buttons & JP_BUTTON_B2) pin_press(AMIGA_PIN_DATA);
-        else                              pin_release(AMIGA_PIN_DATA);
+        if (current_platform == AMIGA_PLATFORM_C64) {
+            // C64: right button = UP pin (DE9 pin 1), DATA pin is POTY — don't touch it
+            if (mouse_buttons & JP_BUTTON_B2) pin_press(AMIGA_PIN_UP);
+            else                              pin_release(AMIGA_PIN_UP);
+        } else {
+            if (mouse_buttons & JP_BUTTON_B2) pin_press(AMIGA_PIN_DATA);
+            else                              pin_release(AMIGA_PIN_DATA);
+        }
 
         // WheelBusMouse scroll protocol (Amiga only)
         if (current_platform == AMIGA_PLATFORM_AMIGA && mouse_accum_wheel != 0) {
