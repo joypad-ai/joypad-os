@@ -103,6 +103,7 @@ static volatile int16_t mouse_accum_wheel = 0;
 static volatile uint32_t mouse_buttons   = 0;
 static volatile bool mouse_active        = false;
 static volatile bool device_connected    = false;  // track first connection for LED
+static volatile bool gamepad_seen        = false;  // true once a real gamepad event arrives
 
 // Quadrature state
 static uint8_t quad_x = 0;
@@ -456,9 +457,12 @@ static void __not_in_flash_func(amiga_tap_callback)(output_target_t output,
     if (event->type == INPUT_TYPE_NONE) {
         device_connected = false;
         mouse_active = false;
+        gamepad_seen = false;
         dpi_adjust_mode = false;
         cd32_detected = false;
         turbo_mask = 0;
+        // Re-enable JOYMODE IRQ on disconnect so next connect detects correctly
+        gpio_set_irq_enabled(AMIGA_PIN_JOYMODE, GPIO_IRQ_EDGE_FALL | GPIO_IRQ_EDGE_RISE, true);
         if (turbo_timer_running) {
             cancel_repeating_timer(&turbo_timer);
             turbo_timer_running = false;
@@ -468,11 +472,27 @@ static void __not_in_flash_func(amiga_tap_callback)(output_target_t output,
     }
 
     if (event->type == INPUT_TYPE_MOUSE) {
+        // Distinguish real mouse from gamepads misclassified as mice by framework
+        // Real mice: have delta_x/delta_y movement, buttons are mouse buttons
+        // Misclassified gamepads: have JP_BUTTON_DU/DD/DL/DR dpad bits set
+        bool has_dpad = (event->buttons & (JP_BUTTON_DU | JP_BUTTON_DD |
+                                           JP_BUTTON_DL | JP_BUTTON_DR)) != 0;
+        if (has_dpad) {
+            // This is a gamepad masquerading as a mouse — treat as gamepad
+            gamepad_seen = true;
+            goto handle_as_gamepad;
+        }
+        if (gamepad_seen) return;  // gamepad was seen first this session
+
         // Set LED on first connection or when switching from gamepad
         if (!mouse_active || !device_connected) {
             device_connected = true;
             turbo_mask = 0;
             update_led();
+            // Re-enable JOYMODE IRQ for C1351 mouse mode
+            if (current_platform == AMIGA_PLATFORM_C64) {
+                gpio_set_irq_enabled(AMIGA_PIN_JOYMODE, GPIO_IRQ_EDGE_FALL, true);
+            }
         }
         mouse_active = true;
 
@@ -539,12 +559,22 @@ static void __not_in_flash_func(amiga_tap_callback)(output_target_t output,
         mouse_buttons = event->buttons;
 
     } else {
+        handle_as_gamepad:
         // Set LED on first connection or when switching from mouse
         if (mouse_active || !device_connected) {
             device_connected = true;
             update_led();
+            // Re-enable JOYMODE IRQ if switching from mouse (it was disabled for gamepad)
+            if (current_platform == AMIGA_PLATFORM_C64 && mouse_active) {
+                // was in mouse mode, now gamepad — JOYMODE IRQ stays disabled
+            }
         }
         mouse_active = false;
+        gamepad_seen = true;
+        // Disable JOYMODE IRQ in C64 gamepad mode — SID polling interferes with USB enumeration
+        if (current_platform == AMIGA_PLATFORM_C64) {
+            gpio_set_irq_enabled(AMIGA_PIN_JOYMODE, GPIO_IRQ_EDGE_FALL, false);
+        }
 
         // Exit DPI adjust mode if mouse disconnected
         if (dpi_adjust_mode) {
@@ -554,14 +584,6 @@ static void __not_in_flash_func(amiga_tap_callback)(output_target_t output,
 
         uint32_t buttons = event->buttons;
         uint32_t physical_buttons = buttons;
-
-        // Debounce JP_BUTTON_S2 (Start/Pause) — require 2 consecutive reports
-        static uint8_t s2_count = 0;
-        if (physical_buttons & JP_BUTTON_S2) {
-            if (s2_count < 2) { s2_count++; physical_buttons &= ~JP_BUTTON_S2; buttons &= ~JP_BUTTON_S2; }
-        } else {
-            s2_count = 0;
-        }
 
         // Select + face button = turbo toggle
         static bool select_was_held = false;
