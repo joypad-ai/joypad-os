@@ -718,7 +718,7 @@ void amiga_device_task(void) {
     // BOOTSEL button handling — only during first 10 seconds after power-on
     // After that, QSPI manipulation interferes with CD32 CLK timing
     {
-#define BOOTSEL_WINDOW_MS 10000
+#define BOOTSEL_WINDOW_MS 5000
         static uint32_t last_button_read = 0;
         static bool button_was_pressed = false;
         static bool window_open = true;
