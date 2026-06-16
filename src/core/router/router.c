@@ -231,6 +231,7 @@ static router_config_t router_config;
 // Global d-pad mode (0=dpad, 1=left stick, 2=right stick)
 static uint8_t global_dpad_mode = 0;
 static bool global_shoulder_swap = false;  // swap L1<->L2, R1<->R2
+static uint8_t global_deadzone = 0;        // analog-stick deadzone radius (0-127, 0=off)
 
 // Global button combo hotkeys
 static struct {
@@ -290,6 +291,56 @@ static bool output_tap_exclusive[MAX_OUTPUTS] = {false};
 // ============================================================================
 // INITIALIZATION
 // ============================================================================
+
+// Integer square root (binary digit-by-digit). Used by the radial deadzone so
+// router.c stays free of <math.h>/sqrtf — it compiles on RP2040, ESP32, nRF
+// and WCH, and we don't want to depend on -lm across all of them.
+static uint32_t isqrt32(uint32_t v) {
+    uint32_t x = 0;
+    uint32_t bit = 1u << 30;
+    while (bit > v) bit >>= 2;
+    while (bit) {
+        if (v >= x + bit) {
+            v -= x + bit;
+            x = (x >> 1) + bit;
+        } else {
+            x >>= 1;
+        }
+        bit >>= 2;
+    }
+    return x;
+}
+
+// Radial, scaled deadzone applied to one stick (axes centered at 128).
+// Inside the deadzone radius the stick snaps to center; outside, the remaining
+// travel is rescaled so motion starts at zero just past the threshold and
+// still reaches full deflection (no jump at the edge). Diagonal corners are
+// preserved by clamping per-axis rather than the magnitude.
+static void apply_radial_deadzone(uint8_t* px, uint8_t* py, uint8_t dz) {
+    int x = (int)*px - 128;
+    int y = (int)*py - 128;
+    uint32_t m2 = (uint32_t)(x * x + y * y);
+    uint32_t dz2 = (uint32_t)dz * (uint32_t)dz;
+    if (m2 <= dz2) {           // inside deadzone → center
+        *px = 128;
+        *py = 128;
+        return;
+    }
+    uint32_t m = isqrt32(m2);  // current magnitude (>= dz here)
+    if (m == 0) return;
+    const int MAXR = 127;      // full-deflection radius
+    int denom = MAXR - (int)dz;
+    if (denom <= 0) return;    // dz == 127: leave raw value (degenerate)
+    int nm = ((int)(m - dz) * MAXR) / denom;  // rescaled magnitude
+    int nx = (x * nm) / (int)m;
+    int ny = (y * nm) / (int)m;
+    int ox = 128 + nx;
+    int oy = 128 + ny;
+    if (ox < 0) ox = 0; else if (ox > 255) ox = 255;
+    if (oy < 0) oy = 0; else if (oy > 255) oy = 255;
+    *px = (uint8_t)ox;
+    *py = (uint8_t)oy;
+}
 
 void router_init(const router_config_t* config) {
     if (!config) {
@@ -356,6 +407,22 @@ void router_init(const router_config_t* config) {
             printf(LOG_TAG "    - Instance merging\n");
         if (config->transform_flags & TRANSFORM_SPINNER)
             printf(LOG_TAG "    - Spinner accumulation\n");
+    }
+
+    // Restore the global analog-stick deadzone from flash. Done here (rather
+    // than per-app like dpad_mode) so every app picks it up with one code
+    // path. flash_load() is a read-only scan, safe before flash_init(); on a
+    // freshly-erased flash deadzone reads 0 (off), so behavior is unchanged
+    // until the user sets it via ROUTER.DEADZONE.SET.
+    {
+        flash_t flash_data;
+        if (flash_load(&flash_data) && flash_data.router_saved &&
+            flash_data.deadzone <= 127) {
+            global_deadzone = flash_data.deadzone;
+            if (global_deadzone) {
+                printf(LOG_TAG "  Analog deadzone: %u\n", global_deadzone);
+            }
+        }
     }
 }
 
@@ -1162,6 +1229,16 @@ void router_submit_input(const input_event_t* event) {
         event = &remapped;
     }
 
+    // Apply the global analog-stick deadzone (radial + scaled). Sticks only —
+    // analog triggers (L2/R2) are intentionally left untouched. Runs after the
+    // d-pad-to-stick remap so synthesized stick values are deadzoned too.
+    if (global_deadzone > 0) {
+        if (!did_remap) { remapped = *event; did_remap = true; }
+        apply_radial_deadzone(&remapped.analog[ANALOG_LX], &remapped.analog[ANALOG_LY], global_deadzone);
+        apply_radial_deadzone(&remapped.analog[ANALOG_RX], &remapped.analog[ANALOG_RY], global_deadzone);
+        event = &remapped;
+    }
+
     // Find first active route to determine output target
     output_target_t output = OUTPUT_TARGET_USB_DEVICE;
     for (uint8_t i = 0; i < MAX_ROUTES; i++) {
@@ -1495,6 +1572,12 @@ void router_set_dpad_mode(uint8_t mode) {
         static const char* names[] = {"D-PAD", "LEFT STICK", "RIGHT STICK"};
         printf(LOG_TAG "D-pad mode: %s\n", names[mode]);
     }
+}
+
+void router_set_deadzone(uint8_t dz) {
+    if (dz > 127) dz = 127;
+    global_deadzone = dz;
+    printf(LOG_TAG "Analog deadzone: %u\n", dz);
 }
 
 void router_set_combo(uint8_t index, uint32_t input_mask, uint32_t output_mask) {

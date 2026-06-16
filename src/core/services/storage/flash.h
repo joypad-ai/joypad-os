@@ -103,8 +103,13 @@ typedef struct {
     // reserved[] so the 256-byte layout is unchanged; old flashes read 0=off.
     uint8_t shoulder_swap;
 
-    // Reserved for future global settings (8 bytes)
-    uint8_t reserved[8];
+    // Global analog-stick deadzone (0-127, radius around center; 0=off).
+    // Applied at the router level to both sticks, above profiles. Carved from
+    // reserved[] so the 256-byte layout is unchanged; old flashes read 0=off.
+    uint8_t deadzone;
+
+    // Reserved for future global settings (7 bytes)
+    uint8_t reserved[7];
 
     // Custom profiles (4 x 56 = 224 bytes)
     custom_profile_t profiles[CUSTOM_PROFILE_MAX_COUNT];
@@ -255,5 +260,10 @@ void flash_set_dpad_mode(uint8_t mode);
 
 // Persist the shoulder-swap toggle (L1<->L2, R1<->R2). Marks router_saved=1.
 void flash_set_shoulder_swap(uint8_t on);
+
+// Persist the global analog-stick deadzone (0-127, radius around center;
+// 0=off). Marks router_saved=1 so the boot-time restore knows it was
+// explicitly chosen.
+void flash_set_deadzone(uint8_t dz);
 
 #endif // FLASH_H
