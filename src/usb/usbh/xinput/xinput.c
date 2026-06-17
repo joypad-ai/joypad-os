@@ -286,9 +286,12 @@ void xinput_task(void)
   if (now - last_feedback_ms < 20) return;
   last_feedback_ms = now;
 
-  // Track last-sent values per player to avoid redundant USB transfers
-  static uint8_t last_led[4] = {0};
-  static uint8_t last_rumble[4] = {0};
+  // Track last-sent values per player to avoid redundant USB transfers.
+  // MAX_PLAYERS (not 4) — the loop indexes [i] up to playersCount-1; the PCE
+  // multitap allows 5 players, so [4] overflowed and corrupted memory at the
+  // 5th controller.
+  static uint8_t last_led[MAX_PLAYERS] = {0};
+  static uint8_t last_rumble[MAX_PLAYERS] = {0};
 
   // Update rumble/LED state for each xinput device
   for (int i = 0; i < playersCount; ++i)
