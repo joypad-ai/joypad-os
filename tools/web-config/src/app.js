@@ -343,13 +343,22 @@ class JoypadConfigApp {
         try {
             this.log('Connecting via USB...');
             await this.protocol.connectSerial();
+            // Verify the device actually responds BEFORE showing "connected".
+            // On Linux, port.open() can succeed even when serial access is
+            // blocked (missing udev permission), leaving a dead port — the old
+            // code flipped to "connected" then silently failed to load.
+            // getInfo() sends a command with a 2s timeout and throws if the
+            // device never answers (unlike the component loaders, which swallow).
+            await this.protocol.getInfo();
             this._lastTransport = 'USB';
             this.log('Connected via USB!', 'success');
             this.updateConnectionUI(true);
             await this.loadAll();
         } catch (e) {
+            try { await this.protocol.disconnect(); } catch (_) {}
             this.log(`USB connection failed: ${e.message}`, 'error');
             this.updateConnectionUI(false);
+            this.showConnectionError('USB', e);
         }
     }
 
@@ -357,14 +366,66 @@ class JoypadConfigApp {
         try {
             this.log('Connecting via BLE...');
             await this.protocol.connectBluetooth();
+            await this.protocol.getInfo();  // verify the device responds
             this._lastTransport = 'BLE';
             this.log('Connected via BLE!', 'success');
             this.updateConnectionUI(true);
             await this.loadAll();
         } catch (e) {
+            try { await this.protocol.disconnect(); } catch (_) {}
             this.log(`BLE connection failed: ${e.message}`, 'error');
             this.updateConnectionUI(false);
+            this.showConnectionError('Bluetooth', e);
         }
+    }
+
+    // ---- Toast notifications --------------------------------------------
+    _escapeHtml(s) {
+        const d = document.createElement('div');
+        d.textContent = s == null ? '' : String(s);
+        return d.innerHTML;
+    }
+
+    showToast(html, { type = 'info', persistent = false, duration = 9000 } = {}) {
+        const container = document.getElementById('toastContainer');
+        if (!container) return null;
+        const toast = document.createElement('div');
+        toast.className = 'toast' + (type ? ' toast-' + type : '');
+        const body = document.createElement('div');
+        body.className = 'toast-body';
+        body.innerHTML = html;
+        const close = document.createElement('button');
+        close.className = 'toast-close';
+        close.setAttribute('aria-label', 'Dismiss');
+        close.innerHTML = '&times;';
+        const dismiss = () => {
+            toast.classList.add('toast-hide');
+            setTimeout(() => toast.remove(), 200);
+        };
+        close.addEventListener('click', dismiss);
+        toast.appendChild(body);
+        toast.appendChild(close);
+        container.appendChild(toast);
+        if (!persistent) setTimeout(dismiss, duration);
+        return toast;
+    }
+
+    // Surface a connection failure prominently, with Linux serial-permission
+    // guidance (the #1 cause of "connects but does nothing" on Chrome/Linux).
+    showConnectionError(transport, error) {
+        const msg = (error && error.message) ? error.message : String(error);
+        const ua = navigator.userAgent || '';
+        const isLinux = /Linux/i.test(ua) && !/Android/i.test(ua);
+        let html = `<strong>${this._escapeHtml(transport)} connection failed</strong>` +
+                   `<div class="toast-detail">${this._escapeHtml(msg)}</div>`;
+        if (transport === 'USB' && isLinux) {
+            html += `<div class="toast-help">On Linux, the browser is often blocked from the ` +
+                    `serial device by permissions. Grant access with a udev rule:</div>` +
+                    `<pre class="toast-cmd">echo 'KERNEL=="ttyACM0", MODE="0666"' | sudo tee /etc/udev/rules.d/50-joypados.rules\n` +
+                    `sudo udevadm control --reload-rules &amp;&amp; sudo udevadm trigger</pre>` +
+                    `<div class="toast-help">Then unplug/replug the adapter and reconnect.</div>`;
+        }
+        this.showToast(html, { type: 'error', persistent: true });
     }
 
     async disconnect() {
