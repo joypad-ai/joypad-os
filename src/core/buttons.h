@@ -29,7 +29,13 @@
  *  Extended: A2=Touchpad/Capture  A3=Mute  L4/R4=Paddles
  */
 
+// Sized to cover the highest USB dev_addr the host can assign
+// (CFG_TUH_DEVICE_MAX + CFG_TUH_HUB + 1). devices[] and every driver's
+// per-device array are indexed by dev_addr, so this must be >= max dev_addr.
+// Overridable per-app: usb2pce raises it to 22 alongside CFG_TUH_HUB=4.
+#ifndef MAX_DEVICES
 #define MAX_DEVICES 12
+#endif
 
 // W3C Gamepad API standard button order
 // Bit position = W3C button index (trivial conversion: 1 << index)

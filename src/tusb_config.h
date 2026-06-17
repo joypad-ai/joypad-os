@@ -113,7 +113,12 @@
 // cascaded hub chips internally, so a single such hub presents as 2 hub
 // devices. At 1, the second-tier chip never enumerates and every controller
 // behind it is dead — which is why hubs regressed vs the USBRetro era.
+// Overridable per-app (usb2pce sets 4 to allow chaining a second hub). When
+// raised, MAX_DEVICES (core/buttons.h) must grow to cover dev_addr up to
+// CFG_TUH_DEVICE_MAX + CFG_TUH_HUB.
+#ifndef CFG_TUH_HUB
 #define CFG_TUH_HUB                 2
+#endif
 #define CFG_TUH_CDC                 0
 #define CFG_TUH_HID                 8   // Max 8 HID interfaces total (2 per device typical)
 // Mass storage host: opt-in per target via CONFIG_USB_MSC. Default-off so

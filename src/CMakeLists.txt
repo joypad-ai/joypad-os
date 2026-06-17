@@ -474,6 +474,10 @@ message(STATUS "Board ${PICO_BOARD}: BUTTON_USER_GPIO=${BOARD_BUTTON_GPIO}")
 # --- PCEngine ---
 add_executable(joypad_pce)
 target_compile_definitions(joypad_pce PRIVATE CONFIG_PCE=1)
+# PCEngine multitap = 5 players. Allow chaining a second hub (e.g. PCE Mini
+# 5-port hub, itself 2 cascaded chips, + another hub). CFG_TUH_HUB=4 ->
+# CFG_TUH_DEVICE_MAX=17 -> max dev_addr 21, so MAX_DEVICES must be >= 22.
+target_compile_definitions(joypad_pce PRIVATE CFG_TUH_HUB=4 MAX_DEVICES=22)
 if (PICO_BOARD STREQUAL "pico")
     target_compile_definitions(joypad_pce PRIVATE RPI_PICO_BUILD=1)
 endif()
