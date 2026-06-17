@@ -26,7 +26,7 @@ bool diff_report_pokken(hori_pokken_report_t const* rpt1, hori_pokken_report_t c
 void process_hori_pokken(uint8_t dev_addr, uint8_t instance, uint8_t const* report, uint16_t len) {
   uint32_t buttons;
   // previous report used to compare for changes
-  static hori_pokken_report_t prev_report[5][5];
+  static hori_pokken_report_t prev_report[MAX_DEVICES][5];
 
   hori_pokken_report_t update_report;
   memcpy(&update_report, report, sizeof(update_report));

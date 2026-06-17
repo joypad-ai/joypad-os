@@ -141,7 +141,7 @@ void input_sony_ds4(uint8_t dev_addr, uint8_t instance, uint8_t const* report, u
 {
   uint32_t buttons;
   // previous report used to compare for changes
-  static sony_ds4_report_t prev_report[5] = { 0 };
+  static sony_ds4_report_t prev_report[MAX_DEVICES] = { 0 };
 
   uint8_t const report_id = report[0];
   report++;

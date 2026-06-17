@@ -38,7 +38,7 @@ typedef struct __attribute__((packed)) {
 } raphnet_pce_report_t;
 
 // Previous report for change detection
-static raphnet_pce_report_t prev_report[5];
+static raphnet_pce_report_t prev_report[MAX_DEVICES];
 
 // Check if device is Raphnet PCE adapter
 static bool is_raphnet_pce(uint16_t vid, uint16_t pid) {

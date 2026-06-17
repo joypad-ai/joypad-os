@@ -29,7 +29,7 @@
  *  Extended: A2=Touchpad/Capture  A3=Mute  L4/R4=Paddles
  */
 
-#define MAX_DEVICES 6
+#define MAX_DEVICES 12
 
 // W3C Gamepad API standard button order
 // Bit position = W3C button index (trivial conversion: 1 << index)

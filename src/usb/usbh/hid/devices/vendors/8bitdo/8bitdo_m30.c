@@ -21,7 +21,7 @@ bool diff_report_m30(bitdo_m30_report_t const* rpt1, bitdo_m30_report_t const* r
 void process_8bitdo_m30(uint8_t dev_addr, uint8_t instance, uint8_t const* report, uint16_t len) {
   uint32_t buttons;
   // previous report used to compare for changes
-  static bitdo_m30_report_t prev_report[5] = { 0 };
+  static bitdo_m30_report_t prev_report[MAX_DEVICES] = { 0 };
 
   bitdo_m30_report_t input_report;
   memcpy(&input_report, report, sizeof(input_report));

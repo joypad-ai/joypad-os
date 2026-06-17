@@ -188,7 +188,7 @@ void input_report_switch_pro(uint8_t dev_addr, uint8_t instance, uint8_t const* 
 {
   uint32_t buttons;
   // previous report used to compare for changes
-  static switch_pro_report_t prev_report[5][5];
+  static switch_pro_report_t prev_report[MAX_DEVICES][5];
 
   switch_pro_report_t update_report;
   memcpy(&update_report, report, sizeof(update_report));

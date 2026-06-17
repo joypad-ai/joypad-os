@@ -124,7 +124,7 @@
 #define CFG_TUH_MSC                 0
 #endif
 #define CFG_TUH_VENDOR              0
-#define CFG_TUH_XINPUT              4   // Max 4 XInput interfaces (Xbox wireless adapter has 4 ports)
+#define CFG_TUH_XINPUT              8   // Max 8 XInput interfaces (5 pads through a hub + Xbox wireless adapter ports)
 
 // Bluetooth dongle support - only enabled when ENABLE_BTSTACK is defined by CMake
 // CYW43 targets use built-in BT via pico_btstack, not USB dongle class

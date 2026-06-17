@@ -95,7 +95,7 @@ bool diff_report_ds3(sony_ds3_report_t const* rpt1, sony_ds3_report_t const* rpt
 void input_sony_ds3(uint8_t dev_addr, uint8_t instance, uint8_t const* report, uint16_t len) {
   uint32_t buttons;
   // previous report used to compare for changes
-  static sony_ds3_report_t prev_report[5] = { 0 };
+  static sony_ds3_report_t prev_report[MAX_DEVICES] = { 0 };
 
   // Mark that we've received input (DS3 is active and ready)
   ds3_devices[dev_addr].instances[instance].input_received = true;

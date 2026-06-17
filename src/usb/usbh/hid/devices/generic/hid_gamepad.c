@@ -311,7 +311,7 @@ static uint16_t read_axis_value(const uint8_t *report, const dinput_usage_t *loc
 void process_hid_gamepad(uint8_t dev_addr, uint8_t instance, uint8_t const* report, uint16_t len)
 {
   uint32_t buttons = 0;
-  static dinput_gamepad_t previous[5][5];
+  static dinput_gamepad_t previous[MAX_DEVICES][5];
   dinput_gamepad_t current = {0};
   current.value = 0;
 

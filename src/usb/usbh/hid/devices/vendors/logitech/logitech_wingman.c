@@ -35,7 +35,7 @@ bool diff_report_logitech_wingman(logitech_wingman_report_t const* rpt1, logitec
 void process_logitech_wingman(uint8_t dev_addr, uint8_t instance, uint8_t const* report, uint16_t len) {
   uint32_t buttons;
   // previous report used to compare for changes
-  static logitech_wingman_report_t prev_report[5] = { 0 };
+  static logitech_wingman_report_t prev_report[MAX_DEVICES] = { 0 };
 
   logitech_wingman_report_t wingman_report;
   memcpy(&wingman_report, report, sizeof(wingman_report));
