@@ -175,9 +175,15 @@ static uint16_t dx_remaining;      // payload+CRC bytes left in the frame
 
 static bool relay_cdc_filter(uint8_t b)
 {
-    // Only demux while a MouthPad NUS link is up; otherwise everything is a
-    // normal JoypadOS command byte and CDC behaves exactly as before.
-    if (!btstack_host_mouthpad_nus_ready()) {
+    // Demux whenever a host is on the CDC port, NOT only when a MouthPad is
+    // connected. The desktop utility polls dongle-level queries (device_info /
+    // ble_connection_status) the moment it connects — including while no MouthPad
+    // is paired, when it expects a "searching" status. Gating on the MouthPad
+    // link made those polls go unanswered, so the utility showed "disconnected"
+    // while the dongle was actually scanning. Passthrough to a missing MouthPad
+    // is a safe no-op (btstack_host_mouthpad_nus_send returns false). With no host
+    // connected there's no CDC RX, so this is inert.
+    if (!tud_cdc_connected()) {
         dx_state = DX_IDLE;
         return false;
     }
