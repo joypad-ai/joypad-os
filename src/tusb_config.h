@@ -211,9 +211,9 @@
   // HID buffer sizes
   #define CFG_TUD_HID_EP_BUFSIZE    64
 
-  // CDC buffer sizes
+  // CDC buffer sizes (TX enlarged for high-rate MouthPad NUS->CDC telemetry relay)
   #define CFG_TUD_CDC_RX_BUFSIZE    256
-  #define CFG_TUD_CDC_TX_BUFSIZE    2048
+  #define CFG_TUD_CDC_TX_BUFSIZE    4096
   #define CFG_TUD_CDC_EP_BUFSIZE    64
 #endif
 #endif

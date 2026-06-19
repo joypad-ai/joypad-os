@@ -116,6 +116,35 @@ bool btstack_wiimote_send_raw(uint8_t conn_index, const uint8_t* data, uint16_t 
 bool btstack_wiimote_send_control(uint8_t conn_index, const uint8_t* data, uint16_t len);
 
 // ============================================================================
+// MOUTHPAD NUS CLIENT (Augmental MouthPad relay)
+// ============================================================================
+
+// Register a callback for device->host NUS bytes (fires in BTstack context).
+void btstack_host_set_mouthpad_nus_rx_cb(void (*cb)(const uint8_t* data, uint16_t len));
+
+// Write host->device NUS bytes. Returns false if no MouthPad NUS is ready.
+// Must be called from BTstack/run-loop context (e.g. the bridge task).
+bool btstack_host_mouthpad_nus_send(const uint8_t* data, uint16_t len);
+
+// True once NUS service discovery has completed for a connected MouthPad.
+bool btstack_host_mouthpad_nus_ready(void);
+
+// Connected MouthPad device info, for the dongle-level relay responses
+// (device_info_response / ble_connection_status_response).
+typedef struct {
+    char     name[48];
+    char     firmware[24];  // DIS firmware revision ("" if unknown)
+    uint8_t  addr[6];
+    uint16_t vid;
+    uint16_t pid;
+    uint8_t  battery;   // last BAS level (0 = unknown)
+    bool     ready;     // NUS service ready (vs still connecting)
+} btstack_host_mouthpad_info_t;
+
+// Fills `out` with the connected MouthPad's info; false if none connected.
+bool btstack_host_get_mouthpad_info(btstack_host_mouthpad_info_t* out);
+
+// ============================================================================
 // BOND MANAGEMENT
 // ============================================================================
 

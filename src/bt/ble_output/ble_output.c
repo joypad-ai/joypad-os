@@ -521,6 +521,10 @@ static int att_write_callback(hci_con_handle_t con_handle, uint16_t att_handle,
     return 0;  // Let hids_device handle it
 }
 
+// Tell btstack_host (central path) that we own the ATT server with the full
+// peripheral GATT profile, so it skips installing its minimal fallback server.
+bool btstack_host_external_att_server(void) { return true; }
+
 // Called after bt_init() — BTstack must be running before GATT/GAP setup
 void ble_output_late_init(void)
 {

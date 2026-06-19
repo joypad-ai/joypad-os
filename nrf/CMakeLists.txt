@@ -21,6 +21,8 @@ elseif(DEFINED EXTRA_CONF_FILE AND EXTRA_CONF_FILE MATCHES "prj_btusb2usb")
     set(APP_TYPE "btusb2usb")
 elseif(DEFINED EXTRA_CONF_FILE AND EXTRA_CONF_FILE MATCHES "prj_usb2usb")
     set(APP_TYPE "usb2usb")
+elseif(DEFINED EXTRA_CONF_FILE AND EXTRA_CONF_FILE MATCHES "prj_mouthpad")
+    set(APP_TYPE "mouthpad")
 else()
     set(APP_TYPE "bt2usb")
 endif()
@@ -272,6 +274,7 @@ elseif(APP_TYPE STREQUAL "btusb2usb")
         "${SHARED_SRC}/bt/bthid/devices/vendors/microsoft/xbox_bt.c"
         "${SHARED_SRC}/bt/bthid/devices/vendors/microsoft/xbox_ble.c"
         "${SHARED_SRC}/bt/bthid/devices/vendors/google/stadia_bt.c"
+        "${SHARED_SRC}/bt/bthid/devices/vendors/augmental/mouthpad_ble.c"
 
         # --- BTstack host + transport ---
         "${SHARED_SRC}/bt/btstack/btstack_host.c"
@@ -303,6 +306,8 @@ elseif(APP_TYPE STREQUAL "btusb2usb")
         "${BTSTACK_PATH}/src/ble/sm.c"
         "${BTSTACK_PATH}/src/ble/att_dispatch.c"
         "${BTSTACK_PATH}/src/ble/att_db.c"
+        "${BTSTACK_PATH}/src/ble/att_db_util.c"
+        "${BTSTACK_PATH}/src/ble/att_server.c"
         "${BTSTACK_PATH}/src/ble/gatt_client.c"
         "${BTSTACK_PATH}/src/ble/gatt_service_client.c"
         "${BTSTACK_PATH}/src/ble/le_device_db_memory.c"
@@ -435,13 +440,14 @@ elseif(APP_TYPE STREQUAL "controller_btusb")
         "${BTSTACK_PATH}/src/ble/sm.c"
         "${BTSTACK_PATH}/src/ble/att_dispatch.c"
         "${BTSTACK_PATH}/src/ble/att_db.c"
+        "${BTSTACK_PATH}/src/ble/att_db_util.c"
+        "${BTSTACK_PATH}/src/ble/att_server.c"
         "${BTSTACK_PATH}/src/ble/gatt_client.c"
         "${BTSTACK_PATH}/src/ble/gatt_service_client.c"
         "${BTSTACK_PATH}/src/ble/le_device_db_memory.c"
         "${BTSTACK_PATH}/src/ble/le_device_db_tlv.c"
 
         # --- BTstack GATT server (peripheral) + client services (central) ---
-        "${BTSTACK_PATH}/src/ble/att_server.c"
         "${BTSTACK_PATH}/src/ble/gatt-service/hids_client.c"
         "${BTSTACK_PATH}/src/ble/gatt-service/battery_service_client.c"
         "${BTSTACK_PATH}/src/ble/gatt-service/device_information_service_client.c"
@@ -507,15 +513,27 @@ elseif(APP_TYPE STREQUAL "controller_btusb")
 
 else()
     # -----------------------------------------------------------------------
-    # bt2usb (default): Bluetooth → USB Device
+    # bt2usb (default) / mouthpad: Bluetooth → USB Device
     # BTstack BLE host, no USB host input
     # -----------------------------------------------------------------------
+    if(APP_TYPE STREQUAL "mouthpad")
+        set(BT_APP_C "${SHARED_SRC}/apps/mouthpad/app.c")
+        set(BT_APP_DIR "${SHARED_SRC}/apps/mouthpad")
+    else()
+        set(BT_APP_C "${SHARED_SRC}/apps/bt2usb/app.c")
+        set(BT_APP_DIR "${SHARED_SRC}/apps/bt2usb")
+    endif()
     list(APPEND SRCS
         # --- nRF BTstack TLV ---
         "src/btstack_tlv_nrf.c"
 
         # --- App ---
-        "${SHARED_SRC}/apps/bt2usb/app.c"
+        "${BT_APP_C}"
+
+        # --- MouthPad NUS<->CDC relay (ambient: self-attaches to CDC when a
+        #     MouthPad is connected; inert otherwise, so live for bt2usb too) ---
+        "${SHARED_SRC}/bt/mouthpad/mp_relay.c"
+        "${SHARED_SRC}/bt/mouthpad/mp_bridge.c"
 
         # --- BT HID device drivers ---
         "${SHARED_SRC}/bt/bthid/bthid.c"
@@ -531,6 +549,7 @@ else()
         "${SHARED_SRC}/bt/bthid/devices/vendors/microsoft/xbox_bt.c"
         "${SHARED_SRC}/bt/bthid/devices/vendors/microsoft/xbox_ble.c"
         "${SHARED_SRC}/bt/bthid/devices/vendors/google/stadia_bt.c"
+        "${SHARED_SRC}/bt/bthid/devices/vendors/augmental/mouthpad_ble.c"
 
         # --- BTstack host + transport ---
         "${SHARED_SRC}/bt/btstack/btstack_host.c"
@@ -562,6 +581,8 @@ else()
         "${BTSTACK_PATH}/src/ble/sm.c"
         "${BTSTACK_PATH}/src/ble/att_dispatch.c"
         "${BTSTACK_PATH}/src/ble/att_db.c"
+        "${BTSTACK_PATH}/src/ble/att_db_util.c"
+        "${BTSTACK_PATH}/src/ble/att_server.c"
         "${BTSTACK_PATH}/src/ble/gatt_client.c"
         "${BTSTACK_PATH}/src/ble/gatt_service_client.c"
         "${BTSTACK_PATH}/src/ble/le_device_db_memory.c"
@@ -589,7 +610,7 @@ else()
     )
 
     list(APPEND INCLUDE_DIRS
-        "${SHARED_SRC}/apps/bt2usb"
+        "${BT_APP_DIR}"
         "${SHARED_SRC}/bt"
         "${SHARED_SRC}/bt/btstack"
         "${SHARED_SRC}/bt/bthid"
@@ -615,6 +636,10 @@ else()
         OLED_I2C_DISPLAY=1
         CFG_TUSB_CONFIG_FILE="tusb_config_nrf.h"
     )
+
+    if(APP_TYPE STREQUAL "mouthpad")
+        target_compile_definitions(app PRIVATE CONFIG_MOUTHPAD=1)
+    endif()
 
 endif()
 
@@ -688,6 +713,11 @@ string(TIMESTAMP BUILD_TIME "%Y-%m-%d %H:%M:%S")
 if(BOARD MATCHES "adafruit_feather_nrf52840")
     set(BOARD_DEFINE "BOARD_FEATHER_NRF52840=1")
     set(BOARD_NAME_STR "adafruit_feather_nrf52840")
+elseif(BOARD MATCHES "nrf52840dongle")
+    # April Brother nRF52840 dongle is built as the upstream nrf52840dongle
+    # board + boards/aprbrother_nrf52840.overlay (see nrf/Makefile alias).
+    set(BOARD_DEFINE "BOARD_APRBROTHER_NRF52840=1")
+    set(BOARD_NAME_STR "aprbrother_nrf52840")
 else()
     set(BOARD_NAME_STR "xiao_ble")
 endif()

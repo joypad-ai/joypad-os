@@ -19,6 +19,14 @@
 BOARD ?= xiao_ble
 APP_TYPE ?= bt2usb
 
+# Map JoypadOS board aliases -> actual Zephyr board. Overlay/conf are keyed off
+# the alias (BOARD), but west builds against ZEPHYR_BOARD. The April Brother
+# dongle is the upstream nrf52840dongle_nrf52840 board + a custom overlay.
+ZEPHYR_BOARD := $(BOARD)
+ifeq ($(BOARD),aprbrother_nrf52840)
+    ZEPHYR_BOARD := nrf52840dongle_nrf52840
+endif
+
 # Auto-detect NCS toolchain (adds west, cmake, python3, etc. to PATH)
 NCS_TOOLCHAIN := $(lastword $(wildcard /opt/nordic/ncs/toolchains/*/bin))
 ifneq ($(NCS_TOOLCHAIN),)
@@ -32,7 +40,7 @@ CONF := $(wildcard $(shell pwd)/boards/$(BOARD).conf)
 # App-specific extra conf (e.g., prj_usb2usb.conf)
 APP_CONF := $(wildcard $(shell pwd)/prj_$(APP_TYPE).conf)
 
-BUILD_ARGS := west build -b $(BOARD) . --pristine=always --
+BUILD_ARGS := west build -b $(ZEPHYR_BOARD) . --pristine=always --
 BUILD_ARGS += -DAPP_TYPE=$(APP_TYPE)
 ifneq ($(OVERLAY),)
     BUILD_ARGS += -DDTC_OVERLAY_FILE="$(OVERLAY)"

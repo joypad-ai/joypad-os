@@ -98,6 +98,7 @@ CONSOLE_usb_feather_rp2040_usb_host_max3421 := joypad_usb_feather_rp2040_usb_hos
 CONSOLE_usb_rp2040zero := joypad_usb_rp2040zero
 CONSOLE_usb_rp2350usba := joypad_usb_rp2350usba
 CONSOLE_bt2usb := joypad_bt2usb
+CONSOLE_mouthpad := joypad_mouthpad
 CONSOLE_bt2loopy := joypad_bt2loopy
 CONSOLE_bt2nuon := joypad_bt2nuon
 CONSOLE_bt2n64 := joypad_bt2n64
@@ -182,6 +183,8 @@ APP_usb2usb_remapper_v7 := pico usb2usb_remapper_v7 usb2usb_remapper_v7 USB USB
 APP_usb2usb_rp2350usba := rp2350usba usb_rp2350usba usb2usb_rp2350usba USB/BT USB
 APP_bt2usb_pico_w := pico_w bt2usb bt2usb_pico_w Bluetooth USB
 APP_bt2usb_pico2_w := pico2_w bt2usb bt2usb_pico2_w Bluetooth USB
+APP_mouthpad_pico_w := pico_w mouthpad mouthpad_pico_w MouthPad-BLE USB+NUS
+APP_mouthpad_pico2_w := pico2_w mouthpad mouthpad_pico2_w MouthPad-BLE USB+NUS
 APP_bt2usb_waveshare_rp2350b_plus_w := waveshare_rp2350b_plus_w bt2usb bt2usb_waveshare_rp2350b_plus_w Bluetooth USB
 APP_bt2loopy_pico_w := pico_w bt2loopy bt2loopy_pico_w Bluetooth Loopy
 APP_bt2nuon_pico_w := pico_w bt2nuon bt2nuon_pico_w Bluetooth Nuon
@@ -641,6 +644,14 @@ bt2usb_pico_w:
 bt2usb_pico2_w:
 	$(call build_app,bt2usb_pico2_w)
 
+.PHONY: mouthpad_pico_w
+mouthpad_pico_w:
+	$(call build_app,mouthpad_pico_w)
+
+.PHONY: mouthpad_pico2_w
+mouthpad_pico2_w:
+	$(call build_app,mouthpad_pico2_w)
+
 .PHONY: bt2usb_waveshare_rp2350b_plus_w
 bt2usb_waveshare_rp2350b_plus_w:
 	$(call build_app,bt2usb_waveshare_rp2350b_plus_w)
@@ -894,6 +905,47 @@ flash-bt2usb_feather_nrf52840: bt2usb_feather_nrf52840
 .PHONY: monitor-bt2usb_feather_nrf52840
 monitor-bt2usb_feather_nrf52840:
 	@cd nrf && $(MAKE) monitor
+
+# --- April Brother nRF52840 Dongle bt2usb (requires nRF Connect SDK) ---
+# The dongle shipped to MouthPad users. bt2usb already supports the MouthPad
+# via the mouthpad_ble driver; a dedicated mouthpad app (SInput default +
+# NUS relay) will build with APP_TYPE=mouthpad once that app lands.
+.PHONY: bt2usb_aprbrother_nrf52840
+bt2usb_aprbrother_nrf52840:
+	@echo "$(YELLOW)Building bt2usb for April Brother nRF52840 Dongle...$(NC)"
+	@cd nrf && $(MAKE) build BOARD=aprbrother_nrf52840
+	@mkdir -p $(RELEASE_DIR)
+	@cp nrf/build/nrf/zephyr/zephyr.uf2 \
+	    $(RELEASE_DIR)/joypad_$(VERSION_ID)_bt2usb_aprbrother_nrf52840.uf2
+	@echo "$(GREEN)✓ bt2usb_aprbrother_nrf52840 built successfully$(NC)"
+	@echo "  File: $(RELEASE_DIR)/joypad_$(VERSION_ID)_bt2usb_aprbrother_nrf52840.uf2"
+	@echo ""
+
+.PHONY: flash-bt2usb_aprbrother_nrf52840
+flash-bt2usb_aprbrother_nrf52840: bt2usb_aprbrother_nrf52840
+	@cd nrf && $(MAKE) flash-uf2
+	@echo ""
+
+.PHONY: monitor-bt2usb_aprbrother_nrf52840
+monitor-bt2usb_aprbrother_nrf52840:
+	@cd nrf && $(MAKE) monitor
+
+# --- April Brother nRF52840 Dongle MouthPad app (HID + NUS relay) ---
+.PHONY: mouthpad_aprbrother_nrf52840
+mouthpad_aprbrother_nrf52840:
+	@echo "$(YELLOW)Building mouthpad for April Brother nRF52840 Dongle...$(NC)"
+	@cd nrf && $(MAKE) build BOARD=aprbrother_nrf52840 APP_TYPE=mouthpad
+	@mkdir -p $(RELEASE_DIR)
+	@cp nrf/build/nrf/zephyr/zephyr.uf2 \
+	    $(RELEASE_DIR)/joypad_$(VERSION_ID)_mouthpad_aprbrother_nrf52840.uf2
+	@echo "$(GREEN)✓ mouthpad_aprbrother_nrf52840 built successfully$(NC)"
+	@echo "  File: $(RELEASE_DIR)/joypad_$(VERSION_ID)_mouthpad_aprbrother_nrf52840.uf2"
+	@echo ""
+
+.PHONY: flash-mouthpad_aprbrother_nrf52840
+flash-mouthpad_aprbrother_nrf52840: mouthpad_aprbrother_nrf52840
+	@cd nrf && $(MAKE) flash-uf2
+	@echo ""
 
 # --- Adafruit Feather nRF52840 usb2usb (MAX3421E FeatherWing, requires nRF Connect SDK) ---
 .PHONY: usb2usb_feather_nrf52840

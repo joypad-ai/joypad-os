@@ -255,6 +255,28 @@ static void cmd_info(const char* json)
     send_json(response_buf);
 }
 
+// MouthPad NUS relay loss stats. Weak default so non-relay builds link; the
+// strong version lives in mp_bridge.c (BLE+CDC builds). drops==0 over a session
+// proves zero firmware-side data loss (USB bulk is lossless; ring overflow is
+// the only drop point). high_water shows peak ring use vs ring_size.
+__attribute__((weak)) void mp_bridge_get_stats(uint32_t* f, uint32_t* d,
+                                               uint32_t* e, uint32_t* h, uint32_t* r) {
+    if (f) *f = 0; if (d) *d = 0; if (e) *e = 0; if (h) *h = 0; if (r) *r = 0;
+}
+
+static void cmd_mp_stats(const char* json)
+{
+    (void)json;
+    uint32_t frames = 0, drops = 0, efails = 0, high = 0, ring = 0;
+    mp_bridge_get_stats(&frames, &drops, &efails, &high, &ring);
+    snprintf(response_buf, sizeof(response_buf),
+             "{\"relay\":{\"frames\":%lu,\"drops\":%lu,\"encode_fails\":%lu,"
+             "\"high_water\":%lu,\"ring_size\":%lu}}",
+             (unsigned long)frames, (unsigned long)drops, (unsigned long)efails,
+             (unsigned long)high, (unsigned long)ring);
+    send_json(response_buf);
+}
+
 static void cmd_ping(const char* json)
 {
     (void)json;
@@ -2734,6 +2756,7 @@ typedef struct {
 
 static const cmd_entry_t commands[] = {
     {"INFO", cmd_info},
+    {"MP.STATS", cmd_mp_stats},
     {"PING", cmd_ping},
     {"REBOOT", cmd_reboot},
     {"BOOTSEL", cmd_bootsel},

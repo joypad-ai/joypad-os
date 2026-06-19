@@ -36,6 +36,31 @@ static uint8_t cmd_pos = 0;
 // Protocol mode detection
 static bool binary_mode = false;  // Switch to binary after receiving 0xAA
 
+// ----------------------------------------------------------------------------
+// Optional relay demux hooks (registered by mp_bridge when a NUS-relay-capable
+// BLE app is built). Keeps cdc.c decoupled from BT/MouthPad code: an RX filter
+// gets first look at each incoming byte and returns true if it consumed it as
+// part of a relay frame (e.g. MouthPad 0xAA 0x55 frames); a periodic hook drains
+// relay TX to CDC. Bytes the filter doesn't claim fall through to the normal
+// JoypadOS command parser, so when no relay device is connected CDC behaves
+// exactly as before.
+typedef bool (*cdc_rx_filter_fn)(uint8_t byte);
+typedef void (*cdc_task_hook_fn)(void);
+static cdc_rx_filter_fn cdc_rx_filter = NULL;
+static cdc_task_hook_fn cdc_task_hook = NULL;
+
+void cdc_register_relay(cdc_rx_filter_fn filter, cdc_task_hook_fn hook)
+{
+    cdc_rx_filter = filter;
+    cdc_task_hook = hook;
+}
+
+// Weak hook called once from cdc_init(). A relay module (mp_bridge, linked only
+// in BLE apps) provides a strong override that calls cdc_register_relay(). The
+// weak default makes non-relay builds a no-op, so the MouthPad NUS<->CDC relay
+// is ambient in every BLE+CDC app with zero per-app wiring.
+__attribute__((weak)) void cdc_relay_late_init(void) {}
+
 // ============================================================================
 // INITIALIZATION
 // ============================================================================
@@ -46,6 +71,9 @@ void cdc_init(void)
 
     // Initialize binary protocol command handlers
     cdc_commands_init();
+
+    // Let an optional relay module (e.g. MouthPad NUS<->CDC) attach itself.
+    cdc_relay_late_init();
 }
 
 // Process a complete command line
@@ -513,48 +541,63 @@ static void cdc_process_command(const char* cmd)
     }
 }
 
-void cdc_task(void)
+// Feed one byte into the JoypadOS command parser (binary framed or legacy text).
+// Exposed so a relay demux filter can replay pass-through bytes (e.g. a buffered
+// 0xAA that turned out not to start a relay frame).
+void cdc_feed_command_byte(uint8_t ch)
 {
     cdc_protocol_t* proto = cdc_commands_get_protocol();
 
+    // Check for binary protocol sync byte
+    if (ch == CDC_SYNC_BYTE && !binary_mode) {
+        binary_mode = true;
+        cmd_pos = 0;  // Clear any pending text
+    }
+
+    if (binary_mode) {
+        // Binary framed protocol
+        cdc_protocol_rx_byte(proto, ch);
+    } else {
+        // Legacy text protocol
+        // Handle end of line (CR or LF)
+        if (ch == '\r' || ch == '\n') {
+            if (cmd_pos > 0) {
+                cmd_buffer[cmd_pos] = '\0';
+                cdc_process_command(cmd_buffer);
+                cmd_pos = 0;
+            }
+        }
+        // Handle backspace
+        else if (ch == '\b' || ch == 0x7F) {
+            if (cmd_pos > 0) {
+                cmd_pos--;
+            }
+        }
+        // Accumulate characters
+        else if (cmd_pos < CMD_BUFFER_SIZE - 1) {
+            cmd_buffer[cmd_pos++] = (char)ch;
+        }
+    }
+}
+
+void cdc_task(void)
+{
     // Handle rumble auto-stop, log drain, etc.
     cdc_commands_task();
+
+    // Drain any relay TX (e.g. MouthPad NUS -> CDC) before reading.
+    if (cdc_task_hook) cdc_task_hook();
 
     // Process incoming data on the data port
     while (cdc_data_available() > 0) {
         int32_t ch = cdc_data_read_byte();
         if (ch < 0) break;
 
-        // Check for binary protocol sync byte
-        if (ch == CDC_SYNC_BYTE && !binary_mode) {
-            binary_mode = true;
-            cmd_pos = 0;  // Clear any pending text
-        }
+        // Give the relay demux first look. If it claims the byte (part of a
+        // relay frame), don't pass it to the command parser.
+        if (cdc_rx_filter && cdc_rx_filter((uint8_t)ch)) continue;
 
-        if (binary_mode) {
-            // Binary framed protocol
-            cdc_protocol_rx_byte(proto, (uint8_t)ch);
-        } else {
-            // Legacy text protocol
-            // Handle end of line (CR or LF)
-            if (ch == '\r' || ch == '\n') {
-                if (cmd_pos > 0) {
-                    cmd_buffer[cmd_pos] = '\0';
-                    cdc_process_command(cmd_buffer);
-                    cmd_pos = 0;
-                }
-            }
-            // Handle backspace
-            else if (ch == '\b' || ch == 0x7F) {
-                if (cmd_pos > 0) {
-                    cmd_pos--;
-                }
-            }
-            // Accumulate characters
-            else if (cmd_pos < CMD_BUFFER_SIZE - 1) {
-                cmd_buffer[cmd_pos++] = (char)ch;
-            }
-        }
+        cdc_feed_command_byte((uint8_t)ch);
     }
 }
 

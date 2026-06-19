@@ -45,6 +45,20 @@ endif()
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/../VERSION" JOYPAD_VERSION)
 string(STRIP "${JOYPAD_VERSION}" JOYPAD_VERSION)
 
+# Derive USB bcdDevice (0xMMmp) from JOYPAD_VERSION so the SInput descriptor — and
+# thus the "dongle version" the MouthPad utility reads from bcdDevice — reflects
+# the actual firmware version instead of a hardcoded default.
+string(REPLACE "." ";" _JP_VER_PARTS "${JOYPAD_VERSION}")
+list(LENGTH _JP_VER_PARTS _JP_VER_LEN)
+if(_JP_VER_LEN GREATER_EQUAL 3)
+    list(GET _JP_VER_PARTS 0 _JP_VER_MAJOR)
+    list(GET _JP_VER_PARTS 1 _JP_VER_MINOR)
+    list(GET _JP_VER_PARTS 2 _JP_VER_PATCH)
+    math(EXPR JOYPAD_BCD_DEVICE "(${_JP_VER_MAJOR} << 8) | ((${_JP_VER_MINOR} & 15) << 4) | (${_JP_VER_PATCH} & 15)")
+else()
+    set(JOYPAD_BCD_DEVICE 256)  # 0x0100 fallback
+endif()
+
 # Get git commit hash
 execute_process(
     COMMAND git rev-parse --short HEAD
@@ -167,6 +181,12 @@ set(BTHID_DEVICE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/bt/bthid/devices/vendors/microsoft/xbox_bt.c
     ${CMAKE_CURRENT_SOURCE_DIR}/bt/bthid/devices/vendors/microsoft/xbox_ble.c
     ${CMAKE_CURRENT_SOURCE_DIR}/bt/bthid/devices/vendors/google/stadia_bt.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/bt/bthid/devices/vendors/augmental/mouthpad_ble.c
+    # MouthPad NUS<->CDC relay (ambient: self-attaches to CDC when linked + a
+    # MouthPad is connected; inert otherwise). Companion to the mouthpad_ble HID
+    # driver so every BLE app gains MouthPad support without a dedicated app.
+    ${CMAKE_CURRENT_SOURCE_DIR}/bt/mouthpad/mp_relay.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/bt/mouthpad/mp_bridge.c
 )
 
 # Bluetooth sources for USB dongle transport (requires BTstack)
@@ -202,6 +222,8 @@ set(BTSTACK_SOURCES
     ${PICO_BTSTACK_PATH}/src/ble/sm.c
     ${PICO_BTSTACK_PATH}/src/ble/att_dispatch.c
     ${PICO_BTSTACK_PATH}/src/ble/att_db.c
+    ${PICO_BTSTACK_PATH}/src/ble/att_db_util.c
+    ${PICO_BTSTACK_PATH}/src/ble/att_server.c
     ${PICO_BTSTACK_PATH}/src/ble/gatt_client.c
     ${PICO_BTSTACK_PATH}/src/ble/gatt_service_client.c
     ${PICO_BTSTACK_PATH}/src/ble/le_device_db_memory.c
@@ -406,6 +428,7 @@ function(joypad_target_common TARGET)
         JOYPAD_VERSION="${JOYPAD_VERSION}"
         GIT_COMMIT="${GIT_COMMIT}"
         BUILD_TIME="${BUILD_TIME}"
+        SINPUT_BCD_DEVICE=${JOYPAD_BCD_DEVICE}
     )
     # Set BOARD_NAME only if not already defined by the target
     get_target_property(_defs ${TARGET} COMPILE_DEFINITIONS)
@@ -1413,6 +1436,51 @@ if (PICO_BOARD STREQUAL "pico_w" OR
     joypad_target_common(joypad_bt2usb)
     pico_enable_stdio_usb(joypad_bt2usb 0)
     pico_enable_stdio_uart(joypad_bt2usb 1)
+
+    # --- MouthPad bridge (Pico W / Pico 2 W) : BLE in (HID + NUS) -> USB out ---
+    add_executable(joypad_mouthpad)
+    target_compile_definitions(joypad_mouthpad PRIVATE
+        CONFIG_MOUTHPAD=1
+        CONFIG_USB=1
+        DISABLE_USB_HOST=1
+        USE_BOOTSEL_BUTTON=1
+        CYW43_LWIP=0
+        BTSTACK_USE_CYW43=1
+        ENABLE_BTSTACK=1
+    )
+    target_sources(joypad_mouthpad PUBLIC
+        ${CORE_SOURCES}
+        ${USB_DEVICE_SOURCES}
+        ${BTHID_DEVICE_SOURCES}
+        ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/hid/devices/generic/hid_parser.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/bt/btstack/btstack_host.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/bt/btstack/bt_device_db.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/bt/transport/bt_transport.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/bt/transport/bt_transport_cyw43.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/apps/mouthpad/app.c
+    )
+    target_include_directories(joypad_mouthpad PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/apps/mouthpad
+        ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd
+        ${CMAKE_CURRENT_SOURCE_DIR}/bt
+        ${CMAKE_CURRENT_SOURCE_DIR}/bt/btstack
+        ${CMAKE_CURRENT_SOURCE_DIR}/bt/bthid
+        ${BTSTACK_INCLUDES}
+    )
+    target_link_libraries(joypad_mouthpad PRIVATE
+        pico_stdlib
+        pico_multicore
+        pico_rand
+        pico_cyw43_arch_poll
+        pico_btstack_ble
+        pico_btstack_classic
+        pico_btstack_cyw43
+        tinyusb_device
+        tinyusb_board
+    )
+    joypad_target_common(joypad_mouthpad)
+    pico_enable_stdio_usb(joypad_mouthpad 0)
+    pico_enable_stdio_uart(joypad_mouthpad 1)
 
     # --- BT to Nuon (Pico W / Pico 2 W built-in Bluetooth -> Nuon) ---
     add_executable(joypad_bt2nuon)

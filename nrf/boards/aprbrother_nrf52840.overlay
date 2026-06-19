@@ -1,0 +1,92 @@
+/* Joypad — April Brother nRF52840 USB Dongle devicetree overlay
+ *
+ * Hardware: PCA10059-class nRF52840 USB dongle (April Brother BleUsbDongle)
+ * shipping the Adafruit nRF52 UF2 bootloader (NRF52BOOT drive, no SoftDevice
+ * binary — code runs from 0x1000). This is the board sent to MouthPad users.
+ *
+ * Built as base Zephyr board `nrf52840dongle_nrf52840` + this overlay
+ * (see nrf/Makefile ZEPHYR_BOARD mapping for BOARD=aprbrother_nrf52840).
+ *
+ * TinyUSB drives USB hardware directly, so disable Zephyr's USBD node.
+ * Console -> uart0 (RTT is the actual debug output on a pinless dongle).
+ *
+ * LED pin overrides: the April Brother RGB LED is wired differently from the
+ * Nordic PCA10059 reference. Mapping verified by the mouthpad-usb reference
+ * firmware (physical Red=P1.09, Green=P0.12, Blue=P0.08).
+ */
+
+&usbd {
+	status = "disabled";
+};
+
+/ {
+	chosen {
+		zephyr,console = &uart0;
+		zephyr,shell-uart = &uart0;
+	};
+};
+
+/* April Brother RGB LED physical wiring (override base board GPIO pins) */
+&led0_green {
+	gpios = <&gpio1 9 GPIO_ACTIVE_LOW>;   /* physical Red   (P1.09) */
+	label = "LED Red";
+};
+
+&led1_red {
+	gpios = <&gpio0 12 GPIO_ACTIVE_LOW>;  /* physical Green (P0.12) */
+	label = "LED Green";
+};
+
+&led1_green {
+	gpios = <&gpio0 8 GPIO_ACTIVE_LOW>;   /* physical Blue  (P0.08) */
+	label = "LED Blue";
+};
+
+&led1_blue {
+	status = "disabled";
+};
+
+/* User button (April Brother SW1 on P1.06) */
+&button0 {
+	gpios = <&gpio1 6 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+	label = "Push button switch SW1";
+};
+
+/* UF2 / Adafruit-bootloader flash layout (no SoftDevice; code at 0x1000) */
+/delete-node/ &boot_partition;
+/delete-node/ &slot0_partition;
+/delete-node/ &slot1_partition;
+/delete-node/ &storage_partition;
+
+&flash0 {
+	partitions {
+		compatible = "fixed-partitions";
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		/* Adafruit UF2 bootloader resides at 0x0-0x1000 */
+		boot_partition: partition@0 {
+			label = "adafruit_boot";
+			reg = <0x00000000 0x00001000>;
+		};
+
+		/* Application code starts immediately after bootloader */
+		code_partition: partition@1000 {
+			label = "code_partition";
+			reg = <0x00001000 0x000ed000>;
+		};
+
+		/* Settings/bonds storage (64 kB, before the MBR params page at 0xfe000) */
+		storage_partition: partition@ee000 {
+			label = "storage";
+			reg = <0x000ee000 0x00010000>;
+		};
+	};
+};
+
+/ {
+	chosen {
+		zephyr,code-partition = &code_partition;
+		zephyr,settings-partition = &storage_partition;
+	};
+};

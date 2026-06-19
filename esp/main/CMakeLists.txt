@@ -303,6 +303,8 @@ if(APP_NEEDS_BTSTACK)
         "${BTSTACK_PATH}/src/ble/sm.c"
         "${BTSTACK_PATH}/src/ble/att_dispatch.c"
         "${BTSTACK_PATH}/src/ble/att_db.c"
+        "${BTSTACK_PATH}/src/ble/att_db_util.c"
+        "${BTSTACK_PATH}/src/ble/att_server.c"
         "${BTSTACK_PATH}/src/ble/le_device_db_memory.c"
         "${BTSTACK_PATH}/src/ble/le_device_db_tlv.c"
 
@@ -365,8 +367,7 @@ if(APP_NEEDS_BTSTACK)
     # --- Peripheral mode (controller_btusb): GATT server + HID device ---
     if(APP_BTSTACK_MODE STREQUAL "peripheral")
         list(APPEND SRCS
-            # BTstack GATT server
-            "${BTSTACK_PATH}/src/ble/att_server.c"
+            # BTstack GATT server (att_server.c is in the BLE common block)
             "${BTSTACK_PATH}/src/ble/gatt-service/hids_device.c"
             "${BTSTACK_PATH}/src/ble/gatt-service/battery_service_server.c"
             "${BTSTACK_PATH}/src/ble/gatt-service/device_information_service_server.c"

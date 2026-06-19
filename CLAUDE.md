@@ -49,6 +49,8 @@ make n642dc_kb2040     # N64 → Dreamcast
 make bt2usb_pico_w     # BT-only → USB HID (Pico W)
 make bt2usb_xiao_esp32s3    # BLE-only → USB HID (ESP32-S3, requires ESP-IDF)
 make bt2usb_seeed_xiao_nrf52840   # BLE-only → USB HID (Seeed XIAO nRF52840, requires NCS)
+make mouthpad_aprbrother_nrf52840 # Augmental MouthPad BLE → USB HID + NUS relay (April Brother dongle, NCS)
+make mouthpad_pico_w              # Augmental MouthPad BLE → USB HID + NUS relay (Pico W)
 make wifi2usb_pico_w   # WiFi → USB HID (Pico W)
 make controller_btusb_pico_w        # GPIO+JoyWing → BLE+USB HID (Pico W)
 make controller_btusb_rp2040_abb    # GPIO+USB Host → USB HID (ABB Passthrough)
@@ -79,6 +81,7 @@ Output: `releases/joypad_<commit>_<app>_<board>.uf2`
 | `usb2loopy` | KB2040 | USB/BT | Loopy |
 | `usb2usb` | Feather/RP2040-Zero | USB/BT | USB HID |
 | `bt2usb` | Pico W/Pico 2 W/ESP32-S3/XIAO nRF52840 | BT/BLE | USB HID |
+| `mouthpad` | April Brother nRF52840/Pico W/Pico 2 W | BLE (Augmental MouthPad) | USB HID (SInput) + NUS relay (CDC) |
 | `wifi2usb` | Pico W/Pico 2 W | WiFi (JOCP) | USB HID |
 | `snes2usb` | KB2040 | SNES | USB HID |
 | `n642usb` | KB2040 | N64 | USB HID |

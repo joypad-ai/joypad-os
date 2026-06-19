@@ -15,6 +15,7 @@
 #include "devices/vendors/nintendo/wiimote_bt.h"
 // xbox_bt.h and xbox_ble.h no longer registered — generic driver handles all Xbox
 #include "devices/vendors/google/stadia_bt.h"
+#include "devices/vendors/augmental/mouthpad_ble.h"
 
 void bthid_registry_init(void)
 {
@@ -40,6 +41,9 @@ void bthid_registry_init(void)
 
     // Google controllers
     stadia_bt_register();
+
+    // Augmental MouthPad (BLE mouse/keyboard/consumer — matches by name)
+    mouthpad_ble_register();
 
     // Generic gamepad driver (fallback, lowest priority)
     bthid_gamepad_register();

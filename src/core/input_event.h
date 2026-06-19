@@ -149,9 +149,18 @@ typedef struct {
                                   // [6] = RZ (Twist/spinner)
 
     // Relative inputs (mouse, spinner, trackball)
-    int8_t delta_x;             // Horizontal delta (-127 to +127)
-    int8_t delta_y;             // Vertical delta (-127 to +127)
-    int8_t delta_wheel;         // Scroll wheel delta
+    // delta_x/delta_y are int16 so high-resolution pointers (e.g. Augmental
+    // MouthPad, 12-bit ±2047) keep full precision end-to-end. 8-bit USB-host
+    // mice assign small values that fit unchanged. Output paths that emit an
+    // 8-bit mouse report (e.g. kbmouse, UART link) clamp on the way out; the
+    // SInput mouse interface emits 16-bit to preserve precision.
+    int16_t delta_x;            // Horizontal delta
+    int16_t delta_y;            // Vertical delta
+    int8_t delta_wheel;         // Scroll wheel delta (8-bit, one-shot per event)
+
+    // Consumer Control (HID Usage Page 0x0C) — media/volume/AC keys.
+    // 0 = none. Emitted via the consumer-control output channel.
+    uint16_t consumer_usage;    // Active Consumer page usage selector
 
     // Hat switches / D-pad alternatives (encoded as 8-direction)
     uint8_t hat[4];             // Up to 4 hat switches

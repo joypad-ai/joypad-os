@@ -26,7 +26,12 @@
 // Raspberry Pi commercial VID with SInput generic fallback PID
 #define SINPUT_VID              0x2E8A  // Raspberry Pi
 #define SINPUT_PID              0x10C6  // SInput generic
+// bcdDevice reflects JOYPAD_VERSION (0xMMmp), injected by the build so the
+// MouthPad utility's "dongle version" shows the real firmware version. Fallback
+// to 0x0100 for builds that don't define it.
+#ifndef SINPUT_BCD_DEVICE
 #define SINPUT_BCD_DEVICE       0x0100  // v1.0
+#endif
 
 // ============================================================================
 // SINPUT BUTTON DEFINITIONS
@@ -260,10 +265,16 @@ static const uint8_t sinput_report_descriptor[] = {
 // ============================================================================
 // Standard 6-key rollover keyboard for separate HID interface
 
+// Report IDs for the SInput keyboard interface (keyboard + consumer share one
+// HID IN endpoint, so each report is tagged).
+#define SINPUT_KB_REPORT_ID_KEYBOARD  0x01
+#define SINPUT_KB_REPORT_ID_CONSUMER  0x02
+
 static const uint8_t sinput_keyboard_report_descriptor[] = {
     0x05, 0x01,        // Usage Page (Generic Desktop)
     0x09, 0x06,        // Usage (Keyboard)
     0xA1, 0x01,        // Collection (Application)
+    0x85, SINPUT_KB_REPORT_ID_KEYBOARD,  // Report ID 1
 
     // Modifier keys (8 bits)
     0x05, 0x07,        //   Usage Page (Key Codes)
@@ -301,7 +312,23 @@ static const uint8_t sinput_keyboard_report_descriptor[] = {
     0x29, 0x65,        //   Usage Maximum (101)
     0x81, 0x00,        //   Input (Data, Array)
 
-    0xC0,              // End Collection
+    0xC0,              // End Collection (Keyboard)
+
+    // Consumer Control (media/volume/AC keys) — Report ID 2, 16-bit usage.
+    // Lets devices like the Augmental MouthPad pass their Consumer-page
+    // (report 3) media keys through to the host as real consumer usages.
+    0x05, 0x0C,        // Usage Page (Consumer)
+    0x09, 0x01,        // Usage (Consumer Control)
+    0xA1, 0x01,        // Collection (Application)
+    0x85, SINPUT_KB_REPORT_ID_CONSUMER,  // Report ID 2
+    0x15, 0x00,        //   Logical Minimum (0)
+    0x26, 0xFF, 0x03,  //   Logical Maximum (0x03FF)
+    0x19, 0x00,        //   Usage Minimum (0)
+    0x2A, 0xFF, 0x03,  //   Usage Maximum (0x03FF)
+    0x75, 0x10,        //   Report Size (16)
+    0x95, 0x01,        //   Report Count (1)
+    0x81, 0x00,        //   Input (Data, Array)
+    0xC0,              // End Collection (Consumer)
 };
 
 // ============================================================================
@@ -331,13 +358,15 @@ static const uint8_t sinput_mouse_report_descriptor[] = {
     0x75, 0x03,        //     Report Size (3)
     0x81, 0x01,        //     Input (Constant)
 
-    // X, Y movement (-127 to 127)
+    // X, Y movement (16-bit: -32768..32767) — widened from 8-bit so
+    // high-resolution pointers (e.g. Augmental MouthPad, 12-bit) keep full
+    // precision. 8-bit mice simply use the low end of the range.
     0x05, 0x01,        //     Usage Page (Generic Desktop)
     0x09, 0x30,        //     Usage (X)
     0x09, 0x31,        //     Usage (Y)
-    0x15, 0x81,        //     Logical Minimum (-127)
-    0x25, 0x7F,        //     Logical Maximum (127)
-    0x75, 0x08,        //     Report Size (8)
+    0x16, 0x00, 0x80,  //     Logical Minimum (-32768)
+    0x26, 0xFF, 0x7F,  //     Logical Maximum (32767)
+    0x75, 0x10,        //     Report Size (16)
     0x95, 0x02,        //     Report Count (2)
     0x81, 0x06,        //     Input (Data, Variable, Relative)
 
@@ -361,6 +390,16 @@ static const uint8_t sinput_mouse_report_descriptor[] = {
     0xC0,              //   End Collection (Physical)
     0xC0,              // End Collection (Mouse)
 };
+
+// Matching report for the 16-bit mouse interface above (no report ID).
+// Layout: buttons(5)+pad(3)=1 byte, X:i16, Y:i16, wheel:i8, pan:i8 = 7 bytes.
+typedef struct __attribute__((packed)) {
+    uint8_t buttons;   // bit0=left, bit1=right, bit2=middle, bit3/4=side
+    int16_t x;
+    int16_t y;
+    int8_t  wheel;
+    int8_t  pan;
+} sinput_mouse_report_t;
 
 // Device descriptor
 static const tusb_desc_device_t sinput_device_descriptor = {

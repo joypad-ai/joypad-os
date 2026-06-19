@@ -40,6 +40,8 @@ extern void btstack_memory_init(void);
 #include "l2cap.h"
 #include "ble/sm.h"
 #include "ble/gatt_client.h"
+#include "ble/att_db_util.h"
+#include "ble/att_server.h"
 #include "ble/le_device_db.h"
 #include "ble/gatt-service/hids_client.h"
 #include "ble/gatt-service/device_information_service_client.h"
@@ -431,12 +433,86 @@ static ble_connection_t* find_free_connection(void);
 static void start_hids_client(ble_connection_t *conn);
 static void register_ble_hid_listener(hci_con_handle_t con_handle);
 static void register_switch2_hid_listener(hci_con_handle_t con_handle);
+// MouthPad NUS client hooks (defined in the NUS section below)
+static void mp_nus_mark_pending(hci_con_handle_t handle);
+static void mp_nus_disconnected(hci_con_handle_t handle);
+static void mp_nus_periodic(void);
+
+// Deferred post-HID setup sequencer. After HID report notifications are
+// enabled (0x1C), the hids_client needs a moment to return to CONNECTED before
+// it will accept a protocol-mode write, and the other GATT clients must run one
+// at a time. This runs from btstack_host_process(): phase 0 = write REPORT
+// protocol mode (retry until accepted), phase 1 = start DIS/BAS + arm NUS.
+static struct {
+    bool active;
+    hci_con_handle_t handle;
+    uint8_t phase;
+    uint32_t start_ms;
+    uint32_t phase_ms;
+} mp_hid_setup;
+static void mp_hid_setup_task(void);
+static void start_battery_service_client(hci_con_handle_t handle);
+static void dis_client_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size);
 
 // ============================================================================
 // INITIALIZATION
 // ============================================================================
 
 // Internal function to set up HID handlers (used by both init paths)
+// Minimal GATT server for the central. The MouthPad (and other Nordic-based
+// HOGP devices built to talk to a companion app) act as a GATT *client* toward
+// the host after connecting -- they discover/subscribe on our side. With no ATT
+// server answering, that request hangs the full 30s ATT transaction timeout and
+// the device terminates the link (reason 0x13) without ever streaming HID.
+// Exposing GAP (device name/appearance) + GATT (Service Changed) services makes
+// us look like a normal host so the device proceeds to stream.
+static uint8_t host_att_device_name[] = "Joypad OS";
+static const uint8_t host_att_appearance[] = { 0xC0, 0x03 }; // 0x03C0 Generic HID, LE
+
+static uint16_t host_att_read_callback(hci_con_handle_t con_handle, uint16_t att_handle,
+                                       uint16_t offset, uint8_t *buffer, uint16_t buffer_size) {
+    (void)con_handle; (void)att_handle; (void)offset; (void)buffer; (void)buffer_size;
+    return 0; // static values are served from the DB directly
+}
+
+static int host_att_write_callback(hci_con_handle_t con_handle, uint16_t att_handle,
+                                   uint16_t transaction_mode, uint16_t offset,
+                                   uint8_t *buffer, uint16_t buffer_size) {
+    (void)con_handle; (void)att_handle; (void)transaction_mode;
+    (void)offset; (void)buffer; (void)buffer_size;
+    return 0; // accept (e.g. CCCD writes) so the peer's setup completes
+}
+
+// Defined (strong) by ble_output.c when the BLE-peripheral path owns the ATT
+// server with its full GATT profile (e.g. controller_btusb, usb2ble). In that
+// case we must NOT init a second, minimal server -- it would clobber the rich
+// profile. Central-only builds (bt2usb, mouthpad) don't link ble_output, so the
+// weak default applies and we install the minimal server.
+__attribute__((weak)) bool btstack_host_external_att_server(void) { return false; }
+
+static void setup_att_server(void) {
+    if (btstack_host_external_att_server()) {
+        printf("[BTSTACK_HOST] ATT server owned externally (ble_output) -- skipping minimal server\n");
+        return;
+    }
+    printf("[BTSTACK_HOST] Init ATT server (minimal GAP+GATT)...\n");
+    att_db_util_init();
+    // GAP service (0x1800)
+    att_db_util_add_service_uuid16(0x1800);
+    att_db_util_add_characteristic_uuid16(0x2A00, ATT_PROPERTY_READ,
+        ATT_SECURITY_NONE, ATT_SECURITY_NONE,
+        host_att_device_name, sizeof(host_att_device_name) - 1);
+    att_db_util_add_characteristic_uuid16(0x2A01, ATT_PROPERTY_READ,
+        ATT_SECURITY_NONE, ATT_SECURITY_NONE,
+        (uint8_t *)host_att_appearance, sizeof(host_att_appearance));
+    // GATT service (0x1801) with Service Changed (indicate)
+    att_db_util_add_service_uuid16(0x1801);
+    att_db_util_add_characteristic_uuid16(0x2A05, ATT_PROPERTY_INDICATE,
+        ATT_SECURITY_NONE, ATT_SECURITY_NONE, NULL, 0);
+    att_server_init(att_db_util_get_address(), host_att_read_callback, host_att_write_callback);
+    printf("[BTSTACK_HOST] ATT server initialized (db size=%u)\n", att_db_util_get_size());
+}
+
 static void setup_hid_handlers(void)
 {
     printf("[BTSTACK_HOST] Init L2CAP...\n");
@@ -445,13 +521,21 @@ static void setup_hid_handlers(void)
     printf("[BTSTACK_HOST] Init SM...\n");
     sm_init();
 
-    // Configure SM - bonding like Bluepad32
+    // Configure SM - bonding + LE Secure Connections. Some HOGP devices (e.g.
+    // Augmental MouthPad) accept a legacy-paired connection and even accept the
+    // report CCC writes, but will NOT stream HID notifications unless the link
+    // is secured with LE Secure Connections. Request SC (peers without SC fall
+    // back to legacy automatically, so other controllers are unaffected).
     sm_set_io_capabilities(IO_CAPABILITY_NO_INPUT_NO_OUTPUT);
-    sm_set_authentication_requirements(SM_AUTHREQ_BONDING);
+    sm_set_authentication_requirements(SM_AUTHREQ_BONDING | SM_AUTHREQ_SECURE_CONNECTION);
     sm_set_encryption_key_size_range(7, 16);
 
     printf("[BTSTACK_HOST] Init GATT client...\n");
     gatt_client_init();
+
+    // Minimal ATT server so peers that act as GATT clients toward us don't hang
+    // on the 30s ATT timeout (see setup_att_server comment).
+    setup_att_server();
 
     printf("[BTSTACK_HOST] Init HIDS client...\n");
     hids_client_init(hid_descriptor_storage, sizeof(hid_descriptor_storage));
@@ -888,6 +972,12 @@ void btstack_host_process(void)
 
     // Retry Switch 2 init if stuck (no ACK received)
     switch2_retry_init_if_needed();
+
+    // Advance deferred post-HID setup (REPORT protocol mode -> DIS/BAS/NUS)
+    mp_hid_setup_task();
+
+    // Kick off / advance MouthPad NUS discovery once HID has settled
+    mp_nus_periodic();
 
     // Handle Switch 2 rumble/LED feedback passthrough
     switch2_handle_feedback();
@@ -1851,9 +1941,6 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                     break;
                 }
 
-                case HCI_SUBEVENT_LE_CONNECTION_UPDATE_COMPLETE:
-                    printf("[BTSTACK_HOST] Connection update complete\n");
-                    break;
             }
             break;
         }
@@ -2173,6 +2260,14 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                 gatt_client_stop_listening_for_characteristic_value_updates(&xbox_hid_notification_listener);
                 gatt_client_stop_listening_for_characteristic_value_updates(&switch2_hid_notification_listener);
 
+                // Cancel any in-flight post-HID setup sequence
+                if (mp_hid_setup.handle == handle) {
+                    mp_hid_setup.active = false;
+                }
+
+                // Tear down MouthPad NUS client if this was the MouthPad
+                mp_nus_disconnected(handle);
+
                 // Clean up Switch 2 state (ACK listener, init state machine)
                 switch2_cleanup_on_disconnect();
 
@@ -2444,6 +2539,9 @@ static void sm_packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *pa
                     } else {
                         printf("[BTSTACK_HOST] BLE controller - starting GATT discovery\n");
                         start_hids_client(conn);
+                        // MouthPad NUS is armed later, from the HID
+                        // REPORTS_NOTIFICATION (0x1C) handler, so it doesn't
+                        // contend with the HID notification enable.
                     }
                 }
             } else {
@@ -2489,6 +2587,9 @@ static void sm_packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *pa
                     } else {
                         printf("[BTSTACK_HOST] BLE controller - starting GATT discovery\n");
                         start_hids_client(conn);
+                        // MouthPad NUS is armed later, from the HID
+                        // REPORTS_NOTIFICATION (0x1C) handler, so it doesn't
+                        // contend with the HID notification enable.
                     }
                 }
             } else {
@@ -2504,6 +2605,257 @@ static void sm_packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *pa
             break;
         }
     }
+}
+
+// ============================================================================
+// MOUTHPAD NUS (Nordic UART Service) CLIENT
+// ============================================================================
+// Self-contained GATT client for the Augmental MouthPad's NUS stream. Acts
+// ONLY on MouthPad connections (gated by mp_nus_mark_pending, which the
+// connection-ready path calls only when the device name contains "MouthPad"),
+// so it has no effect on any other controller. Discovery is dynamic by
+// 128-bit UUID (no hardcoded handles) and is deferred ~1.5 s after connect so
+// it runs after the HIDS client has finished its own GATT discovery (the
+// gatt_client allows one query at a time per connection).
+//
+// Device->host NUS notifications fire mp_nus_rx_cb; host->device writes go
+// through btstack_host_mouthpad_nus_send(). The CDC<->NUS framing/relay glue
+// lives in mp_bridge.c.
+
+// NUS 128-bit UUIDs (textual / big-endian order, as BTstack uuid128 expects).
+static const uint8_t nus_service_uuid128[16] = {
+    0x6E,0x40,0x00,0x01,0xB5,0xA3,0xF3,0x93,0xE0,0xA9,0xE5,0x0E,0x24,0xDC,0xCA,0x9E};
+static const uint8_t nus_rx_uuid128[16] = {  // write  (host -> device)
+    0x6E,0x40,0x00,0x02,0xB5,0xA3,0xF3,0x93,0xE0,0xA9,0xE5,0x0E,0x24,0xDC,0xCA,0x9E};
+static const uint8_t nus_tx_uuid128[16] = {  // notify (device -> host)
+    0x6E,0x40,0x00,0x03,0xB5,0xA3,0xF3,0x93,0xE0,0xA9,0xE5,0x0E,0x24,0xDC,0xCA,0x9E};
+
+typedef enum {
+    MP_NUS_IDLE = 0,
+    MP_NUS_PENDING,        // connected, waiting for HID discovery to settle
+    MP_NUS_DISC_SERVICE,
+    MP_NUS_DISC_CHARS,
+    MP_NUS_ENABLE_CCC,
+    MP_NUS_READY,
+} mp_nus_state_t;
+
+static struct {
+    mp_nus_state_t state;
+    hci_con_handle_t handle;
+    uint32_t pending_since;
+    gatt_client_service_t service;
+    gatt_client_characteristic_t tx_char;      // notify characteristic
+    uint16_t rx_value_handle;                  // write characteristic value handle
+    gatt_client_notification_t notify;
+    uint8_t last_battery;                      // last BAS level seen (0 = unknown)
+    char    firmware[24];                      // DIS firmware revision (for relay device_info)
+} mp_nus = { .state = MP_NUS_IDLE, .handle = HCI_CON_HANDLE_INVALID };
+
+static void (*mp_nus_rx_cb)(const uint8_t* data, uint16_t len) = NULL;
+
+void btstack_host_set_mouthpad_nus_rx_cb(void (*cb)(const uint8_t*, uint16_t))
+{
+    mp_nus_rx_cb = cb;
+}
+
+bool btstack_host_mouthpad_nus_ready(void)
+{
+    return mp_nus.state == MP_NUS_READY;
+}
+
+// Fill `out` with the connected MouthPad's device info (for the dongle-level
+// relay device_info_response / connection_status_response). Returns false if no
+// MouthPad connection exists.
+bool btstack_host_get_mouthpad_info(btstack_host_mouthpad_info_t* out)
+{
+    if (!out) return false;
+    memset(out, 0, sizeof(*out));
+    if (mp_nus.handle == HCI_CON_HANDLE_INVALID) return false;
+    ble_connection_t* c = find_connection_by_handle(mp_nus.handle);
+    if (!c) return false;
+    strncpy(out->name, c->name, sizeof(out->name) - 1);
+    strncpy(out->firmware, mp_nus.firmware, sizeof(out->firmware) - 1);
+    memcpy(out->addr, c->addr, 6);
+    out->vid = c->vid;
+    out->pid = c->pid;
+    out->battery = mp_nus.last_battery;
+    out->ready = (mp_nus.state == MP_NUS_READY);
+    return true;
+}
+
+// Called from the connection-ready path only for MouthPad devices.
+static void mp_nus_mark_pending(hci_con_handle_t handle)
+{
+    if (mp_nus.state != MP_NUS_IDLE) return;   // one MouthPad NUS at a time
+    mp_nus.state = MP_NUS_PENDING;
+    mp_nus.handle = handle;
+    mp_nus.pending_since = btstack_run_loop_get_time_ms();
+    mp_nus.tx_char.value_handle = 0;
+    mp_nus.rx_value_handle = 0;
+    printf("[MP_NUS] MouthPad connected (0x%04X) — NUS discovery pending\n", handle);
+}
+
+static void mp_nus_reset(void)
+{
+    if (mp_nus.state == MP_NUS_READY) {
+        gatt_client_stop_listening_for_characteristic_value_updates(&mp_nus.notify);
+    }
+    mp_nus.state = MP_NUS_IDLE;
+    mp_nus.handle = HCI_CON_HANDLE_INVALID;
+    mp_nus.tx_char.value_handle = 0;
+    mp_nus.rx_value_handle = 0;
+    mp_nus.last_battery = 0;
+    mp_nus.firmware[0] = '\0';
+}
+
+static void mp_nus_disconnected(hci_con_handle_t handle)
+{
+    if (mp_nus.handle == handle) {
+        printf("[MP_NUS] MouthPad disconnected — NUS reset\n");
+        mp_nus_reset();
+    }
+}
+
+// Device -> host notifications on the NUS TX characteristic.
+static void mp_nus_notify_handler(uint8_t packet_type, uint16_t channel, uint8_t* packet, uint16_t size)
+{
+    UNUSED(channel); UNUSED(size);
+    if (packet_type != HCI_EVENT_PACKET) return;
+    if (hci_event_packet_get_type(packet) != GATT_EVENT_NOTIFICATION) return;
+    uint16_t vh = gatt_event_notification_get_value_handle(packet);
+    if (vh != mp_nus.tx_char.value_handle) return;
+    uint16_t len = gatt_event_notification_get_value_length(packet);
+    const uint8_t* val = gatt_event_notification_get_value(packet);
+    if (mp_nus_rx_cb) mp_nus_rx_cb(val, len);
+}
+
+// GATT discovery state machine for the NUS service.
+static void mp_nus_gatt_handler(uint8_t packet_type, uint16_t channel, uint8_t* packet, uint16_t size)
+{
+    UNUSED(channel); UNUSED(size);
+    if (packet_type != HCI_EVENT_PACKET) return;
+    uint8_t event = hci_event_packet_get_type(packet);
+
+    switch (event) {
+        case GATT_EVENT_SERVICE_QUERY_RESULT:
+            gatt_event_service_query_result_get_service(packet, &mp_nus.service);
+            break;
+
+        case GATT_EVENT_CHARACTERISTIC_QUERY_RESULT: {
+            gatt_client_characteristic_t ch;
+            gatt_event_characteristic_query_result_get_characteristic(packet, &ch);
+            if (memcmp(ch.uuid128, nus_tx_uuid128, 16) == 0) {
+                mp_nus.tx_char = ch;
+            } else if (memcmp(ch.uuid128, nus_rx_uuid128, 16) == 0) {
+                mp_nus.rx_value_handle = ch.value_handle;
+            }
+            break;
+        }
+
+        case GATT_EVENT_QUERY_COMPLETE: {
+            uint8_t status = gatt_event_query_complete_get_att_status(packet);
+            if (status != 0) {
+                printf("[MP_NUS] GATT query failed (state=%d status=0x%02X)\n", mp_nus.state, status);
+                mp_nus_reset();
+                break;
+            }
+            if (mp_nus.state == MP_NUS_DISC_SERVICE) {
+                if (mp_nus.service.start_group_handle == 0) {
+                    printf("[MP_NUS] No NUS service on device\n");
+                    mp_nus_reset();
+                    break;
+                }
+                mp_nus.state = MP_NUS_DISC_CHARS;
+                gatt_client_discover_characteristics_for_service(
+                    mp_nus_gatt_handler, mp_nus.handle, &mp_nus.service);
+            } else if (mp_nus.state == MP_NUS_DISC_CHARS) {
+                if (mp_nus.tx_char.value_handle == 0) {
+                    printf("[MP_NUS] NUS TX characteristic not found\n");
+                    mp_nus_reset();
+                    break;
+                }
+                mp_nus.state = MP_NUS_ENABLE_CCC;
+                gatt_client_write_client_characteristic_configuration(
+                    mp_nus_gatt_handler, mp_nus.handle, &mp_nus.tx_char,
+                    GATT_CLIENT_CHARACTERISTICS_CONFIGURATION_NOTIFICATION);
+            } else if (mp_nus.state == MP_NUS_ENABLE_CCC) {
+                gatt_client_listen_for_characteristic_value_updates(
+                    &mp_nus.notify, mp_nus_notify_handler, mp_nus.handle, &mp_nus.tx_char);
+                mp_nus.state = MP_NUS_READY;
+                printf("[MP_NUS] NUS ready (tx=0x%04X rx=0x%04X)\n",
+                       mp_nus.tx_char.value_handle, mp_nus.rx_value_handle);
+            }
+            break;
+        }
+    }
+}
+
+// Periodic: kick off discovery once the HID side has settled.
+static void mp_nus_periodic(void)
+{
+    if (mp_nus.state != MP_NUS_PENDING) return;
+    if ((btstack_run_loop_get_time_ms() - mp_nus.pending_since) < 1500) return;
+    if (gatt_client_is_ready(mp_nus.handle) == 0) return;   // another query in flight
+    mp_nus.state = MP_NUS_DISC_SERVICE;
+    mp_nus.service.start_group_handle = 0;
+    printf("[MP_NUS] Starting NUS discovery on 0x%04X\n", mp_nus.handle);
+    gatt_client_discover_primary_services_by_uuid128(
+        mp_nus_gatt_handler, mp_nus.handle, nus_service_uuid128);
+}
+
+// Deferred post-HID setup: REPORT protocol mode, then DIS/BAS + NUS arm.
+static void mp_hid_setup_task(void)
+{
+    if (!mp_hid_setup.active) return;
+    uint32_t now = btstack_run_loop_get_time_ms();
+
+    switch (mp_hid_setup.phase) {
+        case 0: {
+            // Write REPORT protocol mode FIRST. The MouthPad boots in BOOT mode
+            // and BTstack's hids_client never writes the mode when REPORT is
+            // requested. hids_client only accepts this once back in CONNECTED
+            // state (returns 0x0C COMMAND_DISALLOWED until then), so retry.
+            uint8_t st = hids_client_send_set_protocol_mode(
+                hid_state.hids_cid, 0, HID_PROTOCOL_MODE_REPORT);
+            if (st == ERROR_CODE_SUCCESS) {
+                printf("[MP] REPORT protocol-mode write initiated\n");
+                mp_hid_setup.phase = 1;
+                mp_hid_setup.phase_ms = now;
+            } else if ((now - mp_hid_setup.start_ms) > 3000) {
+                printf("[MP] protocol-mode write never accepted (last=0x%02X) — enabling anyway\n", st);
+                mp_hid_setup.phase = 1;
+                mp_hid_setup.phase_ms = now;
+            }
+            break;
+        }
+        case 1: {
+            // After the write-without-response flushes, enable HID notifications
+            // (NOW that the device is in REPORT mode, so the CCCs stick). Retry
+            // until hids_client accepts it. DIS/BAS/NUS start from the 0x1C event.
+            if ((now - mp_hid_setup.phase_ms) < 300) break;
+            uint8_t r = hids_client_enable_notifications(hid_state.hids_cid);
+            if (r == ERROR_CODE_SUCCESS) {
+                printf("[MP] notifications enabled after REPORT-mode switch\n");
+                mp_hid_setup.active = false;
+            } else if ((now - mp_hid_setup.start_ms) > 6000) {
+                printf("[MP] enable_notifications never accepted (last=0x%02X)\n", r);
+                mp_hid_setup.active = false;
+            }
+            break;
+        }
+        default:
+            mp_hid_setup.active = false;
+            break;
+    }
+}
+
+// Host -> device write (called from the bridge; safe in BTstack/run-loop context).
+bool btstack_host_mouthpad_nus_send(const uint8_t* data, uint16_t len)
+{
+    if (mp_nus.state != MP_NUS_READY || mp_nus.rx_value_handle == 0) return false;
+    uint8_t status = gatt_client_write_value_of_characteristic_without_response(
+        mp_nus.handle, mp_nus.rx_value_handle, len, (uint8_t*)data);
+    return status == 0;
 }
 
 // ============================================================================
@@ -3394,6 +3746,10 @@ static void bas_client_handler(uint8_t packet_type, uint16_t channel, uint8_t *p
             if (conn_index >= 0) {
                 bthid_set_battery_level((uint8_t)conn_index, level);
             }
+            // Cache for the MouthPad relay's connection-status response.
+            if (hid_state.gatt_handle == mp_nus.handle) {
+                mp_nus.last_battery = level;
+            }
             break;
         }
 
@@ -3440,6 +3796,20 @@ static void dis_client_handler(uint8_t packet_type, uint16_t channel, uint8_t *p
                 conn->pid = pid;
                 printf("[BTSTACK_HOST] DIS: updating device info for conn_index=%d\n", conn->conn_index);
                 bthid_update_device_info(conn->conn_index, conn->name, vid, pid);
+            }
+            break;
+        }
+
+        case GATTSERVICE_SUBEVENT_DEVICE_INFORMATION_FIRMWARE_REVISION: {
+            hci_con_handle_t handle = gattservice_subevent_device_information_firmware_revision_get_con_handle(packet);
+            if (gattservice_subevent_device_information_firmware_revision_get_att_status(packet) == ATT_ERROR_SUCCESS
+                && handle == mp_nus.handle) {
+                const char* fw = gattservice_subevent_device_information_firmware_revision_get_value(packet);
+                if (fw) {
+                    strncpy(mp_nus.firmware, fw, sizeof(mp_nus.firmware) - 1);
+                    mp_nus.firmware[sizeof(mp_nus.firmware) - 1] = '\0';
+                    printf("[BTSTACK_HOST] DIS firmware revision: %s\n", mp_nus.firmware);
+                }
             }
             break;
         }
@@ -3502,20 +3872,27 @@ static void hids_client_handler(uint8_t packet_type, uint16_t channel, uint8_t *
                         bthid_set_hid_descriptor(conn->conn_index, hid_desc, hid_desc_len);
                     }
 
-                    // Query Device Information Service for PnP ID (VID/PID)
-                    // This enables re-matching drivers by VID after initial name-based match
-                    uint8_t dis_status = device_information_service_client_query(conn->handle, dis_client_handler);
-                    if (dis_status != ERROR_CODE_SUCCESS) {
-                        printf("[BTSTACK_HOST] DIS query failed to start: status=%d (singleton busy)\n", dis_status);
-                        // DIS unavailable — start BAS directly as fallback
-                        start_battery_service_client(conn->handle);
-                    }
-                }
+                    // NOTE: DIS (PnP VID/PID) and BAS (battery) are intentionally
+                    // NOT started here. Each is a gatt_client query, and running
+                    // them concurrently with hids_client_enable_notifications()
+                    // starves the HID notification enabling on devices with many
+                    // report characteristics (e.g. Augmental MouthPad, 4+ reports):
+                    // the CCC writes never complete, no reports flow, and the
+                    // device drops the link. They are deferred to the
+                    // REPORTS_NOTIFICATION (0x1C) handler below, so only one GATT
+                    // client uses the connection at a time.
 
-                // Explicitly enable notifications
-                printf("[BTSTACK_HOST] Enabling HID notifications...\n");
-                uint8_t result = hids_client_enable_notifications(hid_state.hids_cid);
-                printf("[BTSTACK_HOST] enable_notifications returned %d\n", result);
+                    // Switch to REPORT protocol mode BEFORE enabling notifications
+                    // (mirrors the working mouthpad-usb order). The MouthPad boots
+                    // in BOOT mode; switching mode AFTER subscribing makes it drop
+                    // the report CCCs, so it never streams. The sequencer writes
+                    // the mode (once hids_client is back in CONNECTED), THEN
+                    // enables notifications, then the 0x1C handler starts DIS/BAS/NUS.
+                    mp_hid_setup.active = true;
+                    mp_hid_setup.handle = hid_state.gatt_handle;
+                    mp_hid_setup.phase = 0;
+                    mp_hid_setup.start_ms = btstack_run_loop_get_time_ms();
+                }
             }
             break;
         }
@@ -3524,6 +3901,27 @@ static void hids_client_handler(uint8_t packet_type, uint16_t channel, uint8_t *
             uint8_t configuration = gattservice_subevent_hid_service_reports_notification_get_configuration(packet);
             printf("[BTSTACK_HOST] HID Reports Notification configured: %d\n", configuration);
             printf("[BTSTACK_HOST] Ready to receive HID reports!\n");
+
+            // Mode is already REPORT and notifications are now enabled. Start the
+            // remaining GATT clients one at a time: DIS -> BAS, then arm NUS.
+            {
+                uint8_t dis = device_information_service_client_query(
+                    hid_state.gatt_handle, dis_client_handler);
+                if (dis != ERROR_CODE_SUCCESS) {
+                    start_battery_service_client(hid_state.gatt_handle);
+                }
+                ble_connection_t* nconn = find_connection_by_handle(hid_state.gatt_handle);
+                if (nconn && strstr(nconn->name, "MouthPad") != NULL) {
+                    mp_nus_mark_pending(hid_state.gatt_handle);
+                }
+            }
+            break;
+        }
+
+        case GATTSERVICE_SUBEVENT_HID_PROTOCOL_MODE: {
+            uint8_t pm = gattservice_subevent_hid_protocol_mode_get_protocol_mode(packet);
+            printf("[MP] device protocol mode now = %s (%d)\n",
+                   pm == 0 ? "BOOT" : "REPORT", pm);
             break;
         }
 
