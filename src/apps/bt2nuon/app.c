@@ -137,7 +137,7 @@ const OutputInterface** app_get_output_interfaces(uint8_t* count)
 
 void app_init(void)
 {
-    printf("[app:bt2nuon] Initializing BT2NUON v%s\n", APP_VERSION);
+    printf("[app:bt2nuon] Initializing BT2NUON v%s\n", JOYPAD_VERSION);
     printf("[app:bt2nuon] Pico W built-in Bluetooth -> Nuon\n");
 
     // Initialize button service (uses BOOTSEL button on Pico W)

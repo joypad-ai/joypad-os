@@ -360,7 +360,7 @@ static void oled_update_display(void) {
 
 void app_init(void)
 {
-    printf("[app:bt2usb] Initializing BT2USB v%s\n", APP_VERSION);
+    printf("[app:bt2usb] Initializing BT2USB v%s\n", JOYPAD_VERSION);
 #ifdef BTSTACK_USE_ESP32
     printf("[app:bt2usb] ESP32-S3 BLE -> USB HID\n");
     // Init status LED GPIO

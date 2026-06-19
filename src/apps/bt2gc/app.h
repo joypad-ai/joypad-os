@@ -11,7 +11,6 @@
 // APP METADATA
 // ============================================================================
 #define APP_NAME "BT2GC"
-#define APP_VERSION "0.1.0"
 #define APP_DESCRIPTION "Bluetooth to GameCube console adapter (Pico W)"
 #define APP_AUTHOR "RobertDaleSmith"
 

@@ -126,7 +126,7 @@ const OutputInterface** app_get_output_interfaces(uint8_t* count)
 // ============================================================================
 void app_init(void)
 {
-    printf("[app:mouthpad] Initializing MouthPad bridge v%s\n", APP_VERSION);
+    printf("[app:mouthpad] Initializing MouthPad bridge v%s\n", JOYPAD_VERSION);
 
     button_init();
     button_set_callback(on_button_event);

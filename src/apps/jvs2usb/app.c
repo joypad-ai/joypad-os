@@ -83,7 +83,7 @@ const OutputInterface** app_get_output_interfaces(uint8_t* count)
 
 void app_init(void)
 {
-    printf("[app:jvs2usb] Initializing JVS2USB v%s\n", APP_VERSION);
+    printf("[app:jvs2usb] Initializing JVS2USB v%s\n", JOYPAD_VERSION);
 
     // Initialize button service
     button_init();

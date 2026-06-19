@@ -62,7 +62,7 @@ const OutputInterface** app_get_output_interfaces(uint8_t* count)
 
 void app_init(void)
 {
-    printf("[app:usb2loopy] Initializing LoopyUSB v%s (EXPERIMENTAL)\n", APP_VERSION);
+    printf("[app:usb2loopy] Initializing LoopyUSB v%s (EXPERIMENTAL)\n", JOYPAD_VERSION);
 
     // Configure router for LoopyUSB
     router_config_t router_cfg = {

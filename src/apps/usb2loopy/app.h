@@ -11,7 +11,6 @@
 // APP METADATA
 // ============================================================================
 #define APP_NAME "LoopyUSB"
-#define APP_VERSION "2.0.0-experimental"
 #define APP_DESCRIPTION "USB to Casio Loopy adapter (experimental)"
 #define APP_AUTHOR "RobertDaleSmith"
 

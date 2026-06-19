@@ -145,7 +145,7 @@ const OutputInterface** app_get_output_interfaces(uint8_t* count)
 
 void app_init(void)
 {
-    printf("[app:wifi2usb] Initializing WiFi2USB v%s\n", APP_VERSION);
+    printf("[app:wifi2usb] Initializing WiFi2USB v%s\n", JOYPAD_VERSION);
     printf("[app:wifi2usb] Pico W WiFi AP -> USB HID\n");
 
     // Initialize button service (uses BOOTSEL button on Pico W)

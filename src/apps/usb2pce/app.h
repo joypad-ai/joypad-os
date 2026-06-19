@@ -11,7 +11,6 @@
 // APP METADATA
 // ============================================================================
 #define APP_NAME "USB2PCE"
-#define APP_VERSION "2.0.0"
 #define APP_DESCRIPTION "USB to PCEngine/TurboGrafx-16 adapter with multitap"
 #define APP_AUTHOR "RobertDaleSmith"
 

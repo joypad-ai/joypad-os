@@ -5,7 +5,6 @@
 #define APP_NUON2USB_H
 
 #define APP_NAME "NUON2USB"
-#define APP_VERSION "0.2.0"
 #define APP_DESCRIPTION "Nuon controller reader"
 #define APP_AUTHOR "RobertDaleSmith"
 

@@ -7,7 +7,6 @@
 #define APP_USB2USB_DUAL_A_H
 
 #define APP_NAME "USB2USB-REMAPPER-V7-A"
-#define APP_VERSION "0.1.0"
 #define APP_DESCRIPTION "Dual-RP2040 device side: UART peer link -> USB device"
 #define APP_AUTHOR "RobertDaleSmith"
 

@@ -16,7 +16,6 @@
 // APP METADATA
 // ============================================================================
 #define APP_NAME "WII2USB"
-#define APP_VERSION "0.1.0"
 #define APP_DESCRIPTION "Wii Nunchuck/Classic controller to USB HID adapter"
 #define APP_AUTHOR "RobertDaleSmith"
 

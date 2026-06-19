@@ -10,7 +10,6 @@
 // APP METADATA
 // ============================================================================
 #define APP_NAME "USB2DC"
-#define APP_VERSION "1.0.0"
 #define APP_DESCRIPTION "USB/BT to Dreamcast adapter"
 #define APP_AUTHOR "RobertDaleSmith"
 

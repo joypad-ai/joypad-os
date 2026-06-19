@@ -11,7 +11,6 @@
 // APP METADATA
 // ============================================================================
 #define APP_NAME "usb2gc"
-#define APP_VERSION "2.0.0"
 #define APP_DESCRIPTION "USB to GameCube adapter"
 #define APP_AUTHOR "RobertDaleSmith"
 

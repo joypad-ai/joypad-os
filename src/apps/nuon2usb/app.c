@@ -269,7 +269,7 @@ const OutputInterface** app_get_output_interfaces(uint8_t* count)
 
 void app_init(void)
 {
-    printf("[app:nuon2usb] Initializing NUON2USB v%s\n", APP_VERSION);
+    printf("[app:nuon2usb] Initializing NUON2USB v%s\n", JOYPAD_VERSION);
 
     router_config_t router_cfg = {
         .mode = ROUTING_MODE,

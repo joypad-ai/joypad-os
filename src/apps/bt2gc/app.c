@@ -128,7 +128,7 @@ const OutputInterface** app_get_output_interfaces(uint8_t* count)
 
 void app_init(void)
 {
-    printf("[app:bt2gc] Initializing BT2GC v%s\n", APP_VERSION);
+    printf("[app:bt2gc] Initializing BT2GC v%s\n", JOYPAD_VERSION);
     printf("[app:bt2gc] Pico W built-in Bluetooth -> GameCube\n");
 
     // Initialize button service (uses BOOTSEL button on Pico W)

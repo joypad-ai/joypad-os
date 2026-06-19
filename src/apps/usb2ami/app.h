@@ -5,7 +5,6 @@
 #define APP_USB2AMI_H
 
 #define APP_NAME        "USB2AMI"
-#define APP_VERSION     "1.0.0"
 #define APP_DESCRIPTION "USB to Amiga/Atari DE9 adapter"
 #define APP_AUTHOR      "RobertDaleSmith"
 

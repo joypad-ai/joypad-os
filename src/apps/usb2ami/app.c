@@ -61,7 +61,7 @@ const OutputInterface** app_get_output_interfaces(uint8_t* count)
 
 void app_init(void)
 {
-    printf("[app:usb2ami] Initializing usb2ami v%s\n", APP_VERSION);
+    printf("[app:usb2ami] Initializing usb2ami v%s\n", JOYPAD_VERSION);
 
     // Initialize flash storage early so settings are available to device init
     // flash_init();

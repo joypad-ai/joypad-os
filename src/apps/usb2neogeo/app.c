@@ -101,7 +101,7 @@ const OutputInterface** app_get_output_interfaces(uint8_t* count)
 
 void app_init(void)
 {
-    printf("[app:usb2neogeo] Initializing USB2NEOGEO v%s\n", APP_VERSION);
+    printf("[app:usb2neogeo] Initializing USB2NEOGEO v%s\n", JOYPAD_VERSION);
 
     // Initialize GPIO PINS, with active_high = false
     gpio_device_init_pins(gpio_gpio_config, false);

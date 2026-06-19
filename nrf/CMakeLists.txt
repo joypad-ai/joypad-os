@@ -696,6 +696,19 @@ else()
     set(JOYPAD_VERSION "0.0.0")
 endif()
 
+# Derive USB bcdDevice (0xMMmp) from JOYPAD_VERSION so the SInput "dongle version"
+# the MouthPad utility reads reflects firmware version (matches src/CMakeLists.txt).
+string(REPLACE "." ";" _JP_VER_PARTS "${JOYPAD_VERSION}")
+list(LENGTH _JP_VER_PARTS _JP_VER_LEN)
+if(_JP_VER_LEN GREATER_EQUAL 3)
+    list(GET _JP_VER_PARTS 0 _JP_VER_MAJOR)
+    list(GET _JP_VER_PARTS 1 _JP_VER_MINOR)
+    list(GET _JP_VER_PARTS 2 _JP_VER_PATCH)
+    math(EXPR JOYPAD_BCD_DEVICE "(${_JP_VER_MAJOR} << 8) | ((${_JP_VER_MINOR} & 15) << 4) | (${_JP_VER_PATCH} & 15)")
+else()
+    set(JOYPAD_BCD_DEVICE 256)  # 0x0100 fallback
+endif()
+
 execute_process(
     COMMAND git rev-parse --short HEAD
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
@@ -724,6 +737,7 @@ endif()
 
 target_compile_definitions(app PRIVATE
     JOYPAD_VERSION="${JOYPAD_VERSION}"
+    SINPUT_BCD_DEVICE=${JOYPAD_BCD_DEVICE}
     GIT_COMMIT="${GIT_COMMIT}"
     BUILD_TIME="${BUILD_TIME}"
     BOARD_NAME="${BOARD_NAME_STR}"

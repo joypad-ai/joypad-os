@@ -104,7 +104,7 @@ const OutputInterface** app_get_output_interfaces(uint8_t* count)
 
 void app_init(void)
 {
-    printf("[app:lodgenet2gc] Initializing LodgeNet2GC v%s\n", APP_VERSION);
+    printf("[app:lodgenet2gc] Initializing LodgeNet2GC v%s\n", JOYPAD_VERSION);
 
     // Initialize LodgeNet host driver with custom pins
     lodgenet_host_init_pins(LODGENET_PIN_CLOCK, LODGENET_PIN_DATA,

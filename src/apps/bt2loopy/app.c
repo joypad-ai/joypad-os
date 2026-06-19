@@ -130,7 +130,7 @@ const OutputInterface** app_get_output_interfaces(uint8_t* count)
 
 void app_init(void)
 {
-    printf("[app:bt2loopy] Initializing BT2LOOPY v%s\n", APP_VERSION);
+    printf("[app:bt2loopy] Initializing BT2LOOPY v%s\n", JOYPAD_VERSION);
     printf("[app:bt2loopy] Pico W built-in Bluetooth -> Casio Loopy\n");
 
     // Initialize button service (uses BOOTSEL button on Pico W)

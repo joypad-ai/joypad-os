@@ -11,7 +11,6 @@
 // APP METADATA
 // ============================================================================
 #define APP_NAME "controller"
-#define APP_VERSION "1.0.0"
 #define APP_DESCRIPTION "GPIO controller to USB gamepad"
 #define APP_AUTHOR "RobertDaleSmith"
 

@@ -10,7 +10,6 @@
 #define APP_BT2WII_H
 
 #define APP_NAME "BT2WIIEXT"
-#define APP_VERSION "0.1.0"
 #define APP_DESCRIPTION "Bluetooth to Wii extension (Pico W)"
 #define APP_AUTHOR "RobertDaleSmith"
 

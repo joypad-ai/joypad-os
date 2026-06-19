@@ -11,7 +11,6 @@
 // APP METADATA
 // ============================================================================
 #define APP_NAME "NEOGEO2USB"
-#define APP_VERSION "1.0.0"
 #define APP_DESCRIPTION "NEOGEO controller to USB HID gamepad adapter"
 #define APP_AUTHOR "herzmx"
 

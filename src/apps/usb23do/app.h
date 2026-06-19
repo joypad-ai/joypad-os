@@ -11,7 +11,6 @@
 // APP METADATA
 // ============================================================================
 #define APP_NAME "3DOUSB"
-#define APP_VERSION "2.0.0"
 #define APP_DESCRIPTION "USB to 3DO adapter with 8-player multitap and passthrough"
 #define APP_AUTHOR "RobertDaleSmith"
 

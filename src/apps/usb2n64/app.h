@@ -11,7 +11,6 @@
 // APP METADATA
 // ============================================================================
 #define APP_NAME "USB2N64"
-#define APP_VERSION "1.0.0"
 #define APP_DESCRIPTION "USB to N64 adapter"
 #define APP_AUTHOR "RobertDaleSmith"
 

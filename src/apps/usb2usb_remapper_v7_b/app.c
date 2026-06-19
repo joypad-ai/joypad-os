@@ -107,7 +107,7 @@ const OutputInterface** app_get_output_interfaces(uint8_t* count)
 
 void app_init(void)
 {
-    printf("[app:usb2usb_remapper_v7_b] Initializing %s v%s\n", APP_NAME, APP_VERSION);
+    printf("[app:usb2usb_remapper_v7_b] Initializing %s v%s\n", APP_NAME, JOYPAD_VERSION);
 
     feedback_init();
 

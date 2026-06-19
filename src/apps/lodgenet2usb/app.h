@@ -12,7 +12,6 @@
 // APP METADATA
 // ============================================================================
 #define APP_NAME "LodgeNet2USB"
-#define APP_VERSION "0.1.0"
 #define APP_DESCRIPTION "LodgeNet controller to USB HID gamepad adapter"
 #define APP_AUTHOR "RobertDaleSmith"
 

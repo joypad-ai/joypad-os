@@ -5,7 +5,6 @@
 #define APP_WII2N64_H
 
 #define APP_NAME "wii2n64"
-#define APP_VERSION "0.1.0"
 #define APP_DESCRIPTION "Wii Nunchuck/Classic to N64 adapter"
 #define APP_AUTHOR "RobertDaleSmith"
 

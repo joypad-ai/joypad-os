@@ -14,7 +14,6 @@
 // APP METADATA
 // ============================================================================
 #define APP_NAME "BT2N64"
-#define APP_VERSION "0.1.0"
 #define APP_DESCRIPTION "Bluetooth to N64 console adapter (Pico W)"
 #define APP_AUTHOR "RobertDaleSmith"
 

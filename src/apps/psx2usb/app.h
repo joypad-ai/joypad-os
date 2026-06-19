@@ -12,7 +12,6 @@
 // ============================================================================
 
 #define APP_NAME         "PSX2USB"
-#define APP_VERSION      "1.0.0"
 #define APP_DESCRIPTION  "PS1/PS2 controller to USB HID gamepad adapter"
 #define APP_AUTHOR       "RobertDaleSmith"
 

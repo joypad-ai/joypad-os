@@ -131,7 +131,7 @@ const OutputInterface** app_get_output_interfaces(uint8_t* count)
 
 void app_init(void)
 {
-    printf("[app:usb2ble] Initializing USB2BLE v%s\n", APP_VERSION);
+    printf("[app:usb2ble] Initializing USB2BLE v%s\n", JOYPAD_VERSION);
 
     // Initialize button service (BOOTSEL button on Pico W)
     button_init();

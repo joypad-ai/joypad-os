@@ -11,7 +11,6 @@
 // APP METADATA
 // ============================================================================
 #define APP_NAME "controller_btusb"
-#define APP_VERSION "1.0.0"
 #define APP_DESCRIPTION "Controller to BLE+USB gamepad adapter"
 #define APP_AUTHOR "RobertDaleSmith"
 

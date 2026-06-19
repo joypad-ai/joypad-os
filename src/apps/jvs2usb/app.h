@@ -11,7 +11,6 @@
 // APP METADATA
 // ============================================================================
 #define APP_NAME "JVS2USB"
-#define APP_VERSION "1.0.0"
 #define APP_DESCRIPTION "JVS controller to USB HID gamepad adapter"
 #define APP_AUTHOR "herzmx"
 

@@ -11,7 +11,6 @@
 #include "core/output_interface.h"
 
 #define APP_NAME    "GC2ETH"
-#define APP_VERSION "0.1.0-m1"
 
 #ifndef BOARD
 #define BOARD "waveshare_rp2040_eth"

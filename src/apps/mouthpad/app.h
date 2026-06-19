@@ -16,7 +16,6 @@
 #define APP_MOUTHPAD_H
 
 #define APP_NAME "MOUTHPAD"
-#define APP_VERSION "1.0.0"
 #define APP_DESCRIPTION "Augmental MouthPad BLE -> USB (HID + NUS relay)"
 #define APP_AUTHOR "RobertDaleSmith"
 

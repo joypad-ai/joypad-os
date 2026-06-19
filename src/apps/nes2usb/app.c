@@ -61,7 +61,7 @@ static void on_button_event(button_event_t event)
 
 void app_init(void)
 {
-    printf("[app:nes2usb] Initializing NES2USB v%s\n", APP_VERSION);
+    printf("[app:nes2usb] Initializing NES2USB v%s\n", JOYPAD_VERSION);
 
     // Initialize button service (uses BOOTSEL button on Pico W)
     button_init();

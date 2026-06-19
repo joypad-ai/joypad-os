@@ -107,7 +107,7 @@ void app_init(void)
     // (same fix gc2usb applies — without it stdio output garbles).
     stdio_init_all();
 
-    printf("\n[app:gc2eth] %s v%s starting\n", APP_NAME, APP_VERSION);
+    printf("\n[app:gc2eth] %s v%s starting\n", APP_NAME, JOYPAD_VERSION);
     printf("[app:gc2eth]   board: %s\n", BOARD);
     printf("[app:gc2eth]   GC data pin: GPIO%d\n", GC_DATA_PIN);
     printf("[app:gc2eth]   CH9120: UART TX=GPIO%d RX=GPIO%d  "

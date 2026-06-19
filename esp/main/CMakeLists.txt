@@ -560,6 +560,19 @@ else()
     set(JOYPAD_VERSION "0.0.0")
 endif()
 
+# Derive USB bcdDevice (0xMMmp) from JOYPAD_VERSION so the SInput "dongle version"
+# reflects firmware version (matches src/CMakeLists.txt).
+string(REPLACE "." ";" _JP_VER_PARTS "${JOYPAD_VERSION}")
+list(LENGTH _JP_VER_PARTS _JP_VER_LEN)
+if(_JP_VER_LEN GREATER_EQUAL 3)
+    list(GET _JP_VER_PARTS 0 _JP_VER_MAJOR)
+    list(GET _JP_VER_PARTS 1 _JP_VER_MINOR)
+    list(GET _JP_VER_PARTS 2 _JP_VER_PATCH)
+    math(EXPR JOYPAD_BCD_DEVICE "(${_JP_VER_MAJOR} << 8) | ((${_JP_VER_MINOR} & 15) << 4) | (${_JP_VER_PATCH} & 15)")
+else()
+    set(JOYPAD_BCD_DEVICE 256)
+endif()
+
 # Get git commit hash
 execute_process(
     COMMAND git rev-parse --short HEAD
@@ -576,6 +589,7 @@ string(TIMESTAMP BUILD_TIME "%Y-%m-%d %H:%M:%S")
 
 target_compile_definitions(${COMPONENT_LIB} PRIVATE
     JOYPAD_VERSION="${JOYPAD_VERSION}"
+    SINPUT_BCD_DEVICE=${JOYPAD_BCD_DEVICE}
     GIT_COMMIT="${GIT_COMMIT}"
     BUILD_TIME="${BUILD_TIME}"
     BOARD_NAME="esp32s3"

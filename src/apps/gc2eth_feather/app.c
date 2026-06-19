@@ -137,7 +137,7 @@ void app_init(void)
     // main loop starts pumping tud_task. No blocking sleep needed — the
     // 2.5s delay I had here previously starved USB enumeration and caused
     // the host to force-reset the device back into bootloader.
-    dbg("\r\n[gc2eth_feather] " APP_VERSION " starting\r\n");
+    dbg("\r\n[gc2eth_feather] " JOYPAD_VERSION " starting\r\n");
     dbg("[gc2eth_feather]   board: " BOARD "\r\n");
     {
         char buf[128];

@@ -88,7 +88,7 @@ void app_init(void)
     // (otherwise serial output is garbled at the wrong baud rate).
     stdio_init_all();
 
-    printf("[app:gc2usb] Initializing GC2USB v%s (sys_clk=130MHz)\n", APP_VERSION);
+    printf("[app:gc2usb] Initializing GC2USB v%s (sys_clk=130MHz)\n", JOYPAD_VERSION);
 
     // Configure router for GC -> USB routing
     router_config_t router_cfg = {

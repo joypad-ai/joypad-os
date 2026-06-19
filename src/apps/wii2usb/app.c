@@ -82,7 +82,7 @@ static void on_button_event(button_event_t event)
 
 void app_init(void)
 {
-    printf("[app:wii2usb] Initializing WII2USB v%s\n", APP_VERSION);
+    printf("[app:wii2usb] Initializing WII2USB v%s\n", JOYPAD_VERSION);
 
     button_init();
     button_set_callback(on_button_event);

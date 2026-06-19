@@ -48,7 +48,7 @@ const OutputInterface** app_get_output_interfaces(uint8_t* count)
 
 void app_init(void)
 {
-    printf("[app:snes23do] Initializing SNES23DO v%s\n", APP_VERSION);
+    printf("[app:snes23do] Initializing SNES23DO v%s\n", JOYPAD_VERSION);
 
     // Initialize SNES host driver (native SNES controller input)
     snes_host_init_pins(SNES_PIN_CLOCK, SNES_PIN_LATCH, SNES_PIN_DATA0,

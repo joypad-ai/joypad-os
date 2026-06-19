@@ -63,7 +63,7 @@ const OutputInterface** app_get_output_interfaces(uint8_t* count)
 
 void app_init(void)
 {
-    printf("[app:usb2n64] Initializing USB2N64 v%s\n", APP_VERSION);
+    printf("[app:usb2n64] Initializing USB2N64 v%s\n", JOYPAD_VERSION);
 
     // Configure router for USB2N64
     router_config_t router_cfg = {

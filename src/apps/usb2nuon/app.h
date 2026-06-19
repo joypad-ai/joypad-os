@@ -11,7 +11,6 @@
 // APP METADATA
 // ============================================================================
 #define APP_NAME "NUONUSB"
-#define APP_VERSION "2.0.0"
 #define APP_DESCRIPTION "USB to Nuon DVD player adapter"
 #define APP_AUTHOR "RobertDaleSmith"
 

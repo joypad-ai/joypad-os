@@ -11,7 +11,6 @@
 // APP METADATA
 // ============================================================================
 #define APP_NAME "USB2BLE"
-#define APP_VERSION "1.0.0"
 #define APP_DESCRIPTION "USB to BLE HID gamepad adapter (Pico W)"
 #define APP_AUTHOR "RobertDaleSmith"
 

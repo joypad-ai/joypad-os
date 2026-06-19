@@ -217,7 +217,7 @@ const OutputInterface** app_get_output_interfaces(uint8_t* count)
 
 void app_init(void)
 {
-    printf("[app:controller] Initializing %s Controller v%s\n", CONTROLLER_NAME, APP_VERSION);
+    printf("[app:controller] Initializing %s Controller v%s\n", CONTROLLER_NAME, JOYPAD_VERSION);
 
     // Initialize button service
     button_init();

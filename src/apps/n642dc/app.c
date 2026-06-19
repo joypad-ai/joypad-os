@@ -50,7 +50,7 @@ const OutputInterface** app_get_output_interfaces(uint8_t* count)
 
 void app_init(void)
 {
-    printf("[app:n642dc] Initializing N642DC v%s\n", APP_VERSION);
+    printf("[app:n642dc] Initializing N642DC v%s\n", JOYPAD_VERSION);
 
     // Configure router
     router_config_t router_cfg = {

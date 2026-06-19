@@ -122,7 +122,7 @@ void app_init(void)
     // could start listening for console probes as early as possible.
     n64_late_init();
 
-    printf("[app:lodgenet2n64] Initializing LodgeNet2N64 v%s\n", APP_VERSION);
+    printf("[app:lodgenet2n64] Initializing LodgeNet2N64 v%s\n", JOYPAD_VERSION);
 
     // Initialize LodgeNet host driver with custom pins
     lodgenet_host_init_pins(LODGENET_PIN_CLOCK, LODGENET_PIN_DATA,

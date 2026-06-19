@@ -7,7 +7,6 @@
 #define GC2ETH_FEATHER_APP_CONFIG_H
 
 #define APP_NAME    "gc2eth_feather"
-#define APP_VERSION "0.2-CS10"
 #define BOARD       "adafruit_feather_rp2040_usb_host + W5500 FeatherWing"
 
 #define LED_P1_R 0

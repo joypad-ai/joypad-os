@@ -11,7 +11,6 @@
 // APP METADATA
 // ============================================================================
 #define APP_NAME "USB2NEOGEO"
-#define APP_VERSION "1.0.0"
 #define APP_DESCRIPTION "USB to NEOGEO adapter"
 #define APP_AUTHOR "herzmx"
 

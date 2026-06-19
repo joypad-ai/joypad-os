@@ -11,7 +11,6 @@
 // APP METADATA
 // ============================================================================
 #define APP_NAME "SNES23DO"
-#define APP_VERSION "1.0.0"
 #define APP_DESCRIPTION "SNES/NES controller to 3DO adapter"
 #define APP_AUTHOR "RobertDaleSmith"
 

@@ -393,7 +393,7 @@ const OutputInterface** app_get_output_interfaces(uint8_t* count)
 
 void app_init(void)
 {
-    printf("[app:controller_btusb] Initializing ControllerBTUSB v%s\n", APP_VERSION);
+    printf("[app:controller_btusb] Initializing ControllerBTUSB v%s\n", JOYPAD_VERSION);
 
     // (Do NOT call set_sys_clock_khz here — pico-pio-usb adapts its bit-bang
     // timing to whatever clk_sys is, and changing the clock after stdio_init

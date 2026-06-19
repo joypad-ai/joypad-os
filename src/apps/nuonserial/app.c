@@ -44,7 +44,7 @@ const OutputInterface** app_get_output_interfaces(uint8_t* count)
 
 void app_init(void)
 {
-    printf("[app:nuonserial] Initializing Nuon Serial Adapter v%s\n", APP_VERSION);
+    printf("[app:nuonserial] Initializing Nuon Serial Adapter v%s\n", JOYPAD_VERSION);
 
     // Minimal router config — no input routing needed
     router_config_t router_cfg = {

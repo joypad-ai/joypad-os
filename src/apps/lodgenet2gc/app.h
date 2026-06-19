@@ -11,7 +11,6 @@
 // APP METADATA
 // ============================================================================
 #define APP_NAME "LodgeNet2GC"
-#define APP_VERSION "0.1.0"
 #define APP_DESCRIPTION "LodgeNet controller to GameCube console adapter"
 #define APP_AUTHOR "RobertDaleSmith"
 

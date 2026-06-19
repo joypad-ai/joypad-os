@@ -11,7 +11,6 @@
 // APP METADATA
 // ============================================================================
 #define APP_NAME "USB2UART"
-#define APP_VERSION "1.0.0"
 #define APP_DESCRIPTION "USB to UART bridge for ESP32 AI platform"
 #define APP_AUTHOR "RobertDaleSmith"
 

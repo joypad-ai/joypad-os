@@ -190,7 +190,7 @@ void app_init(void)
     // could start listening for console probes as early as possible.
     n64_late_init();
 
-    printf("[app:bt2n64] Initializing BT2N64 v%s\n", APP_VERSION);
+    printf("[app:bt2n64] Initializing BT2N64 v%s\n", JOYPAD_VERSION);
     printf("[app:bt2n64] Pico W built-in Bluetooth -> N64\n");
 
     // Initialize button service (uses BOOTSEL button on Pico W)

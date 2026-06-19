@@ -54,7 +54,7 @@ const OutputInterface** app_get_output_interfaces(uint8_t* count)
 
 void app_init(void)
 {
-    printf("[app:psx2usb] Initializing PSX2USB v%s\n", APP_VERSION);
+    printf("[app:psx2usb] Initializing PSX2USB v%s\n", JOYPAD_VERSION);
 
     psx_host_init_pins(PSX_PIN_CMD, PSX_PIN_CLK, PSX_PIN_ATT, PSX_PIN_DAT);
 

@@ -14,7 +14,6 @@
 // APP METADATA
 // ============================================================================
 #define APP_NAME "BT2NUON"
-#define APP_VERSION "1.0.0"
 #define APP_DESCRIPTION "Bluetooth to Nuon DVD player adapter (Pico W)"
 #define APP_AUTHOR "RobertDaleSmith"
 

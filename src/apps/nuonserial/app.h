@@ -12,7 +12,6 @@
 // APP METADATA
 // ============================================================================
 #define APP_NAME "nuonserial"
-#define APP_VERSION "0.1.0"
 #define APP_DESCRIPTION "Nuon serial adapter for homebrew debug"
 #define APP_AUTHOR "RobertDaleSmith"
 

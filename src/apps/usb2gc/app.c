@@ -147,7 +147,7 @@ void app_init(void)
         return;
     }
 
-    printf("[app:usb2gc] Initializing usb2gc v%s\n", APP_VERSION);
+    printf("[app:usb2gc] Initializing usb2gc v%s\n", JOYPAD_VERSION);
 
     // Configure router for GCUSB
     router_config_t router_cfg = {

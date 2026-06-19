@@ -62,7 +62,7 @@ const OutputInterface** app_get_output_interfaces(uint8_t* count)
 
 void app_init(void)
 {
-    printf("[app:usb23do] Initializing 3DOUSB v%s\n", APP_VERSION);
+    printf("[app:usb23do] Initializing 3DOUSB v%s\n", JOYPAD_VERSION);
 
     // Configure router for 3DOUSB
     router_config_t router_cfg = {

@@ -43,7 +43,7 @@ const OutputInterface** app_get_output_interfaces(uint8_t* count)
 
 void app_init(void)
 {
-    printf("[app:wii2n64] Initializing wii2n64 v%s\n", APP_VERSION);
+    printf("[app:wii2n64] Initializing wii2n64 v%s\n", JOYPAD_VERSION);
 
 #if defined(WII_PIN_SDA2) && WII_PIN_SDA2 != 255
     wii_host_init_dual(WII_PIN_SDA, WII_PIN_SCL, WII_PIN_SDA2, WII_PIN_SCL2);

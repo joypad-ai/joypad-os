@@ -112,7 +112,7 @@ static void on_button_event(button_event_t event)
 
 void app_init(void)
 {
-    printf("[app:bt2wiiext] Initializing BT2WIIEXT v%s\n", APP_VERSION);
+    printf("[app:bt2wiiext] Initializing BT2WIIEXT v%s\n", JOYPAD_VERSION);
 
     // Expose Wii output for web config (pin/mode config via OUTPUT.NATIVE.GET/SET)
     native_output = &wii_output_interface;

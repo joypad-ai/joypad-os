@@ -163,7 +163,7 @@ static void uart_router_tap(output_target_t output, uint8_t player_index,
 
 void app_init(void)
 {
-    printf("[app:usb2uart] Initializing USB2UART v%s\n", APP_VERSION);
+    printf("[app:usb2uart] Initializing USB2UART v%s\n", JOYPAD_VERSION);
 
     // Initialize player feedback system
     feedback_init();
