@@ -317,15 +317,20 @@ static inline void set_quad_y(uint8_t state) {
     if (state & 0x02) pin_press(AMIGA_PIN_UP);   else pin_release(AMIGA_PIN_UP);
 }
 
-// Atari ST uses inverted phase
+// Atari ST mouse quadrature (verified against Yaumataca reference implementation):
+// vs Amiga: UP and RIGHT signals are swapped between H and V quadrature
+// Amiga: UP=V_bit1, DOWN=H_bit1, LEFT=V_bit0, RIGHT=H_bit0
+// ST:    UP=H_bit0, DOWN=H_bit1, LEFT=V_bit0, RIGHT=V_bit1
 static inline void set_quad_x_st(uint8_t state) {
-    if (state & 0x02) pin_press(AMIGA_PIN_RIGHT); else pin_release(AMIGA_PIN_RIGHT);
-    if (state & 0x01) pin_press(AMIGA_PIN_DOWN);  else pin_release(AMIGA_PIN_DOWN);
+    // H quadrature: bit0→UP, bit1→DOWN
+    if (state & 0x01) pin_press(AMIGA_PIN_UP);   else pin_release(AMIGA_PIN_UP);   // H bit0 → UP
+    if (state & 0x02) pin_press(AMIGA_PIN_DOWN);  else pin_release(AMIGA_PIN_DOWN); // H bit1 → DOWN
 }
 
 static inline void set_quad_y_st(uint8_t state) {
-    if (state & 0x02) pin_press(AMIGA_PIN_LEFT); else pin_release(AMIGA_PIN_LEFT);
-    if (state & 0x01) pin_press(AMIGA_PIN_UP);   else pin_release(AMIGA_PIN_UP);
+    // V quadrature: bit0→LEFT, bit1→RIGHT
+    if (state & 0x01) pin_press(AMIGA_PIN_LEFT);  else pin_release(AMIGA_PIN_LEFT);  // V bit0 → LEFT
+    if (state & 0x02) pin_press(AMIGA_PIN_RIGHT); else pin_release(AMIGA_PIN_RIGHT); // V bit1 → RIGHT
 }
 
 // ============================================================================
@@ -416,12 +421,14 @@ static void __not_in_flash_func(amiga_gpio_irq)(uint gpio, uint32_t events) {
 // ============================================================================
 
 void __not_in_flash_func(amiga_core1_task)(void) {
-#define QUAD_STEP_US 200
+#define QUAD_STEP_US     200  // Amiga quadrature step period
+#define QUAD_STEP_US_ST  450  // Atari ST needs slower quadrature (tested by Yaumataca)
     while (true) {
+        uint32_t step_us = (current_platform == AMIGA_PLATFORM_ATARI_ST) ? QUAD_STEP_US_ST : QUAD_STEP_US;
         if (!mouse_active || amiga_state.mode != AMIGA_MODE_JOYSTICK ||
                 current_platform == AMIGA_PLATFORM_C64 ||
                 (mouse_accum_x == 0 && mouse_accum_y == 0)) {
-            busy_wait_us(QUAD_STEP_US);
+            busy_wait_us(step_us);
             continue;
         }
         bool moved = false;
@@ -438,7 +445,7 @@ void __not_in_flash_func(amiga_core1_task)(void) {
                 set_quad_y(QUAD_TABLE[quad_y]);
             }
         }
-        busy_wait_us(QUAD_STEP_US);
+        busy_wait_us(step_us);
     }
 }
 
@@ -718,7 +725,7 @@ void amiga_device_task(void) {
     // BOOTSEL button handling — only during first 10 seconds after power-on
     // After that, QSPI manipulation interferes with CD32 CLK timing
     {
-#define BOOTSEL_WINDOW_MS 5000
+#define BOOTSEL_WINDOW_MS 8000
         static uint32_t last_button_read = 0;
         static bool button_was_pressed = false;
         static bool window_open = true;
