@@ -2651,6 +2651,18 @@ static struct {
     char    firmware[24];                      // DIS firmware revision (for relay device_info)
 } mp_nus = { .state = MP_NUS_IDLE, .handle = HCI_CON_HANDLE_INVALID };
 
+// Host->device NUS write queue (drained on the BTstack run loop — see
+// btstack_host_mouthpad_nus_send below). Declared here so mp_nus_reset() can
+// flush it on disconnect.
+#define MP_TX_SLOTS      8                  // host->device queue depth (low-rate)
+#define MP_TX_SLOT_SIZE  247                // <= NUS MTU payload
+typedef struct { uint16_t len; uint8_t data[MP_TX_SLOT_SIZE]; } mp_tx_slot_t;
+static mp_tx_slot_t      mp_tx[MP_TX_SLOTS];
+static volatile uint32_t mp_tx_head;        // write index (producer: main loop)
+static volatile uint32_t mp_tx_tail;        // read index (consumer: run loop)
+static volatile bool     mp_tx_scheduled;
+static btstack_context_callback_registration_t mp_tx_cb;
+
 static void (*mp_nus_rx_cb)(const uint8_t* data, uint16_t len) = NULL;
 
 void btstack_host_set_mouthpad_nus_rx_cb(void (*cb)(const uint8_t*, uint16_t))
@@ -2706,6 +2718,9 @@ static void mp_nus_reset(void)
     mp_nus.rx_value_handle = 0;
     mp_nus.last_battery = 0;
     mp_nus.firmware[0] = '\0';
+    // Discard any queued host->device writes for the gone MouthPad.
+    mp_tx_tail = mp_tx_head;
+    mp_tx_scheduled = false;
 }
 
 static void mp_nus_disconnected(hci_con_handle_t handle)
@@ -2850,12 +2865,55 @@ static void mp_hid_setup_task(void)
 }
 
 // Host -> device write (called from the bridge; safe in BTstack/run-loop context).
+// ---------------------------------------------------------------------------
+// Host->device NUS write, marshaled onto the BTstack run loop.
+//
+// btstack_host_mouthpad_nus_send() is called from the CDC/relay context (the
+// main loop), but gatt_client_write MUST run on the BTstack thread: on nRF/ESP
+// BTstack lives in its own RTOS task, and calling GATT APIs cross-thread races
+// with BTstack's own processing and corrupts its state. So enqueue the payload
+// into a lock-free SPSC ring and schedule a drain via
+// btstack_run_loop_execute_on_main_thread() — the run-loop hop every platform
+// HAL implements (nRF/ESP/CYW43) — which runs on the BTstack thread. On RP2040
+// (cooperative run loop) this is the same context, just one iteration later.
+// Single producer (main loop) + single consumer (run loop); both on one core,
+// so volatile indices + a publish-after-copy are race-free under preemption.
+// (The queue + indices are declared up by the mp_nus struct.)
+// ---------------------------------------------------------------------------
+
+// Runs on the BTstack run loop (BTstack thread) — drain the queue.
+static void mp_tx_pump(void* ctx)
+{
+    (void)ctx;
+    mp_tx_scheduled = false;                 // clear first so a late enqueue re-schedules
+    while (mp_tx_head != mp_tx_tail) {
+        mp_tx_slot_t* s = &mp_tx[mp_tx_tail % MP_TX_SLOTS];
+        if (mp_nus.state == MP_NUS_READY && mp_nus.rx_value_handle != 0) {
+            gatt_client_write_value_of_characteristic_without_response(
+                mp_nus.handle, mp_nus.rx_value_handle, s->len, s->data);
+        }
+        mp_tx_tail++;
+    }
+}
+
 bool btstack_host_mouthpad_nus_send(const uint8_t* data, uint16_t len)
 {
     if (mp_nus.state != MP_NUS_READY || mp_nus.rx_value_handle == 0) return false;
-    uint8_t status = gatt_client_write_value_of_characteristic_without_response(
-        mp_nus.handle, mp_nus.rx_value_handle, len, (uint8_t*)data);
-    return status == 0;
+    if (len == 0 || len > MP_TX_SLOT_SIZE) return false;
+    if (mp_tx_head - mp_tx_tail >= MP_TX_SLOTS) return false;   // queue full
+
+    mp_tx_slot_t* s = &mp_tx[mp_tx_head % MP_TX_SLOTS];
+    memcpy(s->data, data, len);
+    s->len = len;
+    mp_tx_head++;                            // publish after copy
+
+    if (!mp_tx_scheduled) {
+        mp_tx_scheduled = true;
+        mp_tx_cb.callback = &mp_tx_pump;
+        mp_tx_cb.context  = NULL;
+        btstack_run_loop_execute_on_main_thread(&mp_tx_cb);
+    }
+    return true;
 }
 
 // ============================================================================
