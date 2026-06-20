@@ -111,6 +111,12 @@ static uint8_t quad_y = 0;
 
 // CD32 detection
 static volatile bool cd32_detected       = false;
+
+// Amiga vs Atari ST auto-detection via JOYMODE pulses
+// Amiga POTGO pulses pin 5 LOW every ~512µs at boot
+// Atari ST never drives pin 5 — leaves it floating
+static volatile bool joymode_pulse_seen  = false;  // set by ISR on any JOYMODE FALL
+static bool platform_detected            = false;   // true once auto-detect complete
 static volatile bool cd32_transfer_active = false;
 
 // C1351 proportional mouse state (C64 platform only)
@@ -151,6 +157,15 @@ static void load_settings(void) {
     uint8_t p = s->reserved[FLASH_PLATFORM_IDX];
     if (p < AMIGA_PLATFORM_COUNT) current_platform = (amiga_platform_t)p;
 
+    // If saved platform is Amiga or ST, start as Amiga — auto-detection will
+    // correct to ST if no JOYMODE pulses detected. Only C64 skips auto-detect.
+    if (current_platform != AMIGA_PLATFORM_C64) {
+        current_platform = AMIGA_PLATFORM_AMIGA;
+        platform_detected = false;
+    } else {
+        platform_detected = true;  // C64 was manually set, skip auto-detect
+    }
+
     for (int i = 0; i < AMIGA_PLATFORM_COUNT; i++) {
         uint8_t d = s->reserved[FLASH_DPI_AMIGA_IDX + i];
         dpi[i] = (d >= DPI_MIN && d <= DPI_MAX) ? d : DPI_DEFAULT;
@@ -185,13 +200,8 @@ static void update_led(void) {
     }
     switch (current_platform) {
         case AMIGA_PLATFORM_AMIGA:
-            leds_set_color(LED_AMIGA_R, LED_AMIGA_G, LED_AMIGA_B);
-            break;
-        case AMIGA_PLATFORM_C64:
-            leds_set_color(LED_C64_R, LED_C64_G, LED_C64_B);
-            break;
         case AMIGA_PLATFORM_ATARI_ST:
-            leds_set_color(LED_ATARI_ST_R, LED_ATARI_ST_G, LED_ATARI_ST_B);
+            leds_set_color(LED_AMIGA_R, LED_AMIGA_G, LED_AMIGA_B);
             break;
         default:
             break;
@@ -343,6 +353,8 @@ static void __not_in_flash_func(amiga_gpio_irq)(uint gpio, uint32_t events) {
     if (!amiga_initialized) return;
     if (gpio == AMIGA_PIN_JOYMODE) {
         if (events & GPIO_IRQ_EDGE_FALL) {
+            // Record pulse for Amiga vs ST auto-detection
+            if (!platform_detected) joymode_pulse_seen = true;
             if (current_platform == AMIGA_PLATFORM_C64 && mouse_active) {
                 // C1351 proportional mouse: SID is starting a POT measurement
                 if (c1351_alarm_x < 0) c1351_init_alarms();  // lazy init
@@ -722,7 +734,31 @@ void amiga_device_task(void) {
         // at full range until first controller connects
     }
 
-    // BOOTSEL button handling — only during first 10 seconds after power-on
+    // Amiga vs Atari ST auto-detection
+    // Runs only when platform is not C64 (C64 was manually set via BOOTSEL)
+    // Amiga POTGO pulses JOYMODE LOW every ~512µs — detected almost instantly
+    // Atari ST never pulses — timeout → ST mode
+    if (!platform_detected) {
+        static uint32_t detect_start_ms = 0;
+        uint32_t now_ms = to_ms_since_boot(get_absolute_time());
+        if (detect_start_ms == 0) detect_start_ms = now_ms;
+
+        if (joymode_pulse_seen) {
+            // JOYMODE pulse detected → Amiga
+            current_platform = AMIGA_PLATFORM_AMIGA;
+            platform_detected = true;
+            update_led();
+            printf("[amiga] Auto-detected: Amiga\n");
+        } else if ((now_ms - detect_start_ms) >= 2000) {
+            // No pulses in 2 seconds → Atari ST
+            current_platform = AMIGA_PLATFORM_ATARI_ST;
+            platform_detected = true;
+            update_led();
+            printf("[amiga] Auto-detected: Atari ST\n");
+        }
+    }
+
+    // BOOTSEL button handling — only during first 8 seconds after power-on
     // After that, QSPI manipulation interferes with CD32 CLK timing
     {
 #define BOOTSEL_WINDOW_MS 8000
@@ -745,8 +781,16 @@ void amiga_device_task(void) {
                     button_was_pressed = true;
                 } else if (!pressed && button_was_pressed) {
                     button_was_pressed = false;
-                    // Tap to cycle platform — no hold required
-                    current_platform = (amiga_platform_t)((current_platform + 1) % AMIGA_PLATFORM_COUNT);
+                    // Tap to toggle platform: Amiga/ST ↔ C64
+                    // ST is auto-detected, not manually selectable
+                    if (current_platform == AMIGA_PLATFORM_C64) {
+                        current_platform = AMIGA_PLATFORM_AMIGA;
+                        platform_detected = false;  // re-run auto-detection
+                        joymode_pulse_seen = false;
+                    } else {
+                        current_platform = AMIGA_PLATFORM_C64;
+                        platform_detected = true;   // C64 is manual, skip auto-detect
+                    }
                     turbo_mask = 0;
                     cd32_detected = false;
                     c1351_free_alarms();
