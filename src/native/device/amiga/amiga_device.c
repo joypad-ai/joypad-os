@@ -99,6 +99,10 @@ static volatile uint8_t buttons_isr  = 0xFF;
 // Mouse state
 static volatile int16_t mouse_accum_x    = 0;
 static volatile int16_t mouse_accum_y    = 0;
+// Sub-pixel DPI accumulators — preserve fractional movement so slow
+// precise movements aren't lost to integer division
+static int16_t dpi_accum_x = 0;
+static int16_t dpi_accum_y = 0;
 static volatile int16_t mouse_accum_wheel = 0;
 static volatile uint32_t mouse_buttons   = 0;
 static volatile bool mouse_active        = false;
@@ -477,6 +481,8 @@ static void __not_in_flash_func(amiga_tap_callback)(output_target_t output,
         device_connected = false;
         mouse_active = false;
         gamepad_seen = false;
+        dpi_accum_x = 0;
+        dpi_accum_y = 0;
         dpi_adjust_mode = false;
         cd32_detected = false;
         turbo_mask = 0;
@@ -568,11 +574,19 @@ static void __not_in_flash_func(amiga_tap_callback)(output_target_t output,
         uint8_t d = dpi[current_platform];
         if (current_platform == AMIGA_PLATFORM_C64) {
             // C1351 proportional mode — update absolute position
-            c1351_update_position(event->delta_x / d, -(event->delta_y / d));
+            // Use accumulator to preserve sub-pixel precision
+            dpi_accum_x += event->delta_x;
+            dpi_accum_y += event->delta_y;
+            int16_t cx = dpi_accum_x / d; dpi_accum_x %= d;
+            int16_t cy = dpi_accum_y / d; dpi_accum_y %= d;
+            c1351_update_position(cx, -cy);
         } else {
             // Amiga/Atari ST — quadrature accumulation (Core 1 drains)
-            mouse_accum_x += event->delta_x / d;
-            mouse_accum_y += event->delta_y / d;
+            // Use accumulator to preserve sub-pixel precision at all DPI settings
+            dpi_accum_x += event->delta_x;
+            dpi_accum_y += event->delta_y;
+            mouse_accum_x += dpi_accum_x / d; dpi_accum_x %= d;
+            mouse_accum_y += dpi_accum_y / d; dpi_accum_y %= d;
         }
         mouse_accum_wheel += event->delta_wheel;
         mouse_buttons = event->buttons;
