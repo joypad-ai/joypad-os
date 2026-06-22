@@ -15,8 +15,8 @@
 #ifndef APP_MOUTHPAD_H
 #define APP_MOUTHPAD_H
 
-#define APP_NAME "MOUTHPAD"
-#define APP_DESCRIPTION "Augmental MouthPad BLE -> USB (HID + NUS relay)"
+#define APP_NAME "MOUTHPAD-RELAY"
+#define APP_DESCRIPTION "Augmental MouthPad BLE -> USB passthrough (HID + NUS relay, no gamepad translation)"
 #define APP_AUTHOR "RobertDaleSmith"
 
 // Input: BLE central (CYW43 on Pico W / Zephyr HCI on nRF). MouthPad is BLE.

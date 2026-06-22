@@ -28,8 +28,11 @@
 #include "core/input_event.h"
 #include "core/router/router.h"
 #include "core/buttons.h"
+#include "core/services/keymap/keymap.h"
 #include "core/services/players/manager.h"
+#include "platform/platform.h"
 #include <string.h>
+#include <stdlib.h>
 #include <stdio.h>
 
 // ----------------------------------------------------------------------------
@@ -55,23 +58,68 @@
 typedef struct {
     input_event_t event;
     uint8_t       mouse_buttons;   // last raw report-1 button bits (persistent)
+    uint32_t      kbd_buttons;     // JP_BUTTON_* from keyboard keys (persistent)
+    int16_t       aim_x, aim_y;    // accumulated pointing -> right-stick offset (±127)
+    uint32_t      last_decay_ms;   // throttle for the idle recenter decay
     bool          initialized;
 } mouthpad_data_t;
 
+// Pointing -> right stick (aim) tuning. Pointing deltas (12-bit) accumulate into
+// the right stick and HOLD (no decay) so a direction can be held; move the pointer
+// back to return. No touch threshold, no sector debounce -> fast and light, and
+// needs NO MouthPad profile (default mouse output).
+#define MP_AIM_SENS_NUM   1     // delta scale numerator
+#define MP_AIM_SENS_DEN   2     // delta scale denominator (dx*NUM/DEN per report)
+#define MP_AIM_DEADZONE   2     // ignore |delta| < this (jitter floor)
+// Right-stick AIM uses a mouse-look model: head motion deflects the stick, and it
+// decays back to center when motion stops (camera turns, then stops). This is the
+// correct model for an aim stick — and it can't peg/drift to the edge, so it won't
+// dominate when blended with another controller's right stick.
+#define MP_AIM_DECAY_MS    16   // recenter tick interval (~60 Hz)
+#define MP_AIM_DECAY_SHIFT 2    // decay = value >> 2 (~25%) per tick (snappy stop)
+
 static mouthpad_data_t mouthpad_data[BTHID_MAX_DEVICES];
 
+// Translation mode. Default RIGHT_STICK so the MouthPad is a gamepad in every
+// BT app; the `mouthpad-relay` build sets PASSTHROUGH via mouthpad_ble_set_mode().
+static mp_mode_t mp_mode = MP_MODE_RIGHT_STICK;
+
+void mouthpad_ble_set_mode(mp_mode_t mode)
+{
+    mp_mode = mode;
+    input_device_type_t t = (mode == MP_MODE_PASSTHROUGH) ? INPUT_TYPE_MOUSE : INPUT_TYPE_GAMEPAD;
+    for (int i = 0; i < BTHID_MAX_DEVICES; i++) {
+        if (!mouthpad_data[i].initialized) continue;
+        mouthpad_data[i].event.type = t;
+        mouthpad_data[i].aim_x = 0;
+        mouthpad_data[i].aim_y = 0;
+        mouthpad_data[i].event.analog[ANALOG_LX] = 128;
+        mouthpad_data[i].event.analog[ANALOG_LY] = 128;
+        mouthpad_data[i].event.analog[ANALOG_RX] = 128;
+        mouthpad_data[i].event.analog[ANALOG_RY] = 128;
+    }
+}
+
 // ----------------------------------------------------------------------------
-// Map raw MouthPad mouse buttons -> JP_BUTTON_* (kept persistent across reports)
+// Map raw MouthPad mouse buttons -> JP_BUTTON_* (kept persistent across reports).
+// In a stick mode the LEFT click is the aim RECENTER (handled separately), so it
+// is NOT a gamepad button; in PASSTHROUGH the left click is a normal button.
 // ----------------------------------------------------------------------------
-static uint32_t map_mouse_buttons(uint8_t raw)
+static uint32_t map_mouse_buttons(uint8_t raw, bool include_left)
 {
     uint32_t b = 0;
-    if (raw & MP_MOUSE_BTN_LEFT)    b |= JP_BUTTON_B1;  // sinput mouse: left
-    if (raw & MP_MOUSE_BTN_RIGHT)   b |= JP_BUTTON_B2;  // sinput mouse: right
-    if (raw & MP_MOUSE_BTN_MIDDLE)  b |= JP_BUTTON_B3;  // sinput mouse: middle
+    if (include_left && (raw & MP_MOUSE_BTN_LEFT)) b |= JP_BUTTON_B1;  // left
+    if (raw & MP_MOUSE_BTN_RIGHT)   b |= JP_BUTTON_B2;  // right
+    if (raw & MP_MOUSE_BTN_MIDDLE)  b |= JP_BUTTON_B3;  // middle
     if (raw & MP_MOUSE_BTN_BACK)    b |= JP_BUTTON_B4;  // side -> remappable
     if (raw & MP_MOUSE_BTN_FORWARD) b |= JP_BUTTON_L1;  // side -> remappable
     return b;
+}
+
+// Convenience: include the left click as a button only in PASSTHROUGH mode.
+static inline uint32_t mp_buttons(uint8_t raw)
+{
+    return map_mouse_buttons(raw, mp_mode == MP_MODE_PASSTHROUGH);
 }
 
 // Sign-extend a 12-bit value to int16
@@ -84,14 +132,23 @@ static inline int16_t sext12(uint16_t v)
 // ----------------------------------------------------------------------------
 // Driver callbacks
 // ----------------------------------------------------------------------------
+// Augmental MouthPad DIS PnP ID (vendor_source=2, Nordic VID 0x1915, PID 0xEEEE).
+#define MP_DIS_VID  0x1915
+#define MP_DIS_PID  0xEEEE
+
 static bool mouthpad_match(const char* device_name, const uint8_t* class_of_device,
                            uint16_t vendor_id, uint16_t product_id, bool is_ble)
 {
-    (void)class_of_device; (void)vendor_id; (void)product_id;
+    (void)class_of_device;
 
-    // MouthPad is BLE-only and advertises a name containing "MouthPad".
+    // MouthPad is BLE-only.
     if (!is_ble) return false;
+    // Primary: advertised name contains "MouthPad" (available at connect time).
     if (device_name && strstr(device_name, "MouthPad") != NULL) return true;
+    // Fallback: DIS PnP VID/PID — names can be reset to dev values (e.g. "TL_DEV")
+    // that lack "MouthPad". VID/PID arrive after connect (DIS); bthid re-evaluates
+    // the driver then, so this still selects the MouthPad driver.
+    if (vendor_id == MP_DIS_VID && product_id == MP_DIS_PID) return true;
     return false;
 }
 
@@ -104,9 +161,17 @@ static bool mouthpad_init(bthid_device_t* device)
         if (!mouthpad_data[i].initialized) {
             init_input_event(&mouthpad_data[i].event);
             mouthpad_data[i].mouse_buttons = 0;
+            mouthpad_data[i].kbd_buttons = 0;
+            mouthpad_data[i].aim_x = 0;
+            mouthpad_data[i].aim_y = 0;
+            mouthpad_data[i].last_decay_ms = 0;
             mouthpad_data[i].initialized = true;
 
-            mouthpad_data[i].event.type      = INPUT_TYPE_MOUSE;
+            // Mode decides how the driver presents the MouthPad: PASSTHROUGH =
+            // MOUSE (cursor + clicks + keyboard, for `mouthpad-relay`), otherwise
+            // GAMEPAD (pointing → stick + clicks → buttons, the default everywhere).
+            mouthpad_data[i].event.type      = (mp_mode == MP_MODE_PASSTHROUGH)
+                                                ? INPUT_TYPE_MOUSE : INPUT_TYPE_GAMEPAD;
             mouthpad_data[i].event.dev_addr  = device->conn_index;
             mouthpad_data[i].event.instance  = 0;
             mouthpad_data[i].event.transport = INPUT_TRANSPORT_BT_BLE;
@@ -134,8 +199,21 @@ static void mouthpad_process_report(bthid_device_t* device, const uint8_t* data,
         case MP_REPORT_MOUSE_BTN: {
             // [buttons][wheel]
             if (plen < 1) return;
+            uint8_t prev = md->mouse_buttons;
             md->mouse_buttons = p[0];
-            ev->buttons  = map_mouse_buttons(md->mouse_buttons);
+            // STICK modes only: LEFT click -> RECENTER the held aim stick (the
+            // return-to-center the hold model needs). In PASSTHROUGH the left click
+            // is a normal mouse button instead (mp_buttons() includes it there).
+            if (mp_mode != MP_MODE_PASSTHROUGH &&
+                (md->mouse_buttons & MP_MOUSE_BTN_LEFT) && !(prev & MP_MOUSE_BTN_LEFT)) {
+                md->aim_x = 0;
+                md->aim_y = 0;
+                ev->analog[ANALOG_RX] = 128;
+                ev->analog[ANALOG_RY] = 128;
+                ev->analog[ANALOG_LX] = 128;
+                ev->analog[ANALOG_LY] = 128;
+            }
+            ev->buttons  = mp_buttons(md->mouse_buttons) | md->kbd_buttons;
             ev->delta_x  = 0;        // this report carries no motion
             ev->delta_y  = 0;
             ev->delta_wheel = (plen >= 2) ? (int8_t)p[1] : 0;
@@ -149,9 +227,44 @@ static void mouthpad_process_report(bthid_device_t* device, const uint8_t* data,
             if (plen < 3) return;
             uint16_t xr = (uint16_t)p[0] | ((uint16_t)(p[1] & 0x0F) << 8);
             uint16_t yr = (uint16_t)(p[1] >> 4) | ((uint16_t)p[2] << 4);
-            ev->buttons     = map_mouse_buttons(md->mouse_buttons);  // keep button state
-            ev->delta_x     = sext12(xr);
-            ev->delta_y     = sext12(yr);
+
+            if (mp_mode == MP_MODE_PASSTHROUGH) {
+                // Plain cursor: pass the 12-bit motion straight through to the mouse.
+                ev->buttons     = mp_buttons(md->mouse_buttons) | md->kbd_buttons;
+                ev->delta_x     = sext12(xr);
+                ev->delta_y     = sext12(yr);
+                ev->delta_wheel = 0;
+                router_submit_input(ev);
+                break;
+            }
+
+            // Stick mode: pointing -> stick (HOLD). Accumulate scaled motion so a
+            // direction can be HELD (move to deflect, stop and it stays). A small
+            // deadzone ignores sub-threshold jitter. CLUTCH: while LEFT click is
+            // held, force the stick to center and ignore motion — reposition your
+            // head freely, release to resume from neutral (tap = recenter).
+            if (md->mouse_buttons & MP_MOUSE_BTN_LEFT) {
+                md->aim_x = 0;
+                md->aim_y = 0;
+            } else {
+                int16_t dx = sext12(xr), dy = sext12(yr);
+                if (dx > -MP_AIM_DEADZONE && dx < MP_AIM_DEADZONE) dx = 0;
+                if (dy > -MP_AIM_DEADZONE && dy < MP_AIM_DEADZONE) dy = 0;
+                md->aim_x += dx * MP_AIM_SENS_NUM / MP_AIM_SENS_DEN;
+                md->aim_y += dy * MP_AIM_SENS_NUM / MP_AIM_SENS_DEN;
+                if (md->aim_x >  127) md->aim_x =  127;
+                if (md->aim_x < -127) md->aim_x = -127;
+                if (md->aim_y >  127) md->aim_y =  127;
+                if (md->aim_y < -127) md->aim_y = -127;
+            }
+            // LEFT_STICK mode -> LX/LY, otherwise RIGHT_STICK -> RX/RY.
+            uint8_t ax = (mp_mode == MP_MODE_LEFT_STICK) ? ANALOG_LX : ANALOG_RX;
+            uint8_t ay = (mp_mode == MP_MODE_LEFT_STICK) ? ANALOG_LY : ANALOG_RY;
+            ev->analog[ax]  = (uint8_t)(128 + md->aim_x);
+            ev->analog[ay]  = (uint8_t)(128 + md->aim_y);
+            ev->buttons     = mp_buttons(md->mouse_buttons) | md->kbd_buttons;
+            ev->delta_x     = 0;
+            ev->delta_y     = 0;
             ev->delta_wheel = 0;
             router_submit_input(ev);
             break;
@@ -177,7 +290,30 @@ static void mouthpad_process_report(bthid_device_t* device, const uint8_t* data,
             for (int i = 0; i < 6 && (uint16_t)(i + 2) < plen; i++) {
                 ev->kb_keys[i] = p[i + 2];
             }
-            // TODO(phase 2.5): keyboard emission for MOUSE-type events.
+            // Profile Bridge: a MouthPad running a key-emitting .mkprofile maps
+            // touch sectors / sip / puff / swipes to keystrokes. Turn those into
+            // gamepad input so they route through the normal profile/remap
+            // pipeline to any gamepad output. Directional keys (the touch sectors)
+            // drive the LEFT STICK as 8-way full deflection — hold = move, release
+            // (no_touch -> empty report) = stick recenters. Non-directional keys
+            // (sip/puff/swipes) stay as buttons. kbd_buttons is persistent so a
+            // later mouse-motion report doesn't drop held buttons; the stick value
+            // likewise persists in ev->analog across mouse reports.
+            uint32_t keys = keymap_keys_to_buttons(ev->kb_keys, 6, ev->kb_modifier);
+            uint8_t lx = 128, ly = 128;
+            if (keys & JP_BUTTON_DL)      lx = 0;
+            else if (keys & JP_BUTTON_DR) lx = 255;
+            if (keys & JP_BUTTON_DU)      ly = 0;
+            else if (keys & JP_BUTTON_DD) ly = 255;
+            ev->analog[ANALOG_LX] = lx;
+            ev->analog[ANALOG_LY] = ly;
+            // Buttons = gestures only (strip the directional bits now on the stick).
+            md->kbd_buttons = keys & ~(JP_BUTTON_DU | JP_BUTTON_DD | JP_BUTTON_DL | JP_BUTTON_DR);
+            ev->buttons     = mp_buttons(md->mouse_buttons) | md->kbd_buttons;
+            ev->delta_x     = 0;     // keyboard report carries no motion
+            ev->delta_y     = 0;
+            ev->delta_wheel = 0;
+            router_submit_input(ev);
             break;
         }
 
@@ -190,7 +326,10 @@ static void mouthpad_process_report(bthid_device_t* device, const uint8_t* data,
 
 static void mouthpad_task(bthid_device_t* device)
 {
-    (void)device;  // No periodic output (no rumble on MouthPad).
+    (void)device;  // Aim stick HOLDS its position — head motion deflects it and it
+                   // STAYS there (no auto-decay). Recenter with the left-click
+                   // clutch (tap = recenter, hold = keep centered while you
+                   // reposition your head). This is the intended behavior.
 }
 
 static void mouthpad_disconnect(bthid_device_t* device)
@@ -202,6 +341,9 @@ static void mouthpad_disconnect(bthid_device_t* device)
         remove_players_by_address(md->event.dev_addr, md->event.instance);
         init_input_event(&md->event);
         md->mouse_buttons = 0;
+        md->kbd_buttons = 0;
+        md->aim_x = 0;
+        md->aim_y = 0;
         md->initialized = false;
     }
 }

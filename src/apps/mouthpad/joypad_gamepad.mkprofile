@@ -1,0 +1,66 @@
+{
+    "profileName": "joypad_gamepad",
+    "_comment": "JoypadOS gamepad bridge. Touch sectors -> WASD keys (held), which JoypadOS maps to the LEFT STICK (8-way full deflection) via core/services/keymap. Diagonals send two keys. no_touch clears them (stick recenters). Press(puff)/Sip/long variants -> Space/K/L/I -> gamepad buttons (B1/B2/B3/B4). The cursor is LEFT ACTIVE (no atCursorStop) so head/tongue pointing still drives the mouse interface (mouse-look) alongside stick movement. Tokens match Corbin's working game profile style (.keyW/.keySpace/etc.); key->button map is keymap.c defaults. Pair with JoypadOS bt2usb/mouthpad firmware (SInput composite).",
+    "events": {
+    },
+    "states": {
+      "game": {
+        "transitions": [
+          {
+            "triggerEvents": ["touch_north"],
+            "mouseKeyboardActions": [ { "actionType": ".atKeystrokes", "keycodes": [".keyW"], "keystrokeType": ".keystrokeHold" } ]
+          },
+          {
+            "triggerEvents": ["touch_south"],
+            "mouseKeyboardActions": [ { "actionType": ".atKeystrokes", "keycodes": [".keyS"], "keystrokeType": ".keystrokeHold" } ]
+          },
+          {
+            "triggerEvents": ["touch_west"],
+            "mouseKeyboardActions": [ { "actionType": ".atKeystrokes", "keycodes": [".keyA"], "keystrokeType": ".keystrokeHold" } ]
+          },
+          {
+            "triggerEvents": ["touch_east"],
+            "mouseKeyboardActions": [ { "actionType": ".atKeystrokes", "keycodes": [".keyD"], "keystrokeType": ".keystrokeHold" } ]
+          },
+          {
+            "triggerEvents": ["touch_northwest"],
+            "mouseKeyboardActions": [ { "actionType": ".atKeystrokes", "keycodes": [".keyA", ".keyW"], "keystrokeType": ".keystrokeHold" } ]
+          },
+          {
+            "triggerEvents": ["touch_northeast"],
+            "mouseKeyboardActions": [ { "actionType": ".atKeystrokes", "keycodes": [".keyD", ".keyW"], "keystrokeType": ".keystrokeHold" } ]
+          },
+          {
+            "triggerEvents": ["touch_southwest"],
+            "mouseKeyboardActions": [ { "actionType": ".atKeystrokes", "keycodes": [".keyA", ".keyS"], "keystrokeType": ".keystrokeHold" } ]
+          },
+          {
+            "triggerEvents": ["touch_southeast"],
+            "mouseKeyboardActions": [ { "actionType": ".atKeystrokes", "keycodes": [".keyD", ".keyS"], "keystrokeType": ".keystrokeHold" } ]
+          },
+          {
+            "triggerEvents": ["no_touch_event"],
+            "mouseKeyboardActions": [ { "actionType": ".atClearKeystrokes" } ]
+          },
+          {
+            "triggerEvents": ["press_event_start"],
+            "mouseKeyboardActions": [ { "actionType": ".atKeystrokes", "keycodes": [".keySpace"], "keystrokeType": ".keystrokePressAndRelease" } ]
+          },
+          {
+            "triggerEvents": ["sip_event_start"],
+            "mouseKeyboardActions": [ { "actionType": ".atKeystrokes", "keycodes": [".keyK"], "keystrokeType": ".keystrokePressAndRelease" } ]
+          },
+          {
+            "triggerEvents": ["long_press_event"],
+            "mouseKeyboardActions": [ { "actionType": ".atKeystrokes", "keycodes": [".keyL"], "keystrokeType": ".keystrokePressAndRelease" } ]
+          },
+          {
+            "triggerEvents": ["long_sip_event"],
+            "mouseKeyboardActions": [ { "actionType": ".atKeystrokes", "keycodes": [".keyI"], "keystrokeType": ".keystrokePressAndRelease" } ]
+          }
+        ]
+      }
+    },
+    "tongueControlModes": ["game"],
+    "headControlModes": ["game"]
+}

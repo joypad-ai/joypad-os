@@ -14,6 +14,7 @@
 #include "usb/usbd/usbd.h"
 #include "bt/transport/bt_transport.h"
 #include "bt/btstack/btstack_host.h"
+#include "bt/bthid/devices/vendors/augmental/mouthpad_ble.h"
 #include "bt/mouthpad/mp_bridge.h"
 #include "core/services/leds/leds.h"
 
@@ -149,6 +150,11 @@ void app_init(void)
         .auto_assign_on_press = AUTO_ASSIGN_ON_PRESS,
     };
     players_init_with_config(&player_cfg);
+
+    // mouthpad-relay is a PURE passthrough dongle: mouse + keyboard + NUS relay,
+    // no gamepad translation. (Gamepad translation — pointing→stick etc. — stays
+    // the driver default, so the MouthPad is a controller in every OTHER app.)
+    mouthpad_ble_set_mode(MP_MODE_PASSTHROUGH);
 
     printf("[app:mouthpad] Initializing Bluetooth...\n");
 #ifdef BTSTACK_USE_ESP32
