@@ -162,6 +162,12 @@ typedef struct {
     // 0 = none. Emitted via the consumer-control output channel.
     uint16_t consumer_usage;    // Active Consumer page usage selector
 
+    // Present a MOUSE-type device ALSO as a gamepad (e.g. MouthPad: pointing →
+    // cursor on the mouse interface, while touch sectors → left stick + gestures
+    // → buttons go out the gamepad interface). Plain mice leave this false so
+    // they are not turned into gamepads.
+    bool as_gamepad;
+
     // Hat switches / D-pad alternatives (encoded as 8-direction)
     uint8_t hat[4];             // Up to 4 hat switches
                                 // Values: 0-7 = direction, 0xFF = centered
