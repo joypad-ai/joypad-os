@@ -133,6 +133,15 @@ static void send_conn_status(void)
     if (n) ring_push(frame, (uint32_t)n);
 }
 
+// Answer a clear_bonds_write: forget the connected MouthPad's bond.
+static void send_clear_bonds(void)
+{
+    bool ok = btstack_host_mouthpad_clear_bond();
+    uint8_t frame[16];
+    size_t n = mp_relay_encode_clear_bonds_response(ok, frame, sizeof frame);
+    if (n) ring_push(frame, (uint32_t)n);
+}
+
 // ---------------------------------------------------------------------------
 // host -> device: classified relay request from the reconstructor.
 //   PASSTHROUGH      -> write inner NUS payload to the MouthPad
@@ -151,6 +160,9 @@ static void on_relay_request(mp_relay_req_t type, const uint8_t* data, uint16_t 
         break;
     case MP_RELAY_REQ_CONN_STATUS_READ:
         send_conn_status();
+        break;
+    case MP_RELAY_REQ_CLEAR_BONDS:
+        send_clear_bonds();
         break;
     default:
         break;

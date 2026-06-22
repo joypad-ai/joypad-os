@@ -186,6 +186,24 @@ size_t mp_relay_encode_conn_status(mp_relay_conn_status_t status, int32_t rssi,
 }
 
 // ---------------------------------------------------------------------------
+// Encode device->host RelayToAppMessage{ clear_bonds_response{ success } } (field 5)
+// ---------------------------------------------------------------------------
+size_t mp_relay_encode_clear_bonds_response(bool success, uint8_t* out, size_t out_cap)
+{
+    uint8_t inner[4];
+    size_t ip = 0;
+    if (success) ip = pb_put_varint_field(inner, ip, 1, 1);   // success = true (false omitted)
+
+    uint8_t proto[12];
+    size_t pp = 0;
+    proto[pp++] = (5 << 3) | 2;             // RelayToAppMessage.clear_bonds_response
+    pp = pb_put_varint(proto, pp, (uint32_t)ip);
+    memcpy(proto + pp, inner, ip);
+    pp += ip;
+    return frame_wrap(proto, pp, out, out_cap);
+}
+
+// ---------------------------------------------------------------------------
 // Classify a host->device AppToRelayMessage. For PASSTHROUGH, sets *data/*dlen
 // to the inner NUS payload. Dongle-level reads carry no payload.
 // ---------------------------------------------------------------------------
@@ -209,6 +227,7 @@ static mp_relay_req_t classify_request(const uint8_t* proto, size_t proto_len,
 
             if (field == 4) return MP_RELAY_REQ_DEVICE_INFO_READ;
             if (field == 2) return MP_RELAY_REQ_CONN_STATUS_READ;
+            if (field == 5) return MP_RELAY_REQ_CLEAR_BONDS;
             if (field == 3) {
                 // pass_through_to_mouthpad submessage — find field 1 (data)
                 const uint8_t* sub = proto + pos;

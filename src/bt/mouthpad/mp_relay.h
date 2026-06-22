@@ -79,6 +79,9 @@ size_t mp_relay_encode_device_info(const mp_relay_device_info_t* info,
 size_t mp_relay_encode_conn_status(mp_relay_conn_status_t status, int32_t rssi,
                                    uint32_t battery, uint8_t* out, size_t out_cap);
 
+// Encode RelayToAppMessage{ clear_bonds_response{ success } } as a framed packet.
+size_t mp_relay_encode_clear_bonds_response(bool success, uint8_t* out, size_t out_cap);
+
 // ---------------------------------------------------------------------------
 // Host->device reconstructor: feed raw CDC bytes; for each complete, CRC-valid
 // frame the callback fires with the classified request. For PASSTHROUGH the
@@ -90,7 +93,8 @@ typedef enum {
     MP_RELAY_REQ_PASSTHROUGH,        // -> write data/len to MouthPad NUS
     MP_RELAY_REQ_DEVICE_INFO_READ,   // -> answer device_info_response
     MP_RELAY_REQ_CONN_STATUS_READ,   // -> answer ble_connection_status_response
-    MP_RELAY_REQ_OTHER,              // recognized but unhandled here
+    MP_RELAY_REQ_CLEAR_BONDS,        // -> forget MouthPad bond, answer clear_bonds_response
+    MP_RELAY_REQ_OTHER,              // recognized but unhandled here (dfu/etc.)
 } mp_relay_req_t;
 
 typedef void (*mp_relay_request_cb)(mp_relay_req_t type, const uint8_t* data,
