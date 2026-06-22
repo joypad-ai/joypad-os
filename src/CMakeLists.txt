@@ -124,6 +124,7 @@ set(CORE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/core/services/storage/flash.c
     ${CMAKE_CURRENT_SOURCE_DIR}/core/services/button/button.c
     ${CMAKE_CURRENT_SOURCE_DIR}/core/services/codes/codes.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/services/keymap/keymap.c
     ${CMAKE_CURRENT_SOURCE_DIR}/core/services/hotkeys/hotkeys.c
     ${CMAKE_CURRENT_SOURCE_DIR}/core/services/players/manager.c
     ${CMAKE_CURRENT_SOURCE_DIR}/core/services/players/feedback.c

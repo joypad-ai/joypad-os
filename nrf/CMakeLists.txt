@@ -60,6 +60,7 @@ set(SRCS
     "${SHARED_SRC}/core/services/leds/player_leds_gpio.c"
     "${SHARED_SRC}/core/services/storage/storage.c"
     "${SHARED_SRC}/core/services/codes/codes.c"
+    "${SHARED_SRC}/core/services/keymap/keymap.c"
     "${SHARED_SRC}/core/services/hotkeys/hotkeys.c"
     "${SHARED_SRC}/core/services/players/manager.c"
     "${SHARED_SRC}/core/services/players/feedback.c"
