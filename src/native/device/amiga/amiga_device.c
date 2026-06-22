@@ -207,6 +207,9 @@ static void update_led(void) {
         case AMIGA_PLATFORM_ATARI_ST:
             leds_set_color(LED_AMIGA_R, LED_AMIGA_G, LED_AMIGA_B);
             break;
+        case AMIGA_PLATFORM_C64:
+            leds_set_color(LED_C64_R, LED_C64_G, LED_C64_B);
+            break;
         default:
             break;
     }
@@ -744,8 +747,8 @@ void amiga_device_task(void) {
     if (!settings_loaded) {
         settings_loaded = true;
         load_settings();
-        // Don't call update_led() here — let framework breathing animation run
-        // at full range until first controller connects
+        // Show blue LED immediately if C64 mode was saved — otherwise let framework breathe
+        if (current_platform == AMIGA_PLATFORM_C64) update_led();
     }
 
     // Amiga vs Atari ST auto-detection
