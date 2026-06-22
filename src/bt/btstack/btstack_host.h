@@ -144,6 +144,11 @@ typedef struct {
 // Fills `out` with the connected MouthPad's info; false if none connected.
 bool btstack_host_get_mouthpad_info(btstack_host_mouthpad_info_t* out);
 
+// Forget the connected MouthPad's bond (the relay clear_bonds command). The
+// removal is marshaled onto the BTstack thread; returns true if a connected
+// MouthPad was captured for removal.
+bool btstack_host_mouthpad_clear_bond(void);
+
 // ============================================================================
 // BOND MANAGEMENT
 // ============================================================================

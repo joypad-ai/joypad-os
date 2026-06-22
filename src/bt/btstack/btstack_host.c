@@ -175,6 +175,11 @@ typedef struct {
     // Connection index for bthid layer (offset by MAX_CLASSIC_CONNECTIONS)
     uint8_t conn_index;
     bool hid_ready;
+
+    // Per-connection BLE HID client id. MUST be per-connection (not a single
+    // global) so two BLE HID devices route reports + descriptors independently —
+    // a shared cid cross-wires their reports/descriptors -> garbage.
+    uint16_t hids_cid;
 } ble_connection_t;
 
 // BLE conn_index offset (BLE devices use conn_index >= this value)
@@ -230,8 +235,8 @@ static struct {
     btstack_host_report_callback_t report_callback;
     btstack_host_connect_callback_t connect_callback;
 
-    // HIDS Client
-    uint16_t hids_cid;
+    // HIDS Client cid is now PER-CONNECTION (ble_connection_t.hids_cid) so two
+    // BLE HID devices don't cross-wire. (Removed the single global hids_cid.)
 
     // Battery Service Client
     uint16_t bas_cid;
@@ -239,7 +244,7 @@ static struct {
 } hid_state;
 
 // HID descriptor storage (shared across connections)
-static uint8_t hid_descriptor_storage[512];
+static uint8_t hid_descriptor_storage[1024];  // room for 2 BLE HID descriptors (MAX_NR_HIDS_CLIENTS=2)
 
 static btstack_packet_callback_registration_t hci_event_callback_registration;
 static btstack_packet_callback_registration_t sm_event_callback_registration;
@@ -429,6 +434,7 @@ static void sm_packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *pa
 static void hids_client_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size);
 static void hid_host_packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size);
 static ble_connection_t* find_connection_by_handle(hci_con_handle_t handle);
+static ble_connection_t* find_connection_by_hids_cid(uint16_t hids_cid);
 static ble_connection_t* find_free_connection(void);
 static void start_hids_client(ble_connection_t *conn);
 static void register_ble_hid_listener(hci_con_handle_t con_handle);
@@ -443,13 +449,16 @@ static void mp_nus_periodic(void);
 // it will accept a protocol-mode write, and the other GATT clients must run one
 // at a time. This runs from btstack_host_process(): phase 0 = write REPORT
 // protocol mode (retry until accepted), phase 1 = start DIS/BAS + arm NUS.
+// Per-connection so two BLE HID devices each get their own REPORT-mode write +
+// notification-enable sequence (a single global would only set up the last device).
 static struct {
     bool active;
     hci_con_handle_t handle;
+    uint16_t hids_cid;
     uint8_t phase;
     uint32_t start_ms;
     uint32_t phase_ms;
-} mp_hid_setup;
+} mp_hid_setup[MAX_BLE_CONNECTIONS];
 static void mp_hid_setup_task(void);
 static void start_battery_service_client(hci_con_handle_t handle);
 static void dis_client_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size);
@@ -1896,6 +1905,12 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                             hid_state.reconnect_attempts++;
                             printf("[BTSTACK_HOST] Retrying reconnection (attempt %d)...\n",
                                    hid_state.reconnect_attempts);
+                            // Carry the stored name so conn->name is populated on
+                            // reconnect — the MouthPad NUS relay arms on a name
+                            // match, and an empty name leaves it stuck "scanning".
+                            strncpy(hid_state.pending_name, hid_state.last_connected_name,
+                                    sizeof(hid_state.pending_name) - 1);
+                            hid_state.pending_name[sizeof(hid_state.pending_name) - 1] = '\0';
                             btstack_host_connect_ble(hid_state.last_connected_addr, hid_state.last_connected_addr_type);
                         } else {
                             printf("[BTSTACK_HOST] Reconnection failed after %d attempts, resuming scan\n",
@@ -2241,13 +2256,13 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                 // conn_index for BLE uses BLE_CONN_INDEX_OFFSET to distinguish from Classic
                 printf("[BTSTACK_HOST] BLE disconnect: notifying bthid (conn_index=%d)\n", conn->conn_index);
                 bt_on_disconnect(conn->conn_index);
+                uint16_t dcid = conn->hids_cid;   // capture before the memset clears it
                 memset(conn, 0, sizeof(*conn));
                 conn->handle = HCI_CON_HANDLE_INVALID;
 
-                // Clean up GATT/HIDS client state for this connection
-                if (hid_state.hids_cid != 0) {
-                    hids_client_disconnect(hid_state.hids_cid);
-                    hid_state.hids_cid = 0;
+                // Clean up THIS connection's HIDS client (per-connection cid)
+                if (dcid != 0) {
+                    hids_client_disconnect(dcid);
                 }
                 if (hid_state.bas_cid != 0) {
                     battery_service_client_disconnect(hid_state.bas_cid);
@@ -2260,9 +2275,11 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                 gatt_client_stop_listening_for_characteristic_value_updates(&xbox_hid_notification_listener);
                 gatt_client_stop_listening_for_characteristic_value_updates(&switch2_hid_notification_listener);
 
-                // Cancel any in-flight post-HID setup sequence
-                if (mp_hid_setup.handle == handle) {
-                    mp_hid_setup.active = false;
+                // Cancel any in-flight post-HID setup sequence for this device
+                for (int i = 0; i < MAX_BLE_CONNECTIONS; i++) {
+                    if (mp_hid_setup[i].handle == handle) {
+                        mp_hid_setup[i].active = false;
+                    }
                 }
 
                 // Tear down MouthPad NUS client if this was the MouthPad
@@ -2821,46 +2838,51 @@ static void mp_nus_periodic(void)
 // Deferred post-HID setup: REPORT protocol mode, then DIS/BAS + NUS arm.
 static void mp_hid_setup_task(void)
 {
-    if (!mp_hid_setup.active) return;
     uint32_t now = btstack_run_loop_get_time_ms();
 
-    switch (mp_hid_setup.phase) {
-        case 0: {
-            // Write REPORT protocol mode FIRST. The MouthPad boots in BOOT mode
-            // and BTstack's hids_client never writes the mode when REPORT is
-            // requested. hids_client only accepts this once back in CONNECTED
-            // state (returns 0x0C COMMAND_DISALLOWED until then), so retry.
-            uint8_t st = hids_client_send_set_protocol_mode(
-                hid_state.hids_cid, 0, HID_PROTOCOL_MODE_REPORT);
-            if (st == ERROR_CODE_SUCCESS) {
-                printf("[MP] REPORT protocol-mode write initiated\n");
-                mp_hid_setup.phase = 1;
-                mp_hid_setup.phase_ms = now;
-            } else if ((now - mp_hid_setup.start_ms) > 3000) {
-                printf("[MP] protocol-mode write never accepted (last=0x%02X) — enabling anyway\n", st);
-                mp_hid_setup.phase = 1;
-                mp_hid_setup.phase_ms = now;
+    // Run the REPORT-mode + notification-enable sequence for EACH connecting BLE
+    // HID device independently (per-connection cid), so two devices both stream.
+    for (int i = 0; i < MAX_BLE_CONNECTIONS; i++) {
+        if (!mp_hid_setup[i].active) continue;
+        uint16_t cid = mp_hid_setup[i].hids_cid;
+
+        switch (mp_hid_setup[i].phase) {
+            case 0: {
+                // Write REPORT protocol mode FIRST. The MouthPad boots in BOOT mode
+                // and BTstack's hids_client never writes the mode when REPORT is
+                // requested. hids_client only accepts this once back in CONNECTED
+                // state (returns 0x0C COMMAND_DISALLOWED until then), so retry.
+                uint8_t st = hids_client_send_set_protocol_mode(cid, 0, HID_PROTOCOL_MODE_REPORT);
+                if (st == ERROR_CODE_SUCCESS) {
+                    printf("[MP] REPORT protocol-mode write initiated (cid=0x%04X)\n", cid);
+                    mp_hid_setup[i].phase = 1;
+                    mp_hid_setup[i].phase_ms = now;
+                } else if ((now - mp_hid_setup[i].start_ms) > 3000) {
+                    printf("[MP] protocol-mode write never accepted (last=0x%02X) — enabling anyway\n", st);
+                    mp_hid_setup[i].phase = 1;
+                    mp_hid_setup[i].phase_ms = now;
+                }
+                break;
             }
-            break;
-        }
-        case 1: {
-            // After the write-without-response flushes, enable HID notifications
-            // (NOW that the device is in REPORT mode, so the CCCs stick). Retry
-            // until hids_client accepts it. DIS/BAS/NUS start from the 0x1C event.
-            if ((now - mp_hid_setup.phase_ms) < 300) break;
-            uint8_t r = hids_client_enable_notifications(hid_state.hids_cid);
-            if (r == ERROR_CODE_SUCCESS) {
-                printf("[MP] notifications enabled after REPORT-mode switch\n");
-                mp_hid_setup.active = false;
-            } else if ((now - mp_hid_setup.start_ms) > 6000) {
-                printf("[MP] enable_notifications never accepted (last=0x%02X)\n", r);
-                mp_hid_setup.active = false;
+            case 1: {
+                // After the write-without-response flushes, enable HID notifications
+                // (NOW that the device is in REPORT mode, so the CCCs stick). Retry
+                // until hids_client accepts it. DIS/BAS/NUS start from the 0x1C event.
+                if ((now - mp_hid_setup[i].phase_ms) < 300) break;
+                uint8_t r = hids_client_enable_notifications(cid);
+                if (r == ERROR_CODE_SUCCESS) {
+                    printf("[MP] notifications enabled after REPORT-mode switch (cid=0x%04X)\n", cid);
+                    mp_hid_setup[i].active = false;
+                } else if ((now - mp_hid_setup[i].start_ms) > 6000) {
+                    printf("[MP] enable_notifications never accepted (last=0x%02X)\n", r);
+                    mp_hid_setup[i].active = false;
+                }
+                break;
             }
-            break;
+            default:
+                mp_hid_setup[i].active = false;
+                break;
         }
-        default:
-            mp_hid_setup.active = false;
-            break;
     }
 }
 
@@ -2912,6 +2934,36 @@ bool btstack_host_mouthpad_nus_send(const uint8_t* data, uint16_t len)
         mp_tx_cb.callback = &mp_tx_pump;
         mp_tx_cb.context  = NULL;
         btstack_run_loop_execute_on_main_thread(&mp_tx_cb);
+    }
+    return true;
+}
+
+// Forget the connected MouthPad's bond (the utility's clear_bonds relay command).
+// forget_device touches gap_disconnect + le_device_db, so it must run on the
+// BTstack thread — marshal it like the NUS write. Returns true if a connected
+// MouthPad was captured for removal (the response success).
+static btstack_context_callback_registration_t mp_clearbond_cb;
+static bd_addr_t mp_clearbond_addr;
+static volatile bool mp_clearbond_pending;
+
+static void mp_clearbond_run(void* ctx)
+{
+    (void)ctx;
+    mp_clearbond_pending = false;
+    btstack_host_forget_device(mp_clearbond_addr);   // now on the BTstack thread
+}
+
+bool btstack_host_mouthpad_clear_bond(void)
+{
+    if (mp_nus.handle == HCI_CON_HANDLE_INVALID) return false;
+    ble_connection_t* c = find_connection_by_handle(mp_nus.handle);
+    if (!c) return false;
+    memcpy(mp_clearbond_addr, c->addr, 6);
+    if (!mp_clearbond_pending) {
+        mp_clearbond_pending = true;
+        mp_clearbond_cb.callback = &mp_clearbond_run;
+        mp_clearbond_cb.context  = NULL;
+        btstack_run_loop_execute_on_main_thread(&mp_clearbond_cb);
     }
     return true;
 }
@@ -3767,10 +3819,10 @@ static void start_hids_client(ble_connection_t *conn)
     hid_state.gatt_handle = conn->handle;
 
     uint8_t status = hids_client_connect(conn->handle, hids_client_handler,
-                                         HID_PROTOCOL_MODE_REPORT, &hid_state.hids_cid);
+                                         HID_PROTOCOL_MODE_REPORT, &conn->hids_cid);
 
     printf("[BTSTACK_HOST] hids_client_connect returned %d, cid=0x%04X\n",
-           status, hid_state.hids_cid);
+           status, conn->hids_cid);
 }
 
 // ============================================================================
@@ -3855,13 +3907,24 @@ static void dis_client_handler(uint8_t packet_type, uint16_t channel, uint8_t *p
                 printf("[BTSTACK_HOST] DIS: updating device info for conn_index=%d\n", conn->conn_index);
                 bthid_update_device_info(conn->conn_index, conn->name, vid, pid);
             }
+            // Recognize the MouthPad by its Augmental DIS PnP ID (0x1915:0xEEEE)
+            // and arm the NUS relay — names can be reset to dev values that lack
+            // "MouthPad" (the name gate at the 0x1C handler then misses it, leaving
+            // the relay stuck "scanning"). mp_nus_mark_pending is a no-op if already
+            // armed by the name gate.
+            if (vid == 0x1915 && pid == 0xEEEE) {
+                mp_nus_mark_pending(handle);
+            }
             break;
         }
 
         case GATTSERVICE_SUBEVENT_DEVICE_INFORMATION_FIRMWARE_REVISION: {
             hci_con_handle_t handle = gattservice_subevent_device_information_firmware_revision_get_con_handle(packet);
+            // Store for the active DIS connection, NOT gated on mp_nus being armed:
+            // PnP ID (which arms mp_nus by VID/PID) comes LAST in DIS, after the
+            // firmware-revision read — gating on mp_nus.handle here would miss it.
             if (gattservice_subevent_device_information_firmware_revision_get_att_status(packet) == ATT_ERROR_SUCCESS
-                && handle == mp_nus.handle) {
+                && handle == hid_state.gatt_handle) {
                 const char* fw = gattservice_subevent_device_information_firmware_revision_get_value(packet);
                 if (fw) {
                     strncpy(mp_nus.firmware, fw, sizeof(mp_nus.firmware) - 1);
@@ -3902,15 +3965,22 @@ static void hids_client_handler(uint8_t packet_type, uint16_t channel, uint8_t *
             printf("[BTSTACK_HOST] HIDS connected! status=%d instances=%d\n", status, num_instances);
 
             if (status == ERROR_CODE_SUCCESS) {
-                ble_connection_t *conn = find_connection_by_handle(hid_state.gatt_handle);
+                // Route by the event's own cid so two BLE HID devices stay separate
+                // (a shared global handle/cid cross-wired their descriptors/reports).
+                uint16_t cid = gattservice_subevent_hid_service_connected_get_hids_cid(packet);
+                ble_connection_t *conn = find_connection_by_hids_cid(cid);
+                if (!conn) conn = find_connection_by_handle(hid_state.gatt_handle);  // fallback
                 if (conn) {
                     conn->state = BLE_STATE_READY;
                     conn->hid_ready = true;
+                    conn->hids_cid = cid;
 
                     // Assign conn_index if not already set
+                    int slot = -1;
                     for (int i = 0; i < MAX_BLE_CONNECTIONS; i++) {
                         if (&hid_state.connections[i] == conn) {
                             conn->conn_index = BLE_CONN_INDEX_OFFSET + i;
+                            slot = i;
                             break;
                         }
                     }
@@ -3922,9 +3992,9 @@ static void hids_client_handler(uint8_t packet_type, uint16_t channel, uint8_t *
                            conn->conn_index, conn->name);
                     bt_on_hid_ready(conn->conn_index);
 
-                    // Pass HID descriptor to bthid for generic gamepad parsing
-                    const uint8_t* hid_desc = hids_client_descriptor_storage_get_descriptor_data(hid_state.hids_cid, 0);
-                    uint16_t hid_desc_len = hids_client_descriptor_storage_get_descriptor_len(hid_state.hids_cid, 0);
+                    // Pass THIS device's HID descriptor to bthid (per-connection cid)
+                    const uint8_t* hid_desc = hids_client_descriptor_storage_get_descriptor_data(conn->hids_cid, 0);
+                    uint16_t hid_desc_len = hids_client_descriptor_storage_get_descriptor_len(conn->hids_cid, 0);
                     if (hid_desc && hid_desc_len > 0) {
                         printf("[BTSTACK_HOST] BLE HID descriptor: %d bytes\n", hid_desc_len);
                         bthid_set_hid_descriptor(conn->conn_index, hid_desc, hid_desc_len);
@@ -3946,10 +4016,13 @@ static void hids_client_handler(uint8_t packet_type, uint16_t channel, uint8_t *
                     // the report CCCs, so it never streams. The sequencer writes
                     // the mode (once hids_client is back in CONNECTED), THEN
                     // enables notifications, then the 0x1C handler starts DIS/BAS/NUS.
-                    mp_hid_setup.active = true;
-                    mp_hid_setup.handle = hid_state.gatt_handle;
-                    mp_hid_setup.phase = 0;
-                    mp_hid_setup.start_ms = btstack_run_loop_get_time_ms();
+                    if (slot >= 0) {
+                        mp_hid_setup[slot].active   = true;
+                        mp_hid_setup[slot].handle   = conn->handle;
+                        mp_hid_setup[slot].hids_cid = conn->hids_cid;
+                        mp_hid_setup[slot].phase    = 0;
+                        mp_hid_setup[slot].start_ms = btstack_run_loop_get_time_ms();
+                    }
                 }
             }
             break;
@@ -3962,15 +4035,24 @@ static void hids_client_handler(uint8_t packet_type, uint16_t channel, uint8_t *
 
             // Mode is already REPORT and notifications are now enabled. Start the
             // remaining GATT clients one at a time: DIS -> BAS, then arm NUS.
+            // Resolve THIS device by the event's cid (not the global handle).
             {
+                uint16_t cid = gattservice_subevent_hid_service_reports_notification_get_hids_cid(packet);
+                ble_connection_t* nconn = find_connection_by_hids_cid(cid);
+                hci_con_handle_t nhandle = nconn ? nconn->handle : hid_state.gatt_handle;
+
                 uint8_t dis = device_information_service_client_query(
-                    hid_state.gatt_handle, dis_client_handler);
+                    nhandle, dis_client_handler);
                 if (dis != ERROR_CODE_SUCCESS) {
-                    start_battery_service_client(hid_state.gatt_handle);
+                    start_battery_service_client(nhandle);
                 }
-                ble_connection_t* nconn = find_connection_by_handle(hid_state.gatt_handle);
-                if (nconn && strstr(nconn->name, "MouthPad") != NULL) {
-                    mp_nus_mark_pending(hid_state.gatt_handle);
+                // Recognize the MouthPad by the live conn name OR the stored
+                // last-connected name (a reconnect can leave conn->name empty,
+                // which previously left the NUS relay stuck unarmed -> the app
+                // shows "scanning" despite a paired MouthPad).
+                if (nconn && (strstr(nconn->name, "MouthPad") != NULL ||
+                              strstr(hid_state.last_connected_name, "MouthPad") != NULL)) {
+                    mp_nus_mark_pending(nhandle);
                 }
             }
             break;
@@ -3987,8 +4069,12 @@ static void hids_client_handler(uint8_t packet_type, uint16_t channel, uint8_t *
             uint16_t report_len = gattservice_subevent_hid_report_get_report_len(packet);
             const uint8_t *report = gattservice_subevent_hid_report_get_report(packet);
 
-            // Route BLE HID report through bthid layer
-            int conn_index = get_ble_conn_index_by_handle(hid_state.gatt_handle);
+            // Route by the report's OWN cid -> the owning connection. Using the
+            // global gatt_handle here sent BOTH devices' reports to the last one
+            // connected (the haywire merge). This is the core 2-BLE-HID fix.
+            uint16_t cid = gattservice_subevent_hid_report_get_hids_cid(packet);
+            ble_connection_t* rconn = find_connection_by_hids_cid(cid);
+            int conn_index = rconn ? rconn->conn_index : get_ble_conn_index_by_handle(hid_state.gatt_handle);
             if (conn_index >= 0) {
                 route_ble_hid_report(conn_index, report, report_len);
             }
@@ -4015,6 +4101,20 @@ static ble_connection_t* find_connection_by_handle(hci_con_handle_t handle)
 {
     for (int i = 0; i < MAX_BLE_CONNECTIONS; i++) {
         if (hid_state.connections[i].handle == handle) {
+            return &hid_state.connections[i];
+        }
+    }
+    return NULL;
+}
+
+// Find the connection that owns a given BLE HID client id. Used to route
+// hids_client events (connect/notification/report) to the right device when
+// more than one BLE HID device is connected.
+static ble_connection_t* find_connection_by_hids_cid(uint16_t hids_cid)
+{
+    if (hids_cid == 0) return NULL;
+    for (int i = 0; i < MAX_BLE_CONNECTIONS; i++) {
+        if (hid_state.connections[i].hids_cid == hids_cid) {
             return &hid_state.connections[i];
         }
     }
@@ -4630,8 +4730,8 @@ bool btstack_classic_send_report(uint8_t conn_index, uint8_t report_id,
         if (ble_index >= MAX_BLE_CONNECTIONS) return false;
         ble_connection_t* conn = &hid_state.connections[ble_index];
         if (conn->handle == HCI_CON_HANDLE_INVALID || !conn->hid_ready) return false;
-        if (hid_state.hids_cid == 0) return false;
-        uint8_t status = hids_client_send_write_report(hid_state.hids_cid, report_id,
+        if (conn->hids_cid == 0) return false;
+        uint8_t status = hids_client_send_write_report(conn->hids_cid, report_id,
                                                         HID_REPORT_TYPE_OUTPUT,
                                                         data, len);
         if (status != ERROR_CODE_SUCCESS) {

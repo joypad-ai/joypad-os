@@ -91,8 +91,9 @@
 // Number of L2CAP services
 #define MAX_NR_L2CAP_SERVICES 3
 
-// Number of GATT clients (for BLE devices)
-#define MAX_NR_GATT_CLIENTS 1
+// Number of GATT clients (for BLE devices). Two BLE HID devices (e.g. MouthPad +
+// a BLE controller) plus the MouthPad NUS each use GATT, so allow headroom.
+#define MAX_NR_GATT_CLIENTS 3
 
 // Number of whitelist entries
 #define MAX_NR_WHITELIST_ENTRIES 2
@@ -118,11 +119,12 @@
 // Number of HID Host connections (Classic BT HID devices)
 #define MAX_NR_HID_HOST_CONNECTIONS 2
 
-// Number of HIDS clients (BLE HID Service clients)
-#define MAX_NR_HIDS_CLIENTS 1
+// Number of HIDS clients (BLE HID Service clients) — 2 simultaneous BLE HID
+// devices (e.g. MouthPad as right-stick + a BLE controller, merged in blend mode).
+#define MAX_NR_HIDS_CLIENTS 2
 
-// Number of Battery Service clients (BLE Battery Service)
-#define MAX_NR_BATTERY_SERVICE_CLIENTS 1
+// Number of Battery Service clients (BLE Battery Service) — one per BLE device.
+#define MAX_NR_BATTERY_SERVICE_CLIENTS 2
 
 // Number of HIDS Device instances (BLE HID peripheral output)
 #define MAX_NR_HIDS_DEVICES 1
