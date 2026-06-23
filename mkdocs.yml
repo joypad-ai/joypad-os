@@ -50,6 +50,7 @@ nav:
     - GameCube: input/gamecube.md
     - LodgeNet: input/lodgenet.md
     - NES: input/nes.md
+    - PCEngine: input/pcengine.md
     - Neo Geo: input/neogeo.md
     - Wii Extension: input/wii.md
     - GPIO: input/gpio.md
@@ -99,6 +100,7 @@ nav:
       - n642usb: apps/n642usb.md
       - gc2usb: apps/gc2usb.md
       - nes2usb: apps/nes2usb.md
+      - pce2usb: apps/pce2usb.md
       - neogeo2usb: apps/neogeo2usb.md
       - lodgenet2usb: apps/lodgenet2usb.md
       - wii2usb: apps/wii2usb.md
