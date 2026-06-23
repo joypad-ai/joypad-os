@@ -668,6 +668,10 @@ add_executable(joypad_dc)
 # without CONFIG_SD so a fresh card just reverts to the preformat default
 # (with ICONDATA) each boot.
 target_compile_definitions(joypad_dc PRIVATE CONFIG_DC=1 CONFIG_USB_HOST=1 CONFIG_NO_NEOPIXEL=1 CONFIG_VMU=1 CONFIG_VMU_QSPI=1)
+# Dreamcast = 4 controller ports; the 128KB VMU image leaves little RAM, so
+# size the router's per-output arrays to 4 (not the 8 that 3DO/PCE need) and
+# MAX_DEVICES to its floor of 7 (CFG_TUH_HUB=1 -> max dev_addr 6).
+target_compile_definitions(joypad_dc PRIVATE MAX_PLAYERS_PER_OUTPUT=4 MAX_DEVICES=7)
 target_sources(joypad_dc PUBLIC ${COMMON_SOURCES}
     ${CMAKE_CURRENT_SOURCE_DIR}/native/device/dreamcast/dreamcast_device.c
     ${CMAKE_CURRENT_SOURCE_DIR}/native/device/dreamcast/maple_state_machine.c
@@ -690,6 +694,8 @@ pico_generate_pio_header(joypad_dc ${CMAKE_CURRENT_LIST_DIR}/native/device/dream
 add_executable(joypad_dc_rp2040zero)
 target_compile_definitions(joypad_dc_rp2040zero PRIVATE
     CONFIG_DC=1 CONFIG_USB_HOST=1 CONFIG_DC_CORE1_TX=1 CONFIG_VMU=1 CONFIG_VMU_QSPI=1 CONFIG_NO_FLASH_LOCKOUT=1
+    MAX_PLAYERS_PER_OUTPUT=4   # Dreamcast = 4 ports; save RAM vs the 8 for 3DO/PCE
+    MAX_DEVICES=7              # floor for CFG_TUH_HUB=1 (max dev_addr 6)
     MAPLE_PIN1=14
     MAPLE_PIN5=15
     WS2812_PIN=16

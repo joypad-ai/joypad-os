@@ -116,8 +116,12 @@
 // Overridable per-app (usb2pce sets 4 to allow chaining a second hub). When
 // raised, MAX_DEVICES (core/buttons.h) must grow to cover dev_addr up to
 // CFG_TUH_DEVICE_MAX + CFG_TUH_HUB.
+// Default 1 hub: covers any 1-4 player console (single hub + ~5 devices).
+// Daisy-chained hubs need an explicit override (usb2pce sets 4). Raising this
+// 2->1 used to over-size MAX_DEVICES to 12 (for 2 hubs), wasting RAM in every
+// per-device driver array on apps that never daisy-chain.
 #ifndef CFG_TUH_HUB
-#define CFG_TUH_HUB                 2
+#define CFG_TUH_HUB                 1
 #endif
 #define CFG_TUH_CDC                 0
 #define CFG_TUH_HID                 8   // Max 8 HID interfaces total (2 per device typical)
