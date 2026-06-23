@@ -22,7 +22,7 @@ CLR is held low for an active read; pulsing it advances the pad's internal bank 
 | Device | Notes |
 |--------|-------|
 | Standard 2-button pad | I, II, Select, Run, D-pad |
-| 6-button Avenue Pad 6 | Adds III, IV, V, VI (best-effort -- see below) |
+| 6-button Avenue Pad 6 | Adds III, IV, V, VI (solo or on a multitap -- see below) |
 | Multitap (up to 5 players) | All ports read each scan -- see [Multitap](#multitap) |
 
 ## Multitap
@@ -58,7 +58,12 @@ Each port is submitted as a separate player (`dev_addr 0xF0 + N`). The [pce2usb]
 
 ## 6-Button Support
 
-The 6-button Avenue Pad 6 exposes III-VI in an extended bank read after a CLR pulse. The driver reads it best-effort, gated by an all-zero signature nibble so a 2-button pad can never be misread (`PCE_ENABLE_6BUTTON`, default on). The CLR-pulse bank-advance model is derived from the PCEngine device emulation and has not yet been validated against real 6-button hardware.
+A 6-button pad alternates between its **normal** bank (d-pad + I/II/Select/Run) and an **extended** bank (III/IV/V/VI) on each **CLR pulse** -- not via SEL. So each poll does two full scans:
+
+1. **Scan 1** -- CLR pulse (resets the tap to port 1, bank = normal), sweep all ports.
+2. **Scan 2** -- CLR pulse (bank flips to extended on a 6-button pad), sweep all ports. The extended bank reads an all-zero `0000` signature on SEL HIGH and III/IV/V/VI on SEL LOW.
+
+The `0000` signature (impossible as a real d-pad) gates detection per port, so a 2-button pad -- which just re-reads its normal bank on scan 2 -- is never misread. Because detection is per-port, this supports a solo 6-button pad **and dual 6-button pads on a multitap** (e.g. Street Fighter II). Gated by `PCE_ENABLE_6BUTTON` (default on). The protocol mirrors the PCEngine device/output emulation; the 2-button paths are hardware-verified, the 6-button decode is implemented to spec but pending an Avenue Pad 6 to confirm on hardware.
 
 ## Analog Axes
 

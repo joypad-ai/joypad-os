@@ -73,9 +73,10 @@ static struct {
     bool     present_raw[PCE_MAX_PLAYERS];      // last raw presence sample
     uint64_t present_change_us[PCE_MAX_PLAYERS];
 
-    // 6-button extended state (player 1 only for now)
-    uint8_t  ext_nibble;   // active-low: III/IV/V/VI (valid when six_button)
-    bool     six_button;   // latched once the extended signature is seen
+    // 6-button extended state, per port (a multitap can mix 2- and 6-button
+    // pads — e.g. Street Fighter II dual 6-button).
+    uint8_t  ext_nibble[PCE_MAX_PLAYERS];   // active-low: III/IV/V/VI (valid when six_button)
+    bool     six_button[PCE_MAX_PLAYERS];   // this port presented the 6-button bank
 
 #if PCE_DEBUG_MULTITAP
     uint8_t  dbg_seen[PCE_MAX_PLAYERS];   // sticky OR of pressed bits per slot
@@ -117,11 +118,11 @@ void pce_host_init(void)
 
     s_pce.initialized = true;
     s_pce.next_poll_us = time_us_64();
-    s_pce.ext_nibble = 0x0F;   // nothing pressed
-    s_pce.six_button = false;
     uint64_t now = time_us_64();
     for (int p = 0; p < PCE_MAX_PLAYERS; p++) {
         s_pce.normal[p] = 0x00;   // empty/idle (pull-down) until a pad drives high
+        s_pce.ext_nibble[p] = 0x0F;
+        s_pce.six_button[p] = false;
         s_pce.connected[p] = false;
         s_pce.present_raw[p] = false;
         s_pce.present_change_us[p] = now;
@@ -131,67 +132,72 @@ void pce_host_init(void)
            PCE_PIN_SEL, PCE_PIN_CLR, PCE_PIN_D0, PCE_ENABLE_6BUTTON, PCE_MAX_PLAYERS);
 }
 
-// Perform one full multitap sweep, updating s_pce.normal[] / ext_nibble /
-// six_button.
-static void pce_scan(void)
+// One CLR pulse held with SEL HIGH. This both rewinds the multitap to port 1
+// (port 1 active with SEL already high, so the first read needs no SEL toggle)
+// AND advances a 6-button pad's bank — the pad alternates normal/extended on
+// each CLR pulse (per pce-devel/PCE_Controller_Info and our own device emu:
+// state advances per CLR, extended on alternate scans, normal-first after idle).
+static inline void pce_clr_pulse(void)
 {
-    // Reset the (multi)tap to player 1, per the documented multitap sequence
-    // (pce-devel/PCE_Controller_Info): SEL must stay HIGH across the CLR pulse,
-    // so that port 1 is the *active* port afterward with SEL already high — the
-    // first read is then port 1's directions (no SEL toggle). Pulsing CLR with
-    // SEL low instead makes the first SEL low->high read as an "advance to next
-    // port", which skips port 1 (it lands on port 2).
     gpio_put(PCE_PIN_SEL, 1);   // SEL HIGH, CLR LOW
     gpio_put(PCE_PIN_CLR, 0);
     pce_settle();
-    gpio_put(PCE_PIN_CLR, 1);   // SEL HIGH, CLR HIGH (the reset pulse)
+    gpio_put(PCE_PIN_CLR, 1);   // SEL HIGH, CLR HIGH (the pulse)
     pce_settle();
-    gpio_put(PCE_PIN_CLR, 0);   // SEL HIGH, CLR LOW -> port 1 now active
+    gpio_put(PCE_PIN_CLR, 0);   // SEL HIGH, CLR LOW -> port 1 active
     pce_settle();
+}
 
-    // Sweep players. Port 1 reads with SEL already high; each later port is
-    // reached by toggling SEL high again (the "advance" step).
-    uint8_t dpad0 = 0;
+// Read one bank across all ports: SEL HIGH nibble into hi[], SEL LOW into lo[].
+// Port 1 reads with SEL already high (from pce_clr_pulse); each later port is
+// reached by toggling SEL high again (the multitap "advance to next port" step).
+// A directly-connected pad has no tap to advance, so it echoes onto every port.
+static void pce_read_bank(uint8_t hi[PCE_MAX_PLAYERS], uint8_t lo[PCE_MAX_PLAYERS])
+{
     for (int p = 0; p < PCE_MAX_PLAYERS; p++) {
         if (p > 0) {
             gpio_put(PCE_PIN_SEL, 1);   // advance to next port
             pce_settle();
         }
-        // SEL is HIGH here -> d-pad nibble
-        uint8_t dpad = pce_read_nibble();   // bit0=Up,1=Right,2=Down,3=Left
-
-        gpio_put(PCE_PIN_SEL, 0);   // SEL low -> button nibble
+        hi[p] = pce_read_nibble();      // SEL high
+        gpio_put(PCE_PIN_SEL, 0);
         pce_settle();
-        uint8_t btns = pce_read_nibble();   // bit0=I,1=II,2=Select,3=Run
+        lo[p] = pce_read_nibble();      // SEL low
+    }
+}
 
-        s_pce.normal[p] = (uint8_t)((btns << 4) | dpad);
-        if (p == 0) dpad0 = dpad;
+// Perform one poll: scan 1 (normal bank) + scan 2 (6-button extended bank).
+// Two CLR pulses = two scans; the >16ms gap between polls resets a 6-button
+// pad back to "normal-first". Each scan sweeps all ports, so this handles a
+// solo pad, a multitap, and dual 6-button on a multitap (Street Fighter II).
+static void pce_scan(void)
+{
+    uint8_t dpad[PCE_MAX_PLAYERS], btns[PCE_MAX_PLAYERS];
+
+    // --- Scan 1: normal bank (CLR pulse #1 -> port 1, bank = normal) -----
+    pce_clr_pulse();
+    pce_read_bank(dpad, btns);
+    for (int p = 0; p < PCE_MAX_PLAYERS; p++) {
+        // SEL high -> d-pad (bit0=Up..3=Left); SEL low -> I/II/Select/Run.
+        s_pce.normal[p] = (uint8_t)((btns[p] << 4) | dpad[p]);
     }
 
 #if PCE_ENABLE_6BUTTON
-    // --- Player 1 6-button extended read --------------------------------
-    // A fresh CLR pulse rewinds to player 1 and advances its bank. On a 2-button
-    // pad this re-reads bank 0; on a 6-button pad it exposes III..VI with an
-    // all-zero signature in the d-pad nibble (matches the device driver layout).
-    gpio_put(PCE_PIN_CLR, 1);
-    pce_settle();
-    gpio_put(PCE_PIN_CLR, 0);
-    pce_settle();
-
-    gpio_put(PCE_PIN_SEL, 1);   // SEL high -> signature nibble (0x0 = 6-button)
-    pce_settle();
-    uint8_t sig = pce_read_nibble();
-
-    gpio_put(PCE_PIN_SEL, 0);   // SEL low -> III/IV/V/VI button nibble
-    pce_settle();
-    uint8_t ext = pce_read_nibble();
-
-    if (sig == 0x00 && dpad0 != 0x00) {
-        s_pce.six_button = true;
-        s_pce.ext_nibble = ext;
-    } else {
-        s_pce.six_button = false;
-        s_pce.ext_nibble = 0x0F;
+    // --- Scan 2: extended bank (CLR pulse #2 -> port 1, bank = extended) -
+    // On a 6-button pad the SEL-high nibble reads the all-zero signature and the
+    // SEL-low nibble holds III/IV/V/VI. A 2-button pad just re-reads its normal
+    // bank (SEL-high = d-pad != 0), so the signature gate rejects it.
+    uint8_t sig[PCE_MAX_PLAYERS], ext[PCE_MAX_PLAYERS];
+    pce_clr_pulse();
+    pce_read_bank(sig, ext);
+    for (int p = 0; p < PCE_MAX_PLAYERS; p++) {
+        if (sig[p] == 0x00 && s_pce.normal[p] != 0x00) {
+            s_pce.six_button[p] = true;
+            s_pce.ext_nibble[p] = ext[p];
+        } else {
+            s_pce.six_button[p] = false;
+            s_pce.ext_nibble[p] = 0x0F;
+        }
     }
 #endif
 }
@@ -212,8 +218,8 @@ static uint32_t pce_decode_buttons(int port)
     if (!(n & (1 << PCE_BIT_RUN)))    buttons |= JP_BUTTON_S2;  // Run (Start)
 
 #if PCE_ENABLE_6BUTTON
-    if (port == 0 && s_pce.six_button) {
-        const uint8_t e = s_pce.ext_nibble;   // active-low
+    if (s_pce.six_button[port]) {
+        const uint8_t e = s_pce.ext_nibble[port];   // active-low
         if (!(e & (1 << PCE_EXT_BIT_III))) buttons |= JP_BUTTON_B3;  // III
         if (!(e & (1 << PCE_EXT_BIT_IV)))  buttons |= JP_BUTTON_B4;  // IV
         if (!(e & (1 << PCE_EXT_BIT_V)))   buttons |= JP_BUTTON_L1;  // V
