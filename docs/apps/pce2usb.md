@@ -4,7 +4,7 @@ PCEngine / TurboGrafx-16 controller to USB HID gamepad.
 
 ## Overview
 
-Reads a native PCEngine controller (2-button standard pad or 6-button Avenue Pad 6) by bit-banging the controller's multiplexer, and outputs as a USB HID gamepad. ~60Hz polling, no PIO required. Presence detection via pull-down reads, with the player slot released on disconnect.
+Reads a native PCEngine controller (2-button standard pad, 6-button Avenue Pad 6, or up to 5 players via a multitap) by bit-banging the controller's multiplexer, and outputs as a USB HID gamepad. ~60Hz polling, no PIO required. The same read routine handles a direct pad and a multitap; multitap ports are merged into the single USB gamepad.
 
 ## Input
 
@@ -18,14 +18,15 @@ Reads a native PCEngine controller (2-button standard pad or 6-button Avenue Pad
 
 | Setting | Value |
 |---------|-------|
-| Routing mode | SIMPLE (1:1) |
-| Player slots | 1 (fixed) |
+| Routing mode | MERGE (all ports → 1 gamepad) |
+| Player slots | 5 (fixed; multitap) |
 | Polling rate | ~60Hz |
 | Profile system | None |
 
 ## Key Features
 
-- **Auto-detection** -- Pad presence detected via pull-down reads (300ms debounce); status LED idles when no pad is connected.
+- **Multitap** -- Up to 5 players read each scan and merged into the single USB gamepad (GC-adapter 4-distinct-player output is a planned follow-up).
+- **Auto-detection** -- Activity-based per-port presence; status LED idles when nothing is connected.
 - **6-button support** -- Avenue Pad 6 III-VI read best-effort, signature-gated so 2-button pads are unaffected.
 - **USB output modes** -- SInput, XInput, PS3, PS4, Switch, Keyboard/Mouse. Double-click button to cycle, triple-click to reset.
 - **Web config** -- [config.joypad.ai](https://config.joypad.ai).

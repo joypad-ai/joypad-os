@@ -31,7 +31,7 @@
 #define PCE_PIN_D0 8   // D0=8, D1=9, D2=10, D3=11 (consecutive)
 #endif
 
-#define PCE_MAX_PORTS 1
+#define PCE_MAX_PORTS 5   // single pad, or up to 5 via PCEngine multitap
 
 void pce_host_init(void);
 

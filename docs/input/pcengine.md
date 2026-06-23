@@ -23,6 +23,21 @@ CLR is held low for an active read; pulsing it advances the pad's internal bank 
 |--------|-------|
 | Standard 2-button pad | I, II, Select, Run, D-pad |
 | 6-button Avenue Pad 6 | Adds III, IV, V, VI (best-effort -- see below) |
+| Multitap (up to 5 players) | All ports read each scan -- see [Multitap](#multitap) |
+
+## Multitap
+
+A PCEngine multitap is read with the same routine as a direct pad (the documented protocol, per [pce-devel/PCE_Controller_Info](https://github.com/pce-devel/PCE_Controller_Info)). The key sequence:
+
+1. Reset to port 1 by pulsing CLR **while holding SEL HIGH** (SEL high, CLR low → high → low). Port 1 is then the active port with SEL already high.
+2. Read port 1: directions with SEL HIGH, buttons with SEL LOW.
+3. **Toggle SEL HIGH again to advance to the next port**; repeat for up to 5 ports.
+
+The critical detail is that the CLR reset pulse must happen with **SEL held high** -- otherwise the first SEL low→high transition is interpreted by the tap as "advance to the next port" and port 1 is skipped (it lands on port 2).
+
+A directly-connected pad has no tap to advance, so it **echoes its data onto every slot**. The driver distinguishes the two cases by registering slot 0 as the primary controller (direct pad or port 1) and registering a higher slot only when its input **differs** from slot 0 -- which rejects a direct pad's echoes and idle/empty tap ports (both read `0xFF`, equal to slot 0).
+
+Each port is submitted as a separate player (`dev_addr 0xF0 + N`). The [pce2usb](../apps/pce2usb.md) app merges all ports into a single USB gamepad (the USB device output presents one gamepad by default).
 
 ## Button Mapping
 
@@ -51,14 +66,12 @@ PCEngine controllers are purely digital. All analog axes remain at center (128).
 
 ## Connection Detection
 
-The data lines use internal **pull-downs**. A connected pad's 74157 mux actively drives released buttons HIGH (push-pull), while an empty port floats to all-zero -- so any high bit means a pad is present (you cannot hold all four directions plus all four buttons at once). This is what makes presence detection possible; with pull-ups, an idle pad and an empty port are indistinguishable (both read all-high).
+The data lines use internal **pull-downs**, and presence is **activity-based**: a port registers when it shows a real press (a read that is neither `0xFF` idle nor `0x00` floating) and stays alive while plugged. This is necessary because a multitap drives both empty and released ports to `0xFF`, so an idle port is indistinguishable from an empty one by level alone -- only a press reveals a port.
 
-- **Connect / Disconnect**: 300ms debounced (`PCE_DEBOUNCE_US`)
-- On disconnect, the player slot is released so the status LED returns to idle
-- Input is only submitted while a pad is present (an empty pull-down read of all-zero must not be treated as "all buttons pressed")
-
-!!! warning "Push-pull assumption"
-    Presence detection assumes the pad's data outputs are push-pull (the standard 74HC157 is). A hypothetical open-drain pad would read as never-connected.
+- Slot 0 is the primary controller (a directly-connected pad or multitap port 1) and registers on its own press.
+- Higher slots register only when their press **differs** from slot 0, which rejects a direct pad's echoes and idle/empty tap ports.
+- A `0x00` (floating) read marks a slot absent; disconnect is debounced (`PCE_DEBOUNCE_US`).
+- On disconnect, the player slot is released so the status LED returns to idle.
 
 ## Feedback
 
@@ -123,8 +136,8 @@ GPIO numbers are identical on both boards (same physical layout).
 
 D0-D3 have internal pull-downs enabled in firmware. No external resistors are required.
 
-- **Device address range**: 0xF0+ (port 0 = 0xF0)
-- **Max ports**: 1
+- **Device address range**: 0xF0+ (port N = 0xF0 + N)
+- **Max ports**: 5 (single pad, or up to 5 via multitap)
 - **Transport type**: `INPUT_TRANSPORT_NATIVE`
 - **Input source**: `INPUT_SOURCE_NATIVE_PCE`
 - **Layout**: `LAYOUT_UNKNOWN`

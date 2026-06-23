@@ -20,7 +20,8 @@
 
 // Output drivers
 #define REQUIRE_USB_DEVICE 1
-#define USB_OUTPUT_PORTS 1              // Single USB gamepad output
+#define USB_OUTPUT_PORTS 1              // Single gamepad: all multitap ports
+                                       // merge into it (GC-adapter 4-player TODO)
 
 // Services
 #define REQUIRE_PLAYER_MANAGEMENT 1
@@ -38,14 +39,14 @@
 // ============================================================================
 // ROUTING CONFIGURATION
 // ============================================================================
-#define ROUTING_MODE ROUTING_MODE_SIMPLE   // Simple 1:1 (PCE → USB)
-#define MERGE_MODE MERGE_ALL
+#define ROUTING_MODE ROUTING_MODE_MERGE    // Merge all multitap ports → 1 gamepad
+#define MERGE_MODE MERGE_BLEND
 
 // ============================================================================
 // PLAYER MANAGEMENT
 // ============================================================================
 #define PLAYER_SLOT_MODE PLAYER_SLOT_FIXED  // Fixed slots (no shifting)
-#define MAX_PLAYER_SLOTS 1                   // Single player
+#define MAX_PLAYER_SLOTS 5                   // Up to 5 via PCEngine multitap
 #define AUTO_ASSIGN_ON_PRESS 1
 
 // ============================================================================
