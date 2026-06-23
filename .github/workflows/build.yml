@@ -59,6 +59,9 @@ jobs:
           - gc2usb_kb2040
           - gc2usb_rp2040zero
           - nes2usb_kb2040
+          - pce2usb_kb2040
+          - pce2usb_pico
+          - pce2usb_pico_w
           - jvs2usb_rp2040zero
           - neogeo2usb_kb2040
           - neogeo2usb_rp2040zero
@@ -475,6 +478,13 @@ jobs:
         with:
           name: joypad_${{ steps.commit.outputs.hash }}_nes2usb
           path: organized/nes2usb/*.uf2
+          if-no-files-found: ignore
+
+      - name: Upload pce2usb
+        uses: actions/upload-artifact@v4
+        with:
+          name: joypad_${{ steps.commit.outputs.hash }}_pce2usb
+          path: organized/pce2usb/*.uf2
           if-no-files-found: ignore
 
       - name: Upload jvs2usb
