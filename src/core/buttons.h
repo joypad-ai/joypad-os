@@ -32,11 +32,10 @@
 // Sized to cover the highest USB dev_addr the host can assign
 // (CFG_TUH_DEVICE_MAX + CFG_TUH_HUB + 1). devices[] and every driver's
 // per-device array are indexed by dev_addr, so this must be >= max dev_addr.
-// Default CFG_TUH_HUB=1 -> CFG_TUH_DEVICE_MAX=5 -> max dev_addr 6, so 8 leaves
-// margin while covering any 1-4 player console (single hub + ~5 devices).
-// Overridable per-app: usb2pce raises it to 22 alongside CFG_TUH_HUB=4.
+// Overridable per-app: usb2pce raises it to 22 alongside CFG_TUH_HUB=4;
+// RAM-constrained single-output targets (usb2dc) lower it alongside CFG_TUH_HUB=1.
 #ifndef MAX_DEVICES
-#define MAX_DEVICES 8
+#define MAX_DEVICES 12
 #endif
 
 // W3C Gamepad API standard button order
