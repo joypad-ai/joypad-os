@@ -14,8 +14,18 @@ static int connected_devices = 0;
 // PLAIN GPIO LED (fallback when no NeoPixel)
 // ============================================================================
 
-#ifdef BOARD_LED_PIN
+// A single-color status LED is available either as a plain GPIO
+// (BOARD_LED_PIN) or, on Pico W / Pico 2 W, behind the CYW43 chip
+// (BOARD_LED_CYW43 — the onboard LED is on WL_GPIO0, not a GPIO).
+#if defined(BOARD_LED_PIN) || defined(BOARD_LED_CYW43)
+#define BOARD_LED_ENABLED 1
 #include "pico/stdlib.h"
+#ifdef BOARD_LED_CYW43
+#include "pico/cyw43_arch.h"
+#ifndef CYW43_WL_GPIO_LED_PIN
+#define CYW43_WL_GPIO_LED_PIN 0
+#endif
+#endif
 
 static bool board_led_inited = false;
 static uint32_t board_led_last_toggle = 0;
@@ -25,16 +35,27 @@ static uint32_t board_led_indicate_start = 0;
 
 static void board_led_init(void)
 {
+#ifdef BOARD_LED_CYW43
+    // Bring up the wireless arch just enough to toggle WL_GPIO0; leave
+    // board_led_inited false on failure so we never poke an absent chip.
+    if (cyw43_arch_init() != 0) return;
+#else
     gpio_init(BOARD_LED_PIN);
     gpio_set_dir(BOARD_LED_PIN, GPIO_OUT);
+#endif
     board_led_inited = true;
 }
 
 static void board_led_set(bool on)
 {
     if (!board_led_inited) return;
-    gpio_put(BOARD_LED_PIN, on);
+    if (on == board_led_state) return;  // idempotent — a CYW43 put is an SPI txn
     board_led_state = on;
+#ifdef BOARD_LED_CYW43
+    cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, on);
+#else
+    gpio_put(BOARD_LED_PIN, on);
+#endif
 }
 
 // Plain LED status patterns:
@@ -78,7 +99,7 @@ static void board_led_task(int count)
         }
     }
 }
-#endif // BOARD_LED_PIN
+#endif // BOARD_LED_ENABLED
 
 // ============================================================================
 // PUBLIC API
@@ -86,7 +107,7 @@ static void board_led_task(int count)
 
 void leds_init(void)
 {
-#ifdef BOARD_LED_PIN
+#ifdef BOARD_LED_ENABLED
     board_led_init();
 #endif
     neopixel_init();
@@ -105,7 +126,7 @@ void leds_set_color(uint8_t r, uint8_t g, uint8_t b)
 void leds_task(void)
 {
     int count = playersCount > connected_devices ? playersCount : connected_devices;
-#ifdef BOARD_LED_PIN
+#ifdef BOARD_LED_ENABLED
     board_led_task(count);
 #endif
     neopixel_task(count);
@@ -113,7 +134,7 @@ void leds_task(void)
 
 void leds_indicate_profile(uint8_t profile_index)
 {
-#ifdef BOARD_LED_PIN
+#ifdef BOARD_LED_ENABLED
     board_led_blink_count = profile_index + 1;
     board_led_indicate_start = platform_time_ms();
 #endif
@@ -122,7 +143,7 @@ void leds_indicate_profile(uint8_t profile_index)
 
 bool leds_is_indicating(void)
 {
-#ifdef BOARD_LED_PIN
+#ifdef BOARD_LED_ENABLED
     if (board_led_blink_count > 0) return true;
 #endif
     return neopixel_is_indicating();

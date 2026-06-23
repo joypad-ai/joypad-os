@@ -292,6 +292,11 @@ set(NES_HOST_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/native/host/nes/nes_host.c
 )
 
+# PCEngine host sources
+set(PCE_HOST_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/host/pcengine/pce_host.c
+)
+
 # SNES host sources
 set(SNES_HOST_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/native/host/snes/snes_host.c
@@ -2567,6 +2572,31 @@ target_include_directories(joypad_nes2usb PUBLIC
 target_link_libraries(joypad_nes2usb PRIVATE pico_stdlib pico_multicore hardware_pio pico_rand tinyusb_device tinyusb_board)
 joypad_target_common(joypad_nes2usb)
 pico_generate_pio_header(joypad_nes2usb ${CMAKE_CURRENT_LIST_DIR}/native/host/nes/nes_host.pio)
+
+
+# --- PCE2USB (PCEngine -> USB HID) ---
+add_executable(joypad_pce2usb)
+target_compile_definitions(joypad_pce2usb PRIVATE CONFIG_PCE2USB=1 CONFIG_USB=1 DISABLE_USB_HOST=1)
+target_sources(joypad_pce2usb PUBLIC ${CORE_SOURCES} ${USB_DEVICE_SOURCES}
+    ${PCE_HOST_SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/pce2usb/app.c
+)
+target_include_directories(joypad_pce2usb PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/pce2usb
+    ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/host/pcengine
+)
+target_link_libraries(joypad_pce2usb PRIVATE pico_stdlib pico_multicore hardware_pio pico_rand tinyusb_device tinyusb_board)
+# Status LED: Pico W / Pico 2 W's onboard LED is behind the CYW43 chip
+# (WL_GPIO0), so bring up cyw43_arch (no wireless) just to drive it. A plain
+# Pico's LED is a normal GPIO (GP25).
+if (PICO_BOARD STREQUAL "pico_w" OR PICO_BOARD STREQUAL "pico2_w")
+    target_compile_definitions(joypad_pce2usb PRIVATE BOARD_LED_CYW43=1)
+    target_link_libraries(joypad_pce2usb PRIVATE pico_cyw43_arch_none)
+elseif (PICO_BOARD STREQUAL "pico")
+    target_compile_definitions(joypad_pce2usb PRIVATE BOARD_LED_PIN=25)
+endif()
+joypad_target_common(joypad_pce2usb)
 
 
 # --- LODGENET2USB (LodgeNet -> USB HID) ---
