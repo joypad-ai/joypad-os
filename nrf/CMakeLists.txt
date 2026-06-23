@@ -413,6 +413,7 @@ elseif(APP_TYPE STREQUAL "controller_btusb")
         "${SHARED_SRC}/bt/bthid/devices/vendors/microsoft/xbox_bt.c"
         "${SHARED_SRC}/bt/bthid/devices/vendors/microsoft/xbox_ble.c"
         "${SHARED_SRC}/bt/bthid/devices/vendors/google/stadia_bt.c"
+        "${SHARED_SRC}/bt/bthid/devices/vendors/augmental/mouthpad_ble.c"
 
         # --- nRF BTstack TLV ---
         "src/btstack_tlv_nrf.c"
