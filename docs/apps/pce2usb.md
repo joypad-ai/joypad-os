@@ -27,7 +27,7 @@ Reads a native PCEngine controller (2-button standard pad, 6-button Avenue Pad 6
 
 - **Multitap** -- Up to 5 players read each scan and merged into the single USB gamepad (GC-adapter 4-distinct-player output is a planned follow-up).
 - **Auto-detection** -- Activity-based per-port presence; status LED idles when nothing is connected.
-- **6-button support** -- Avenue Pad 6 III-VI read best-effort, signature-gated so 2-button pads are unaffected.
+- **6-button support** -- III-VI read per-port via a two-scan (normal + extended) sequence, signature-gated so 2-button pads are unaffected. Works for a solo pad and dual 6-button pads on a multitap (Street Fighter II).
 - **USB output modes** -- SInput, XInput, PS3, PS4, Switch, Keyboard/Mouse. Double-click button to cycle, triple-click to reset.
 - **Web config** -- [config.joypad.ai](https://config.joypad.ai).
 
@@ -66,7 +66,7 @@ make flash-pce2usb_pico_w
 - Use the [config.joypad.ai](https://config.joypad.ai) input monitor to view raw input.
 
 **6-button buttons (III-VI) don't register:**
-- 6-button support is best-effort and unvalidated on real hardware; 2-button function is unaffected.
+- The 6-button decode follows the PCEngine device/output protocol but is pending confirmation on a real Avenue Pad 6; 2-button function is unaffected.
 
 **USB not recognized by host:**
 - Double-click the board button to cycle USB output mode.
