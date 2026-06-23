@@ -40,6 +40,10 @@ typedef struct {
     bool has_sim_triggers;      // true if triggers use Simulation Controls (Xbox-style)
     bool is_xbox;               // true if Microsoft VID (0x045E) — affects button map
     bool is_8bitdo;             // true if 8BitDo VID (0x2DC8) — paddle button order
+    bool digital_shoulder_triggers; // controller has no real analog triggers; its
+                                // L2/R2 "trigger" axes are just the digital shoulder
+                                // buttons (e.g. 8BitDo M30). Suppress analog L2/R2 so
+                                // the digital buttons remain remappable.
 } ble_report_map_t;
 
 // ============================================================================
@@ -185,6 +189,8 @@ static uint16_t extract_field(const uint8_t* data, uint16_t len, ble_usage_loc_t
     }
     return (raw & loc->bitMask) >> __builtin_ctz(loc->bitMask);
 }
+
+static bool device_is_m30(const bthid_device_t* device);
 
 void bthid_gamepad_set_descriptor(bthid_device_t* device, const uint8_t* desc, uint16_t desc_len)
 {
@@ -341,6 +347,7 @@ void bthid_gamepad_set_descriptor(bthid_device_t* device, const uint8_t* desc, u
 
     gp->map.is_xbox = (device->vendor_id == 0x045E);
     gp->map.is_8bitdo = (device->vendor_id == 0x2DC8);
+    gp->map.digital_shoulder_triggers = device_is_m30(device);
     gp->has_report_map = true;
     printf("[BTHID_GAMEPAD] Parsed: %d btns, X@%d Y@%d Z@%d RZ@%d RX@%d RY@%d hat@%d(min=%d) sim=%d xbox=%d 8bitdo=%d\n",
            btns_count,
@@ -351,6 +358,19 @@ void bthid_gamepad_set_descriptor(bthid_device_t* device, const uint8_t* desc, u
            gp->map.is_xbox, gp->map.is_8bitdo);
 }
 
+// 8BitDo M30: Genesis/Saturn-style pad with NO analog triggers — its L2/R2 are
+// digital shoulder buttons that the HID report also exposes as trigger axes.
+// Reporting them as analog L2/R2 makes the trigger output bypass button
+// remapping (the analog axis isn't remapped), so users can't reassign L2/R2.
+// The M30's VID/PID arrives via the SDP Device ID query (deferred to
+// HID_SUBEVENT_DESCRIPTOR_AVAILABLE), which then re-runs bthid_gamepad_update_vid.
+static bool device_is_m30(const bthid_device_t* device)
+{
+    return (device->vendor_id == 0x2DC8 &&
+            (device->product_id == 0x0651 ||   // M30 over Bluetooth (SDP Device ID)
+             device->product_id == 0x5006));   // M30 USB PID (defensive)
+}
+
 void bthid_gamepad_update_vid(bthid_device_t* device)
 {
     bthid_gamepad_data_t* gp = (bthid_gamepad_data_t*)device->driver_data;
@@ -358,6 +378,7 @@ void bthid_gamepad_update_vid(bthid_device_t* device)
 
     gp->map.is_xbox = (device->vendor_id == 0x045E);
     gp->map.is_8bitdo = (device->vendor_id == 0x2DC8);
+    gp->map.digital_shoulder_triggers = device_is_m30(device);
 }
 
 // ============================================================================
@@ -390,6 +411,14 @@ static void process_report_dynamic(bthid_gamepad_data_t* gp, const uint8_t* data
     }
     if (map->ryLoc.max) {
         r2 = scale_analog(extract_field(data, len, &map->ryLoc), map->ryLoc.max);
+    }
+
+    // Controllers whose "triggers" are really digital shoulder buttons (M30):
+    // drop the synthesized analog so L2/R2 come only from the digital buttons,
+    // which stay subject to button remapping.
+    if (map->digital_shoulder_triggers) {
+        l2 = 0;
+        r2 = 0;
     }
 
     // Hat switch -> dpad
