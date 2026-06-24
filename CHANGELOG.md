@@ -39,6 +39,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 #### Generic USB HID gamepad parser
 - **Signed (centered-at-0) axes** — pads that declare sticks with `logicalMin < 0` (e.g. ELO Vagabond, ±32767) were misread by the unsigned-only scaler: center read as ~1 and the negative half pegged. Now sign-extends and maps `[min,max] → [1,255]` so center lands at 128. Gated on `min < 0`, so unsigned pads are untouched (no struct growth — `max` narrowed to 16-bit to make room for `min`).
 - **Simulation-Controls triggers** — analog triggers declared as Brake (`0xC5`) / Accelerator (`0xC4`) on the Simulation Controls page were dropped (the gamepad interpreter only handled Generic Desktop + Button pages). Now mapped onto the L2/R2 trigger slots.
+- **Per-device button-map override** — the generic DInput button reshuffle scrambles pads whose button order differs from the typical DInput layout. Added a direct HID-index → JP_BUTTON map, keyed on VID/PID, that bypasses the reshuffle. First user: the **ELO Vagabond V1** (VID `0483`/PID `A4DB`) — A/B/X/Y, L1/R1, L2/R2, Select/Start, and the two back paddles (→ `L4`/`R4`) now land correctly.
 
 #### Output Modes
 - **Xbox Original (XID)** — forward vendor control requests to the XID handler, invert stick Y, wire up pressure-sensitive buttons, and fix the Black/White button swap.
