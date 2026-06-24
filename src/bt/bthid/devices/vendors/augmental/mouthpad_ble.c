@@ -84,9 +84,21 @@ static mouthpad_data_t mouthpad_data[BTHID_MAX_DEVICES];
 // BT app; the `mouthpad-relay` build sets PASSTHROUGH via mouthpad_ble_set_mode().
 static mp_mode_t mp_mode = MP_MODE_RIGHT_STICK;
 
+// CDC command hook (MP.MODE): switch translation mode at runtime, per game.
+void mouthpad_set_translation_mode(int mode)
+{
+    if (mode < 0 || mode > MP_MODE_LEFT_STICK) return;
+    mouthpad_ble_set_mode((mp_mode_t)mode);
+}
+
+int mouthpad_get_translation_mode(void) { return (int)mp_mode; }
+
 void mouthpad_ble_set_mode(mp_mode_t mode)
 {
     mp_mode = mode;
+    printf("[MOUTHPAD_BLE] translation mode -> %d (%s)\n", (int)mode,
+           mode == MP_MODE_PASSTHROUGH ? "passthrough" :
+           mode == MP_MODE_LEFT_STICK  ? "left_stick"  : "right_stick");
     input_device_type_t t = (mode == MP_MODE_PASSTHROUGH) ? INPUT_TYPE_MOUSE : INPUT_TYPE_GAMEPAD;
     for (int i = 0; i < BTHID_MAX_DEVICES; i++) {
         if (!mouthpad_data[i].initialized) continue;
