@@ -8,9 +8,10 @@
 
 typedef struct
 {
-  uint8_t byteIndex;
+  uint8_t  byteIndex;
   uint16_t bitMask;
-  uint32_t max;
+  uint16_t max;   // logical maximum (16-bit is plenty for gamepad axes)
+  int16_t  min;   // logical minimum — <0 marks a signed/centered axis
 } dinput_usage_t;
 
 // Generic HID instance state
@@ -130,6 +131,7 @@ void parse_descriptor(uint8_t dev_addr, uint8_t instance)
             hid_devices[dev_addr].instances[instance].xLoc.byteIndex = byteIndex;
             hid_devices[dev_addr].instances[instance].xLoc.bitMask = bitMask;
             hid_devices[dev_addr].instances[instance].xLoc.max = item->Attributes.Logical.Maximum;
+            hid_devices[dev_addr].instances[instance].xLoc.min = item->Attributes.Logical.Minimum;
             break;
           }
           case HID_USAGE_DESKTOP_Y: // Left Analog Y
@@ -138,6 +140,7 @@ void parse_descriptor(uint8_t dev_addr, uint8_t instance)
             hid_devices[dev_addr].instances[instance].yLoc.byteIndex = byteIndex;
             hid_devices[dev_addr].instances[instance].yLoc.bitMask = bitMask;
             hid_devices[dev_addr].instances[instance].yLoc.max = item->Attributes.Logical.Maximum;
+            hid_devices[dev_addr].instances[instance].yLoc.min = item->Attributes.Logical.Minimum;
             break;
           }
           case HID_USAGE_DESKTOP_Z: // Right Analog X
@@ -146,6 +149,7 @@ void parse_descriptor(uint8_t dev_addr, uint8_t instance)
             hid_devices[dev_addr].instances[instance].zLoc.byteIndex = byteIndex;
             hid_devices[dev_addr].instances[instance].zLoc.bitMask = bitMask;
             hid_devices[dev_addr].instances[instance].zLoc.max = item->Attributes.Logical.Maximum;
+            hid_devices[dev_addr].instances[instance].zLoc.min = item->Attributes.Logical.Minimum;
             break;
           }
           case HID_USAGE_DESKTOP_RZ: // Right Analog Y
@@ -154,6 +158,7 @@ void parse_descriptor(uint8_t dev_addr, uint8_t instance)
             hid_devices[dev_addr].instances[instance].rzLoc.byteIndex = byteIndex;
             hid_devices[dev_addr].instances[instance].rzLoc.bitMask = bitMask;
             hid_devices[dev_addr].instances[instance].rzLoc.max = item->Attributes.Logical.Maximum;
+            hid_devices[dev_addr].instances[instance].rzLoc.min = item->Attributes.Logical.Minimum;
             break;
           }
           case HID_USAGE_DESKTOP_RX: // Left Analog Trigger
@@ -162,6 +167,7 @@ void parse_descriptor(uint8_t dev_addr, uint8_t instance)
             hid_devices[dev_addr].instances[instance].rxLoc.byteIndex = byteIndex;
             hid_devices[dev_addr].instances[instance].rxLoc.bitMask = bitMask;
             hid_devices[dev_addr].instances[instance].rxLoc.max = item->Attributes.Logical.Maximum;
+            hid_devices[dev_addr].instances[instance].rxLoc.min = item->Attributes.Logical.Minimum;
             break;
           }
           case HID_USAGE_DESKTOP_RY: // Right Analog Trigger
@@ -170,6 +176,7 @@ void parse_descriptor(uint8_t dev_addr, uint8_t instance)
             hid_devices[dev_addr].instances[instance].ryLoc.byteIndex = byteIndex;
             hid_devices[dev_addr].instances[instance].ryLoc.bitMask = bitMask;
             hid_devices[dev_addr].instances[instance].ryLoc.max = item->Attributes.Logical.Maximum;
+            hid_devices[dev_addr].instances[instance].ryLoc.min = item->Attributes.Logical.Minimum;
             break;
           }
           case HID_USAGE_DESKTOP_HAT_SWITCH:
@@ -197,6 +204,29 @@ void parse_descriptor(uint8_t dev_addr, uint8_t instance)
           // case HID_USAGE_DESKTOP_DPAD_LEFT:
           //   current.left |= 1;
           //   break;
+          }
+          break;
+        }
+        case HID_USAGE_PAGE_SIMULATE:
+        {
+          // Xbox-style analog triggers live on Simulation Controls: Brake (0xC5)
+          // and Accelerator (0xC4). Map them onto the trigger locs (rx=L2, ry=R2)
+          // — same slots the Generic Desktop RX/RY path uses.
+          switch (item->Attributes.Usage.Usage)
+          {
+          case 0xC5: // Brake -> Left trigger (L2)
+            hid_devices[dev_addr].instances[instance].rxLoc.byteIndex = byteIndex;
+            hid_devices[dev_addr].instances[instance].rxLoc.bitMask = bitMask;
+            hid_devices[dev_addr].instances[instance].rxLoc.max = item->Attributes.Logical.Maximum;
+            hid_devices[dev_addr].instances[instance].rxLoc.min = item->Attributes.Logical.Minimum;
+            break;
+          case 0xC4: // Accelerator -> Right trigger (R2)
+            hid_devices[dev_addr].instances[instance].ryLoc.byteIndex = byteIndex;
+            hid_devices[dev_addr].instances[instance].ryLoc.bitMask = bitMask;
+            hid_devices[dev_addr].instances[instance].ryLoc.max = item->Attributes.Logical.Maximum;
+            hid_devices[dev_addr].instances[instance].ryLoc.min = item->Attributes.Logical.Minimum;
+            break;
+          default: break;
           }
           break;
         }
@@ -307,6 +337,22 @@ static uint16_t read_axis_value(const uint8_t *report, const dinput_usage_t *loc
   return 0;
 }
 
+// Scale a parsed axis to 0-255. Most HID pads use unsigned axes (logical 0..max);
+// some (e.g. ELO Vagabond) declare SIGNED axes centered at 0 (logicalMin < 0),
+// where the unsigned path would read center as ~1. For signed axes, sign-extend
+// the field and map [min,max] -> [1,255] so 0 lands at 128.
+static uint8_t scale_axis(const dinput_usage_t *loc, uint16_t raw)
+{
+  if (loc->min < 0) {
+    int32_t sval = (loc->bitMask > 0xFF) ? (int16_t)raw : (int8_t)raw;
+    int32_t span = (int32_t)loc->max - (int32_t)loc->min;
+    if (span <= 0) return 128;
+    int32_t out = 1 + (int32_t)(sval - loc->min) * 254 / span;
+    return out < 1 ? 1 : (out > 255 ? 255 : (uint8_t)out);
+  }
+  return scale_analog_hid_gamepad(raw, loc->max);
+}
+
 // process generic usb hid input reports (from parsed HID descriptor byteIndexes & bitMasks)
 void process_hid_gamepad(uint8_t dev_addr, uint8_t instance, uint8_t const* report, uint16_t len)
 {
@@ -343,13 +389,13 @@ void process_hid_gamepad(uint8_t dev_addr, uint8_t instance, uint8_t const* repo
     }
   }
 
-  // parse analog from report
-  current.x  = inst->xLoc.max  ? scale_analog_hid_gamepad(xValue, inst->xLoc.max)   : 128;
-  current.y  = inst->yLoc.max  ? scale_analog_hid_gamepad(yValue, inst->yLoc.max)   : 128;
-  current.z  = inst->zLoc.max  ? scale_analog_hid_gamepad(zValue, inst->zLoc.max)   : 128;
-  current.rz = inst->rzLoc.max ? scale_analog_hid_gamepad(rzValue, inst->rzLoc.max) : 128;
-  current.rx = inst->rxLoc.max ? scale_analog_hid_gamepad(rxValue, inst->rxLoc.max) : 0;
-  current.ry = inst->ryLoc.max ? scale_analog_hid_gamepad(ryValue, inst->ryLoc.max) : 0;
+  // parse analog from report (sign-aware; sticks default centered, triggers to 0)
+  current.x  = inst->xLoc.bitMask  ? scale_axis(&inst->xLoc, xValue)   : 128;
+  current.y  = inst->yLoc.bitMask  ? scale_axis(&inst->yLoc, yValue)   : 128;
+  current.z  = inst->zLoc.bitMask  ? scale_axis(&inst->zLoc, zValue)   : 128;
+  current.rz = inst->rzLoc.bitMask ? scale_axis(&inst->rzLoc, rzValue) : 128;
+  current.rx = inst->rxLoc.bitMask ? scale_axis(&inst->rxLoc, rxValue) : 0;
+  current.ry = inst->ryLoc.bitMask ? scale_axis(&inst->ryLoc, ryValue) : 0;
 
   // TODO: based on diff report rather than current's datastructure in order to get subtle analog changes
   if (previous[dev_addr-1][instance].value != current.value)

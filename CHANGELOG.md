@@ -36,6 +36,10 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 - **Hub depth decoupled from device count** — TinyUSB ties them via `CFG_TUH_DEVICE_MAX = 4*CFG_TUH_HUB + 1`, so allowing a deeper hub *tree* silently inflated every per-device driver array (asking for 4 hubs implied 17 devices → `MAX_DEVICES=22`). Made `CFG_TUH_DEVICE_MAX` overridable and set sane independent defaults: **hub depth 4** (covers the PCE Mini's 2 cascaded chips + a chained hub) and a fixed **device cap of 10** (3DO's 8 players + margin; an 11th pad just won't enumerate) → `MAX_DEVICES=15`. `usb2pce` now inherits this (its `CFG_TUH_HUB=4 / MAX_DEVICES=22` override removed); `usb2dc` caps tighter (4 ports). Also fixed the **5th-player hang** (`xinput_task` cached LED/rumble in `[4]`-sized arrays but iterates every USB player; a 5th controller wrote out of bounds and hung Core 0 — sized to `MAX_PLAYERS`).
 - **usb2dc RAM overflow** — the 128 KB Dreamcast VMU image left `usb2dc` RAM-starved; right-sized that app's arrays (`CFG_TUH_HUB=1`, `MAX_DEVICES=7`, `MAX_PLAYERS_PER_OUTPUT=4` — Dreamcast is 4 ports, no cascading) without touching the global hub defaults.
 
+#### Generic USB HID gamepad parser
+- **Signed (centered-at-0) axes** — pads that declare sticks with `logicalMin < 0` (e.g. ELO Vagabond, ±32767) were misread by the unsigned-only scaler: center read as ~1 and the negative half pegged. Now sign-extends and maps `[min,max] → [1,255]` so center lands at 128. Gated on `min < 0`, so unsigned pads are untouched (no struct growth — `max` narrowed to 16-bit to make room for `min`).
+- **Simulation-Controls triggers** — analog triggers declared as Brake (`0xC5`) / Accelerator (`0xC4`) on the Simulation Controls page were dropped (the gamepad interpreter only handled Generic Desktop + Button pages). Now mapped onto the L2/R2 trigger slots.
+
 #### Output Modes
 - **Xbox Original (XID)** — forward vendor control requests to the XID handler, invert stick Y, wire up pressure-sensitive buttons, and fix the Black/White button swap.
 - **Xbox One (GIP)** — auth passthrough aligned to the GP2040-CE handshake model.
