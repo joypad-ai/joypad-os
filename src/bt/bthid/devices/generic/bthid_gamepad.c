@@ -362,10 +362,17 @@ void bthid_gamepad_set_descriptor(bthid_device_t* device, const uint8_t* desc, u
 // digital shoulder buttons that the HID report also exposes as trigger axes.
 // Reporting them as analog L2/R2 makes the trigger output bypass button
 // remapping (the analog axis isn't remapped), so users can't reassign L2/R2.
-// The M30's VID/PID arrives via the SDP Device ID query (deferred to
-// HID_SUBEVENT_DESCRIPTOR_AVAILABLE), which then re-runs bthid_gamepad_update_vid.
+//
+// Identify primarily by the device NAME: it's the one identifier stable across
+// M30 firmware revisions / power-on modes (which report different BT PIDs), and
+// some units never resolve VID/PID at all (matched only by BT class-of-device,
+// so vendor_id/product_id stay 0). VID/PID is a secondary match for when the
+// SDP Device ID query does succeed.
 static bool device_is_m30(const bthid_device_t* device)
 {
+    if (device->name[0] && strstr(device->name, "M30")) {
+        return true;
+    }
     return (device->vendor_id == 0x2DC8 &&
             (device->product_id == 0x0651 ||   // M30 over Bluetooth (SDP Device ID)
              device->product_id == 0x5006));   // M30 USB PID (defensive)
