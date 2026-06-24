@@ -6,6 +6,60 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [2.2.0] — 2026-06-23
+
+### Added
+
+#### New Apps
+- **pce2usb** — native PCEngine / TurboGrafx-16 controllers → USB HID. Bit-bangs the pad's 74157 multiplexer directly (no PIO — PCE pads have no clock to track), polling at ~60 Hz. **Multitap support (up to 5 players)** read with the documented protocol (`pce-devel/PCE_Controller_Info`): hold SEL high across the CLR reset so port 1 is the active port, then advance port-to-port by toggling SEL; ports merge into the single USB gamepad. **Per-port 6-button (Avenue Pad 6)** via a two-scan-per-poll sequence (the bank alternates normal/extended on each CLR pulse, not SEL), gated by the `0000` signature so 2-button pads are never misread — works for a solo pad *and* dual 6-button pads on a multitap (Street Fighter II). The same routine handles a directly-connected pad and a multitap. Activity-based per-port presence detection with pull-down reads; LED idles when nothing is connected. Builds: `pce2usb_kb2040` (NeoPixel), `pce2usb_pico` (GP25 LED), `pce2usb_pico_w` (CYW43 LED). The 2-button paths are hardware-verified; the 6-button decode follows the device/output emulation and awaits an Avenue Pad 6 to confirm on hardware.
+- **mouthpad** — Augmental MouthPad (BLE) → USB HID + Nordic UART (NUS) relay over CDC. Reuses the SInput composite (gamepad + mouse + keyboard + CDC) as a superset of the stock MouthPad. **Translation modes** — routed-gamepad by default, with a minimal NUS passthrough relay; mouse widened to 16-bit. An `MP.MODE` CDC command switches the active translation mode (passthrough / right-stick / left-stick) at runtime, per game. Relays `clear_bonds` (classify + encode + dispatch) and answers relay status/info while still scanning (no MouthPad attached). A minimal GAP + GATT ATT server on the BLE central fixes the Nordic HOGP hang (a central with no ATT server made the MouthPad time out the 30 s ATT and stream zero HID). Builds: `mouthpad_aprbrother_nrf52840`, `mouthpad_pico_w`, `mouthpad_pico2_w`.
+
+#### New Platform
+- **CH32V307 (WCH)** — `usb2usb` port on the WCH CH32V307: USBFS host-in + USBHS device-out HID gamepad + CDC config port, fully working end-to-end on hardware. Async HCD with full hub + hot-plug (replug via `ERR_USB_UNKNOWN` disconnect / `DEV_ATTACH`-poll), interrupt polling paced to `bInterval`, and bus-powered hub + broad controller enumeration. SInput is the device-out mode. Repo-local toolchain via `make init-wch`. Tracks the `joypad-ai/tinyusb` CH32 USBFS-host fork.
+
+#### New Board Targets
+- **`usb2usb_ogxm_pico`** — OGX-Mini Pico hardware (black board, USB host on GP0).
+- **`usb2usb_rp2040zero`** — drives a plain status LED on GP14 (OGX-Mini green board, RP2040-Zero drop-in).
+
+#### Core & Infrastructure
+- **Configurable HID keymap** — a HID-key → `JP_BUTTON_*` keymap service so keyboards can be remapped to gamepad buttons.
+- **Dual BLE HID devices** — per-connection BLE HID client state, so two BLE HID controllers can connect at once.
+- **as_gamepad mouse** — emit a gamepad report for mouse-type inputs configured `as_gamepad`.
+- **VERSION single source of truth** — all build/release version strings derive from the `VERSION` file.
+
+#### Output & Device
+- **Dreamcast VMU — QSPI-primary storage** — the VMU storage selector now prefers onboard QSPI flash with SD as backup, plus persistence reliability fixes. Non-SD targets build cleanly (fatfs/SD gated on `CONFIG_SD`).
+
+### Fixed
+
+#### USB Host & Hubs
+- **Cascaded multi-port hubs** — restored `CFG_TUH_HUB=2` and support for >3 controllers behind a hub (dev_addr up to 11); `usb2pce` can chain a second hub (`CFG_TUH_HUB=4`, `MAX_DEVICES=22`).
+- **5th-player hang** — `xinput_task` cached LED/rumble in `[4]`-sized arrays but iterates every USB player; a 5th controller wrote out of bounds and hung Core 0. Sized to `MAX_PLAYERS`.
+- **usb2dc RAM overflow** — the 128 KB Dreamcast VMU image left `usb2dc` RAM-starved; right-sized that app's arrays (`CFG_TUH_HUB=1`, `MAX_DEVICES=7`, `MAX_PLAYERS_PER_OUTPUT=4` — Dreamcast is 4 ports, no cascading) without touching the global hub defaults.
+
+#### Output Modes
+- **Xbox Original (XID)** — forward vendor control requests to the XID handler, invert stick Y, wire up pressure-sensitive buttons, and fix the Black/White button swap.
+- **Xbox One (GIP)** — auth passthrough aligned to the GP2040-CE handshake model.
+
+#### Controllers
+- **8BitDo M30 (BT)** — its digital L2/R2 shoulder buttons were also exposed as analog trigger axes, which bypassed button remapping (the analog axis isn't remapped) so users couldn't reassign L2/R2 (the analog L2 latched at 255). Detect the M30 by device name — the one identifier stable across its firmware/mode variants, since some units never resolve VID/PID over BT (matched only by class-of-device) and others report different PIDs — and zero the analog triggers so only the remappable digital buttons drive output. (USB already handled this in the dedicated driver.)
+- **PSX** — pass DualShock 2 analog L2/R2 pressure through to the trigger axes; keep Select+Start intact on DualShock pads.
+
+#### Build & CI
+- **nRF `controller_btusb`** — `bthid_registry.c` calls `mouthpad_ble_register()` unconditionally, but the controller_btusb nRF source list omitted `mouthpad_ble.c` (undefined-reference link failure).
+- **pce2usb in CI** — added `pce2usb_kb2040` / `_pico` / `_pico_w` to the build matrix.
+- **steam_controller_2** — added to the nRF + ESP source lists.
+
+#### Web Config
+- Surface serial connect failures with an error toast instead of failing silently.
+
+### Changed
+
+#### Dependencies
+- **tinyusb** — migrated to master to land the CH32V307 USBFS host, then rolled back to **0.20.0** after an RP2040 host regression (Core-1 TX × master timing erosion). All platforms now unify on the `joypad-ai/tinyusb` `joypad-0.20.0-ch32` fork; the CH32 host rides on top via `TINYUSB_ROOT`. `tusb_xinput` tracks a `joypad-ai` dev branch.
+
+---
+
 ## [2.1.1] — 2026-06-02
 
 ### Added
