@@ -109,15 +109,14 @@
 #define CFG_TUH_MEM_ALIGN        __attribute__ ((aligned(4)))
 #endif
 
-// 2 hubs: many multi-port hubs (e.g. the PC Engine Mini 5-port hub) are two
-// cascaded hub chips internally, so a single such hub presents as 2 hub
-// devices. At 1, the second-tier chip never enumerates and every controller
-// behind it is dead — which is why hubs regressed vs the USBRetro era.
-// Overridable per-app (usb2pce sets 4 to allow chaining a second hub). When
-// raised, MAX_DEVICES (core/buttons.h) must grow to cover dev_addr up to
-// CFG_TUH_DEVICE_MAX + CFG_TUH_HUB.
+// Number of hub devices the host tracks = how deep/wide a hub tree we allow.
+// Many multi-port hubs (e.g. the PC Engine Mini 5-port hub) are two cascaded
+// hub chips internally, so one such hub already counts as 2; 4 covers that plus
+// a chained hub and a few honest tiers (USB tops out at 5). This is hub COUNT,
+// independent of CFG_TUH_DEVICE_MAX below (device count). Hardware-proven nested
+// case is 2 (PCE Mini); 4 is headroom. Overridable per-app (usb2dc lowers it).
 #ifndef CFG_TUH_HUB
-#define CFG_TUH_HUB                 2
+#define CFG_TUH_HUB                 4
 #endif
 #define CFG_TUH_CDC                 0
 #define CFG_TUH_HID                 8   // Max 8 HID interfaces total (2 per device typical)
@@ -143,12 +142,14 @@
 #define CFG_TUH_BTD                 0
 #endif
 
-// max device support (excluding hub device): 1 hub typically has 4 ports.
-// Default scales with hub count, but is overridable so an app that needs deep
-// hub *trees* (usb2pce's PCE Mini hub) without many *devices* can keep arrays
-// small — hub depth and device count are otherwise conflated here.
+// Max NON-hub devices (controllers) the host tracks. This is the expensive
+// knob — every per-device driver array is sized by it — so it's a fixed sane
+// cap, decoupled from hub count (TinyUSB's default 4*CFG_TUH_HUB+1 wrongly
+// inflates it with hub depth). 10 covers the most any console needs (3DO = 8
+// players) plus margin for merge-mode accessibility setups; the 11th pad simply
+// won't enumerate. Overridable per-app (usb2dc lowers it).
 #ifndef CFG_TUH_DEVICE_MAX
-#define CFG_TUH_DEVICE_MAX          (4*CFG_TUH_HUB + 1)
+#define CFG_TUH_DEVICE_MAX          10
 #endif
 
 // Enable endpoint transfer API with callback support (needed for Switch 2 bulk transfers)

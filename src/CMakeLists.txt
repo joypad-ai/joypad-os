@@ -503,12 +503,9 @@ message(STATUS "Board ${PICO_BOARD}: BUTTON_USER_GPIO=${BOARD_BUTTON_GPIO}")
 # --- PCEngine ---
 add_executable(joypad_pce)
 target_compile_definitions(joypad_pce PRIVATE CONFIG_PCE=1)
-# PCEngine multitap = 5 players, but the PCE Mini 5-port hub is 2 cascaded hub
-# chips and may chain another hub, so we need hub TREE DEPTH of 4 (CFG_TUH_HUB=4)
-# even though only ~5 controllers ever attach. Pin CFG_TUH_DEVICE_MAX=6 so the
-# per-device arrays don't balloon (default would be 4*4+1=17): max dev_addr =
-# 6 + 4 = 10, so MAX_DEVICES=11.
-target_compile_definitions(joypad_pce PRIVATE CFG_TUH_HUB=4 CFG_TUH_DEVICE_MAX=6 MAX_DEVICES=11)
+# usb2pce drives the PCE multitap (5 players) reached through cascaded hubs (the
+# PCE Mini 5-port hub is 2 hub chips + an optional chained hub). The global
+# defaults (hub depth 4, device cap 10) cover that, so no per-app override.
 if (PICO_BOARD STREQUAL "pico")
     target_compile_definitions(joypad_pce PRIVATE RPI_PICO_BUILD=1)
 endif()
@@ -671,10 +668,10 @@ add_executable(joypad_dc)
 # (with ICONDATA) each boot.
 target_compile_definitions(joypad_dc PRIVATE CONFIG_DC=1 CONFIG_USB_HOST=1 CONFIG_NO_NEOPIXEL=1 CONFIG_VMU=1 CONFIG_VMU_QSPI=1)
 # Dreamcast = 4 controller ports and the 128KB VMU image leaves little RAM, so
-# right-size this app's arrays (the global defaults — 2 cascaded hubs, 8 players
-# for 3DO/PCE — are untouched). One hub is plenty for 4 ports: CFG_TUH_HUB=1 ->
-# max dev_addr 6 -> MAX_DEVICES 7; router per-output arrays to 4.
-target_compile_definitions(joypad_dc PRIVATE CFG_TUH_HUB=1 MAX_DEVICES=7 MAX_PLAYERS_PER_OUTPUT=4)
+# right-size this app below the global defaults (hub 4, device cap 10): one hub
+# and 5 devices is plenty. CFG_TUH_HUB=1, CFG_TUH_DEVICE_MAX=5 -> max dev_addr 6
+# -> MAX_DEVICES 7; router per-output arrays to 4.
+target_compile_definitions(joypad_dc PRIVATE CFG_TUH_HUB=1 CFG_TUH_DEVICE_MAX=5 MAX_DEVICES=7 MAX_PLAYERS_PER_OUTPUT=4)
 target_sources(joypad_dc PUBLIC ${COMMON_SOURCES}
     ${CMAKE_CURRENT_SOURCE_DIR}/native/device/dreamcast/dreamcast_device.c
     ${CMAKE_CURRENT_SOURCE_DIR}/native/device/dreamcast/maple_state_machine.c
@@ -698,7 +695,8 @@ add_executable(joypad_dc_rp2040zero)
 target_compile_definitions(joypad_dc_rp2040zero PRIVATE
     CONFIG_DC=1 CONFIG_USB_HOST=1 CONFIG_DC_CORE1_TX=1 CONFIG_VMU=1 CONFIG_VMU_QSPI=1 CONFIG_NO_FLASH_LOCKOUT=1
     CFG_TUH_HUB=1              # Dreamcast: 1 hub covers 4 ports (no cascading)
-    MAX_DEVICES=7              # floor for CFG_TUH_HUB=1 (max dev_addr 6)
+    CFG_TUH_DEVICE_MAX=5       # 4 ports + margin (below the global cap of 10)
+    MAX_DEVICES=7              # floor: CFG_TUH_DEVICE_MAX + CFG_TUH_HUB + 1
     MAX_PLAYERS_PER_OUTPUT=4   # Dreamcast = 4 ports; save RAM vs the 8 for 3DO/PCE
     MAPLE_PIN1=14
     MAPLE_PIN5=15

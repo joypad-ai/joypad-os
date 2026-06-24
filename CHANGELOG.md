@@ -33,8 +33,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 ### Fixed
 
 #### USB Host & Hubs
-- **Cascaded multi-port hubs** — restored `CFG_TUH_HUB=2` and support for >3 controllers behind a hub (dev_addr up to 11); `usb2pce` can chain a second hub for the PCE Mini's cascaded-hub topology (`CFG_TUH_HUB=4`) while pinning its device budget small (`CFG_TUH_DEVICE_MAX=6`, `MAX_DEVICES=11`) — only ~5 controllers ever attach, so the per-device arrays don't balloon to the formula's 17/22.
-- **5th-player hang** — `xinput_task` cached LED/rumble in `[4]`-sized arrays but iterates every USB player; a 5th controller wrote out of bounds and hung Core 0. Sized to `MAX_PLAYERS`.
+- **Hub depth decoupled from device count** — TinyUSB ties them via `CFG_TUH_DEVICE_MAX = 4*CFG_TUH_HUB + 1`, so allowing a deeper hub *tree* silently inflated every per-device driver array (asking for 4 hubs implied 17 devices → `MAX_DEVICES=22`). Made `CFG_TUH_DEVICE_MAX` overridable and set sane independent defaults: **hub depth 4** (covers the PCE Mini's 2 cascaded chips + a chained hub) and a fixed **device cap of 10** (3DO's 8 players + margin; an 11th pad just won't enumerate) → `MAX_DEVICES=15`. `usb2pce` now inherits this (its `CFG_TUH_HUB=4 / MAX_DEVICES=22` override removed); `usb2dc` caps tighter (4 ports). Also fixed the **5th-player hang** (`xinput_task` cached LED/rumble in `[4]`-sized arrays but iterates every USB player; a 5th controller wrote out of bounds and hung Core 0 — sized to `MAX_PLAYERS`).
 - **usb2dc RAM overflow** — the 128 KB Dreamcast VMU image left `usb2dc` RAM-starved; right-sized that app's arrays (`CFG_TUH_HUB=1`, `MAX_DEVICES=7`, `MAX_PLAYERS_PER_OUTPUT=4` — Dreamcast is 4 ports, no cascading) without touching the global hub defaults.
 
 #### Output Modes
