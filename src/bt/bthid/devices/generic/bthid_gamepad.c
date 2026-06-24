@@ -370,7 +370,11 @@ void bthid_gamepad_set_descriptor(bthid_device_t* device, const uint8_t* desc, u
 // SDP Device ID query does succeed.
 static bool device_is_m30(const bthid_device_t* device)
 {
-    if (device->name[0] && strstr(device->name, "M30")) {
+    // Require BOTH "8BitDo" and "M30" in the name so unrelated devices that just
+    // happen to contain "M30" (phones, other pads) don't get their real analog
+    // triggers zeroed. The advertised name is "8BitDo M30 gamepad".
+    const char* name = device->name;
+    if (name[0] && strstr(name, "8BitDo") && strstr(name, "M30")) {
         return true;
     }
     return (device->vendor_id == 0x2DC8 &&
