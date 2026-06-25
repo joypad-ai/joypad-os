@@ -667,7 +667,7 @@ add_executable(joypad_dc)
 # an onboard QSPI partition) is a follow-up; vmu_sd.c compiles to a no-op
 # without CONFIG_SD so a fresh card just reverts to the preformat default
 # (with ICONDATA) each boot.
-target_compile_definitions(joypad_dc PRIVATE CONFIG_DC=1 CONFIG_USB_HOST=1 CONFIG_NO_NEOPIXEL=1 CONFIG_VMU=1 CONFIG_VMU_QSPI=1)
+target_compile_definitions(joypad_dc PRIVATE CONFIG_DC=1 CONFIG_USB_HOST=1 CONFIG_NO_NEOPIXEL=1 CONFIG_VMU=1 CONFIG_VMU_QSPI=1 CONFIG_DC_CORE1_TX=1 CONFIG_NO_FLASH_LOCKOUT=1)
 # Dreamcast = 4 controller ports and the 128KB VMU image leaves little RAM, so
 # right-size this app below the global defaults (hub 4, device cap 10): one hub
 # and 5 devices is plenty. CFG_TUH_HUB=1, CFG_TUH_DEVICE_MAX=5 -> max dev_addr 6
