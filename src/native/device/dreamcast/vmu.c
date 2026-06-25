@@ -100,14 +100,36 @@ static uint32_t __not_in_flash_func(CalcCRC)(const uint32_t *w, uint32_t n) {
 // flash, so calling them while Core 0 has XIP disabled for a VMU/settings flash
 // erase stalls Core 1 mid-poll → the DC drops the controller. volatile prevents
 // GCC from folding these loops back into a memcpy/memset call.
+// Word-copy when both ends are 4-aligned (the VMU block copies are), byte-copy
+// the remainder. This runs INSIDE the Core-1 Maple response handler, so it must
+// be fast — a byte-only loop on a 512-byte block (~20us) delayed the response
+// enough that unforgiving games ("A controller error has occurred" on save) saw
+// a missed step.
 static void __not_in_flash_func(vmu_ram_copy)(void *dst, const void *src, uint32_t n) {
-    volatile uint8_t *d = (volatile uint8_t *)dst;
-    const volatile uint8_t *s = (const volatile uint8_t *)src;
-    while (n--) *d++ = *s++;
+    if ((((uintptr_t)dst | (uintptr_t)src) & 3u) == 0) {
+        volatile uint32_t *d = (volatile uint32_t *)dst;
+        const volatile uint32_t *s = (const volatile uint32_t *)src;
+        for (; n >= 4; n -= 4) *d++ = *s++;
+        volatile uint8_t *db = (volatile uint8_t *)d;
+        const volatile uint8_t *sb = (const volatile uint8_t *)s;
+        while (n--) *db++ = *sb++;
+    } else {
+        volatile uint8_t *d = (volatile uint8_t *)dst;
+        const volatile uint8_t *s = (const volatile uint8_t *)src;
+        while (n--) *d++ = *s++;
+    }
 }
 static void __not_in_flash_func(vmu_ram_fill)(void *dst, uint8_t v, uint32_t n) {
-    volatile uint8_t *d = (volatile uint8_t *)dst;
-    while (n--) *d++ = v;
+    if (((uintptr_t)dst & 3u) == 0) {
+        uint32_t w = (uint32_t)v * 0x01010101u;
+        volatile uint32_t *d = (volatile uint32_t *)dst;
+        for (; n >= 4; n -= 4) *d++ = w;
+        volatile uint8_t *db = (volatile uint8_t *)d;
+        while (n--) *db++ = v;
+    } else {
+        volatile uint8_t *d = (volatile uint8_t *)dst;
+        while (n--) *d++ = v;
+    }
 }
 
 void vmu_build_packets(uint8_t port_addr) {
@@ -187,28 +209,10 @@ static void vmu_preformat(void) {
     for (int i = 0; i < 241; i++) fat[i] = 0xFFFC;  // free
     for (int i = 241; i < 256; i++) fat[i] = 0xFFFA;  // system (EOF)
 
-    // --- Default ICONDATA_VMS ----------------------------------------------
-    // Occupies the first two save-area blocks (0, 1) and is described by a
-    // single DATA-type directory entry. The DC BIOS picks it up by filename
-    // ("ICONDATA_VMS") and renders the mono + 16-color icons it contains.
-    // Save data written by games claims free blocks starting from the top
-    // (block 240 down), so reserving the bottom 2 blocks doesn't crowd them.
-    memcpy(&vmu_ram[0 * VMU_BLOCK_SIZE], vmu_default_icondata,
-           VMU_DEFAULT_ICONDATA_SIZE);
-    fat[0] = 0x0001;   // block 0 -> next is block 1
-    fat[1] = 0xFFFA;   // block 1 -> EOF
-
-    // Directory entry 0 lives at the start of block 253. 32 bytes wide.
-    uint8_t *dir = &vmu_ram[DIR_BLOCK * VMU_BLOCK_SIZE];
-    dir[0x00] = 0x33;                              // file type: DATA
-    dir[0x01] = 0x00;                              // copy protection: none
-    dir[0x02] = 0x00; dir[0x03] = 0x00;            // first block (LE16) = 0
-    memcpy(&dir[0x04], "ICONDATA_VMS", 12);        // 12-byte filename
-    memcpy(&dir[0x10], ts, 8);                     // BCD creation timestamp
-    dir[0x18] = 0x02; dir[0x19] = 0x00;            // file size in blocks (LE16) = 2
-    dir[0x1A] = 0x00; dir[0x1B] = 0x00;            // header offset (LE16) = 0
-    dir[0x1C] = 0x00; dir[0x1D] = 0x00;            // reserved
-    dir[0x1E] = 0x00; dir[0x1F] = 0x00;
+    // No default ICONDATA_VMS file: the card is a truly-empty formatted VMU
+    // (blocks 0/1 free, directory empty), exactly like a freshly-formatted real
+    // card. Dropped the Joypad-OS default icon file — a non-standard addition
+    // some games don't expect.
 }
 
 void vmu_init(uint8_t port_addr) {

@@ -338,9 +338,18 @@ static uint32_t __not_in_flash_func(CalcCRC)(const uint32_t *Words, uint32_t Num
 // stall Core 1 mid-poll and drop the controller. volatile blocks GCC from
 // folding this back into a memcpy call.
 static void __not_in_flash_func(dc_ram_copy)(void *dst, const void *src, uint32_t n) {
-    volatile uint8_t *d = (volatile uint8_t *)dst;
-    const volatile uint8_t *s = (const volatile uint8_t *)src;
-    while (n--) *d++ = *s++;
+    if ((((uintptr_t)dst | (uintptr_t)src) & 3u) == 0) {
+        volatile uint32_t *d = (volatile uint32_t *)dst;
+        const volatile uint32_t *s = (const volatile uint32_t *)src;
+        for (; n >= 4; n -= 4) *d++ = *s++;
+        volatile uint8_t *db = (volatile uint8_t *)d;
+        const volatile uint8_t *sb = (const volatile uint8_t *)s;
+        while (n--) *db++ = *sb++;
+    } else {
+        volatile uint8_t *d = (volatile uint8_t *)dst;
+        const volatile uint8_t *s = (const volatile uint8_t *)src;
+        while (n--) *d++ = *s++;
+    }
 }
 
 // ============================================================================
