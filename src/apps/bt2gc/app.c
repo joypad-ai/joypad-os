@@ -1,8 +1,13 @@
 // app.c - BT2GC App Entry Point
-// Bluetooth to GameCube console adapter for Pico W
+// Bluetooth to GameCube console adapter for Pico W, with USB output fallback.
 //
-// Uses Pico W's built-in CYW43 Bluetooth to receive controllers,
-// outputs to GameCube via joybus PIO protocol.
+// Uses Pico W's built-in CYW43 Bluetooth to receive controllers. At boot it
+// probes the joybus data pin: a powered GameCube holds it HIGH -> GameCube
+// output (joybus PIO). No console -> USB device output, which defaults to CDC
+// (web config) but is toggleable to Switch/SInput/XInput/etc. via the usbd
+// mode system (double-click the button), just like bt2usb. The user runs the
+// single adapter on a GameCube or over USB (e.g. Switch) — generally one or
+// the other, selected automatically by what it's plugged into.
 
 #include "app.h"
 #include "profiles.h"
@@ -11,20 +16,27 @@
 #include "core/services/players/feedback.h"
 #include "core/services/profiles/profile.h"
 #include "core/services/button/button.h"
+#include "core/services/storage/flash.h"
 #include "core/input_interface.h"
 #include "core/output_interface.h"
 #include "native/device/gamecube/gamecube_device.h"
+#include "usb/usbd/usbd.h"
 #include "bt/transport/bt_transport.h"
 #include "bt/btstack/btstack_host.h"
 #include "core/services/leds/leds.h"
 
 #include "pico/cyw43_arch.h"
+#include "pico/stdlib.h"
 #include "pico/bootrom.h"
 #include "platform/platform.h"
+#include "tusb.h"
 #include <stdio.h>
 
 extern const bt_transport_t bt_transport_cyw43;
 extern int playersCount;
+
+// true = no GameCube console detected at boot -> USB device output mode.
+static bool g_usb_mode = false;
 
 // ============================================================================
 // LED STATUS
@@ -71,6 +83,19 @@ static void on_button_event(button_event_t event)
             btstack_host_start_timed_scan(60000);
             break;
 
+        case BUTTON_EVENT_DOUBLE_CLICK:
+            // Cycle USB output mode (CDC -> SInput -> Switch -> ...). Only
+            // meaningful in USB mode; on a GameCube the USB device is inactive.
+            if (g_usb_mode) {
+                tud_task_ext(1, false);
+                platform_sleep_ms(50);
+                tud_task_ext(1, false);
+                usb_output_mode_t next = usbd_get_next_mode();
+                printf("[app:bt2gc] USB output mode -> %s\n", usbd_get_mode_name(next));
+                usbd_set_mode(next);
+            }
+            break;
+
         case BUTTON_EVENT_HOLD:
             printf("[app:bt2gc] Disconnecting all devices and clearing bonds...\n");
             btstack_host_disconnect_all_devices();
@@ -112,14 +137,36 @@ const InputInterface** app_get_input_interfaces(uint8_t* count)
 
 extern const OutputInterface gamecube_output_interface;
 
-static const OutputInterface* output_interfaces[] = {
-    &gamecube_output_interface,
-};
+static const OutputInterface* gc_outputs[]  = { &gamecube_output_interface };
+static const OutputInterface* usb_outputs[] = { &usbd_output_interface };
 
 const OutputInterface** app_get_output_interfaces(uint8_t* count)
 {
-    *count = sizeof(output_interfaces) / sizeof(output_interfaces[0]);
-    return output_interfaces;
+    // Console detect via the GC_DATA joybus pin (same approach as wii2gc):
+    // a powered GameCube's pull-up (~1kΩ to 3.3V) holds the line HIGH; our
+    // pull-down (~50kΩ) dominates when no console is present → LOW → USB mode.
+    // Honour a runtime pin override from web config.
+    flash_init();  // idempotent — needed early to read pin override
+    flash_t* settings = flash_get_settings();
+    uint detect_pin = GC_DATA_PIN;
+    if (settings && settings->joybus_data_pin > 0 && settings->joybus_data_pin <= 28) {
+        detect_pin = settings->joybus_data_pin;
+    }
+
+    gpio_init(detect_pin);
+    gpio_set_dir(detect_pin, GPIO_IN);
+    gpio_pull_down(detect_pin);
+    sleep_ms(200);
+
+    if (!gpio_get(detect_pin)) {
+        g_usb_mode = true;
+        *count = sizeof(usb_outputs) / sizeof(usb_outputs[0]);
+        return usb_outputs;
+    }
+
+    g_usb_mode = false;
+    *count = sizeof(gc_outputs) / sizeof(gc_outputs[0]);
+    return gc_outputs;
 }
 
 // ============================================================================
@@ -128,28 +175,43 @@ const OutputInterface** app_get_output_interfaces(uint8_t* count)
 
 void app_init(void)
 {
-    printf("[app:bt2gc] Initializing BT2GC v%s\n", JOYPAD_VERSION);
-    printf("[app:bt2gc] Pico W built-in Bluetooth -> GameCube\n");
+    // Expose GC output for web config (joybus pin settings) in both modes.
+    native_output = &gamecube_output_interface;
+
+    printf("[app:bt2gc] Initializing BT2GC v%s (%s output)\n",
+           JOYPAD_VERSION, g_usb_mode ? "USB" : "GameCube");
 
     // Initialize button service (uses BOOTSEL button on Pico W)
     button_init();
     button_set_callback(on_button_event);
 
-    // Configure router for BT2GC
-    router_config_t router_cfg = {
-        .mode = ROUTING_MODE,
-        .merge_mode = MERGE_MODE,
-        .max_players_per_output = {
-            [OUTPUT_TARGET_GAMECUBE] = GAMECUBE_OUTPUT_PORTS,
-        },
-        .merge_all_inputs = true,
-        .transform_flags = TRANSFORM_FLAGS,
-        .mouse_drain_rate = 8,
-    };
-    router_init(&router_cfg);
-
-    // Add default route: BLE Central -> GameCube
-    router_add_route(INPUT_SOURCE_BLE_CENTRAL, OUTPUT_TARGET_GAMECUBE, 0);
+    if (g_usb_mode) {
+        router_config_t router_cfg = {
+            .mode = ROUTING_MODE,
+            .merge_mode = MERGE_MODE,
+            .max_players_per_output = {
+                [OUTPUT_TARGET_USB_DEVICE] = 1,
+            },
+            .merge_all_inputs = true,
+            .transform_flags = TRANSFORM_FLAGS,
+            .mouse_drain_rate = 8,
+        };
+        router_init(&router_cfg);
+        router_add_route(INPUT_SOURCE_BLE_CENTRAL, OUTPUT_TARGET_USB_DEVICE, 0);
+    } else {
+        router_config_t router_cfg = {
+            .mode = ROUTING_MODE,
+            .merge_mode = MERGE_MODE,
+            .max_players_per_output = {
+                [OUTPUT_TARGET_GAMECUBE] = GAMECUBE_OUTPUT_PORTS,
+            },
+            .merge_all_inputs = true,
+            .transform_flags = TRANSFORM_FLAGS,
+            .mouse_drain_rate = 8,
+        };
+        router_init(&router_cfg);
+        router_add_route(INPUT_SOURCE_BLE_CENTRAL, OUTPUT_TARGET_GAMECUBE, 0);
+    }
 
     // Configure player management
     player_config_t player_cfg = {
@@ -162,19 +224,16 @@ void app_init(void)
     // Initialize profile system with app-defined profiles
     profile_init(&app_profile_config);
 
-    uint8_t profile_count = profile_get_count(OUTPUT_TARGET_GAMECUBE);
-    const char* active_name = profile_get_name(OUTPUT_TARGET_GAMECUBE,
-                                                profile_get_active_index(OUTPUT_TARGET_GAMECUBE));
-
-    // Defer BT init to app_task — it takes ~1s and blocks console detection.
-    // GC output + Core 1 joybus listener must start before BT init so the
-    // console sees us during its boot probe window.
-    printf("[app:bt2gc] BT init deferred (will start after joybus ready)\n");
-    printf("[app:bt2gc]   Routing: Bluetooth -> GameCube (merge)\n");
-    printf("[app:bt2gc]   Player slots: %d\n", MAX_PLAYER_SLOTS);
-    printf("[app:bt2gc]   Profiles: %d (active: %s)\n", profile_count, active_name ? active_name : "none");
-    printf("[app:bt2gc]   Click BOOTSEL for 60s BT scan\n");
-    printf("[app:bt2gc]   Hold BOOTSEL to disconnect all + clear bonds\n");
+    // Defer BT init to app_task — it takes ~1s and would block console
+    // detection / USB enumeration; outputs must start first.
+    if (g_usb_mode) {
+        printf("[app:bt2gc]   No GC console -> USB output, mode: %s (double-click to cycle)\n",
+               usbd_get_mode_name(usbd_get_mode()));
+    } else {
+        printf("[app:bt2gc]   GC console detected -> GameCube output (merge)\n");
+    }
+    printf("[app:bt2gc]   BT init deferred (will start after output ready)\n");
+    printf("[app:bt2gc]   Click BOOTSEL for 60s BT scan; hold to clear bonds\n");
 }
 
 // ============================================================================
@@ -185,13 +244,13 @@ static bool bt_initialized = false;
 
 void app_task(void)
 {
-    // Check for bootloader command on CDC serial ('B' = reboot to bootloader)
+    // Check for bootloader command on UART serial ('B' = reboot to bootloader)
     int c = getchar_timeout_us(0);
     if (c == 'B') {
         reset_usb_boot(0, 0);
     }
 
-    // Deferred BT init: runs once after joybus listener is active on Core 1
+    // Deferred BT init: runs once after the output is active.
     if (!bt_initialized) {
         bt_initialized = true;
         printf("[app:bt2gc] Initializing Bluetooth...\n");
@@ -199,11 +258,23 @@ void app_task(void)
         printf("[app:bt2gc] Bluetooth initialized\n");
     }
 
-    // Forward rumble from GameCube console to BT controllers
-    if (gamecube_output_interface.get_rumble) {
-        uint8_t rumble = gamecube_output_interface.get_rumble();
-        for (int i = 0; i < playersCount; i++) {
-            feedback_set_rumble(i, rumble, rumble);
+    if (g_usb_mode) {
+        // Forward rumble/LED feedback from the USB host to BT controllers.
+        if (usbd_output_interface.get_feedback) {
+            output_feedback_t fb;
+            if (usbd_output_interface.get_feedback(&fb)) {
+                for (int i = 0; i < playersCount; i++) {
+                    feedback_set_rumble(i, fb.rumble_left, fb.rumble_right);
+                }
+            }
+        }
+    } else {
+        // Forward rumble from the GameCube console to BT controllers.
+        if (gamecube_output_interface.get_rumble) {
+            uint8_t rumble = gamecube_output_interface.get_rumble();
+            for (int i = 0; i < playersCount; i++) {
+                feedback_set_rumble(i, rumble, rumble);
+            }
         }
     }
 

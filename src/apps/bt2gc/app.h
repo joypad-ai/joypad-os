@@ -23,8 +23,9 @@
 #define REQUIRE_USB_HOST 0              // No USB host needed
 #define MAX_USB_DEVICES 0
 
-// Output drivers
-#define REQUIRE_USB_DEVICE 0            // No USB device output
+// Output drivers — dual: GameCube (on a console) OR USB device (off-console).
+// Auto-selected at boot by probing the joybus data pin (see app.c).
+#define REQUIRE_USB_DEVICE 1            // USB device output (default CDC, toggleable)
 #define REQUIRE_NATIVE_GAMECUBE_OUTPUT 1
 #define GAMECUBE_OUTPUT_PORTS 1         // Single port
 
