@@ -24,14 +24,19 @@
 
 typedef struct
 {
+    uint8_t prev_buttons;
+    bool data_line_idle_high;
+    bool connected;
+    bool prev_data_line_state;
+    uint64_t state_change_time;
+} port_state_t;
+
+typedef struct
+{
     PIO pio;
     uint sm;
     uint8_t irq_flag;
-    uint8_t prev_buttons;
-    bool data_line_idle_high;   // Sampled before PIO trigger
-    bool connected;
-    bool prev_data_line_state;  // Track state changes to reset timer
-    uint64_t state_change_time; // Timestamp when data line state last changed
+    port_state_t ports[NES_MAX_PORTS];
 } tick_ctx_t;
 
 static tick_ctx_t *s_ctx;
@@ -47,10 +52,11 @@ static bool nes_timer_cb(repeating_timer_t *rt)
 {
     tick_ctx_t *ctx = (tick_ctx_t*)rt->user_data;
 
-    // Sample DATA line BEFORE triggering PIO latch sequence.
-    // A connected NES controller pulls data LOW at idle.
-    // An unconnected pin stays HIGH due to internal pull-up.
-    ctx->data_line_idle_high = gpio_get(NES_PIN_DATA0);
+    // Sample all 4 DATA lines BEFORE triggering PIO latch sequence.
+    ctx->ports[0].data_line_idle_high = gpio_get(NES_PIN_DATA0);
+    ctx->ports[1].data_line_idle_high = gpio_get(NES_PIN_DATA1);
+    ctx->ports[2].data_line_idle_high = gpio_get(NES_PIN_DATA2);
+    ctx->ports[3].data_line_idle_high = gpio_get(NES_PIN_DATA3);
 
     // Force/set PIO IRQ flag N (CPU -> PIO). PIO will see it in `wait 1 irq N`.
     // Write-one-to-set on irq_force.
@@ -73,12 +79,18 @@ static inline void nes_sm_init(PIO pio, uint sm, uint offset)
     pio_sm_config c = nes_host_program_get_default_config(offset);
     sm_config_set_in_pins(&c, NES_PIN_DATA0);
     sm_config_set_sideset_pins(&c, NES_PIN_CLOCK); // side bit 0 → GPIO2 (clock), bit 1 → GPIO3 (latch)
-    sm_config_set_in_shift(&c, true, true, 8);
+    sm_config_set_in_shift(&c, true, true, 32);
 
     pio_gpio_init(pio, NES_PIN_LATCH);
     pio_gpio_init(pio, NES_PIN_CLOCK);
     pio_gpio_init(pio, NES_PIN_DATA0);
+    pio_gpio_init(pio, NES_PIN_DATA1);
+    pio_gpio_init(pio, NES_PIN_DATA2);
+    pio_gpio_init(pio, NES_PIN_DATA3);
     gpio_pull_up(NES_PIN_DATA0);
+    gpio_pull_up(NES_PIN_DATA1);
+    gpio_pull_up(NES_PIN_DATA2);
+    gpio_pull_up(NES_PIN_DATA3);
 
     float div = (float)clock_get_hz(clk_sys) / 1e6f; // 1 MHz instruction rate
     sm_config_set_clkdiv(&c, div);
@@ -86,7 +98,7 @@ static inline void nes_sm_init(PIO pio, uint sm, uint offset)
     pio_sm_init(pio, sm, offset, &c);
     pio_sm_set_consecutive_pindirs(pio, sm, NES_PIN_CLOCK, 1, true);   // CLK out
     pio_sm_set_consecutive_pindirs(pio, sm, NES_PIN_LATCH, 1, true); // LATCH out
-    pio_sm_set_consecutive_pindirs(pio, sm, NES_PIN_DATA0, 1, false); // DATA in
+    pio_sm_set_consecutive_pindirs(pio, sm, NES_PIN_DATA0, 4, false); // DATA0-3 in
 
     // Clean start
     pio_interrupt_clear(pio, 0);
@@ -103,9 +115,18 @@ static void __isr pio0_irq0_handler(void) {
 
     while(!pio_sm_is_rx_fifo_empty(ctx->pio, ctx->sm)) {
         uint32_t word = pio_sm_get(ctx->pio, ctx->sm);
-        uint8_t raw = (word >> 24) & 0xFF;
-        uint8_t buttons = ~raw; // Flip from active low to active high
-        ctx->prev_buttons = buttons;
+        // Each port accumulates its 8 bits across 8 samples.
+        // word contains 8 nibbles; nibble bit p belongs to port p.
+        for (int i = 0; i < 8; i++) {
+            uint8_t nibble = (word >> (28 - i*4)) & 0xF;
+            for (int p = 0; p < NES_MAX_PORTS; p++) {
+                uint8_t bit = (nibble >> p) & 1;
+                ctx->ports[p].prev_buttons = (ctx->ports[p].prev_buttons << 1) | bit;
+            }
+        }
+        for (int p = 0; p < NES_MAX_PORTS; p++) {
+            ctx->ports[p].prev_buttons = ~ctx->ports[p].prev_buttons;
+        }
     }
 }
 
@@ -139,11 +160,13 @@ void nes_host_init(void)
     ctx.pio = pio;
     ctx.sm = sm;
     ctx.irq_flag = 0;
-    ctx.prev_buttons = 0xFF;
-    ctx.data_line_idle_high = true;
-    ctx.connected = false;
-    ctx.prev_data_line_state = true;
-    ctx.state_change_time = time_us_64();
+    for (int i = 0; i < NES_MAX_PORTS; i++) {
+        ctx.ports[i].prev_buttons = 0;
+        ctx.ports[i].data_line_idle_high = true;
+        ctx.ports[i].connected = false;
+        ctx.ports[i].prev_data_line_state = true;
+        ctx.ports[i].state_change_time = time_us_64();
+    }
     enable_fifo_irq(&ctx);
 
     bool ok = add_repeating_timer_us(-(PERIOD_US_INT), nes_timer_cb, &ctx, &nes_timer);
@@ -156,73 +179,69 @@ void nes_host_init(void)
 
 void nes_host_task(void)
 {
-    // Connection detection: check data line state sampled by timer callback.
-    // Use timestamp-based debounce since task() runs much faster than 60Hz.
-    bool line_high = s_ctx->data_line_idle_high;
+    for (int port = 0; port < NES_MAX_PORTS; port++) {
+        port_state_t *ps = &s_ctx->ports[port];
 
-    // Reset timer whenever the data line changes state
-    if (line_high != s_ctx->prev_data_line_state) {
-        s_ctx->prev_data_line_state = line_high;
-        s_ctx->state_change_time = time_us_64();
-    }
+        // Connection detection per port
+        bool line_high = ps->data_line_idle_high;
 
-    uint64_t elapsed = time_us_64() - s_ctx->state_change_time;
+        if (line_high != ps->prev_data_line_state) {
+            ps->prev_data_line_state = line_high;
+            ps->state_change_time = time_us_64();
+        }
 
-    if (line_high && s_ctx->connected && elapsed >= NES_DEBOUNCE_US) {
-        // Data line held HIGH for 500ms — controller disconnected
-        s_ctx->connected = false;
-        printf("[nes_host] Port 0: disconnected\n");
+        uint64_t elapsed = time_us_64() - ps->state_change_time;
 
-        // Send cleared input to prevent stuck buttons
+        if (line_high && ps->connected && elapsed >= NES_DEBOUNCE_US) {
+            ps->connected = false;
+            printf("[nes_host] Port %d: disconnected\n", port);
+
+            input_event_t event;
+            init_input_event(&event);
+            event.dev_addr = 0xF0 + port;
+            event.instance = 0;
+            event.type = INPUT_TYPE_GAMEPAD;
+            event.transport = INPUT_TRANSPORT_NATIVE;
+            event.buttons = 0;
+            event.analog[ANALOG_LX] = 128;
+            event.analog[ANALOG_LY] = 128;
+            event.analog[ANALOG_RX] = 128;
+            event.analog[ANALOG_RY] = 128;
+            router_submit_input(&event);
+        } else if (!line_high && !ps->connected && elapsed >= NES_DEBOUNCE_US) {
+            ps->connected = true;
+            printf("[nes_host] Port %d: connected\n", port);
+        }
+
+        if (!ps->connected) continue;
+
+        uint8_t b = ps->prev_buttons;
+        uint32_t buttons = 0;
+
+        if (b & (1 << NES_BTN_INDEX_B))      buttons |= JP_BUTTON_B1;
+        if (b & (1 << NES_BTN_INDEX_A))      buttons |= JP_BUTTON_B2;
+        if (b & (1 << NES_BTN_INDEX_SELECT)) buttons |= JP_BUTTON_S1;
+        if (b & (1 << NES_BTN_INDEX_START))  buttons |= JP_BUTTON_S2;
+        if (b & (1 << NES_BTN_INDEX_UP))     buttons |= JP_BUTTON_DU;
+        if (b & (1 << NES_BTN_INDEX_DOWN))   buttons |= JP_BUTTON_DD;
+        if (b & (1 << NES_BTN_INDEX_LEFT))   buttons |= JP_BUTTON_DL;
+        if (b & (1 << NES_BTN_INDEX_RIGHT))  buttons |= JP_BUTTON_DR;
+
         input_event_t event;
         init_input_event(&event);
-        event.dev_addr = 0xF0;
+        event.dev_addr = 0xF0 + port;
         event.instance = 0;
         event.type = INPUT_TYPE_GAMEPAD;
         event.transport = INPUT_TRANSPORT_NATIVE;
-        event.buttons = 0;
+        event.layout = LAYOUT_UNKNOWN;
+        event.buttons = buttons;
         event.analog[ANALOG_LX] = 128;
         event.analog[ANALOG_LY] = 128;
         event.analog[ANALOG_RX] = 128;
         event.analog[ANALOG_RY] = 128;
+
         router_submit_input(&event);
-    } else if (!line_high && !s_ctx->connected && elapsed >= NES_DEBOUNCE_US) {
-        // Data line held LOW for 500ms — controller connected
-        s_ctx->connected = true;
-        printf("[nes_host] Port 0: connected\n");
     }
-
-    if (!s_ctx->connected) return;
-
-    uint8_t b = s_ctx->prev_buttons;
-    uint32_t buttons = 0;
-
-    if (b & (1 << NES_BTN_INDEX_B))      buttons |= JP_BUTTON_B1;
-    if (b & (1 << NES_BTN_INDEX_A))      buttons |= JP_BUTTON_B2;
-    if (b & (1 << NES_BTN_INDEX_SELECT)) buttons |= JP_BUTTON_S1;
-    if (b & (1 << NES_BTN_INDEX_START))  buttons |= JP_BUTTON_S2;
-    if (b & (1 << NES_BTN_INDEX_UP))     buttons |= JP_BUTTON_DU;
-    if (b & (1 << NES_BTN_INDEX_DOWN))   buttons |= JP_BUTTON_DD;
-    if (b & (1 << NES_BTN_INDEX_LEFT))   buttons |= JP_BUTTON_DL;
-    if (b & (1 << NES_BTN_INDEX_RIGHT))  buttons |= JP_BUTTON_DR;
-
-    input_event_t event;
-    init_input_event(&event);
-
-    int port = 0;
-
-    event.dev_addr = 0xF0 + port; // port number 
-    event.instance = 0; // Instance number for multi controller devices
-    event.type = INPUT_TYPE_GAMEPAD;
-    event.transport = INPUT_TRANSPORT_NATIVE;
-    event.layout = LAYOUT_UNKNOWN;
-    event.buttons = buttons;
-    event.analog[ANALOG_LX] = 128;
-    event.analog[ANALOG_LY] = 128;
-    event.analog[ANALOG_RX] = 128;
-    event.analog[ANALOG_RY] = 128;
-
-    router_submit_input(&event);
 }
 
 bool nes_host_is_connected(void)
@@ -236,7 +255,12 @@ bool nes_host_is_connected(void)
 // ============================================================================
 
 static uint8_t nes_get_device_count(void) {
-    return (s_ctx && s_ctx->connected) ? 1 : 0;
+    if (!s_ctx) return 0;
+    uint8_t count = 0;
+    for (int i = 0; i < NES_MAX_PORTS; i++) {
+        if (s_ctx->ports[i].connected) count++;
+    }
+    return count;
 }
 
 const InputInterface nes_input_interface = {
