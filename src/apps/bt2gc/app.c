@@ -141,16 +141,18 @@ static const OutputInterface* usb_outputs[] = { &usbd_output_interface };
 
 const OutputInterface** app_get_output_interfaces(uint8_t* count)
 {
-    // Console detect via the dedicated 3.3V sense pin (GC_3V3_PIN): the
-    // GameCube drives its 3.3V rail onto this GPIO. HIGH = console powered →
-    // GameCube output; LOW (held by our pull-down when the rail is absent) =
-    // off-console (USB) → USB device output.
-    gpio_init(GC_3V3_PIN);
-    gpio_set_dir(GC_3V3_PIN, GPIO_IN);
-    gpio_pull_down(GC_3V3_PIN);
-    sleep_ms(10);  // brief settle on the rail
+    // Console detect on the GameCube DATA line (GC_DATA_PIN) — the one pin that
+    // is ALWAYS wired (it's the joybus signal). A powered console holds it HIGH
+    // via its ~1kΩ pull-up to 3.43V; our internal pull-down (~50kΩ) dominates
+    // when no console is present → LOW → USB. We deliberately do NOT use a
+    // dedicated 3.3V sense pin here: existing GameCube-only (2.1.0) hardware was
+    // never wired for one, so sensing it would falsely pick USB on a real GC.
+    gpio_init(GC_DATA_PIN);
+    gpio_set_dir(GC_DATA_PIN, GPIO_IN);
+    gpio_pull_down(GC_DATA_PIN);
+    sleep_ms(200);  // let the line / console power settle
 
-    if (!gpio_get(GC_3V3_PIN)) {
+    if (!gpio_get(GC_DATA_PIN)) {
         g_usb_mode = true;
         *count = sizeof(usb_outputs) / sizeof(usb_outputs[0]);
         return usb_outputs;
