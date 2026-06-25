@@ -16,7 +16,6 @@
 #include "core/services/players/feedback.h"
 #include "core/services/profiles/profile.h"
 #include "core/services/button/button.h"
-#include "core/services/storage/flash.h"
 #include "core/input_interface.h"
 #include "core/output_interface.h"
 #include "native/device/gamecube/gamecube_device.h"
@@ -142,23 +141,16 @@ static const OutputInterface* usb_outputs[] = { &usbd_output_interface };
 
 const OutputInterface** app_get_output_interfaces(uint8_t* count)
 {
-    // Console detect via the GC_DATA joybus pin (same approach as wii2gc):
-    // a powered GameCube's pull-up (~1kΩ to 3.3V) holds the line HIGH; our
-    // pull-down (~50kΩ) dominates when no console is present → LOW → USB mode.
-    // Honour a runtime pin override from web config.
-    flash_init();  // idempotent — needed early to read pin override
-    flash_t* settings = flash_get_settings();
-    uint detect_pin = GC_DATA_PIN;
-    if (settings && settings->joybus_data_pin > 0 && settings->joybus_data_pin <= 28) {
-        detect_pin = settings->joybus_data_pin;
-    }
+    // Console detect via the dedicated 3.3V sense pin (GC_3V3_PIN): the
+    // GameCube drives its 3.3V rail onto this GPIO. HIGH = console powered →
+    // GameCube output; LOW (held by our pull-down when the rail is absent) =
+    // off-console (USB) → USB device output.
+    gpio_init(GC_3V3_PIN);
+    gpio_set_dir(GC_3V3_PIN, GPIO_IN);
+    gpio_pull_down(GC_3V3_PIN);
+    sleep_ms(10);  // brief settle on the rail
 
-    gpio_init(detect_pin);
-    gpio_set_dir(detect_pin, GPIO_IN);
-    gpio_pull_down(detect_pin);
-    sleep_ms(200);
-
-    if (!gpio_get(detect_pin)) {
+    if (!gpio_get(GC_3V3_PIN)) {
         g_usb_mode = true;
         *count = sizeof(usb_outputs) / sizeof(usb_outputs[0]);
         return usb_outputs;
