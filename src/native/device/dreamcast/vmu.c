@@ -96,6 +96,20 @@ static uint32_t __not_in_flash_func(CalcCRC)(const uint32_t *w, uint32_t n) {
     uint32_t x=0; for(uint32_t i=0;i<n;i++) x^=w[i]; x^=(x<<16); x^=(x<<8); return x;
 }
 
+// RAM-resident copy/fill for the Core-1 Maple path. libc memcpy/memset live in
+// flash, so calling them while Core 0 has XIP disabled for a VMU/settings flash
+// erase stalls Core 1 mid-poll → the DC drops the controller. volatile prevents
+// GCC from folding these loops back into a memcpy/memset call.
+static void __not_in_flash_func(vmu_ram_copy)(void *dst, const void *src, uint32_t n) {
+    volatile uint8_t *d = (volatile uint8_t *)dst;
+    const volatile uint8_t *s = (const volatile uint8_t *)src;
+    while (n--) *d++ = *s++;
+}
+static void __not_in_flash_func(vmu_ram_fill)(void *dst, uint8_t v, uint32_t n) {
+    volatile uint8_t *d = (volatile uint8_t *)dst;
+    while (n--) *d++ = v;
+}
+
 void vmu_build_packets(uint8_t port_addr) {
     vmu_port_addr = port_addr;
     { VmuInfoPkt *p=&vmu_info_pkt;
@@ -235,7 +249,7 @@ const void* __not_in_flash_func(vmu_handle_block_read)(const uint32_t *pkt, uint
     if (block >= VMU_TOTAL_BLOCKS) block = 0;
     VmuBlockReadPkt *p = &vmu_block_read_pkt;
     p->Address = block;
-    memcpy(p->Data, vmu_ram + (uint32_t)block * VMU_BLOCK_SIZE, VMU_BLOCK_SIZE);
+    vmu_ram_copy(p->Data, vmu_ram + (uint32_t)block * VMU_BLOCK_SIZE, VMU_BLOCK_SIZE);
     p->BitPairsMinus1 = (sizeof(*p)-7)*4-1;
     p->NumWords = (sizeof(*p)-sizeof(p->BitPairsMinus1)-sizeof(p->CRC)-sizeof(uint32_t))/sizeof(uint32_t);
     p->CRC = CalcCRC((uint32_t*)&p->Command,(sizeof(*p)-sizeof(p->BitPairsMinus1)-sizeof(p->CRC))/sizeof(uint32_t));
@@ -248,18 +262,18 @@ void __not_in_flash_func(vmu_handle_block_write)(const uint32_t *pkt, uint32_t n
     uint16_t block = (uint16_t)((pkt[1] >> 24) & 0xFF);
     uint8_t  phase = (uint8_t) ((pkt[1] >>  8) & 0xFF);
     if (block >= VMU_TOTAL_BLOCKS || phase >= VMU_PHASE_COUNT_WRITE) return;
-    if (block != write_block) { write_block=block; write_phases=0; memset(write_buf,0,VMU_BLOCK_SIZE); }
+    if (block != write_block) { write_block=block; write_phases=0; vmu_ram_fill(write_buf,0,VMU_BLOCK_SIZE); }
     uint32_t phase_off = (uint32_t)phase * VMU_WRITE_PHASE_SIZE;
     uint32_t data_bytes = (num_words-2)*4;
     if (data_bytes > VMU_WRITE_PHASE_SIZE) data_bytes = VMU_WRITE_PHASE_SIZE;
-    memcpy(write_buf + phase_off, &pkt[2], data_bytes);
+    vmu_ram_copy(write_buf + phase_off, &pkt[2], data_bytes);
     write_phases |= (1u << phase);
     vmu_status = VMU_STATUS_SAVING;
 }
 
 void __not_in_flash_func(vmu_handle_write_complete)(void) {
     if (write_block == 0xFFFF || write_phases == 0) return;
-    memcpy(vmu_ram + (uint32_t)write_block * VMU_BLOCK_SIZE, write_buf, VMU_BLOCK_SIZE);
+    vmu_ram_copy(vmu_ram + (uint32_t)write_block * VMU_BLOCK_SIZE, write_buf, VMU_BLOCK_SIZE);
     write_block = 0xFFFF;
     write_phases = 0;
     vmu_status = VMU_STATUS_OK;

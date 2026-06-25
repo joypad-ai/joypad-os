@@ -333,6 +333,16 @@ static uint32_t __not_in_flash_func(CalcCRC)(const uint32_t *Words, uint32_t Num
     return XOR;
 }
 
+// RAM-resident copy for the Core-1 Maple path — libc memcpy is in flash, so
+// calling it while Core 0 has XIP disabled for a VMU/settings flash erase would
+// stall Core 1 mid-poll and drop the controller. volatile blocks GCC from
+// folding this back into a memcpy call.
+static void __not_in_flash_func(dc_ram_copy)(void *dst, const void *src, uint32_t n) {
+    volatile uint8_t *d = (volatile uint8_t *)dst;
+    const volatile uint8_t *s = (const volatile uint8_t *)src;
+    while (n--) *d++ = *s++;
+}
+
 // ============================================================================
 // PACKET BUILDERS
 // ============================================================================
@@ -788,7 +798,10 @@ static bool __not_in_flash_func(ConsumePacket)(uint32_t Size)
                     bool rumble_on = (purupuru_ctrl[0] & 0x10) &&
                                      (purupuru_freq[0] >= 0x07) &&
                                      (purupuru_freq[0] <= 0x3B);
-                    last_rumble_time[0] = rumble_on ? (time_us_32() / 1000) : 0;
+                    // timer_hw->timerawl is a direct register read (RAM-safe);
+                    // time_us_32() lives in flash and would stall Core 1 if a
+                    // rumble cmd lands during a flash erase.
+                    last_rumble_time[0] = rumble_on ? (timer_hw->timerawl / 1000) : 0;
                     ACKPacket.Header.Origin = ADDRESS_SUBPERIPHERAL1;
                     ACKPacket.CRC = CalcCRC((uint32_t *)&ACKPacket.Header, sizeof(ACKPacket) / sizeof(uint32_t) - 2);
                     NextPacketSend = SEND_ACK;
@@ -807,7 +820,7 @@ static bool __not_in_flash_func(ConsumePacket)(uint32_t Size)
                 uint8_t bytes_to_copy = (Header->NumWords - 2) * 4;
                 if (bytes_to_copy > sizeof(purupuru_ast))
                     bytes_to_copy = sizeof(purupuru_ast);
-                memcpy(purupuru_ast, WriteData, bytes_to_copy);
+                dc_ram_copy(purupuru_ast, WriteData, bytes_to_copy);
             }
             ACKPacket.Header.Origin = ADDRESS_SUBPERIPHERAL1;
             ACKPacket.CRC = CalcCRC((uint32_t *)&ACKPacket.Header, sizeof(ACKPacket) / sizeof(uint32_t) - 2);
