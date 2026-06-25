@@ -660,25 +660,15 @@ pico_generate_pio_header(joypad_loopy ${CMAKE_CURRENT_LIST_DIR}/native/device/lo
 add_executable(joypad_dc)
 # WORKAROUND: KB2040 + Core-1 TX hits an enumeration-dropoff bug we haven't
 # root-caused (works fine on RP2040 Zero where gill validated the PR).
-# usb2dc architecture — IDENTICAL across every board target; only board GPIO and
-# peripherals (Maple pins, NeoPixel, SD, button) differ per target. Keep it in
-# ONE place so board targets can never silently diverge — a kb2040-vs-rp2040zero
-# drift on CONFIG_DC_CORE1_TX / CONFIG_NO_FLASH_LOCKOUT was the root cause of the
-# Maple-drops-on-VMU-save bug.
-#   - DC output runs RX+TX on the free Core 1 (USB host lives on Core 0); the
-#     whole Core-1 path is RAM-resident, so flash writes need no multicore
-#     lockout (which would freeze Maple → drop the controller).
-#   - VMU enabled, persisted to a QSPI partition.
-#   - Dreamcast = 4 ports and the 128KB VMU image is RAM-tight, so the USB host
-#     arrays are right-sized below the global hub/device caps (hub 1, 5 devices).
-set(USB2DC_CORE_DEFS
-    CONFIG_DC=1 CONFIG_USB_HOST=1
-    CONFIG_VMU=1 CONFIG_VMU_QSPI=1
-    CONFIG_DC_CORE1_TX=1 CONFIG_NO_FLASH_LOCKOUT=1
-    CFG_TUH_HUB=1 CFG_TUH_DEVICE_MAX=5 MAX_DEVICES=7 MAX_PLAYERS_PER_OUTPUT=4
-)
+# usb2dc ARCHITECTURE lives in apps/usb2dc/usb2dc_config.h and is force-included
+# into every translation unit of these targets, so the shared Dreamcast device
+# code sees it too (not just app.c). Board targets below carry ONLY GPIO /
+# peripherals — never architecture flags — so they can't drift (a kb2040 drift
+# off CONFIG_DC_CORE1_TX was the root cause of the Maple-drops-on-VMU-save bug).
+set(USB2DC_FORCE_CONFIG "SHELL:-include ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2dc/usb2dc_config.h")
 # kb2040: default Maple pins (GP2/GP3), no NeoPixel.
-target_compile_definitions(joypad_dc PRIVATE ${USB2DC_CORE_DEFS} CONFIG_NO_NEOPIXEL=1)
+target_compile_definitions(joypad_dc PRIVATE CONFIG_NO_NEOPIXEL=1)
+target_compile_options(joypad_dc PRIVATE ${USB2DC_FORCE_CONFIG})
 target_sources(joypad_dc PUBLIC ${COMMON_SOURCES}
     ${CMAKE_CURRENT_SOURCE_DIR}/native/device/dreamcast/dreamcast_device.c
     ${CMAKE_CURRENT_SOURCE_DIR}/native/device/dreamcast/maple_state_machine.c
@@ -700,14 +690,14 @@ pico_generate_pio_header(joypad_dc ${CMAKE_CURRENT_LIST_DIR}/native/device/dream
 # USB4Maple-compatible pinout: GPIO 14/15 for Maple Bus
 add_executable(joypad_dc_rp2040zero)
 target_compile_definitions(joypad_dc_rp2040zero PRIVATE
-    ${USB2DC_CORE_DEFS}        # shared usb2dc architecture (defined above joypad_dc)
-    # --- board GPIO / peripherals: the ONLY things that differ per target ---
+    # board GPIO / peripherals only — architecture is force-included below
     MAPLE_PIN1=14 MAPLE_PIN5=15   # USB4Maple-compatible Maple Bus pins
     WS2812_PIN=16                 # onboard NeoPixel (kb2040 has none)
     USE_BOOTSEL_BUTTON=1
     # SD card on SPI1: SCK=GP10, MOSI=GP11, MISO=GP12, CS=GP13
     CONFIG_SD=1 SD_SPI_INST=1 SD_SCK_PIN=10 SD_MOSI_PIN=11 SD_MISO_PIN=12 SD_CS_PIN=13
 )
+target_compile_options(joypad_dc_rp2040zero PRIVATE ${USB2DC_FORCE_CONFIG})
 target_sources(joypad_dc_rp2040zero PUBLIC ${COMMON_SOURCES} ${SD_SOURCES}
     ${CMAKE_CURRENT_SOURCE_DIR}/native/device/dreamcast/dreamcast_device.c
     ${CMAKE_CURRENT_SOURCE_DIR}/native/device/dreamcast/maple_state_machine.c
