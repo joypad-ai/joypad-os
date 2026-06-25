@@ -28,26 +28,7 @@ typedef struct TU_ATTR_PACKED
   uint8_t buttonCnt;
   uint8_t type;
   bool xbox_axes;  // Xbox HID convention: Rx/Ry=right stick, Z=triggers
-  const uint32_t* button_map;  // per-device HID-index -> JP_BUTTON override (NULL = generic remap)
 } dinput_instance_t;
-
-// Direct HID-button-index -> JP_BUTTON map for devices whose button order the
-// generic DInput reshuffle gets wrong. Index i = HID button (i+1).
-// ELO Vagabond V1 (VID 0483/PID A4DB): A,B,R4,X,Y,L4,L1,R1,L2,R2,Select,Start.
-static const uint32_t ELO_VAGABOND_BUTTON_MAP[MAX_BUTTONS] = {
-  JP_BUTTON_B1,  //  1  A
-  JP_BUTTON_B2,  //  2  B
-  JP_BUTTON_R4,  //  3  R4 (back paddle)
-  JP_BUTTON_B3,  //  4  X
-  JP_BUTTON_B4,  //  5  Y
-  JP_BUTTON_L4,  //  6  L4 (back paddle)
-  JP_BUTTON_L1,  //  7  L1
-  JP_BUTTON_R1,  //  8  R1
-  JP_BUTTON_L2,  //  9  L2 (digital; analog also arrives via Sim-Controls Brake)
-  JP_BUTTON_R2,  // 10  R2 (digital; analog also arrives via Sim-Controls Accelerator)
-  JP_BUTTON_S1,  // 11  Select (three dots)
-  JP_BUTTON_S2,  // 12  Start (three lines)
-};
 
 // Cached device report properties on mount
 typedef struct TU_ATTR_PACKED
@@ -301,15 +282,6 @@ bool parse_hid_gamepad(uint8_t dev_addr, uint8_t instance, uint8_t const* desc_r
   if(ret == HID_PARSE_Successful)
   {
     parse_descriptor(dev_addr, instance);
-
-    // ELO Vagabond V1's button order doesn't match the generic DInput reshuffle,
-    // so use a direct button map. VID 0483/PID A4DB is ELO-specific (0483 alone
-    // is STMicro's shared VID, so match BOTH).
-    uint16_t vid = 0, pid = 0;
-    tuh_vid_pid_get(dev_addr, &vid, &pid);
-    if (vid == 0x0483 && pid == 0xA4DB) {
-      hid_devices[dev_addr].instances[instance].button_map = ELO_VAGABOND_BUTTON_MAP;
-    }
   }
   else
   {
@@ -444,17 +416,7 @@ void process_hid_gamepad(uint8_t dev_addr, uint8_t instance, uint8_t const* repo
       TU_LOG1("\n");
     }
 
-    if (inst->button_map) {
-      // Direct per-device map (HID button index -> JP_BUTTON), bypassing the
-      // generic reshuffle for pads whose button order it gets wrong.
-      buttons = ((current.up)    ? JP_BUTTON_DU : 0) |
-                ((current.down)  ? JP_BUTTON_DD : 0) |
-                ((current.left)  ? JP_BUTTON_DL : 0) |
-                ((current.right) ? JP_BUTTON_DR : 0);
-      for (int i = 0; i < MAX_BUTTONS; i++) {
-        if (current.all_buttons & (0x01u << i)) buttons |= inst->button_map[i];
-      }
-    } else if (inst->xbox_axes) {
+    if (inst->xbox_axes) {
       // Xbox HID: buttons in W3C order (A,B,X,Y,LB,RB,Back,Start,LS,RS,Guide)
       buttons = ((current.up)       ? JP_BUTTON_DU : 0) |
                 ((current.down)     ? JP_BUTTON_DD : 0) |
