@@ -63,23 +63,19 @@ static void qspi_flush(void) {
     for (uint32_t off = 0; off < VMU_IMAGE_SIZE; off += FLASH_SECTOR_SIZE) {
         if (memcmp(vmu_ram + off, xip + off, FLASH_SECTOR_SIZE) == 0) continue;
 #ifdef CONFIG_NO_FLASH_LOCKOUT
-        // Pause Maple TX, wait for current packet to finish, erase+program,
-        // then resume. The DC tolerates one missed 16.7ms frame gracefully.
+        // Erase+program with only Core 0's IRQs disabled — do NOT pause Maple TX.
+        // The whole Core 1 response path is RAM-resident: code is
+        // __not_in_flash_func, controller state (dc_state) and the VMU image
+        // (vmu_ram) + response packets (vmu_*_pkt, built at runtime in vmu_init)
+        // all live in RAM, and TX is DMA-from-RAM. XIP-disable during the erase
+        // only stalls *flash* reads, which Core 1 never does — so it keeps
+        // answering DC polls straight through the ~tens-of-ms erase and the
+        // controller never drops. (Pausing TX here was what dropped it on save.)
         {
-            // vmu_dirty_flag is still set during flush — Core 0 LED blink handles this
-            // Pause Core 1 TX and wait for any in-flight packet to complete
-            dreamcast_set_maple_pause(true);
-            uint32_t before = dreamcast_rx_count();
-            uint32_t timeout = time_us_32() + 20000;  // 20ms max wait
-            while (dreamcast_rx_count() == before && time_us_32() < timeout) {
-                tight_loop_contents();
-            }
-            // Now erase+program with IRQ disabled
             uint32_t ints = save_and_disable_interrupts();
             flash_range_erase(VMU_QSPI_OFFSET + off, FLASH_SECTOR_SIZE);
             flash_range_program(VMU_QSPI_OFFSET + off, vmu_ram + off, FLASH_SECTOR_SIZE);
             restore_interrupts(ints);
-            dreamcast_set_maple_pause(false);
         }
 #else
         qspi_sector_t s = { VMU_QSPI_OFFSET + off, vmu_ram + off };
