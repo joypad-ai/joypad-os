@@ -60,12 +60,28 @@ static bool __no_inline_not_in_flash_func(read_bootsel_button)(void) {
 // reserved[1] = DPI divider for Amiga
 // reserved[2] = DPI divider for C64
 // reserved[3] = DPI divider for Atari ST
+// reserved[4] = firmware version CRC8 (of build timestamp)
+//               Mismatch on boot → wipe settings → prevents stale flash after update
 // ============================================================================
 
 #define FLASH_PLATFORM_IDX  0
 #define FLASH_DPI_AMIGA_IDX 1
 #define FLASH_DPI_C64_IDX   2
 #define FLASH_DPI_ATST_IDX  3
+#define FLASH_VERSION_IDX   4
+
+// CRC8 of build timestamp — changes automatically with every new firmware build
+// Stored in flash on first boot; mismatch wipes settings clean
+static uint8_t firmware_version_crc(void) {
+    const char* s = __DATE__ __TIME__;
+    uint8_t crc = 0xFF;
+    while (*s) {
+        crc ^= (uint8_t)*s++;
+        for (int i = 0; i < 8; i++)
+            crc = (crc & 0x80) ? (crc << 1) ^ 0x07 : (crc << 1);
+    }
+    return crc;
+}
 
 // ============================================================================
 // QUADRATURE TABLE
@@ -154,9 +170,21 @@ static bool turbo_timer_cb(repeating_timer_t *rt);  // forward declaration
 // FLASH HELPERS
 // ============================================================================
 
+// Forward declaration — save_settings is defined after load_settings
+static void save_settings(void);
+
 static void load_settings(void) {
     flash_t* s = flash_get_settings();
     if (!s) return;
+
+    // Check firmware version — wipe settings if mismatch (new firmware installed)
+    uint8_t expected_crc = firmware_version_crc();
+    if (s->reserved[FLASH_VERSION_IDX] != expected_crc) {
+        printf("[amiga] New firmware detected (crc 0x%02X→0x%02X) — resetting settings\n",
+               s->reserved[FLASH_VERSION_IDX], expected_crc);
+        save_settings();  // writes defaults + new version CRC
+        return;
+    }
 
     uint8_t p = s->reserved[FLASH_PLATFORM_IDX];
     if (p < AMIGA_PLATFORM_COUNT) current_platform = (amiga_platform_t)p;
@@ -187,8 +215,9 @@ static void save_settings(void) {
     s->reserved[FLASH_DPI_AMIGA_IDX] = dpi[AMIGA_PLATFORM_AMIGA];
     s->reserved[FLASH_DPI_C64_IDX]   = dpi[AMIGA_PLATFORM_C64];
     s->reserved[FLASH_DPI_ATST_IDX]  = dpi[AMIGA_PLATFORM_ATARI_ST];
+    s->reserved[FLASH_VERSION_IDX]   = firmware_version_crc();
 
-    flash_save(s);
+    flash_save_now(s);
     printf("[amiga] Saved — platform=%d dpi=%d/%d/%d\n",
            current_platform, dpi[0], dpi[1], dpi[2]);
 }
