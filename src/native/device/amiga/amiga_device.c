@@ -156,9 +156,11 @@ static int c1351_alarm_y = -1;
 #define STICK_DEADZONE      80
 
 static uint32_t turbo_mask        = 0;
+static bool     jump_profile      = false;  // B2 → UP (not saved to flash)
 static bool     turbo_state       = false;
 static uint32_t turbo_blink_ms    = 0;
 static uint8_t  turbo_blink_count = 0;
+static bool     profile_blink     = false;  // one-shot blink for profile toggle
 static repeating_timer_t turbo_timer;
 static bool turbo_timer_running   = false;
 static bool turbo_timer_cb(repeating_timer_t *rt);  // forward declaration
@@ -502,6 +504,7 @@ static void __not_in_flash_func(amiga_tap_callback)(output_target_t output,
         device_connected = false;
         mouse_active = false;
         gamepad_seen = false;
+        jump_profile = false;
         dpi_accum_x = 0;
         dpi_accum_y = 0;
         dpi_adjust_mode = false;
@@ -640,13 +643,24 @@ static void __not_in_flash_func(amiga_tap_callback)(output_target_t output,
         uint32_t physical_buttons = buttons;
 
         // Select + face button = turbo toggle
+        // Select + L1 or R1 = toggle Up-as-Jump profile (B2 → UP)
         static bool select_was_held = false;
         static uint32_t select_combo_handled = 0;
         if (buttons & JP_BUTTON_S1) {
+            // Jump profile toggle — Select + L1 or R1
+            if ((buttons & (JP_BUTTON_L1 | JP_BUTTON_R1)) &&
+                    !(select_combo_handled & (JP_BUTTON_L1 | JP_BUTTON_R1))) {
+                jump_profile = !jump_profile;
+                if (jump_profile) turbo_mask &= ~JP_BUTTON_B2;
+                select_combo_handled |= JP_BUTTON_L1 | JP_BUTTON_R1;
+                profile_blink = true;
+            }
             const uint32_t turbo_buttons[] = { JP_BUTTON_B1, JP_BUTTON_B2, JP_BUTTON_B3, JP_BUTTON_B4 };
             int max_turbo = (current_platform == AMIGA_PLATFORM_AMIGA) ? 4 : 1;
             for (int i = 0; i < max_turbo; i++) {
                 uint32_t b = turbo_buttons[i];
+                // Block turbo on B2 when jump profile is active
+                if (b == JP_BUTTON_B2 && jump_profile) continue;
                 if ((buttons & b) && !(select_combo_handled & b)) {
                     turbo_mask ^= b;
                     select_combo_handled |= b;
@@ -688,6 +702,10 @@ static void __not_in_flash_func(amiga_tap_callback)(output_target_t output,
         }
 
         amiga_state.buttons = physical_buttons;
+
+        // Jump profile: remap B2 → UP direction before set_dpad
+        if (jump_profile && (buttons & JP_BUTTON_B2)) buttons |= JP_BUTTON_DU;
+
         set_dpad(buttons);
 
         // Build CD32 byte — turbo buttons handled by timer callback
@@ -705,8 +723,8 @@ static void __not_in_flash_func(amiga_tap_callback)(output_target_t output,
                 if (buttons & JP_BUTTON_B1) pin_press(AMIGA_PIN_CLK);
                 else                        pin_release(AMIGA_PIN_CLK);
             }
-            // Fire2 — Amiga only, skip if turbo active
-            if (current_platform == AMIGA_PLATFORM_AMIGA) {
+            // Fire2 — Amiga only, skip if turbo active or jump profile active
+            if (current_platform == AMIGA_PLATFORM_AMIGA && !jump_profile) {
                 if (!(turbo_mask & JP_BUTTON_B2)) {
                     if (buttons & JP_BUTTON_B2) pin_press(AMIGA_PIN_DATA);
                     else                        pin_release(AMIGA_PIN_DATA);
@@ -877,6 +895,28 @@ void amiga_device_task(void) {
                 turbo_blink_count--;
                 if (turbo_blink_count % 2 == 1) leds_set_color(0, 0, 0);
                 else                             update_led();
+            }
+        }
+    }
+
+    // Profile toggle — single blink to confirm
+    if (profile_blink && !dpi_adjust_mode) {
+        static uint8_t  pblink_count = 0;
+        static uint32_t pblink_last  = 0;
+        if (pblink_count == 0) {
+            pblink_count = 2;  // 1 blink = off then on
+            pblink_last  = to_ms_since_boot(get_absolute_time());
+            leds_set_color(0, 0, 0);
+        }
+        uint32_t now = to_ms_since_boot(get_absolute_time());
+        if (pblink_count > 0 && (now - pblink_last) >= 80) {
+            pblink_last = now;
+            pblink_count--;
+            if (pblink_count == 0) {
+                profile_blink = false;
+                update_led();
+            } else {
+                leds_set_color(0, 0, 0);
             }
         }
     }
