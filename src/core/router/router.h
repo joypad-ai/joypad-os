@@ -160,6 +160,11 @@ void router_set_dpad_mode(uint8_t mode);
 // Set global shoulder swap (L1<->L2, R1<->R2) applied to all inputs.
 void router_set_shoulder_swap(bool on);
 
+// Set the global analog-stick deadzone (0-127, radius around center; 0=off).
+// Radial + scaled, applied to both sticks above profiles. Runtime-only — use
+// flash_set_deadzone() to persist across reboot.
+void router_set_deadzone(uint8_t dz);
+
 // Set button combo hotkeys (up to ROUTER_COMBO_MAX)
 // input_mask: buttons that must all be held (0 = disabled)
 // output_mask: upper byte = action, lower 22 bits = output buttons

@@ -80,7 +80,7 @@ static const pad_device_config_t pad_config_fisherprice_v1 = {
     .invert_ly = false,
     .invert_rx = false,
     .invert_ry = false,
-    .deadzone = 10,
+    .deadzone = 0,  // use the global router deadzone (ROUTER.DEADZONE.SET)
 
     // NeoPixel on GPIO 17
     .led_pin = 17,
@@ -168,7 +168,7 @@ static const pad_device_config_t pad_config_fisherprice_v2 = {
     .invert_ly = true,
     .invert_rx = false,
     .invert_ry = false,
-    .deadzone = 10,
+    .deadzone = 0,  // use the global router deadzone (ROUTER.DEADZONE.SET)
 
     // NeoPixel on GPIO 17
     .led_pin = 17,

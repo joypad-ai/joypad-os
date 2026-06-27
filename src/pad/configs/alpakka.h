@@ -99,7 +99,7 @@ static const pad_device_config_t pad_config_alpakka = {
     .invert_ly = false,
     .invert_rx = false,
     .invert_ry = false,
-    .deadzone = 10,
+    .deadzone = 0,  // use the global router deadzone (ROUTER.DEADZONE.SET)
 
     // No NeoPixel on standard Alpakka (uses OLED + LEDs on GPIO 2-5)
     .led_pin = PAD_PIN_DISABLED,

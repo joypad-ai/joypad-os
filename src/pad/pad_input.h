@@ -261,7 +261,7 @@ extern const InputInterface pad_input_interface;
     .invert_ly = false, \
     .invert_rx = false, \
     .invert_ry = false, \
-    .deadzone = 10, \
+    .deadzone = 0, /* prefer the global router deadzone (ROUTER.DEADZONE.SET) as the single user knob */ \
     .led_pin = 0, /* 0 = use board default, >0 = override, <0 = explicit disable */ \
     .led_count = 0, \
     .speaker_pin = PAD_PIN_DISABLED, \

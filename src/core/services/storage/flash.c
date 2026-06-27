@@ -560,6 +560,26 @@ void flash_set_shoulder_swap(uint8_t on)
     flash_save(&runtime_settings);
 }
 
+// Persist the global analog-stick deadzone (0-127). Idempotent.
+void flash_set_deadzone(uint8_t dz)
+{
+    if (dz > 127) dz = 127;
+    if (!runtime_settings_loaded) {
+        flash_t tmp;
+        if (!flash_load(&tmp)) memset(&tmp, 0, sizeof(tmp));
+        tmp.deadzone = dz;
+        tmp.router_saved = 1;
+        flash_save(&tmp);
+        return;
+    }
+    if (runtime_settings.deadzone == dz && runtime_settings.router_saved) {
+        return;
+    }
+    runtime_settings.deadzone = dz;
+    runtime_settings.router_saved = 1;
+    flash_save(&runtime_settings);
+}
+
 // Set active custom profile index (saves to flash with debouncing).
 // Persistent — clears any ephemeral override (APPLY + SELECT) so the
 // persisted value is what the device boots to.

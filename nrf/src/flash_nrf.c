@@ -293,6 +293,19 @@ void flash_set_shoulder_swap(uint8_t on)
     flash_save(&runtime_settings);
 }
 
+// Global analog-stick deadzone persistence — referenced by core/router
+// compiled into the nRF build too. Mirrors the RP2040 flash_set_deadzone
+// contract.
+void flash_set_deadzone(uint8_t dz)
+{
+    if (dz > 127) dz = 127;
+    if (!runtime_settings_loaded) return;
+    if (runtime_settings.deadzone == dz && runtime_settings.router_saved) return;
+    runtime_settings.deadzone = dz;
+    runtime_settings.router_saved = 1;
+    flash_save(&runtime_settings);
+}
+
 // ----------------------------------------------------------------------------
 // RAM-only ephemeral state for joypad-live (PROFILE.SELECT, PROFILE.APPLY,
 // OVERLAY.SET) — mirrors src/core/services/storage/flash.c. No NVS writes,
