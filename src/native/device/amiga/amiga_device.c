@@ -421,7 +421,7 @@ static void __not_in_flash_func(amiga_gpio_irq)(uint gpio, uint32_t events) {
 
             } else if (amiga_state.mode == AMIGA_MODE_JOYSTICK &&
                 current_platform == AMIGA_PLATFORM_AMIGA &&
-                !mouse_active) {
+                !mouse_active && !jump_profile) {
                 // CD32 mode entry
                 amiga_state.mode = AMIGA_MODE_CD32;
                 cd32_transfer_active = true;
@@ -651,7 +651,17 @@ static void __not_in_flash_func(amiga_tap_callback)(output_target_t output,
             if ((buttons & (JP_BUTTON_L1 | JP_BUTTON_R1)) &&
                     !(select_combo_handled & (JP_BUTTON_L1 | JP_BUTTON_R1))) {
                 jump_profile = !jump_profile;
-                if (jump_profile) turbo_mask &= ~JP_BUTTON_B2;
+                if (jump_profile) {
+                    turbo_mask &= ~JP_BUTTON_B2;
+                    // Exit CD32 mode if active — jump profile is 1-button only
+                    if (amiga_state.mode == AMIGA_MODE_CD32) {
+                        amiga_state.mode = AMIGA_MODE_JOYSTICK;
+                        cd32_detected = false;
+                        gpio_set_irq_enabled(AMIGA_PIN_CLK, GPIO_IRQ_EDGE_RISE, false);
+                        gpio_set_dir(AMIGA_PIN_CLK, GPIO_OUT);
+                        pin_release(AMIGA_PIN_CLK);
+                    }
+                }
                 select_combo_handled |= JP_BUTTON_L1 | JP_BUTTON_R1;
                 profile_blink = true;
             }
