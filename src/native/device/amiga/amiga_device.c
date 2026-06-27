@@ -814,6 +814,10 @@ void amiga_device_task(void) {
                     current_platform = (amiga_platform_t)((current_platform + 1) % AMIGA_PLATFORM_COUNT);
                     turbo_mask = 0;
                     cd32_detected = false;
+                    amiga_state.mode = AMIGA_MODE_JOYSTICK;
+                    gpio_set_irq_enabled(AMIGA_PIN_CLK, GPIO_IRQ_EDGE_RISE, false);
+                    gpio_set_dir(AMIGA_PIN_CLK, GPIO_OUT);
+                    pin_release(AMIGA_PIN_CLK);
                     c1351_free_alarms();
                     save_settings();
                     update_led();
