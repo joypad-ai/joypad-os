@@ -343,7 +343,14 @@ static void bt_central_post_init(void)
         btstack_host_start_timed_scan(60000);
         printf("[app:controller_btusb] BT Central enabled, scanning...\n");
     } else {
-        printf("[app:controller_btusb] BT Central disabled\n");
+        // Suppress the central's auto-scan. scan_suppressed defaults to
+        // false, so the host's state machine would otherwise keep BLE
+        // scanning running on power-on even though no input was requested —
+        // and concurrent scanning starves/hides our peripheral advertising
+        // on the nRF SoftDevice controller. Keep scanning off until the
+        // user explicitly enables BT input.
+        btstack_host_suppress_scan(true);
+        printf("[app:controller_btusb] BT Central disabled (scan suppressed)\n");
     }
 }
 #endif
@@ -394,6 +401,23 @@ const OutputInterface** app_get_output_interfaces(uint8_t* count)
 void app_init(void)
 {
     printf("[app:controller_btusb] Initializing ControllerBTUSB v%s\n", JOYPAD_VERSION);
+
+#ifdef JP_RECOVERY_WIPE_ON_BOOT
+    // RECOVERY BUILD ONLY: wipe all persisted config (factory reset) at the
+    // very top of boot, BEFORE any pad config is loaded or any GPIO is
+    // touched. Recovers a board soft-bricked by a bad/conflicting custom
+    // pad pin that faults during early boot (config lives in NVS, so a
+    // normal reflash can't clear it). Flash this once, let it boot, then
+    // flash the normal firmware.
+    {
+        extern void flash_factory_reset(void);
+        flash_factory_reset();
+#ifdef CONFIG_PAD_INPUT
+        pad_config_reset();
+#endif
+        printf("[RECOVERY] Factory reset on boot — config wiped\n");
+    }
+#endif
 
     // (Do NOT call set_sys_clock_khz here — pico-pio-usb adapts its bit-bang
     // timing to whatever clk_sys is, and changing the clock after stdio_init

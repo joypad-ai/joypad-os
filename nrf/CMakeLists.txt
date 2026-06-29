@@ -509,9 +509,23 @@ elseif(APP_TYPE STREQUAL "controller_btusb")
         SENSOR_JOYWING=1
         PLATFORM_NRF=1
         DISABLE_DISPLAY_SPI=1
-        OLED_I2C_DISPLAY=1
         CFG_TUSB_CONFIG_FILE="tusb_config_nrf.h"
     )
+
+    if(DEFINED JP_RECOVERY_WIPE_ON_BOOT)
+        target_compile_definitions(app PRIVATE JP_RECOVERY_WIPE_ON_BOOT=1)
+    endif()
+
+    # OLED display is opt-in per board. The boot-time SSD1306 probe does a
+    # blocking I2C transfer; on a bare board with no display and no external
+    # pull-ups (e.g. plain XIAO header), that transfer can hang the TWIM and
+    # stall boot before USB enumerates → app drops back to the bootloader.
+    # Enable it only where an OLED + pull-ups are actually present (Feather
+    # FeatherWing). Bare XIAO boots reliably without the probe; i2c0 stays
+    # available for a JoyWing when one is configured.
+    if(BOARD MATCHES "adafruit_feather_nrf52840")
+        target_compile_definitions(app PRIVATE OLED_I2C_DISPLAY=1)
+    endif()
 
 else()
     # -----------------------------------------------------------------------

@@ -77,9 +77,17 @@
 // HID buffer sizes
 #define CFG_TUD_HID_EP_BUFSIZE      64
 
-// CDC buffer sizes
-#define CFG_TUD_CDC_RX_BUFSIZE      256
-#define CFG_TUD_CDC_TX_BUFSIZE      1024
+// CDC buffer sizes.
+// TX must hold a full config-page command burst: the web config fires ~9
+// queries at once (INFO, CAPS.GET, MODE.LIST, BLE.MODE.LIST, PAD.CONFIG.GET,
+// ROUTER.GET, ...) and cdc_task processes the whole RX burst in one pass,
+// emitting every response back-to-back. CAPS.GET alone is ~880B on this BLE
+// board, so a 1024B TX FIFO overflows and cdc_data_write() DROPS the later
+// responses (MODE.LIST etc.) — the USB Device page then waits forever on a
+// response that never comes ("Loading..."). 8 KB holds the whole burst with
+// margin. RX bumped so the inbound command burst isn't truncated either.
+#define CFG_TUD_CDC_RX_BUFSIZE      512
+#define CFG_TUD_CDC_TX_BUFSIZE      8192
 #define CFG_TUD_CDC_EP_BUFSIZE      64
 
 #ifdef __cplusplus

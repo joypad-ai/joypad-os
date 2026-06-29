@@ -1455,6 +1455,14 @@ static void cmd_caps_get(const char* json)
     if (n < 0 || n >= rem) goto overflow;
     out += n; rem -= n;
 
+    // Track which input sources we've listed so we can backfill any source
+    // that routes reference but the input-interface registry doesn't expose
+    // (e.g. BLE Central on controller_btusb — it's routed as input but isn't
+    // a polled InputInterface). A CAPS payload whose routes point at a source
+    // missing from inputs[] is internally inconsistent and breaks host tools
+    // that map routes back to inputs.
+    uint32_t seen_sources = 0;
+    bool first_input = true;
     uint8_t in_count = 0;
     const InputInterface* const* ins = app_registry_inputs(&in_count);
     for (uint8_t i = 0; i < in_count; i++) {
@@ -1468,13 +1476,37 @@ static void cmd_caps_get(const char* json)
         n = snprintf(out, rem,
                      "%s{\"name\":\"%s\",\"source\":%d,\"source_name\":\"%s\""
                      ",\"connected\":%s,\"devices\":%u}",
-                     i == 0 ? "" : ",",
+                     first_input ? "" : ",",
                      name, (int)it->source,
                      app_registry_input_source_name(it->source),
                      has_conn ? (connected ? "true" : "false") : "null",
                      has_devs ? devs : 0);
         if (n < 0 || n >= rem) goto overflow;
         out += n; rem -= n;
+        first_input = false;
+        if ((unsigned)it->source < 32) seen_sources |= (1u << it->source);
+    }
+
+    // Backfill input sources referenced only by routes (not in the registry).
+    {
+        uint8_t rc = router_get_route_count();
+        for (uint8_t i = 0; i < rc; i++) {
+            const route_entry_t* r = router_get_route(i);
+            if (!r || !r->active) continue;
+            unsigned src = (unsigned)r->input;
+            if (src < 32 && (seen_sources & (1u << src))) continue;
+            if (src < 32) seen_sources |= (1u << src);
+            n = snprintf(out, rem,
+                         "%s{\"name\":\"%s\",\"source\":%d,\"source_name\":\"%s\""
+                         ",\"connected\":null,\"devices\":0}",
+                         first_input ? "" : ",",
+                         app_registry_input_source_name(r->input),
+                         (int)r->input,
+                         app_registry_input_source_name(r->input));
+            if (n < 0 || n >= rem) goto overflow;
+            out += n; rem -= n;
+            first_input = false;
+        }
     }
 
     n = snprintf(out, rem, "],\"outputs\":[");

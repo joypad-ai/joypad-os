@@ -14,3 +14,40 @@
 		zephyr,shell-uart = &uart0;
 	};
 };
+
+/*
+ * controller_btusb needs i2c0 for the JoyWing/seesaw sensor. The plain
+ * xiao_ble board does not enable i2c0 (only the _sense variant does, and
+ * there it is wired to the internal IMU, not the header). Enable it on the
+ * XIAO's exposed I2C pads: D4 = P0.04 (SDA), D5 = P0.05 (SCL).
+ * Harmless for bt2usb/usb2usb builds, which never touch i2c0.
+ */
+&pinctrl {
+	i2c0_xiao_default: i2c0_xiao_default {
+		group1 {
+			psels = <NRF_PSEL(TWIM_SDA, 0, 4)>,
+				<NRF_PSEL(TWIM_SCL, 0, 5)>;
+			/* No external pull-ups on the bare XIAO header — enable the
+			 * SoC internal pull-ups so a floating bus (no sensor/OLED
+			 * attached) can't wedge the TWIM during the boot-time probe. */
+			bias-pull-up;
+		};
+	};
+
+	i2c0_xiao_sleep: i2c0_xiao_sleep {
+		group1 {
+			psels = <NRF_PSEL(TWIM_SDA, 0, 4)>,
+				<NRF_PSEL(TWIM_SCL, 0, 5)>;
+			low-power-enable;
+		};
+	};
+};
+
+&i2c0 {
+	compatible = "nordic,nrf-twim";
+	status = "okay";
+	pinctrl-0 = <&i2c0_xiao_default>;
+	pinctrl-1 = <&i2c0_xiao_sleep>;
+	pinctrl-names = "default", "sleep";
+	clock-frequency = <400000>;
+};
