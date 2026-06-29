@@ -295,19 +295,27 @@ static btstack_packet_callback_registration_t sm_event_callback_registration;
 // ADVERTISING DATA
 // ============================================================================
 
+// NOTE: legacy BLE advertising payload is capped at 31 bytes. The full name
+// "JoypadOS Controller" (19 chars) + flags + UUID + appearance would be 32
+// bytes, which the controller silently REJECTS — the device then never
+// advertises. So the primary adv packet carries only flags + UUID + appearance
+// (11 bytes) and the complete name goes in the scan response below.
 static const uint8_t adv_data_standard[] = {
     // Flags: general discoverable, BR/EDR not supported
     0x02, BLUETOOTH_DATA_TYPE_FLAGS, 0x06,
-    // Complete local name: "JoypadOS Controller"
-    0x14, BLUETOOTH_DATA_TYPE_COMPLETE_LOCAL_NAME,
-    'J', 'o', 'y', 'p', 'a', 'd', 'O', 'S', ' ',
-    'C', 'o', 'n', 't', 'r', 'o', 'l', 'l', 'e', 'r',
     // 16-bit Service UUIDs: HID Service
     0x03, BLUETOOTH_DATA_TYPE_COMPLETE_LIST_OF_16_BIT_SERVICE_CLASS_UUIDS,
     ORG_BLUETOOTH_SERVICE_HUMAN_INTERFACE_DEVICE & 0xFF,
     ORG_BLUETOOTH_SERVICE_HUMAN_INTERFACE_DEVICE >> 8,
     // Appearance: Gamepad (0x03C4)
     0x03, BLUETOOTH_DATA_TYPE_APPEARANCE, 0xC4, 0x03,
+};
+
+// Scan response carries the complete local name (21 bytes, fits in 31).
+static const uint8_t scan_resp_standard[] = {
+    0x14, BLUETOOTH_DATA_TYPE_COMPLETE_LOCAL_NAME,
+    'J', 'o', 'y', 'p', 'a', 'd', 'O', 'S', ' ',
+    'C', 'o', 'n', 't', 'r', 'o', 'l', 'l', 'e', 'r',
 };
 
 static const uint8_t adv_data_xbox[] = {
@@ -596,6 +604,19 @@ void ble_output_late_init(void)
         gap_random_address_set_mode(GAP_RANDOM_ADDRESS_TYPE_STATIC);
         printf("[ble_output] Using distinct BLE address for mode %d\n", current_mode);
     }
+#ifdef BTSTACK_USE_NRF
+    else {
+        // Standard mode on nRF: the SoftDevice has no public BD_ADDR, so
+        // advertising must use a random static address. The nRF transport
+        // sets the address VALUE during HCI init (from the chip's static
+        // address), but the address MODE must be enabled here or BTstack
+        // advertises with (empty) public addressing and never goes on air —
+        // the device is not discoverable. Non-nRF transports (CYW43) have a
+        // real public address, so leave them on the default.
+        gap_random_address_set_mode(GAP_RANDOM_ADDRESS_TYPE_STATIC);
+        printf("[ble_output] Standard mode: using random static address (nRF)\n");
+    }
+#endif
 
     // Mode-dependent GAP name and advertising
     const char *gap_name;
@@ -618,6 +639,12 @@ void ble_output_late_init(void)
     memset(null_addr, 0, 6);
     gap_advertisements_set_params(adv_int_min, adv_int_max, 0, 0, null_addr, 0x07, 0x00);
     gap_advertisements_set_data(adv_data_len, (uint8_t *)adv_data);
+    // Standard mode keeps the complete name in the scan response (the primary
+    // adv packet has no room — see adv_data_standard note). Xbox mode's name
+    // fits in its adv packet, so no scan response needed there.
+    if (current_mode != BLE_MODE_XBOX) {
+        gap_scan_response_set_data(sizeof(scan_resp_standard), (uint8_t *)scan_resp_standard);
+    }
     gap_advertisements_enable(1);
 
     // Register event handlers
