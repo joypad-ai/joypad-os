@@ -1920,6 +1920,20 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                         break;
                     }
 
+                    // Only the central role belongs to the host manager. When
+                    // this device is also a BLE peripheral (controller_btusb),
+                    // a host connecting to our gamepad output raises the SAME
+                    // LE_CONNECTION_COMPLETE event with role=peripheral. Tracking
+                    // it here would inflate the host connection/device count,
+                    // tag it with the central's stale pending address
+                    // (00:00:00:00:00:00), and kick off spurious central-side
+                    // pairing. Leave incoming peripheral links to ble_output.
+                    if (hci_subevent_le_connection_complete_get_role(packet) != 0) {
+                        printf("[BTSTACK_HOST] Ignoring incoming peripheral connection (handle=0x%04X)\n",
+                               handle);
+                        break;
+                    }
+
                     printf("[BTSTACK_HOST] Connected! handle=0x%04X\n", handle);
 
                     // Find or create connection entry
