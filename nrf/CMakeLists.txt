@@ -527,6 +527,15 @@ elseif(APP_TYPE STREQUAL "controller_btusb")
         target_compile_definitions(app PRIVATE OLED_I2C_DISPLAY=1)
     endif()
 
+    # The XIAO has no dedicated user button; button_nrf.c otherwise grabs
+    # D1/P0.03 as the "user button", which collides with a gamepad button on
+    # that pad and makes presses cycle the USB output mode (double-click).
+    # Disable it so every pad GPIO is free for controller input. The Feather
+    # has a real user switch (P1.02), so keep it there.
+    if(BOARD MATCHES "xiao_ble")
+        target_compile_definitions(app PRIVATE DISABLE_USER_BUTTON=1)
+    endif()
+
 else()
     # -----------------------------------------------------------------------
     # bt2usb (default) / mouthpad: Bluetooth → USB Device
