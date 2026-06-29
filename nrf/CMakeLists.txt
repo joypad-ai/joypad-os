@@ -506,11 +506,18 @@ elseif(APP_TYPE STREQUAL "controller_btusb")
         ENABLE_BTSTACK=1
         REQUIRE_BLE_OUTPUT=1
         REQUIRE_BT_INPUT=1
-        SENSOR_JOYWING=1
         PLATFORM_NRF=1
         DISABLE_DISPLAY_SPI=1
         CFG_TUSB_CONFIG_FILE="tusb_config_nrf.h"
     )
+
+    # JoyWing (seesaw I2C sensor) is a Feather-class accessory and registers a
+    # separate top-level input interface. On the bare XIAO it's just clutter in
+    # the device-info input list (and there's no seesaw attached), so enable it
+    # only on the Feather. Pad (GPIO) input is always available via SENSOR_PAD.
+    if(BOARD MATCHES "adafruit_feather_nrf52840")
+        target_compile_definitions(app PRIVATE SENSOR_JOYWING=1)
+    endif()
 
     if(DEFINED JP_RECOVERY_WIPE_ON_BOOT)
         target_compile_definitions(app PRIVATE JP_RECOVERY_WIPE_ON_BOOT=1)
