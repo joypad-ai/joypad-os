@@ -50,6 +50,11 @@ bool platform_usb_powered(void);
 // why the SoC woke (System OFF GPIO wake, VBUS, watchdog, soft reset, ...).
 uint32_t platform_last_reset_reason(void);
 
+// Battery voltage in millivolts, or -1 if this board has no battery-sense
+// circuit / it isn't supported. Board-specific (e.g. XIAO nRF52840: AIN7 via
+// the P0.14-gated divider).
+int platform_battery_millivolts(void);
+
 // Enter the deepest sleep state the SoC supports (e.g. nRF System OFF), waking
 // when wake_gpio (raw chip GPIO number) reaches its pressed level. The pin is
 // held at its idle level with the appropriate internal pull so it only wakes

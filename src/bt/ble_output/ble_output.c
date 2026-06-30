@@ -561,6 +561,35 @@ static int att_write_callback(hci_con_handle_t con_handle, uint16_t att_handle,
 // peripheral GATT profile, so it skips installing its minimal fallback server.
 bool btstack_host_external_att_server(void) { return true; }
 
+// --- BLE Battery Service: periodically read VBAT and push the percentage ---
+
+// Rough single-cell LiPo discharge curve (piecewise-linear). Good enough for a
+// battery indicator; not a fuel gauge.
+static uint8_t batt_percent_from_mv(int mv)
+{
+    if (mv < 0)      return 100;  // no battery sense on this board
+    if (mv >= 4200)  return 100;
+    if (mv <= 3300)  return 0;
+    if (mv >= 4000)  return (uint8_t)(80 + (mv - 4000) * 20 / 200);  // 4.0-4.2V
+    if (mv >= 3700)  return (uint8_t)(40 + (mv - 3700) * 40 / 300);  // 3.7-4.0V
+    if (mv >= 3500)  return (uint8_t)(15 + (mv - 3500) * 25 / 200);  // 3.5-3.7V
+    return (uint8_t)((mv - 3300) * 15 / 200);                        // 3.3-3.5V
+}
+
+static btstack_timer_source_t battery_timer;
+
+static void battery_timer_handler(btstack_timer_source_t *ts)
+{
+    int mv = platform_battery_millivolts();
+    if (mv >= 0) {
+        battery_service_server_set_battery_value(batt_percent_from_mv(mv));
+    }
+    // Battery level changes slowly — sample every 60s. Runs in the BTstack
+    // thread (timer callback), so set_battery_value is on the right thread.
+    btstack_run_loop_set_timer(ts, 60000);
+    btstack_run_loop_add_timer(ts);
+}
+
 // Called after bt_init() — BTstack must be running before GATT/GAP setup
 void ble_output_late_init(void)
 {
@@ -584,6 +613,13 @@ void ble_output_late_init(void)
     extern void battery_monitor_init(void);
     battery_monitor_init();
 #endif
+    // Start sampling VBAT into the Battery Service. First sample shortly after
+    // boot so it isn't stuck at the 100% init value; then every 60s. No-op on
+    // boards where platform_battery_millivolts() returns -1.
+    btstack_run_loop_set_timer_handler(&battery_timer, battery_timer_handler);
+    btstack_run_loop_set_timer(&battery_timer, 2000);
+    btstack_run_loop_add_timer(&battery_timer);
+
     device_information_service_server_init();
 
     // Mode-dependent PnP ID and device info

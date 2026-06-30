@@ -4,6 +4,7 @@
 // Mirrors platform_esp32.c but for nRF Connect SDK.
 
 #include "platform/platform.h"
+#include "platform/platform_gpio.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -103,6 +104,32 @@ void platform_reboot_bootloader(void)
 bool platform_usb_powered(void)
 {
     return (NRF_POWER->USBREGSTATUS & POWER_USBREGSTATUS_VBUSDETECT_Msk) != 0;
+}
+
+int platform_battery_millivolts(void)
+{
+#if defined(CONFIG_ADC) && defined(CONFIG_BOARD_XIAO_BLE)
+    // XIAO nRF52840: battery is read on AIN7 (P0.31) through a ~1/3 resistor
+    // divider that's gated by P0.14 — held LOW to connect it. Keep P0.14 LOW
+    // (driving it HIGH can push P0.31 past its 3.6 V limit). The SAADC is
+    // configured for gain 1/6 + 0.6 V internal ref → full-scale 3.6 V at the
+    // pin over 12 bits, so Vadc_mv = raw * 3600 / 4095, and the divider gives
+    // VBAT = Vadc * (1.0 + 0.51)/0.51 ≈ Vadc * 2.96.
+    static bool inited = false;
+    if (!inited) {
+        nrf_gpio_cfg_output(14);
+        nrf_gpio_pin_clear(14);       // P0.14 LOW: enable the divider
+        platform_adc_init();
+        platform_adc_init_channel(7); // AIN7 = P0.31
+        inited = true;
+        k_msleep(2);
+    }
+    uint16_t raw = platform_adc_read(7);
+    uint32_t vadc_mv = ((uint32_t)raw * 3600u) / 4095u;
+    return (int)((vadc_mv * 296u) / 100u);
+#else
+    return -1;
+#endif
 }
 
 uint32_t platform_last_reset_reason(void)

@@ -69,3 +69,8 @@ uint32_t platform_last_reset_reason(void)
 {
     return 0;
 }
+
+int platform_battery_millivolts(void)
+{
+    return -1;
+}
