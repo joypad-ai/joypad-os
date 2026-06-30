@@ -143,6 +143,26 @@ int platform_battery_millivolts(void)
 #endif
 }
 
+int platform_battery_charging(void)
+{
+#if defined(CONFIG_BOARD_XIAO_BLE)
+    // Only meaningful while on external power; on battery the charger/LED
+    // circuit is unpowered and the status pin floats.
+    if (!platform_usb_powered()) return 0;
+    // P0.17 = the XIAO charge-status / LED line off the BQ25100 CHG output:
+    // pulled LOW while actively charging (LED lit), released HIGH when charging
+    // completes or is idle. Read-only — high-Z input, doesn't disturb the LED.
+    static bool inited = false;
+    if (!inited) {
+        nrf_gpio_cfg_input(17, NRF_GPIO_PIN_NOPULL);
+        inited = true;
+    }
+    return nrf_gpio_pin_read(17) ? 0 : 1;  // HIGH=done(0), LOW=charging(1)
+#else
+    return -1;  // no charge-status pin on this board
+#endif
+}
+
 uint32_t platform_last_reset_reason(void)
 {
     // RESETREAS accumulates bits until cleared (write-1-to-clear). Read once at

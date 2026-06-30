@@ -821,9 +821,16 @@ void app_task(void)
             last_batt_ms = now;
             int mv = platform_battery_millivolts();
             if (mv >= 0) {
+                bool on_power = platform_usb_powered();
+                int chg = platform_battery_charging();  // 1=charging, 0=done/idle, -1=unknown
                 uint8_t pct = battery_percent_from_mv(mv);
                 if (pct < 1) pct = 1;  // a present battery is >=1% (0 = unknown)
-                router_set_onboard_battery(pct, platform_usb_powered());
+                // Charger reports complete while on external power → cell is
+                // full, so pin 100% (the curve may read ~96% at termination).
+                // Drives SInput plug_status: on_power+full → CHARGED(3),
+                // on_power+charging → CHARGING(2), off power → ON_BATTERY(4).
+                if (on_power && chg == 0) pct = 100;
+                router_set_onboard_battery(pct, on_power);
             } else {
                 router_set_onboard_battery(-1, false);
             }

@@ -155,3 +155,8 @@ int platform_battery_millivolts(void)
 {
     return -1;
 }
+
+int platform_battery_charging(void)
+{
+    return -1;
+}

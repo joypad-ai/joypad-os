@@ -55,6 +55,10 @@ uint32_t platform_last_reset_reason(void);
 // the P0.14-gated divider).
 int platform_battery_millivolts(void);
 
+// Charge status: 1 = actively charging, 0 = not charging (done or on battery),
+// -1 = unknown / no charge-status line on this board. Board-specific.
+int platform_battery_charging(void);
+
 // Enter the deepest sleep state the SoC supports (e.g. nRF System OFF), waking
 // when wake_gpio (raw chip GPIO number) reaches its pressed level. The pin is
 // held at its idle level with the appropriate internal pull so it only wakes
