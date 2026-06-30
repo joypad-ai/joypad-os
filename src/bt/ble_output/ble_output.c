@@ -262,9 +262,19 @@ typedef enum {
 static hci_con_handle_t con_handle = HCI_CON_HANDLE_INVALID;
 static bool ble_connected = false;
 
+// GPIO (raw chip pin) to wake from deep sleep on; <0 disables sleep-on-disconnect.
+static int sleep_wake_pin = -1;
+static bool sleep_wake_active_high = false;
+
 bool ble_output_is_connected(void)
 {
     return ble_connected;
+}
+
+void ble_output_set_sleep_wake_pin(int gpio, bool active_high)
+{
+    sleep_wake_pin = gpio;
+    sleep_wake_active_high = active_high;
 }
 
 // Pending reports (flow-controlled — only one at a time)
@@ -390,13 +400,31 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
     if (packet_type != HCI_EVENT_PACKET) return;
 
     switch (hci_event_packet_get_type(packet)) {
-        case HCI_EVENT_DISCONNECTION_COMPLETE:
+        case HCI_EVENT_DISCONNECTION_COMPLETE: {
+            uint8_t reason = hci_event_disconnection_complete_get_reason(packet);
             con_handle = HCI_CON_HANDLE_INVALID;
             ble_connected = false;
             pending_type = PENDING_NONE;
-            printf("[ble_output] Disconnected, restarting advertising\n");
+
+            // Distinguish a deliberate host disconnect from a dropped link:
+            //   0x13 = remote user terminated   (host "disconnected")
+            //   0x16 = connection terminated by local host
+            //   0x08 = supervision timeout      (out of range / host slept)
+            // On a deliberate disconnect, power down instead of re-advertising
+            // — otherwise a bonded host (e.g. macOS) just auto-reconnects and
+            // hogs the link. A dropped link keeps advertising so we reconnect.
+            bool deliberate = (reason == 0x13 || reason == 0x16);
+            if (deliberate && sleep_wake_pin >= 0) {
+                // platform_deep_sleep() powers down (and never returns) on
+                // battery; it no-ops and returns false on USB.
+                if (platform_deep_sleep((uint8_t)sleep_wake_pin, sleep_wake_active_high)) {
+                    return;  // unreachable on success
+                }
+            }
+            printf("[ble_output] Disconnected (reason 0x%02x), restarting advertising\n", reason);
             gap_advertisements_enable(1);
             break;
+        }
 
         case SM_EVENT_JUST_WORKS_REQUEST:
             sm_just_works_confirm(sm_event_just_works_request_get_handle(packet));

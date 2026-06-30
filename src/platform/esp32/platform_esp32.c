@@ -134,3 +134,19 @@ void platform_clear_usb_persist(void)
 {
     chip_usb_set_persist_flags(0);
 }
+
+bool platform_usb_powered(void)
+{
+    return true;
+}
+
+bool platform_deep_sleep(uint8_t wake_gpio, bool wake_active_high)
+{
+    (void)wake_gpio; (void)wake_active_high;
+    return false;
+}
+
+uint32_t platform_last_reset_reason(void)
+{
+    return 0;
+}

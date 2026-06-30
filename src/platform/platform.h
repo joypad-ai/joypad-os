@@ -8,6 +8,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <stdbool.h>
 
 // RP2040 __not_in_flash_func places functions in RAM for timing.
 // On non-RP2040 platforms this is not needed — define as no-op.
@@ -40,5 +41,22 @@ void platform_reboot(void);
 
 // Reboot into bootloader (UF2/DFU mode)
 void platform_reboot_bootloader(void);
+
+// True if the device is currently powered from USB (VBUS present).
+bool platform_usb_powered(void);
+
+// Raw, platform-specific reset/wake reason latched at the last boot (e.g. nRF
+// POWER->RESETREAS). 0 if unknown. Read once and cached; used to diagnose
+// why the SoC woke (System OFF GPIO wake, VBUS, watchdog, soft reset, ...).
+uint32_t platform_last_reset_reason(void);
+
+// Enter the deepest sleep state the SoC supports (e.g. nRF System OFF), waking
+// when wake_gpio (raw chip GPIO number) reaches its pressed level. The pin is
+// held at its idle level with the appropriate internal pull so it only wakes
+// on a press: wake_active_high → pull-down + sense-high (idle low, press high);
+// else → pull-up + sense-low (idle high, press low). Wake performs a full
+// reboot. Returns false WITHOUT sleeping if the platform can't/shouldn't sleep
+// right now (e.g. USB-powered, or unsupported); on success it does not return.
+bool platform_deep_sleep(uint8_t wake_gpio, bool wake_active_high);
 
 #endif // PLATFORM_H

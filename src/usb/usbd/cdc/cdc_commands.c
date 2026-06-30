@@ -240,9 +240,10 @@ static void cmd_info(const char* json)
 
     snprintf(response_buf, sizeof(response_buf),
              "{\"app\":\"%s\",\"version\":\"%s\",\"board\":\"%s\",\"serial\":\"%s\",\"commit\":\"%s\",\"build\":\"%s\""
-             ",\"features\":{\"onboard_led\":%s}}"
+             ",\"reset\":\"0x%lx\",\"features\":{\"onboard_led\":%s}}"
              ,
              APP_NAME, JOYPAD_VERSION, BOARD_NAME, serial, GIT_COMMIT, BUILD_TIME,
+             (unsigned long)platform_last_reset_reason(),
 #ifdef BTSTACK_USE_CYW43
              "true"
 #elif defined(BOARD_LED_PIN)

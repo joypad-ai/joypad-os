@@ -9,8 +9,10 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/sys/reboot.h>
+#include <zephyr/sys/poweroff.h>
 #include <zephyr/drivers/hwinfo.h>
 #include <nrfx.h>
+#include <hal/nrf_gpio.h>
 
 // ============================================================================
 // TIME
@@ -92,4 +94,66 @@ void platform_reboot_bootloader(void)
     // Nordic DFU bootloader uses 0xB1 instead.
     NRF_POWER->GPREGRET = 0x57;
     sys_reboot(SYS_REBOOT_COLD);
+}
+
+// ============================================================================
+// POWER / DEEP SLEEP
+// ============================================================================
+
+bool platform_usb_powered(void)
+{
+    return (NRF_POWER->USBREGSTATUS & POWER_USBREGSTATUS_VBUSDETECT_Msk) != 0;
+}
+
+uint32_t platform_last_reset_reason(void)
+{
+    // RESETREAS accumulates bits until cleared (write-1-to-clear). Read once at
+    // first call (the boot cause) and clear so the next boot is fresh.
+    // Bits: 0x01 PIN, 0x02 DOG(watchdog), 0x04 SREQ(soft), 0x08 LOCKUP,
+    //       0x10000 OFF (System OFF GPIO/DETECT wake), 0x100000 VBUS wake.
+    static uint32_t cached = 0xFFFFFFFFUL;
+    if (cached == 0xFFFFFFFFUL) {
+        cached = NRF_POWER->RESETREAS;
+        NRF_POWER->RESETREAS = 0xFFFFFFFFUL;
+    }
+    return cached;
+}
+
+bool platform_deep_sleep(uint8_t wake_gpio, bool wake_active_high)
+{
+    // Never power down while USB-powered: USB needs the device awake, and the
+    // host is also charging the battery. The caller falls back to advertising.
+    if (platform_usb_powered()) {
+        return false;
+    }
+
+    printf("[platform] Entering System OFF (deep sleep), wake on GPIO %u (%s)\n",
+           (unsigned)wake_gpio, wake_active_high ? "active-high" : "active-low");
+
+    // Clear any latched GPIO DETECT events so a stale latch doesn't wake us
+    // immediately on entering System OFF.
+    NRF_P0->LATCH = 0xFFFFFFFFUL;
+    NRF_P1->LATCH = 0xFFFFFFFFUL;
+
+    // Hold the wake pin at its IDLE level with the matching internal pull, and
+    // SENSE on its PRESSED level — otherwise it wakes immediately. For an
+    // active-high button (idle low, press high): pull-down + sense-high. For an
+    // active-low button (idle high, press low): pull-up + sense-low. Uses the
+    // absolute nRF pin index (P0.00-31 = 0-31, P1.00-15 = 32-47), the same
+    // numbering the pad config uses.
+    if (wake_active_high) {
+        nrf_gpio_cfg_input(wake_gpio, NRF_GPIO_PIN_PULLDOWN);
+        nrf_gpio_cfg_sense_set(wake_gpio, NRF_GPIO_PIN_SENSE_HIGH);
+    } else {
+        nrf_gpio_cfg_input(wake_gpio, NRF_GPIO_PIN_PULLUP);
+        nrf_gpio_cfg_sense_set(wake_gpio, NRF_GPIO_PIN_SENSE_LOW);
+    }
+
+    // Let pending log/USB-detach settle, then enter System OFF. Wake from
+    // System OFF resets the SoC, so this is effectively off until the button.
+    k_msleep(50);
+    sys_poweroff();
+
+    // sys_poweroff() does not return.
+    return true;
 }

@@ -830,9 +830,27 @@ uint32_t router_get_inject_buttons(void) {
     return s_inject_buttons;
 }
 
+// Timestamp of the last "active" input across all sources, for idle/sleep
+// detection. Active = any button held or a stick pushed past a noise margin.
+static volatile uint32_t s_last_activity_ms = 0;
+
+uint32_t router_ms_since_activity(void) {
+    return platform_time_ms() - s_last_activity_ms;
+}
+
 void router_submit_input(const input_event_t* event) {
     if (!event) return;
     if (route_count == 0) return;
+
+    // Track activity for idle-sleep: any button, or a stick off-center.
+    if (event->buttons != 0) {
+        s_last_activity_ms = platform_time_ms();
+    } else {
+        for (int i = 0; i < 4; i++) {  // analog[0..3] = LX,LY,RX,RY
+            int d = (int)event->analog[i] - 128;
+            if (d > 24 || d < -24) { s_last_activity_ms = platform_time_ms(); break; }
+        }
+    }
 
     // Stream input to CDC for web config (only when a host is actively
     // consuming the stream). Without this gate the prep work below —

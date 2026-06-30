@@ -145,6 +145,10 @@ void router_init(const router_config_t* config);
 // NOTE: This is the ONLY function input drivers should call!
 void router_submit_input(const input_event_t* event);
 
+// Milliseconds since the last "active" input (button held or stick off-center)
+// across all sources. Used for idle / auto-sleep timeouts.
+uint32_t router_ms_since_activity(void);
+
 // Host-side synthetic input "press overlay" — buttons set via INPUT.INJECT
 // are OR'd into every real input event as it passes through the router.
 // Works in any routing mode (SIMPLE, MERGE, BROADCAST). Pass 0 to release.

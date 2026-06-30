@@ -394,6 +394,23 @@ const OutputInterface** app_get_output_interfaces(uint8_t* count)
     return output_interfaces;
 }
 
+#if REQUIRE_BLE_OUTPUT
+// Deep-sleep config (set in app_init from the pad config).
+// Idle timeout: power down after this long with no input. 0 = disabled.
+// Only nRF implements platform_deep_sleep; elsewhere it's a no-op, so leave
+// the idle timer off there to avoid pointless periodic checks.
+#ifndef CONTROLLER_BTUSB_IDLE_SLEEP_MS
+#ifdef PLATFORM_NRF
+#define CONTROLLER_BTUSB_IDLE_SLEEP_MS (5u * 60u * 1000u)  // 5 minutes
+#else
+#define CONTROLLER_BTUSB_IDLE_SLEEP_MS 0u
+#endif
+#endif
+static int s_sleep_wake_pin = -1;
+static bool s_sleep_wake_active_high = false;
+static uint32_t s_idle_sleep_ms = CONTROLLER_BTUSB_IDLE_SLEEP_MS;
+#endif
+
 // ============================================================================
 // APP INITIALIZATION
 // ============================================================================
@@ -507,6 +524,15 @@ void app_init(void)
         pad_input_add_device(pad_cfg);
         printf("[app:controller_btusb] Pad: %s (%s)\n", pad_cfg->name,
                pad_config_has_custom() ? "flash" : "default");
+#if REQUIRE_BLE_OUTPUT
+        // Deep-sleep wake pin = the B1 button. A deliberate host disconnect or
+        // an idle timeout powers the device down on battery; pressing B1 wakes
+        // it (full reboot). No B1 mapped → leave sleep disabled (else there'd
+        // be no way to wake it).
+        s_sleep_wake_pin = (pad_cfg->b1 >= 0) ? pad_cfg->b1 : -1;
+        s_sleep_wake_active_high = pad_cfg->active_high;
+        ble_output_set_sleep_wake_pin(s_sleep_wake_pin, s_sleep_wake_active_high);
+#endif
 #ifndef DISABLE_USB_HOST
         // Override PIO-USB D+ pin from pad config (before usbh_init runs).
         // Tri-state: >0 = override, 0 = use compile-time default,
@@ -761,6 +787,26 @@ void app_init(void)
 
 void app_task(void)
 {
+#if REQUIRE_BLE_OUTPUT
+    // Idle auto-sleep (battery only): after s_idle_sleep_ms with no input,
+    // deep-sleep to save battery. Checked ~1 Hz. Skipped on USB (docked /
+    // charging) — platform_deep_sleep would no-op there anyway, but checking
+    // VBUS first avoids the per-second log/attempt.
+    if (s_idle_sleep_ms > 0 && s_sleep_wake_pin >= 0) {
+        static uint32_t last_idle_check = 0;
+        uint32_t now = platform_time_ms();
+        if (now - last_idle_check >= 1000) {
+            last_idle_check = now;
+            if (!platform_usb_powered() &&
+                router_ms_since_activity() >= s_idle_sleep_ms) {
+                printf("[app:controller_btusb] Idle %u ms — deep sleep (wake on GPIO %d)\n",
+                       (unsigned)s_idle_sleep_ms, s_sleep_wake_pin);
+                platform_deep_sleep((uint8_t)s_sleep_wake_pin, s_sleep_wake_active_high);
+            }
+        }
+    }
+#endif
+
 #ifdef CONFIG_UART_HOST
     // Drain UART RX → INPUT_EVENT packets → router. Every loop iteration
     // because the parser is called from main thread; latency is dominated
