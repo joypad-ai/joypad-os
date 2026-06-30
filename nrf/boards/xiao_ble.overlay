@@ -8,6 +8,15 @@
 	status = "disabled";
 };
 
+/* The nRF52840 P1 GPIO port (gpio1) is status="disabled" in the base SoC
+ * devicetree. The XIAO breaks out D6-D10 = P1.11-P1.15 (pad pins 43-47), so
+ * leaving gpio1 off makes every P1.x pad dead — device_is_ready(gpio1) fails,
+ * pad input skips configuring them, and reads return garbage. Enable it so the
+ * P1 pads are usable for buttons/D-pad. (gpio0/P0 is already enabled.) */
+&gpio1 {
+	status = "okay";
+};
+
 / {
 	chosen {
 		zephyr,console = &uart0;
