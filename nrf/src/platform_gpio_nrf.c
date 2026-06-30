@@ -107,10 +107,18 @@ void platform_adc_init_channel(uint8_t channel) {
 #ifdef CONFIG_ADC
     if (!adc_dev || channel > 7) return;
 
+    // Acquisition time must scale with the source impedance: the nRF SAADC
+    // sample cap needs longer to settle for high-impedance sources. Analog
+    // sticks (AIN0-3) are low-impedance pots — 10us is plenty and keeps polling
+    // fast. Higher channels (AIN4-7) are used for sense inputs like the XIAO
+    // battery divider (AIN7, ~337kOhm Thevenin from 1M||510k), which needs
+    // ~40us; at 10us it under-reads ~5% (a full 4.2V cell reads ~4.0V).
+    uint16_t acq_us = (channel >= 4) ? 40 : 10;
+
     struct adc_channel_cfg cfg = {
         .gain = ADC_GAIN_1_6,
         .reference = ADC_REF_INTERNAL,
-        .acquisition_time = ADC_ACQ_TIME(ADC_ACQ_TIME_MICROSECONDS, 10),
+        .acquisition_time = ADC_ACQ_TIME(ADC_ACQ_TIME_MICROSECONDS, acq_us),
         .channel_id = channel,
 #if defined(CONFIG_ADC_NRFX_SAADC)
         .input_positive = SAADC_CH_PSELP_PSELP_AnalogInput0 + channel,
