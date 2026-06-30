@@ -6,6 +6,7 @@
 
 #include "app.h"
 #include "core/router/router.h"
+#include "core/battery.h"
 #include "native/host/uart/uart_host.h"
 #include "core/services/players/manager.h"
 #include "core/services/button/button.h"
@@ -806,6 +807,28 @@ void app_task(void)
         }
     }
 #endif
+
+    // Sample the onboard battery into the router so the SInput report's
+    // charge_level/plug_status (and the BLE Battery Service) reflect this
+    // device's own battery + charging state. Throttled — ADC reads are slow.
+    // No-op where platform_battery_millivolts() returns -1 (no battery sense).
+    {
+        static uint32_t last_batt_ms = 0;
+        static bool batt_first = true;
+        uint32_t now = platform_time_ms();
+        if (batt_first || now - last_batt_ms >= 30000) {
+            batt_first = false;
+            last_batt_ms = now;
+            int mv = platform_battery_millivolts();
+            if (mv >= 0) {
+                uint8_t pct = battery_percent_from_mv(mv);
+                if (pct < 1) pct = 1;  // a present battery is >=1% (0 = unknown)
+                router_set_onboard_battery(pct, platform_usb_powered());
+            } else {
+                router_set_onboard_battery(-1, false);
+            }
+        }
+    }
 
 #ifdef CONFIG_UART_HOST
     // Drain UART RX → INPUT_EVENT packets → router. Every loop iteration

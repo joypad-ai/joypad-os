@@ -287,6 +287,21 @@ static uint8_t route_count = 0;
 static router_tap_callback_t output_taps[MAX_OUTPUTS] = {NULL};
 static bool output_tap_exclusive[MAX_OUTPUTS] = {false};
 
+// Onboard battery: this device's OWN battery (e.g. controller_btusb on a board
+// with a LiPo), as opposed to a battery reported by a connected input
+// controller. The app updates it from an ADC read; the router stamps it into
+// output states that have no input-device battery, so the SInput report's
+// charge_level/plug_status reflect the device itself. percent <0 = none.
+static volatile int onboard_batt_pct = -1;
+static volatile bool onboard_batt_charging = false;
+
+void router_set_onboard_battery(int percent, bool charging) {
+    onboard_batt_pct = percent;
+    onboard_batt_charging = charging;
+}
+int router_onboard_battery_percent(void) { return onboard_batt_pct; }
+bool router_onboard_battery_charging(void) { return onboard_batt_charging; }
+
 // ============================================================================
 // INITIALIZATION
 // ============================================================================
@@ -789,6 +804,12 @@ static inline void router_merge_mode(const input_event_t* event, output_target_t
                         x_current_state.type = dev->type;
                         first = false;
                     }
+                }
+                // Onboard battery fallback (see SIMPLE path) — no input device
+                // reported a battery, so use this device's own.
+                if (x_current_state.battery_level == 0 && onboard_batt_pct >= 0) {
+                    x_current_state.battery_level = (uint8_t)onboard_batt_pct;
+                    x_current_state.battery_charging = onboard_batt_charging;
                 }
                 out->current_state = x_current_state;
             }
@@ -1480,6 +1501,14 @@ void router_device_disconnected(uint8_t dev_addr, int8_t instance) {
                     out_state->current_state.battery_charging = dev->battery_charging;
                 }
             }
+        }
+
+        // No input controller reported a battery → fall back to this device's
+        // own battery (e.g. controller_btusb on a LiPo) so the SInput report
+        // carries real charge_level/plug_status.
+        if (out_state->current_state.battery_level == 0 && onboard_batt_pct >= 0) {
+            out_state->current_state.battery_level = (uint8_t)onboard_batt_pct;
+            out_state->current_state.battery_charging = onboard_batt_charging;
         }
 
         out_state->updated = true;

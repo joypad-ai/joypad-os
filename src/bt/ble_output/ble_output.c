@@ -561,32 +561,21 @@ static int att_write_callback(hci_con_handle_t con_handle, uint16_t att_handle,
 // peripheral GATT profile, so it skips installing its minimal fallback server.
 bool btstack_host_external_att_server(void) { return true; }
 
-// --- BLE Battery Service: periodically read VBAT and push the percentage ---
-
-// Rough single-cell LiPo discharge curve (piecewise-linear). Good enough for a
-// battery indicator; not a fuel gauge.
-static uint8_t batt_percent_from_mv(int mv)
-{
-    if (mv < 0)      return 100;  // no battery sense on this board
-    if (mv >= 4200)  return 100;
-    if (mv <= 3300)  return 0;
-    if (mv >= 4000)  return (uint8_t)(80 + (mv - 4000) * 20 / 200);  // 4.0-4.2V
-    if (mv >= 3700)  return (uint8_t)(40 + (mv - 3700) * 40 / 300);  // 3.7-4.0V
-    if (mv >= 3500)  return (uint8_t)(15 + (mv - 3500) * 25 / 200);  // 3.5-3.7V
-    return (uint8_t)((mv - 3300) * 15 / 200);                        // 3.3-3.5V
-}
+// --- BLE Battery Service: mirror the router's onboard battery percentage ---
 
 static btstack_timer_source_t battery_timer;
 
 static void battery_timer_handler(btstack_timer_source_t *ts)
 {
-    int mv = platform_battery_millivolts();
-    if (mv >= 0) {
-        battery_service_server_set_battery_value(batt_percent_from_mv(mv));
+    // The app samples the ADC (one reader, main thread) into the router; we
+    // just mirror it here. <0 means no battery sense on this board → leave the
+    // BAS at its init value. Runs in the BTstack thread, so set_battery_value
+    // is on the correct thread.
+    int pct = router_onboard_battery_percent();
+    if (pct >= 0) {
+        battery_service_server_set_battery_value((uint8_t)pct);
     }
-    // Battery level changes slowly — sample every 60s. Runs in the BTstack
-    // thread (timer callback), so set_battery_value is on the right thread.
-    btstack_run_loop_set_timer(ts, 60000);
+    btstack_run_loop_set_timer(ts, 60000);  // battery changes slowly
     btstack_run_loop_add_timer(ts);
 }
 

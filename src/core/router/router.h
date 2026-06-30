@@ -149,6 +149,13 @@ void router_submit_input(const input_event_t* event);
 // across all sources. Used for idle / auto-sleep timeouts.
 uint32_t router_ms_since_activity(void);
 
+// This device's OWN battery (controller-style apps with an onboard LiPo). The
+// router stamps it into output states that have no input-device battery, so the
+// SInput report carries real charge_level/plug_status. percent <0 = no battery.
+void router_set_onboard_battery(int percent, bool charging);
+int  router_onboard_battery_percent(void);
+bool router_onboard_battery_charging(void);
+
 // Host-side synthetic input "press overlay" — buttons set via INPUT.INJECT
 // are OR'd into every real input event as it passes through the router.
 // Works in any routing mode (SIMPLE, MERGE, BROADCAST). Pass 0 to release.
