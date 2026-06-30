@@ -126,7 +126,18 @@ int platform_battery_millivolts(void)
     }
     uint16_t raw = platform_adc_read(7);
     uint32_t vadc_mv = ((uint32_t)raw * 3600u) / 4095u;
-    return (int)((vadc_mv * 296u) / 100u);
+    uint32_t vbat_mv = (vadc_mv * 296u) / 100u;   // 1M/510k divider → *2.96
+
+    // The nRF SAADC internal 0.6V reference has a few % gain tolerance and
+    // reads low. Single-point trim calibrated against a known-full LP103454 on
+    // the charger (4.2V), which read ~4.06V uncorrected → factor ~1.033. Adjust
+    // XIAO_VBAT_TRIM_NUM/DEN if a BAT+ multimeter reading says otherwise.
+#ifndef XIAO_VBAT_TRIM_NUM
+#define XIAO_VBAT_TRIM_NUM 1033
+#define XIAO_VBAT_TRIM_DEN 1000
+#endif
+    vbat_mv = (vbat_mv * XIAO_VBAT_TRIM_NUM) / XIAO_VBAT_TRIM_DEN;
+    return (int)vbat_mv;
 #else
     return -1;
 #endif
