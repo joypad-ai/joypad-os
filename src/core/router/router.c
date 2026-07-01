@@ -302,6 +302,39 @@ void router_set_onboard_battery(int percent, bool charging) {
 int router_onboard_battery_percent(void) { return onboard_batt_pct; }
 bool router_onboard_battery_charging(void) { return onboard_batt_charging; }
 
+// Onboard motion: this device's OWN IMU (e.g. controller_btusb on a XIAO Sense),
+// as opposed to motion from a connected input controller (DS4/DS5). The app
+// updates it from the IMU; the router stamps it into output states that have no
+// input-device motion, so the SInput report carries accel/gyro. valid=false
+// when there's no IMU.
+static struct {
+    int16_t accel[3];
+    int16_t gyro[3];
+    uint16_t accel_range;
+    uint16_t gyro_range;
+    volatile bool valid;
+} onboard_motion = { .accel_range = 4000, .gyro_range = 2000 };
+
+void router_set_onboard_motion(const int16_t accel[3], const int16_t gyro[3],
+                               uint16_t accel_range, uint16_t gyro_range) {
+    for (int i = 0; i < 3; i++) {
+        onboard_motion.accel[i] = accel[i];
+        onboard_motion.gyro[i] = gyro[i];
+    }
+    onboard_motion.accel_range = accel_range;
+    onboard_motion.gyro_range = gyro_range;
+    onboard_motion.valid = true;
+}
+
+bool router_onboard_motion_get(int16_t accel[3], int16_t gyro[3]) {
+    if (!onboard_motion.valid) return false;
+    for (int i = 0; i < 3; i++) {
+        accel[i] = onboard_motion.accel[i];
+        gyro[i] = onboard_motion.gyro[i];
+    }
+    return true;
+}
+
 // ============================================================================
 // INITIALIZATION
 // ============================================================================
@@ -810,6 +843,15 @@ static inline void router_merge_mode(const input_event_t* event, output_target_t
                 if (x_current_state.battery_level == 0 && onboard_batt_pct >= 0) {
                     x_current_state.battery_level = (uint8_t)onboard_batt_pct;
                     x_current_state.battery_charging = onboard_batt_charging;
+                }
+                if (!x_current_state.has_motion && onboard_motion.valid) {
+                    for (int mi = 0; mi < 3; mi++) {
+                        x_current_state.accel[mi] = onboard_motion.accel[mi];
+                        x_current_state.gyro[mi] = onboard_motion.gyro[mi];
+                    }
+                    x_current_state.accel_range = onboard_motion.accel_range;
+                    x_current_state.gyro_range = onboard_motion.gyro_range;
+                    x_current_state.has_motion = true;
                 }
                 out->current_state = x_current_state;
             }
@@ -1509,6 +1551,16 @@ void router_device_disconnected(uint8_t dev_addr, int8_t instance) {
         if (out_state->current_state.battery_level == 0 && onboard_batt_pct >= 0) {
             out_state->current_state.battery_level = (uint8_t)onboard_batt_pct;
             out_state->current_state.battery_charging = onboard_batt_charging;
+        }
+        // Onboard IMU motion when no input device supplied any.
+        if (!out_state->current_state.has_motion && onboard_motion.valid) {
+            for (int mi = 0; mi < 3; mi++) {
+                out_state->current_state.accel[mi] = onboard_motion.accel[mi];
+                out_state->current_state.gyro[mi] = onboard_motion.gyro[mi];
+            }
+            out_state->current_state.accel_range = onboard_motion.accel_range;
+            out_state->current_state.gyro_range = onboard_motion.gyro_range;
+            out_state->current_state.has_motion = true;
         }
 
         out_state->updated = true;

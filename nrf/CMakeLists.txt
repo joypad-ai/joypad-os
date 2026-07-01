@@ -384,6 +384,7 @@ elseif(APP_TYPE STREQUAL "controller_btusb")
         "${SHARED_SRC}/drivers/seesaw/seesaw.c"
         "${SHARED_SRC}/drivers/joywing/joywing_input.c"
         "${SHARED_SRC}/platform/nrf/platform_i2c_nrf.c"
+        "src/imu_nrf.c"   # onboard IMU (XIAO Sense LSM6DS3TR-C); no-op if absent
 
         # --- BLE output (peripheral mode) ---
         "${SHARED_SRC}/bt/ble_output/ble_output.c"

@@ -238,13 +238,23 @@ static void cmd_info(const char* json)
     char serial[17];
     platform_get_serial(serial, sizeof(serial));
 
+    int16_t imu_a[3] = {0}, imu_g[3] = {0};
+    char imu_str[80];
+    if (router_onboard_motion_get(imu_a, imu_g)) {
+        snprintf(imu_str, sizeof(imu_str), "[%d,%d,%d,%d,%d,%d]",
+                 imu_a[0], imu_a[1], imu_a[2], imu_g[0], imu_g[1], imu_g[2]);
+    } else {
+        snprintf(imu_str, sizeof(imu_str), "false");  // no IMU reporting
+    }
+
     snprintf(response_buf, sizeof(response_buf),
              "{\"app\":\"%s\",\"version\":\"%s\",\"board\":\"%s\",\"serial\":\"%s\",\"commit\":\"%s\",\"build\":\"%s\""
-             ",\"reset\":\"0x%lx\",\"battery_mv\":%d,\"chg\":%d,\"features\":{\"onboard_led\":%s}}"
+             ",\"reset\":\"0x%lx\",\"battery_mv\":%d,\"chg\":%d,\"imu\":%s"
+             ",\"features\":{\"onboard_led\":%s}}"
              ,
              APP_NAME, JOYPAD_VERSION, BOARD_NAME, serial, GIT_COMMIT, BUILD_TIME,
              (unsigned long)platform_last_reset_reason(), platform_battery_millivolts(),
-             platform_battery_charging(),
+             platform_battery_charging(), imu_str,
 #ifdef BTSTACK_USE_CYW43
              "true"
 #elif defined(BOARD_LED_PIN)

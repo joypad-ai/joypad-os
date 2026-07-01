@@ -25,28 +25,36 @@
 };
 
 /*
- * controller_btusb needs i2c0 for the JoyWing/seesaw sensor. The plain
- * xiao_ble board does not enable i2c0 (only the _sense variant does, and
- * there it is wired to the internal IMU, not the header). Enable it on the
- * XIAO's exposed I2C pads: D4 = P0.04 (SDA), D5 = P0.05 (SCL).
- * Harmless for bt2usb/usb2usb builds, which never touch i2c0.
+ * XIAO nRF52840 Sense onboard IMU: LSM6DS3TR-C at 0x6a on i2c0, wired to the
+ * internal pins P0.07 (SDA) / P0.27 (SCL) — NOT the D4/D5 header (that was for
+ * the Feather-only JoyWing, unused on XIAO). Powered by a fixed regulator on
+ * P1.08 (boot-on, 3ms settle) which Zephyr enables before the sensor inits.
+ * IRQ on P0.11. On a plain (non-Sense) XIAO there's no device at 0x6a and the
+ * driver just fails to init, harmlessly.
  */
+/ {
+	lsm6ds3tr_c_en: lsm6ds3tr-c-en {
+		compatible = "regulator-fixed";
+		enable-gpios = <&gpio1 8 GPIO_ACTIVE_HIGH>;
+		regulator-name = "LSM6DS3TR_C_EN";
+		regulator-boot-on;
+		startup-delay-us = <3000>;
+	};
+};
+
 &pinctrl {
-	i2c0_xiao_default: i2c0_xiao_default {
+	i2c0_imu_default: i2c0_imu_default {
 		group1 {
-			psels = <NRF_PSEL(TWIM_SDA, 0, 4)>,
-				<NRF_PSEL(TWIM_SCL, 0, 5)>;
-			/* No external pull-ups on the bare XIAO header — enable the
-			 * SoC internal pull-ups so a floating bus (no sensor/OLED
-			 * attached) can't wedge the TWIM during the boot-time probe. */
+			psels = <NRF_PSEL(TWIM_SDA, 0, 7)>,
+				<NRF_PSEL(TWIM_SCL, 0, 27)>;
 			bias-pull-up;
 		};
 	};
 
-	i2c0_xiao_sleep: i2c0_xiao_sleep {
+	i2c0_imu_sleep: i2c0_imu_sleep {
 		group1 {
-			psels = <NRF_PSEL(TWIM_SDA, 0, 4)>,
-				<NRF_PSEL(TWIM_SCL, 0, 5)>;
+			psels = <NRF_PSEL(TWIM_SDA, 0, 7)>,
+				<NRF_PSEL(TWIM_SCL, 0, 27)>;
 			low-power-enable;
 		};
 	};
@@ -55,8 +63,15 @@
 &i2c0 {
 	compatible = "nordic,nrf-twim";
 	status = "okay";
-	pinctrl-0 = <&i2c0_xiao_default>;
-	pinctrl-1 = <&i2c0_xiao_sleep>;
+	pinctrl-0 = <&i2c0_imu_default>;
+	pinctrl-1 = <&i2c0_imu_sleep>;
 	pinctrl-names = "default", "sleep";
 	clock-frequency = <400000>;
+
+	lsm6ds3tr_c: lsm6ds3tr-c@6a {
+		compatible = "st,lsm6dsl";
+		reg = <0x6a>;
+		irq-gpios = <&gpio0 11 GPIO_ACTIVE_HIGH>;
+		status = "okay";
+	};
 };

@@ -23,6 +23,9 @@
 #include "core/services/players/manager.h"
 #include "core/services/leds/leds.h"
 #include "core/services/storage/storage.h"
+#ifdef CONFIG_CONTROLLER_BTUSB
+#include "imu_nrf.h"
+#endif
 
 // App layer
 extern void app_init(void);
@@ -219,6 +222,12 @@ int main(void)
     }
 #endif
 
+#ifdef CONFIG_CONTROLLER_BTUSB
+    // Onboard IMU (XIAO Sense LSM6DS3TR-C) — after USB is up, so a wedged I2C
+    // bus can never block enumeration. No-op if the board has no IMU.
+    imu_init();
+#endif
+
     printf("[joypad] Entering main loop\n");
 
 #ifdef CONFIG_MAX3421
@@ -264,6 +273,10 @@ int main(void)
         }
 
         app_task();
+
+#ifdef CONFIG_CONTROLLER_BTUSB
+        imu_task();  // sample onboard IMU → router (throttled to ~100 Hz)
+#endif
 
         // Yield to other Zephyr threads (BTstack runs in its own thread)
         k_msleep(1);
