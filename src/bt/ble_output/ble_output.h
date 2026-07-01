@@ -18,6 +18,7 @@
 typedef enum {
     BLE_MODE_STANDARD = 0,  // Composite: gamepad + keyboard + mouse
     BLE_MODE_XBOX,          // Xbox BLE gamepad (future Phase 2)
+    BLE_MODE_SINPUT,        // SInput gamepad (SDL/Steam: buttons + IMU + battery)
     BLE_MODE_COUNT
 } ble_output_mode_t;
 

@@ -592,14 +592,12 @@ static const uint8_t* sinput_mode_get_report_descriptor(void)
     return sinput_report_descriptor;
 }
 
-// Send feature response when pending
-static void sinput_mode_task(void)
+// Build the 63-byte SInput feature-response payload (command echo + 24-byte
+// capability struct + zero pad), refreshing device info from player 0 first so
+// the caps reflect the connected controller. Transport-neutral: the caller
+// sends it (USB input report ID 2, or BLE input report ID 2).
+uint16_t sinput_build_feature_response(uint8_t feature_response[63])
 {
-    if (!feature_request_pending) return;
-    if (!tud_hid_n_ready(ITF_NUM_HID_GAMEPAD)) return;
-
-    feature_request_pending = false;
-
     // Refresh device info from player 0 before building response
     if (playersCount > 0 && players[0].dev_addr >= 0) {
         update_device_info((uint8_t)players[0].dev_addr,
@@ -635,7 +633,7 @@ static void sinput_mode_task(void)
     // Byte 16:     Touchpad count
     // Byte 17:     Touchpad finger count
     // Bytes 18-23: Serial number (6 bytes)
-    uint8_t feature_response[63] = {0};
+    memset(feature_response, 0, 63);
     feature_response[0] = SINPUT_CMD_FEATURES;  // command echo → host data[1]
     uint8_t* f = &feature_response[1];          // 24-byte struct → host data[2]+
 
@@ -716,8 +714,116 @@ static void sinput_mode_task(void)
     f[22] = board_id[6];
     f[23] = board_id[7];
 
+    return 63;
+}
+
+// Send the pending feature response over USB (input report ID 2).
+static void sinput_mode_task(void)
+{
+    if (!feature_request_pending) return;
+    if (!tud_hid_n_ready(ITF_NUM_HID_GAMEPAD)) return;
+    feature_request_pending = false;
+
+    uint8_t feature_response[63];
+    sinput_build_feature_response(feature_response);
     tud_hid_n_report(ITF_NUM_HID_GAMEPAD, SINPUT_REPORT_ID_FEATURES,
-                     feature_response, sizeof(feature_response));
+                     feature_response, 63);
+}
+
+// Take a pending feature response for a non-USB transport (BLE SInput mode).
+// Fills out[63]/len and clears the pending flag; returns false if none pending.
+bool sinput_feature_response_take(uint8_t out[63], uint16_t* len)
+{
+    if (!feature_request_pending) return false;
+    feature_request_pending = false;
+    *len = sinput_build_feature_response(out);
+    return true;
+}
+
+// Build a full 64-byte SInput input report from a router output event, for the
+// BLE SInput device mode (which polls router_get_output instead of using the
+// USB push/profile pipeline). Mirrors the field mapping in
+// sinput_mode_send_report(). Shared device-info/feature state is fine because
+// only one transport (USB or BLE) is the active SInput output at a time.
+void sinput_report_build_from_event(sinput_report_t* out, const input_event_t* event)
+{
+    memset(out, 0, sizeof(*out));
+    out->report_id = SINPUT_REPORT_ID_INPUT;
+
+    uint8_t prev_type = cached_gamepad_type;
+    bool prev_motion = cached_has_motion;
+    bool prev_touch = cached_has_touch;
+    cached_layout = event->layout;
+    update_device_info(event->dev_addr, event->instance, event->transport, event->layout);
+    cached_has_motion = event->has_motion;
+    cached_has_touch = event->has_touch;
+    if (event->dev_addr != last_dev_addr || cached_gamepad_type != prev_type ||
+        cached_has_motion != prev_motion || cached_has_touch != prev_touch) {
+        last_dev_addr = event->dev_addr;
+        feature_request_pending = true;
+    }
+
+    uint32_t sinput_buttons = convert_buttons(event->buttons);
+    out->buttons[0] = (sinput_buttons >>  0) & 0xFF;
+    out->buttons[1] = (sinput_buttons >>  8) & 0xFF;
+    out->buttons[2] = (sinput_buttons >> 16) & 0xFF;
+    out->buttons[3] = (sinput_buttons >> 24) & 0xFF;
+
+    out->lx = convert_axis_to_s16(event->analog[ANALOG_LX]);
+    out->ly = convert_axis_to_s16(event->analog[ANALOG_LY]);
+    out->rx = convert_axis_to_s16(event->analog[ANALOG_RX]);
+    out->ry = convert_axis_to_s16(event->analog[ANALOG_RY]);
+    out->lt = convert_trigger_to_s16(event->analog[ANALOG_L2]);
+    out->rt = convert_trigger_to_s16(event->analog[ANALOG_R2]);
+
+    out->imu_timestamp = platform_time_us();
+    if (event->has_motion) {
+        out->accel_x = event->accel[0];
+        out->accel_y = event->accel[1];
+        out->accel_z = event->accel[2];
+        out->gyro_x = event->gyro[0];
+        out->gyro_y = event->gyro[1];
+        out->gyro_z = event->gyro[2];
+    }
+
+    if (event->has_touch) {
+        int16_t t1x = event->touch[0].active ? (int16_t)event->touch[0].x : 0;
+        int16_t t1y = event->touch[0].active ? (int16_t)event->touch[0].y : 0;
+        uint16_t t1p = event->touch[0].active ? 0x7FFF : 0;
+        memcpy(out->touchpad1, &t1x, 2);
+        memcpy(out->touchpad1 + 2, &t1y, 2);
+        memcpy(out->touchpad1 + 4, &t1p, 2);
+        int16_t t2x = event->touch[1].active ? (int16_t)event->touch[1].x : 0;
+        int16_t t2y = event->touch[1].active ? (int16_t)event->touch[1].y : 0;
+        uint16_t t2p = event->touch[1].active ? 0x7FFF : 0;
+        memcpy(out->touchpad2, &t2x, 2);
+        memcpy(out->touchpad2 + 2, &t2y, 2);
+        memcpy(out->touchpad2 + 4, &t2p, 2);
+    }
+
+    out->charge_level = event->battery_level;
+    if (event->battery_charging) {
+        out->plug_status = (event->battery_level >= 100) ? 3 : 2;
+    } else if (event->battery_level > 0) {
+        out->plug_status = 4;
+    } else {
+        out->plug_status = 0;   // unknown -> SDL/Steam shows no battery
+    }
+}
+
+// Feed a received SInput output report (ID 3: haptic/LED/features request) from
+// a non-USB transport (BLE). Reuses the USB output handler.
+void sinput_output_received(const uint8_t* data, uint16_t len)
+{
+    sinput_mode_handle_output(SINPUT_REPORT_ID_OUTPUT, data, len);
+}
+
+// Rumble amplitudes from the last haptic output report (for the BLE path to
+// forward to the connected input controller).
+void sinput_get_rumble_lr(uint8_t* left, uint8_t* right)
+{
+    if (left)  *left  = rumble_left;
+    if (right) *right = rumble_right;
 }
 
 // ============================================================================

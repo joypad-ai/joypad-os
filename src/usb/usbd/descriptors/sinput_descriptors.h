@@ -17,7 +17,13 @@
 #define SINPUT_DESCRIPTORS_H
 
 #include <stdint.h>
+// tusb.h is only needed for the USB *device* descriptor at the bottom of this
+// header. Transport-neutral consumers (the BLE SInput mode) define
+// SINPUT_DESCRIPTORS_NO_USB to skip it — including TinyUSB's hid.h alongside
+// BTstack's btstack_hid.h clashes on hid_report_type_t.
+#ifndef SINPUT_DESCRIPTORS_NO_USB
 #include "tusb.h"
+#endif
 
 // ============================================================================
 // SINPUT USB IDENTIFIERS
@@ -401,7 +407,8 @@ typedef struct __attribute__((packed)) {
     int8_t  pan;
 } sinput_mouse_report_t;
 
-// Device descriptor
+// Device descriptor (USB only — needs tusb types)
+#ifndef SINPUT_DESCRIPTORS_NO_USB
 static const tusb_desc_device_t sinput_device_descriptor = {
     .bLength            = sizeof(tusb_desc_device_t),
     .bDescriptorType    = TUSB_DESC_DEVICE,
@@ -425,8 +432,9 @@ static const tusb_desc_device_t sinput_device_descriptor = {
     .iSerialNumber      = 0x03,
     .bNumConfigurations = 0x01
 };
+#endif // SINPUT_DESCRIPTORS_NO_USB
 
-// String descriptors
+// String descriptors (transport-neutral — also used by the BLE DIS)
 #define SINPUT_MANUFACTURER  "Joypad"
 #define SINPUT_PRODUCT       "Joypad (SInput)"
 

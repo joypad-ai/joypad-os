@@ -43,6 +43,8 @@ extern void feedback_set_rumble(uint8_t player_index, uint8_t left, uint8_t righ
 #include "ble/gatt-service/device_information_service_server.h"
 #include "ble/gatt-service/hids_device.h"
 
+#include "usb/usbd/modes/sinput_mode.h"  // SInput report/feature builders (shared)
+
 #include <stdio.h>
 #include <string.h>
 
@@ -253,6 +255,8 @@ typedef enum {
     PENDING_KEYBOARD,
     PENDING_MOUSE,
     PENDING_XBOX,
+    PENDING_SINPUT,          // SInput input report (ID 1)
+    PENDING_SINPUT_FEATURE,  // SInput feature response (ID 2)
 } pending_report_type_t;
 
 // ============================================================================
@@ -302,16 +306,21 @@ static ble_gamepad_report_t pending_gamepad;
 static ble_keyboard_report_t pending_keyboard;
 static ble_mouse_report_t pending_mouse;
 static ble_xbox_report_t pending_xbox;
+static sinput_report_t pending_sinput;
+static uint8_t pending_feature[63];       // SInput feature response payload
+static uint16_t pending_feature_len;
 
 // Last sent reports (for change detection)
 static ble_gamepad_report_t last_sent_gamepad;
 static ble_keyboard_report_t last_sent_keyboard;
 static ble_mouse_report_t last_sent_mouse;
 static ble_xbox_report_t last_sent_xbox;
+static sinput_report_t last_sent_sinput;
 
 // Report storage for hids_device_init_with_storage()
-// 6 slots covers both modes (standard: 6 reports, xbox: 3 reports)
-static hids_device_report_t hid_report_storage[6];
+// 8 slots covers all modes (standard: 7 reports incl. the SInput 3-output,
+// xbox: 3 reports, sinput: 3 reports)
+static hids_device_report_t hid_report_storage[8];
 #define HID_REPORT_STORAGE_COUNT (sizeof(hid_report_storage) / sizeof(hid_report_storage[0]))
 
 // Mode (loaded from flash on init)
@@ -495,6 +504,19 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                                     (const uint8_t *)&pending_xbox, sizeof(pending_xbox));
                                 last_sent_xbox = pending_xbox;
                                 break;
+                            case PENDING_SINPUT:
+                                // Input report ID 1: skip the report_id byte (hids
+                                // adds it), send the 63-byte payload.
+                                hids_device_send_input_report_for_id(con_handle, SINPUT_REPORT_ID_INPUT,
+                                    ((const uint8_t *)&pending_sinput) + 1,
+                                    sizeof(pending_sinput) - 1);
+                                last_sent_sinput = pending_sinput;
+                                break;
+                            case PENDING_SINPUT_FEATURE:
+                                // Input report ID 2: the SInput feature response.
+                                hids_device_send_input_report_for_id(con_handle, SINPUT_REPORT_ID_FEATURES,
+                                    pending_feature, pending_feature_len);
+                                break;
                             default:
                                 break;
                         }
@@ -519,6 +541,15 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                             // Forward rumble to connected input controller
                             feedback_set_rumble(0, rumble_left, rumble_right);
                         }
+                    }
+                    if (current_mode == BLE_MODE_SINPUT && report_id == SINPUT_REPORT_ID_OUTPUT) {
+                        // SInput output report (haptic / player LED / RGB / features
+                        // request). report_data is the payload (command byte first).
+                        sinput_output_received(report_data, report_len);
+                        // Forward any updated rumble to the connected input controller.
+                        uint8_t rl = 0, rr = 0;
+                        sinput_get_rumble_lr(&rl, &rr);
+                        feedback_set_rumble(0, rl, rr);
                     }
                     // Standard mode: report_id 1 = keyboard LEDs, report_id 4 = player indicator
                     break;
@@ -546,6 +577,13 @@ void ble_output_init(void)
     if (settings && settings->ble_output_mode < BLE_MODE_COUNT) {
         current_mode = (ble_output_mode_t)settings->ble_output_mode;
     }
+
+#ifdef CONFIG_CONTROLLER_BTUSB
+    // controller_btusb is a gamepad and (on builds like the tucked-away XIAO)
+    // has no practical USB/CDC access to switch modes — SInput is THE BLE device
+    // mode here, carrying buttons + gyro/accel + battery to SDL/Steam.
+    current_mode = BLE_MODE_SINPUT;
+#endif
 
     printf("[ble_output] Initializing BLE output (mode: %s)\n",
            ble_output_get_mode_name(current_mode));
@@ -672,6 +710,12 @@ void ble_output_late_init(void)
         device_information_service_server_set_software_revision("1.0.0");
         // PnP ID: USB IF (0x02), Microsoft VID 0x045E, Xbox Series X PID 0x0B13, version 5.17.0
         device_information_service_server_set_pnp_id(0x02, 0x045E, 0x0B13, 0x0511);
+    } else if (current_mode == BLE_MODE_SINPUT) {
+        device_information_service_server_set_manufacturer_name(SINPUT_MANUFACTURER);
+        device_information_service_server_set_model_number(SINPUT_PRODUCT);
+        device_information_service_server_set_software_revision("1.0.0");
+        // PnP ID: USB IF (0x02) + SInput VID/PID so SDL's SInput driver matches.
+        device_information_service_server_set_pnp_id(0x02, SINPUT_VID, SINPUT_PID, SINPUT_BCD_DEVICE);
     } else {
         device_information_service_server_set_manufacturer_name("Joypad");
         device_information_service_server_set_model_number(APP_NAME);
@@ -686,6 +730,9 @@ void ble_output_late_init(void)
     if (current_mode == BLE_MODE_XBOX) {
         hid_desc = ble_xbox_get_descriptor();
         hid_desc_size = ble_xbox_get_descriptor_size();
+    } else if (current_mode == BLE_MODE_SINPUT) {
+        hid_desc = sinput_report_descriptor;
+        hid_desc_size = sizeof(sinput_report_descriptor);
     } else {
         hid_desc = standard_hid_descriptor;
         hid_desc_size = sizeof(standard_hid_descriptor);
@@ -733,6 +780,10 @@ void ble_output_late_init(void)
         gap_name = "Joypad Xinput";
         adv_data = adv_data_xbox;
         adv_data_len = sizeof(adv_data_xbox);
+    } else if (current_mode == BLE_MODE_SINPUT) {
+        gap_name = "Joypad SInput";
+        adv_data = adv_data_standard;  // generic HID adv (appearance = gamepad)
+        adv_data_len = sizeof(adv_data_standard);
     } else {
         gap_name = "JoypadOS Controller";
         adv_data = adv_data_standard;
@@ -765,9 +816,11 @@ void ble_output_late_init(void)
 
     hids_device_register_packet_handler(packet_handler);
 
-    // Initialize NUS (Nordic UART Service) for wireless config — standard mode only
-    // (Xbox mode uses a different GATT profile without NUS)
-    if (current_mode == BLE_MODE_STANDARD) {
+    // Initialize NUS (Nordic UART Service) for wireless config. Standard and
+    // SInput modes share the composite GATT (which includes NUS); Xbox mode uses
+    // a different GATT profile without NUS. SDL matches SInput by VID/PID + HID,
+    // so the extra NUS service is inert to it.
+    if (current_mode == BLE_MODE_STANDARD || current_mode == BLE_MODE_SINPUT) {
         ble_nus_init();
     }
 
@@ -851,6 +904,43 @@ static void ble_output_task_xbox(void)
 }
 
 // ============================================================================
+// TASK — SInput BLE mode (SDL/Steam: buttons + IMU + battery + rumble)
+// ============================================================================
+
+static void ble_output_task_sinput(void)
+{
+    const input_event_t *event = router_get_output(OUTPUT_TARGET_BLE_PERIPHERAL, 0);
+    if (!event) return;
+
+    // Stream output event to CDC/NUS for web config (if enabled)
+    cdc_commands_send_player_output(0, event->buttons, event->analog);
+
+    // Flow-controlled: only one report queued at a time.
+    if (pending_type != PENDING_NONE) return;
+
+    // Build the input report; may flag a feature refresh on device change. The
+    // host's features request (output report) also sets the pending flag.
+    sinput_report_t report;
+    sinput_report_build_from_event(&report, event);
+
+    // Feature response takes priority — SDL blocks on the handshake.
+    uint16_t flen;
+    if (sinput_feature_response_take(pending_feature, &flen)) {
+        pending_feature_len = flen;
+        pending_type = PENDING_SINPUT_FEATURE;
+        hids_device_request_can_send_now_event(con_handle);
+        return;
+    }
+
+    // Otherwise send the input report when changed (the IMU timestamp advances
+    // each build, so a device with motion streams continuously).
+    if (memcmp(&report, &last_sent_sinput, sizeof(report)) == 0) return;
+    pending_sinput = report;
+    pending_type = PENDING_SINPUT;
+    hids_device_request_can_send_now_event(con_handle);
+}
+
+// ============================================================================
 // MAIN TASK DISPATCH
 // ============================================================================
 
@@ -860,6 +950,8 @@ void ble_output_task(void)
 
     if (current_mode == BLE_MODE_XBOX) {
         ble_output_task_xbox();
+    } else if (current_mode == BLE_MODE_SINPUT) {
+        ble_output_task_sinput();
     } else {
         ble_output_task_standard();
     }
@@ -907,6 +999,7 @@ const char* ble_output_get_mode_name(ble_output_mode_t mode)
     switch (mode) {
         case BLE_MODE_STANDARD: return "Standard BLE";
         case BLE_MODE_XBOX:     return "Xbox BLE";
+        case BLE_MODE_SINPUT:   return "SInput BLE";
         default:                return "Unknown";
     }
 }
@@ -916,6 +1009,7 @@ void ble_output_get_mode_color(ble_output_mode_t mode, uint8_t *r, uint8_t *g, u
     switch (mode) {
         case BLE_MODE_STANDARD: *r = 0; *g = 0; *b = 64; break;   // Blue
         case BLE_MODE_XBOX:     *r = 0; *g = 64; *b = 0; break;   // Green
+        case BLE_MODE_SINPUT:   *r = 0; *g = 32; *b = 64; break;  // Cyan
         default:                *r = 64; *g = 64; *b = 64; break;  // White
     }
 }
