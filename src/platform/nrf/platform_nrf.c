@@ -9,6 +9,7 @@
 #include <string.h>
 
 #include <zephyr/kernel.h>
+#include <zephyr/irq.h>
 #include <zephyr/sys/reboot.h>
 #include <zephyr/sys/poweroff.h>
 #include <zephyr/drivers/hwinfo.h>
@@ -207,9 +208,18 @@ bool platform_deep_sleep(uint8_t wake_gpio, bool wake_active_high)
         nrf_gpio_cfg_sense_set(wake_gpio, NRF_GPIO_PIN_SENSE_LOW);
     }
 
-    // Let pending log/USB-detach settle, then enter System OFF. Wake from
-    // System OFF resets the SoC, so this is effectively off until the button.
+    // Let pending log/USB-detach settle first (needs interrupts on).
     k_msleep(50);
+
+    // Force the indicator LED off as the VERY LAST step, with preemption locked
+    // so the leds_task thread can't repaint the "connected" blue between here
+    // and power-down. The SoC retains GPIO output state (and the WS2812 latches
+    // its color) through System OFF, so a stale-on LED would stay lit while
+    // asleep. irq_lock() stops thread switches; neopixel_off() is the final
+    // write; sys_poweroff() powers down without returning.
+    extern void neopixel_off(void);
+    (void)irq_lock();
+    neopixel_off();
     sys_poweroff();
 
     // sys_poweroff() does not return.
