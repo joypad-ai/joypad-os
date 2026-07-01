@@ -339,6 +339,26 @@ static void cmd_bootsel(const char* json)
     pending_reboot_time = platform_time_ms();
 }
 
+// IMU.MAP — get/set the onboard-IMU axis remap (mounting orientation).
+// Optional x/y/z, each a signed source axis: ±1=X ±2=Y ±3=Z (negative inverts).
+// Omitted axes keep their current value. Always replies with the resulting map,
+// e.g. {"cmd":"IMU.MAP","x":-1,"y":-2,"z":3} → {"x":-1,"y":-2,"z":3}.
+static void cmd_imu_map(const char* json)
+{
+    int gx = 0, gy = 0, gz = 0;
+    bool hx = json_get_int(json, "x", &gx);
+    bool hy = json_get_int(json, "y", &gy);
+    bool hz = json_get_int(json, "z", &gz);
+    if (hx || hy || hz) {
+        router_set_motion_remap(hx ? gx : 0, hy ? gy : 0, hz ? gz : 0);
+    }
+    int m[3];
+    router_get_motion_remap(m);
+    snprintf(response_buf, sizeof(response_buf),
+             "{\"x\":%d,\"y\":%d,\"z\":%d}", m[0], m[1], m[2]);
+    send_json(response_buf);
+}
+
 static void cmd_mode_get(const char* json)
 {
     (void)json;
@@ -2834,6 +2854,7 @@ static const cmd_entry_t commands[] = {
     {"MODE.GET", cmd_mode_get},
     {"MODE.SET", cmd_mode_set},
     {"MODE.LIST", cmd_mode_list},
+    {"IMU.MAP", cmd_imu_map},
     // Unified profile commands
     {"PROFILE.LIST", cmd_profile_list},
     {"PROFILE.GET", cmd_profile_get},

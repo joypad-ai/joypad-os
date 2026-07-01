@@ -315,11 +315,36 @@ static struct {
     volatile bool valid;
 } onboard_motion = { .accel_range = 4000, .gyro_range = 2000 };
 
+// Onboard IMU axis remap (mounting orientation). For each output axis i,
+// out[i] = sign(motion_remap[i]) * in[ |motion_remap[i]|-1 ]. Default {1,2,3}
+// is identity. Applied to accel and gyro together (same physical chip axes), so
+// a rotated/flipped IMU mount is corrected once, at the source, for every
+// consumer (SInput report, Steam/SDL, joypad-web). Set at runtime via the CDC
+// "IMU.MAP" command while tuning; bake the final values in as the default.
+static int8_t motion_remap[3] = { 1, 2, 3 };
+
+void router_set_motion_remap(int x, int y, int z) {
+    if (x >= -3 && x <= 3 && x != 0) motion_remap[0] = (int8_t)x;
+    if (y >= -3 && y <= 3 && y != 0) motion_remap[1] = (int8_t)y;
+    if (z >= -3 && z <= 3 && z != 0) motion_remap[2] = (int8_t)z;
+}
+
+void router_get_motion_remap(int out[3]) {
+    for (int i = 0; i < 3; i++) out[i] = motion_remap[i];
+}
+
+static inline int16_t remap_one(const int16_t v[3], int8_t m) {
+    int idx = (m < 0 ? -m : m) - 1;
+    int16_t val = v[idx];
+    if (val == INT16_MIN) val = INT16_MIN + 1;  // avoid negate overflow
+    return m < 0 ? (int16_t)(-val) : val;
+}
+
 void router_set_onboard_motion(const int16_t accel[3], const int16_t gyro[3],
                                uint16_t accel_range, uint16_t gyro_range) {
     for (int i = 0; i < 3; i++) {
-        onboard_motion.accel[i] = accel[i];
-        onboard_motion.gyro[i] = gyro[i];
+        onboard_motion.accel[i] = remap_one(accel, motion_remap[i]);
+        onboard_motion.gyro[i]  = remap_one(gyro,  motion_remap[i]);
     }
     onboard_motion.accel_range = accel_range;
     onboard_motion.gyro_range = gyro_range;
