@@ -890,31 +890,35 @@ void app_task(void)
     // Process BLE transport
     bt_task();
 
-    // NeoPixel: show connection state and active output mode color
+    // NeoPixel: show connection state and active output mode color.
+    // A USB *data host* is dominant (BT is dropped/suppressed while it's
+    // connected), so treat its presence as "connected" — a steady USB color,
+    // not the BT-searching flash. Use the same VBUS+mounted test as the
+    // dominance logic (not usb_gamepad_active(), which is false in CDC mode).
     bool ble_conn = ble_output_is_connected();
-    bool usb_active = usb_gamepad_active();
-    leds_set_connected_devices((ble_conn || usb_active) ? 1 : 0);
+    bool usb_host = platform_usb_powered() && tud_mounted();
+    leds_set_connected_devices((ble_conn || usb_host) ? 1 : 0);
 
     // Track state changes for LED color updates
     static bool last_ble_conn = false;
-    static bool last_usb_active = false;
+    static bool last_usb_host = false;
     static ble_output_mode_t last_ble_mode = BLE_MODE_COUNT;
     static usb_output_mode_t last_usb_mode = USB_OUTPUT_MODE_COUNT;
 
     ble_output_mode_t ble_mode = ble_output_get_mode();
     usb_output_mode_t usb_mode = usbd_get_mode();
 
-    if (ble_conn != last_ble_conn || usb_active != last_usb_active ||
+    if (ble_conn != last_ble_conn || usb_host != last_usb_host ||
         ble_mode != last_ble_mode || usb_mode != last_usb_mode) {
         last_ble_conn = ble_conn;
-        last_usb_active = usb_active;
+        last_usb_host = usb_host;
         last_ble_mode = ble_mode;
         last_usb_mode = usb_mode;
 
         uint8_t r, g, b;
         if (ble_conn) {
             ble_output_get_mode_color(ble_mode, &r, &g, &b);
-        } else if (usb_active) {
+        } else if (usb_host) {
             usbd_get_mode_color(usb_mode, &r, &g, &b);
         } else {
             ble_output_get_mode_color(ble_mode, &r, &g, &b);
