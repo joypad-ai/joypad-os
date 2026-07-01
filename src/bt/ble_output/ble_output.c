@@ -266,6 +266,25 @@ static bool ble_connected = false;
 static int sleep_wake_pin = -1;
 static bool sleep_wake_active_high = false;
 
+// --- USB dominance: a USB *data host* takes priority over BT ---
+// When one is connected we disconnect BT and stop advertising; when it goes
+// away we resume the normal BT logic. A USB host requires VBUS, so gate on both
+// (tud_mounted() can read stale-true briefly after an unplug).
+extern bool tud_mounted(void);
+static bool ble_usb_host(void)
+{
+    return platform_usb_powered() && tud_mounted();
+}
+
+// Tracked advertising state so we can enable/disable idempotently.
+static bool adv_on = false;
+static void set_adv(bool on)
+{
+    if (on == adv_on) return;
+    adv_on = on;
+    gap_advertisements_enable(on ? 1 : 0);
+}
+
 bool ble_output_is_connected(void)
 {
     return ble_connected;
@@ -413,6 +432,14 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
             // On a deliberate disconnect, power down instead of re-advertising
             // — otherwise a bonded host (e.g. macOS) just auto-reconnects and
             // hogs the link. A dropped link keeps advertising so we reconnect.
+            // USB is dominant: if a USB data host is connected, stay off — no
+            // re-advertise, no sleep (the device is usable over USB).
+            if (ble_usb_host()) {
+                adv_on = false;  // the link drop already stopped advertising
+                printf("[ble_output] Disconnected (reason 0x%02x), USB host present — BT off\n", reason);
+                break;
+            }
+
             bool deliberate = (reason == 0x13 || reason == 0x16);
             if (deliberate && sleep_wake_pin >= 0) {
                 // platform_deep_sleep() powers down (and never returns) on
@@ -422,7 +449,8 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                 }
             }
             printf("[ble_output] Disconnected (reason 0x%02x), restarting advertising\n", reason);
-            gap_advertisements_enable(1);
+            adv_on = false;  // the drop stopped advertising; set_adv re-enables
+            set_adv(true);
             break;
         }
 
@@ -440,9 +468,8 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                     con_handle = hids_subevent_input_report_enable_get_con_handle(packet);
                     ble_connected = true;
                     printf("[ble_output] BLE connected (handle=0x%04x)\n", con_handle);
-                    // Keep advertising while connected so web config can
-                    // discover the device via Web Bluetooth for NUS access
-                    gap_advertisements_enable(1);
+                    // A connection stops advertising (single adv set on nRF).
+                    adv_on = false;
                     break;
 
                 case HIDS_SUBEVENT_CAN_SEND_NOW:
@@ -579,6 +606,28 @@ static void battery_timer_handler(btstack_timer_source_t *ts)
     btstack_run_loop_add_timer(ts);
 }
 
+// --- USB dominance enforcement (BTstack thread) ---
+static btstack_timer_source_t usb_dom_timer;
+
+static void usb_dom_timer_handler(btstack_timer_source_t *ts)
+{
+    if (ble_usb_host()) {
+        // A USB data host is connected → BT yields: drop any link and stop
+        // advertising. The disconnect handler sees the host and stays off.
+        if (con_handle != HCI_CON_HANDLE_INVALID) {
+            gap_disconnect(con_handle);
+        }
+        set_adv(false);
+    } else {
+        // No USB host → normal BT logic: advertise whenever not connected.
+        if (con_handle == HCI_CON_HANDLE_INVALID) {
+            set_adv(true);
+        }
+    }
+    btstack_run_loop_set_timer(ts, 500);
+    btstack_run_loop_add_timer(ts);
+}
+
 // Called after bt_init() — BTstack must be running before GATT/GAP setup
 void ble_output_late_init(void)
 {
@@ -608,6 +657,11 @@ void ble_output_late_init(void)
     btstack_run_loop_set_timer_handler(&battery_timer, battery_timer_handler);
     btstack_run_loop_set_timer(&battery_timer, 2000);
     btstack_run_loop_add_timer(&battery_timer);
+
+    // Enforce USB dominance (drop/suppress BT while a USB host is connected).
+    btstack_run_loop_set_timer_handler(&usb_dom_timer, usb_dom_timer_handler);
+    btstack_run_loop_set_timer(&usb_dom_timer, 500);
+    btstack_run_loop_add_timer(&usb_dom_timer);
 
     device_information_service_server_init();
 
@@ -698,7 +752,9 @@ void ble_output_late_init(void)
     if (current_mode != BLE_MODE_XBOX) {
         gap_scan_response_set_data(sizeof(scan_resp_standard), (uint8_t *)scan_resp_standard);
     }
-    gap_advertisements_enable(1);
+    // Advertise unless a USB data host is already dominant; the usb_dom_timer
+    // below keeps it in sync as USB is plugged/unplugged.
+    set_adv(!ble_usb_host());
 
     // Register event handlers
     hci_event_callback_registration.callback = &packet_handler;
