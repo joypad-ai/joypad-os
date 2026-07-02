@@ -74,6 +74,15 @@ void imu_init(void)
     i2c_reg_write_byte(i2c_dev, imu_addr, REG_CTRL3_C,  CTRL3_C_VAL);
     imu_ok = true;
 
+    // Mounting orientation → SInput canonical device frame (report X=left,
+    // Y=forward, Z=up). This XIAO Sense is on the back of the controller,
+    // components toward the ground (chip upside-down), USB-C toward the top.
+    // In that placement the LSM6 maps to the controller as chip X=forward/back,
+    // chip Y=left/right, chip Z=down, so: swap X<->Y and invert Z. Applied to
+    // accel + gyro in the router before the report is built (USB + BLE alike);
+    // still overridable live via the IMU.MAP CDC command.
+    router_set_motion_remap(2, 1, -3);
+
     // Mark motion valid (imu_task fills in real values every ~10ms).
     int16_t z[3] = {0};
     router_set_onboard_motion(z, z, IMU_ACCEL_RANGE_MG, IMU_GYRO_RANGE_DPS);
