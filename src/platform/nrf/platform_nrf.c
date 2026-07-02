@@ -98,6 +98,15 @@ void platform_reboot_bootloader(void)
     sys_reboot(SYS_REBOOT_COLD);
 }
 
+void platform_reboot_ota(void)
+{
+    // Adafruit nRF52 bootloader: GPREGRET = 0xA8 (DFU_MAGIC_OTA_APP_RESET) boots
+    // straight into BLE OTA DFU mode (advertises "AdafruitDFU"), so firmware can
+    // be pushed over the air (nRF Connect DFU) with no USB.
+    NRF_POWER->GPREGRET = 0xA8;
+    sys_reboot(SYS_REBOOT_COLD);
+}
+
 // ============================================================================
 // POWER / DEEP SLEEP
 // ============================================================================

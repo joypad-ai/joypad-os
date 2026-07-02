@@ -53,6 +53,12 @@ void platform_reboot_bootloader(void)
     reset_usb_boot(0, 0);
 }
 
+void platform_reboot_ota(void)
+{
+    // No BLE OTA path on RP2040 — fall back to the USB bootloader.
+    reset_usb_boot(0, 0);
+}
+
 bool platform_usb_powered(void)
 {
     // VBUS detect not wired on most RP2040 boards — assume powered.

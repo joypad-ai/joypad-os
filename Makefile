@@ -479,6 +479,18 @@ init-wch:
 .PHONY: build
 build: all
 
+# Package the most recent nRF build into a BLE DFU .zip for wireless (OTA)
+# update via nRF Connect (Adafruit bootloader OTA). Send the `OTA` command over
+# BLE (NUS) or USB CDC first — the device reboots advertising "AdafruitDFU" —
+# then push this .zip from nRF Connect's DFU. Needs: pip install --user adafruit-nrfutil
+.PHONY: ota-zip
+ota-zip:
+	@command -v adafruit-nrfutil >/dev/null 2>&1 || { echo "adafruit-nrfutil not found — run: pip install --user adafruit-nrfutil"; exit 1; }
+	@test -f nrf/build/nrf/zephyr/zephyr.hex || { echo "no nRF build at nrf/build/nrf/zephyr/zephyr.hex — build an nRF app first"; exit 1; }
+	@mkdir -p $(RELEASE_DIR)
+	adafruit-nrfutil dfu genpkg --dev-type 0x0052 --application nrf/build/nrf/zephyr/zephyr.hex $(RELEASE_DIR)/joypad_ota.zip
+	@echo "$(GREEN)OTA package: $(RELEASE_DIR)/joypad_ota.zip$(NC)  → push via nRF Connect (DFU) to 'AdafruitDFU'"
+
 # Generic app build function
 # Output naming: joypad_<version|commit>_<app>.uf2
 define build_app

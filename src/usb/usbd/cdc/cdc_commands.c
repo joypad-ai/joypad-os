@@ -54,6 +54,7 @@ static char response_buf[CDC_MAX_PAYLOAD];
 #define PENDING_NONE    0
 #define PENDING_REBOOT  1
 #define PENDING_BOOTSEL 2
+#define PENDING_OTA     3
 static volatile uint8_t pending_reboot = PENDING_NONE;
 static uint32_t pending_reboot_time = 0;
 
@@ -341,6 +342,17 @@ static void cmd_bootsel(const char* json)
     send_ok();
     // Defer reboot to cdc_commands_task() to avoid nested tud_task() calls
     pending_reboot = PENDING_BOOTSEL;
+    pending_reboot_time = platform_time_ms();
+}
+
+// OTA — reboot into over-the-air (BLE) DFU. Works over the BLE NUS too (the NUS
+// tunnels this command protocol), so a USB-less nRF52 board can be updated
+// wirelessly: send OTA, then push the DFU .zip with nRF Connect.
+static void cmd_ota(const char* json)
+{
+    (void)json;
+    send_ok();
+    pending_reboot = PENDING_OTA;
     pending_reboot_time = platform_time_ms();
 }
 
@@ -2034,12 +2046,15 @@ void cdc_commands_task(void)
             uint8_t type = pending_reboot;
             pending_reboot = PENDING_NONE;
             printf("[CDC] Executing deferred %s...\n",
-                   type == PENDING_BOOTSEL ? "bootloader" : "reboot");
+                   type == PENDING_BOOTSEL ? "bootloader" :
+                   type == PENDING_OTA ? "OTA DFU" : "reboot");
             // Disconnect USB cleanly so host sees device removal
             tud_disconnect();
             platform_sleep_ms(500);
             if (type == PENDING_BOOTSEL) {
                 platform_reboot_bootloader();
+            } else if (type == PENDING_OTA) {
+                platform_reboot_ota();
             } else {
                 platform_reboot();
             }
@@ -2856,6 +2871,7 @@ static const cmd_entry_t commands[] = {
     {"PING", cmd_ping},
     {"REBOOT", cmd_reboot},
     {"BOOTSEL", cmd_bootsel},
+    {"OTA", cmd_ota},
     {"MODE.GET", cmd_mode_get},
     {"MODE.SET", cmd_mode_set},
     {"MODE.LIST", cmd_mode_list},

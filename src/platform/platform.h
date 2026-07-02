@@ -42,6 +42,11 @@ void platform_reboot(void);
 // Reboot into bootloader (UF2/DFU mode)
 void platform_reboot_bootloader(void);
 
+// Reboot into over-the-air (BLE) DFU mode, for wireless firmware update. On
+// nRF52 (Adafruit bootloader) this enters BLE OTA DFU (advertises AdafruitDFU);
+// other platforms fall back to the normal bootloader.
+void platform_reboot_ota(void);
+
 // True if the device is currently powered from USB (VBUS present).
 bool platform_usb_powered(void);
 

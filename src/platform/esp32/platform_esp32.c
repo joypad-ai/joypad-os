@@ -130,6 +130,12 @@ void platform_reboot_bootloader(void)
     while (1) { vTaskDelay(portMAX_DELAY); }
 }
 
+void platform_reboot_ota(void)
+{
+    // No BLE OTA path here — fall back to the TinyUF2 bootloader.
+    platform_reboot_bootloader();
+}
+
 void platform_clear_usb_persist(void)
 {
     chip_usb_set_persist_flags(0);
