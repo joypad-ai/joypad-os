@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<!--
+  Joypad BLE OTA trigger — one-button Web Bluetooth page.
+
+  Sends the framed `{"cmd":"OTA"}` command to the device's Nordic UART Service
+  (NUS RX), which reboots the nRF52 into the Adafruit bootloader's BLE OTA DFU
+  mode (advertises "AdafruitDFU"). Then push releases/joypad_ota.zip from the
+  nRF Connect app's DFU.
+
+  Requires a Web-Bluetooth browser (Chrome/Edge) over https://, http://localhost,
+  or file://. Just open this file in Chrome and click the button.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Joypad · BLE OTA</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { font: 15px/1.5 -apple-system, system-ui, sans-serif; background:#111; color:#eee;
+           display:flex; min-height:100vh; margin:0; align-items:center; justify-content:center; }
+    .card { max-width:520px; padding:28px 32px; background:#1b1b1b; border:1px solid #333; border-radius:12px; }
+    h1 { font-size:18px; margin:0 0 4px; }
+    p  { color:#aaa; margin:6px 0; }
+    button { margin-top:16px; padding:12px 18px; font-size:15px; font-weight:600; color:#fff;
+             background:#0a84ff; border:0; border-radius:9px; cursor:pointer; }
+    button:disabled { background:#333; color:#777; cursor:default; }
+    #log { margin-top:16px; padding:10px 12px; background:#0c0c0c; border:1px solid #2a2a2a;
+           border-radius:8px; font:12px/1.5 ui-monospace, monospace; white-space:pre-wrap; min-height:22px; }
+    .ok { color:#37d67a; } .err { color:#ff5c5c; } .muted { color:#888; }
+    ol { color:#bbb; padding-left:20px; } li { margin:3px 0; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Joypad · Wireless firmware update</h1>
+    <p>Reboots the controller into <b>BLE OTA DFU</b> — no USB needed.</p>
+    <button id="go">Trigger OTA (reboot to BLE DFU)</button>
+    <div id="log" class="muted">Idle. Make sure the controller is on and advertising.</div>
+    <ol>
+      <li>Click the button, pick your <b>Joypad SInput</b> device.</li>
+      <li>It reboots and advertises as <b>AdafruitDFU</b>.</li>
+      <li>In <b>nRF Connect</b> → connect to AdafruitDFU → <b>DFU</b> → push <code>joypad_ota.zip</code>
+          (<code>make ota-zip</code>).</li>
+    </ol>
+    <p class="muted">Recovery if an update won't boot: double-tap reset → UF2 drive → drag a <code>.uf2</code>.</p>
+  </div>
+
+  <script>
+    // Nordic UART Service (BTstack "Nordic SPP" = standard NUS)
+    const NUS_SERVICE = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+    const NUS_RX      = '6e400002-b5a3-f393-e0a9-e50e24dcca9e'; // host -> device (write)
+
+    const logEl = document.getElementById('log');
+    const btn = document.getElementById('go');
+    const log = (msg, cls) => { logEl.textContent = msg; logEl.className = cls || ''; };
+
+    // CRC16-CCITT (poly 0x1021, init 0xFFFF) — matches the firmware's CDC protocol.
+    function crc16(bytes) {
+      let c = 0xFFFF;
+      for (const x of bytes) {
+        c ^= (x << 8);
+        for (let i = 0; i < 8; i++) c = (c & 0x8000) ? (((c << 1) ^ 0x1021) & 0xFFFF) : ((c << 1) & 0xFFFF);
+      }
+      return c & 0xFFFF;
+    }
+    // Frame: 0xAA | len16(LE) | type | seq | payload | crc16(LE over type|seq|payload)
+    function frame(type, seq, payloadStr) {
+      const p = Array.from(new TextEncoder().encode(payloadStr));
+      const crc = crc16([type, seq, ...p]);
+      return new Uint8Array([0xAA, p.length & 0xFF, (p.length >> 8) & 0xFF, type, seq, ...p,
+                             crc & 0xFF, (crc >> 8) & 0xFF]);
+    }
+
+    btn.addEventListener('click', async () => {
+      if (!navigator.bluetooth) { log('Web Bluetooth not available (use Chrome/Edge).', 'err'); return; }
+      btn.disabled = true;
+      try {
+        log('Requesting device…', 'muted');
+        const device = await navigator.bluetooth.requestDevice({
+          filters: [{ namePrefix: 'Joypad' }],
+          optionalServices: [NUS_SERVICE],
+        });
+        log('Connecting to ' + (device.name || 'device') + '…', 'muted');
+        const server = await device.gatt.connect();
+        const svc = await server.getPrimaryService(NUS_SERVICE);
+        const rx  = await svc.getCharacteristic(NUS_RX);
+
+        const pkt = frame(0x01, 0x00, '{"cmd":"OTA"}');
+        if (rx.properties.writeWithoutResponse) await rx.writeValueWithoutResponse(pkt);
+        else await rx.writeValue(pkt);
+
+        log('OTA command sent ✓  The controller is rebooting into BLE DFU (AdafruitDFU).\n' +
+            'Now open nRF Connect → connect AdafruitDFU → DFU → push joypad_ota.zip.', 'ok');
+      } catch (e) {
+        log('Failed: ' + (e && e.message ? e.message : e), 'err');
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
