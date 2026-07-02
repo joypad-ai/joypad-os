@@ -318,10 +318,43 @@ static ble_xbox_report_t last_sent_xbox;
 static sinput_report_t last_sent_sinput;
 
 // Report storage for hids_device_init_with_storage()
-// 8 slots covers all modes (standard: 7 reports incl. the SInput 3-output,
-// xbox: 3 reports, sinput: 3 reports)
-static hids_device_report_t hid_report_storage[8];
+// 12 slots: composite SInput uses the most — gamepad in/feature-in/out (3) +
+// keyboard in/out (2) + consumer in (1) + mouse in (1) = 7, matched against the
+// GATT's report characteristics (which also carry standard/xbox slots).
+static hids_device_report_t hid_report_storage[12];
 #define HID_REPORT_STORAGE_COUNT (sizeof(hid_report_storage) / sizeof(hid_report_storage[0]))
+
+// Composite SInput report map = the SInput gamepad map (report IDs 1/2/3) with a
+// keyboard (6) + consumer (7) + mouse (8) tail appended, so BLE SInput matches
+// the USB SInput composite. The keyboard collection also makes macOS treat the
+// device as a composite HID rather than a pure game controller it claims
+// exclusively — which is what frees Web Bluetooth (web-config NUS) to connect
+// while the controller is paired to macOS. SDL keys on the gamepad collection +
+// VID/PID (2E8A:10C6), unchanged, so Steam recognition is preserved.
+// Built at init by concatenating onto sinput_report_descriptor to avoid
+// duplicating its ~110 descriptor bytes.
+static const uint8_t sinput_kbd_mouse_tail[] = {
+    // --- Keyboard, Report ID 6 (in: modifier+keys, out: lock LEDs) ---
+    0x05,0x01, 0x09,0x06, 0xA1,0x01, 0x85,0x06,
+    0x05,0x07, 0x19,0xE0, 0x29,0xE7, 0x15,0x00, 0x25,0x01, 0x75,0x01, 0x95,0x08, 0x81,0x02,
+    0x95,0x01, 0x75,0x08, 0x81,0x01,
+    0x95,0x05, 0x75,0x01, 0x05,0x08, 0x19,0x01, 0x29,0x05, 0x91,0x02, 0x95,0x01, 0x75,0x03, 0x91,0x01,
+    0x95,0x06, 0x75,0x08, 0x15,0x00, 0x25,0x65, 0x05,0x07, 0x19,0x00, 0x29,0x65, 0x81,0x00,
+    0xC0,
+    // --- Consumer Control, Report ID 7 ---
+    0x05,0x0C, 0x09,0x01, 0xA1,0x01, 0x85,0x07,
+    0x15,0x00, 0x26,0xFF,0x03, 0x19,0x00, 0x2A,0xFF,0x03, 0x75,0x10, 0x95,0x01, 0x81,0x00,
+    0xC0,
+    // --- Mouse, Report ID 8 (5 buttons, 16-bit X/Y, wheel, pan) ---
+    0x05,0x01, 0x09,0x02, 0xA1,0x01, 0x85,0x08, 0x09,0x01, 0xA1,0x00,
+    0x05,0x09, 0x19,0x01, 0x29,0x05, 0x15,0x00, 0x25,0x01, 0x95,0x05, 0x75,0x01, 0x81,0x02,
+    0x95,0x01, 0x75,0x03, 0x81,0x01,
+    0x05,0x01, 0x09,0x30, 0x09,0x31, 0x16,0x00,0x80, 0x26,0xFF,0x7F, 0x75,0x10, 0x95,0x02, 0x81,0x06,
+    0x09,0x38, 0x15,0x81, 0x25,0x7F, 0x75,0x08, 0x95,0x01, 0x81,0x06,
+    0x05,0x0C, 0x0A,0x38,0x02, 0x15,0x81, 0x25,0x7F, 0x75,0x08, 0x95,0x01, 0x81,0x06,
+    0xC0, 0xC0,
+};
+static uint8_t sinput_composite_desc[sizeof(sinput_report_descriptor) + sizeof(sinput_kbd_mouse_tail)];
 
 // Mode (loaded from flash on init)
 static ble_output_mode_t current_mode = BLE_MODE_STANDARD;
@@ -731,8 +764,12 @@ void ble_output_late_init(void)
         hid_desc = ble_xbox_get_descriptor();
         hid_desc_size = ble_xbox_get_descriptor_size();
     } else if (current_mode == BLE_MODE_SINPUT) {
-        hid_desc = sinput_report_descriptor;
-        hid_desc_size = sizeof(sinput_report_descriptor);
+        // Assemble the composite map (gamepad + keyboard/consumer/mouse tail).
+        memcpy(sinput_composite_desc, sinput_report_descriptor, sizeof(sinput_report_descriptor));
+        memcpy(sinput_composite_desc + sizeof(sinput_report_descriptor),
+               sinput_kbd_mouse_tail, sizeof(sinput_kbd_mouse_tail));
+        hid_desc = sinput_composite_desc;
+        hid_desc_size = sizeof(sinput_composite_desc);
     } else {
         hid_desc = standard_hid_descriptor;
         hid_desc_size = sizeof(standard_hid_descriptor);
