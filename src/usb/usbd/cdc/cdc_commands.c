@@ -231,6 +231,10 @@ static void send_json(const char* json)
 // COMMAND HANDLERS
 // ============================================================================
 
+// Diagnostic getter from sinput_mode.c (fwd-declared to avoid pulling the
+// SInput/tusb headers into this TU).
+extern uint32_t sinput_get_feature_count(void);
+
 static void cmd_info(const char* json)
 {
     (void)json;
@@ -249,12 +253,13 @@ static void cmd_info(const char* json)
 
     snprintf(response_buf, sizeof(response_buf),
              "{\"app\":\"%s\",\"version\":\"%s\",\"board\":\"%s\",\"serial\":\"%s\",\"commit\":\"%s\",\"build\":\"%s\""
-             ",\"reset\":\"0x%lx\",\"battery_mv\":%d,\"chg\":%d,\"imu\":%s"
+             ",\"reset\":\"0x%lx\",\"battery_mv\":%d,\"chg\":%d,\"imu\":%s,\"flashw\":%lu,\"featw\":%lu"
              ",\"features\":{\"onboard_led\":%s}}"
              ,
              APP_NAME, JOYPAD_VERSION, BOARD_NAME, serial, GIT_COMMIT, BUILD_TIME,
              (unsigned long)platform_last_reset_reason(), platform_battery_millivolts(),
-             platform_battery_charging(), imu_str,
+             platform_battery_charging(), imu_str, (unsigned long)flash_get_write_count(),
+             (unsigned long)sinput_get_feature_count(),
 #ifdef BTSTACK_USE_CYW43
              "true"
 #elif defined(BOARD_LED_PIN)

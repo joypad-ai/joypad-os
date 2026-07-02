@@ -596,8 +596,15 @@ static const uint8_t* sinput_mode_get_report_descriptor(void)
 // capability struct + zero pad), refreshing device info from player 0 first so
 // the caps reflect the connected controller. Transport-neutral: the caller
 // sends it (USB input report ID 2, or BLE input report ID 2).
+// Diagnostic: feature responses built since boot. A climbing count while a
+// controller is steadily connected means feature_request_pending is flapping
+// (feature reports interleave into the input stream → visible stream hiccups).
+volatile uint32_t g_sinput_feature_count = 0;
+uint32_t sinput_get_feature_count(void) { return g_sinput_feature_count; }
+
 uint16_t sinput_build_feature_response(uint8_t feature_response[63])
 {
+    g_sinput_feature_count++;
     // Refresh device info from player 0 before building response
     if (playersCount > 0 && players[0].dev_addr >= 0) {
         update_device_info((uint8_t)players[0].dev_addr,

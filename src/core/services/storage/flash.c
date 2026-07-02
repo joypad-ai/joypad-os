@@ -339,8 +339,14 @@ static void flash_erase_sector(uint8_t sector)
 
 // Force immediate save (bypasses debouncing)
 // With dual-sector design, this is always safe - we erase the OTHER sector
+// Diagnostic: total committed flash writes since boot. A steadily climbing
+// count while idle means something is persisting settings in a hot path.
+volatile uint32_t g_flash_write_count = 0;
+uint32_t flash_get_write_count(void) { return g_flash_write_count; }
+
 void flash_save_now(const flash_t* settings)
 {
+    g_flash_write_count++;
     static flash_t write_settings;
     memcpy(&write_settings, settings, sizeof(flash_t));
     write_settings.magic = SETTINGS_MAGIC;

@@ -130,6 +130,9 @@ void flash_save(const flash_t* settings);
 // Force immediate save (bypasses debouncing - use sparingly)
 void flash_save_now(const flash_t* settings);
 
+// Diagnostic: number of committed flash writes since boot (see flash.c).
+uint32_t flash_get_write_count(void);
+
 // Force immediate save, ignoring BT-active check (use before device reset)
 void flash_save_force(const flash_t* settings);
 

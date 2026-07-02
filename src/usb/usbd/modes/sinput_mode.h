@@ -36,4 +36,7 @@ void sinput_output_received(const uint8_t* data, uint16_t len);
 // Rumble amplitudes from the last haptic output report.
 void sinput_get_rumble_lr(uint8_t* left, uint8_t* right);
 
+// Diagnostic: feature responses built since boot (see sinput_mode.c).
+uint32_t sinput_get_feature_count(void);
+
 #endif // SINPUT_MODE_H
