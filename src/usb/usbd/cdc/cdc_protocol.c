@@ -57,8 +57,45 @@ bool cdc_protocol_rx_byte(cdc_protocol_t* ctx, uint8_t byte)
             if (byte == CDC_SYNC_BYTE) {
                 rx->state = CDC_RX_LEN_LO;
                 rx->payload_pos = 0;
+            } else if (byte == '{') {
+                // Text-command mode: a bare newline-delimited JSON object, for
+                // humans and tools whose serial send is text rather than our
+                // binary framing (e.g. COMrade's send_serial, a plain terminal).
+                // Response goes back as text too (see cdc_protocol_send_response).
+                ctx->text_mode = true;
+                rx->state = CDC_RX_TEXT;
+                rx->payload_pos = 0;
+                rx->packet.payload[rx->payload_pos++] = byte;  // keep the '{'
             }
             // Else: keep scanning for sync
+            break;
+
+        case CDC_RX_TEXT:
+            if (byte == '\n' || byte == '\r') {
+                // End of line → dispatch the accumulated JSON as a command.
+                if (rx->payload_pos > 1) {
+                    if (rx->payload_pos < CDC_MAX_PAYLOAD) {
+                        rx->packet.payload[rx->payload_pos] = 0;  // null-terminate
+                    }
+                    rx->packet.type = CDC_MSG_CMD;
+                    rx->packet.seq = 0;
+                    rx->packet.length = rx->payload_pos;
+                    ctx->cmd_seq = 0;
+                    if (ctx->handler) {
+                        ctx->handler(&rx->packet);
+                    }
+                }
+                rx->state = CDC_RX_SYNC;
+                rx->payload_pos = 0;
+                return true;
+            } else if (rx->payload_pos < CDC_MAX_PAYLOAD) {
+                rx->packet.payload[rx->payload_pos++] = byte;
+            } else {
+                // Line too long — abandon and resync.
+                rx->state = CDC_RX_SYNC;
+                rx->payload_pos = 0;
+                ctx->text_mode = false;
+            }
             break;
 
         case CDC_RX_LEN_LO:
@@ -118,6 +155,7 @@ bool cdc_protocol_rx_byte(cdc_protocol_t* ctx, uint8_t byte)
                 // Valid packet - save seq for response and call handler
                 if (rx->packet.type == CDC_MSG_CMD) {
                     ctx->cmd_seq = rx->packet.seq;
+                    ctx->text_mode = false;  // binary in → binary response
                 }
                 if (ctx->handler) {
                     ctx->handler(&rx->packet);
@@ -183,6 +221,21 @@ uint16_t cdc_protocol_send(cdc_protocol_t* ctx, cdc_msg_type_t type,
 
 uint16_t cdc_protocol_send_response(cdc_protocol_t* ctx, const char* json)
 {
+    // Text-mode command → reply as plain JSON + newline so a serial terminal /
+    // COMrade shows a readable line instead of a binary frame. Uses the same
+    // transport selection as cdc_protocol_send (custom write or USB CDC default).
+    if (ctx->text_mode) {
+        uint16_t n = (uint16_t)strlen(json);
+        if (n > CDC_MAX_PAYLOAD) n = CDC_MAX_PAYLOAD;
+        uint8_t line[CDC_MAX_PAYLOAD + 2];
+        memcpy(line, json, n);
+        line[n++] = '\r';
+        line[n++] = '\n';
+        if (ctx->write) {
+            return ctx->write(line, n);
+        }
+        return cdc_data_write(line, n);
+    }
     return cdc_protocol_send(ctx, CDC_MSG_RSP, ctx->cmd_seq,
                              (const uint8_t*)json, strlen(json));
 }

@@ -72,6 +72,7 @@ typedef enum {
     CDC_RX_PAYLOAD,     // Receiving payload
     CDC_RX_CRC_LO,      // Waiting for CRC low byte
     CDC_RX_CRC_HI,      // Waiting for CRC high byte
+    CDC_RX_TEXT,        // Accumulating a newline-delimited text JSON command
 } cdc_rx_state_t;
 
 typedef struct {
@@ -100,6 +101,7 @@ typedef struct {
     bool input_streaming;       // Input event streaming enabled
     bool log_streaming;         // Debug log streaming enabled
     bool ble_transport;         // True if transport is BLE NUS (slower throttle)
+    bool text_mode;             // Last command arrived as text → reply as text
 } cdc_protocol_t;
 
 // ============================================================================
