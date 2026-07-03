@@ -694,8 +694,10 @@ target_compile_definitions(joypad_dc_rp2040zero PRIVATE
     MAPLE_PIN1=14 MAPLE_PIN5=15   # USB4Maple-compatible Maple Bus pins
     WS2812_PIN=16                 # onboard NeoPixel (kb2040 has none)
     USE_BOOTSEL_BUTTON=1
-    # SD card on SPI1: SCK=GP10, MOSI=GP11, MISO=GP12, CS=GP13
-    CONFIG_SD=1 SD_SPI_INST=1 SD_SCK_PIN=10 SD_MOSI_PIN=11 SD_MISO_PIN=12 SD_CS_PIN=13
+    # SD card (SPI1: SCK=GP10 MOSI=GP11 MISO=GP12 CS=GP13) is ONLY used for VMU
+    # persistence, which is disabled for release — leaving it off keeps both
+    # RP2040 usb2dc builds identical except GPIO. Re-enable alongside CONFIG_VMU.
+    # CONFIG_SD=1 SD_SPI_INST=1 SD_SCK_PIN=10 SD_MOSI_PIN=11 SD_MISO_PIN=12 SD_CS_PIN=13
 )
 target_compile_options(joypad_dc_rp2040zero PRIVATE ${USB2DC_FORCE_CONFIG})
 target_sources(joypad_dc_rp2040zero PUBLIC ${COMMON_SOURCES} ${SD_SOURCES}
