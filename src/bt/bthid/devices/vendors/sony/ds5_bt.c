@@ -17,6 +17,25 @@
 #include <string.h>
 #include <stdio.h>
 
+#ifdef CONFIG_DS5_DROP_SCREAM
+// Drop-scream content feature: IMU free-fall detection + speaker audio over BT
+// via extended output report 0x36 (Opus frames baked into flash).
+// See .dev/docs/DUALSENSE_DROP_SCREAM_PLAN.md — disabled by default.
+#include "ds5_voice_assets.h"
+
+// btstack_host.c (gated): direct L2CAP interrupt-channel send with per-packet
+// can-send-now pacing — the hid_host_send_report path drops frames at 100Hz.
+extern bool btstack_classic_send_interrupt_raw(uint8_t conn_index,
+                                               const uint8_t* data, uint16_t len);
+// Scan control: continuous Classic inquiry (6.4s GIAC/LIAC windows, restarted
+// forever) + BLE scanning keep running while a controller is connected, and
+// inquiry devastates ACL bandwidth — audible as stutter in the 0x36 stream.
+// Silence the radio while a DS5 is connected; resume discovery on disconnect.
+extern void btstack_host_stop_scan(void);
+extern void btstack_host_start_scan(void);
+extern void btstack_host_suppress_scan(bool suppress);
+#endif
+
 // Player LED colors (RGB values) - same as DS4
 static const uint8_t PLAYER_COLORS[][3] = {
     {  0,   0,  64 },   // Player 1: Blue
@@ -46,6 +65,37 @@ static const uint8_t PLAYER_LED_PATTERNS[] = {
 #define DS5_REPORT_BT_INPUT     0x31    // Full BT input report
 #define DS5_REPORT_USB_INPUT    0x01    // USB input report (fallback)
 #define DS5_REPORT_BT_OUTPUT    0x31    // BT output report
+
+#ifdef CONFIG_DS5_DROP_SCREAM
+#define DS5_REPORT_BT_AUDIO     0x36    // Extended output: state + haptic PCM + speaker Opus
+
+// Voice sequencer states
+enum {
+    DS5_VOICE_IDLE = 0,
+    DS5_VOICE_PREARM,       // white lightbar sent via known-good 0x31 (diagnostic)
+    DS5_VOICE_ARMING,       // speaker-path 0x31 sent, waiting to start frames
+    DS5_VOICE_PLAYING,
+};
+
+// Drop detector states
+enum {
+    DS5_DROP_IDLE = 0,
+    DS5_DROP_PENDING,       // near-zero g seen, confirming sustained free-fall
+    DS5_DROP_FALLING,       // confirmed free-fall, scream playing
+    DS5_DROP_LANDING,       // free-fall ended, classifying impact vs catch
+    DS5_DROP_COOLDOWN,
+};
+
+// DS5 accelerometer: 8192 LSB per g (Linux DS_ACC_RES_PER_G)
+#define DS5_ACCEL_1G            8192
+#define DS5_FF_THRESH           (DS5_ACCEL_1G * 3 / 10)   // 0.30 g — ballistic
+#define DS5_NORMAL_THRESH       (DS5_ACCEL_1G * 3 / 4)    // 0.75 g — free-fall over
+#define DS5_IMPACT_THRESH       (DS5_ACCEL_1G * 3)        // 3.0 g — hit something
+#define DS5_FALL_CONFIRM_MS     90      // sustained 0g before scream starts
+#define DS5_LANDING_WINDOW_MS   150     // peak-decel classification window
+#define DS5_FALL_TIMEOUT_MS     2500    // give up if no landing (scream exhausted)
+#define DS5_COOLDOWN_MS         3000
+#endif
 
 // ============================================================================
 // DS5 REPORT STRUCTURE
@@ -191,6 +241,27 @@ typedef struct {
     // Touchpad swipe tracking
     uint16_t tpad_last_pos;
     bool tpad_dragging;
+
+#ifdef CONFIG_DS5_DROP_SCREAM
+    // Voice sequencer
+    uint8_t voice_state;
+    const ds5_voice_clip_t* voice_clip;
+    uint16_t voice_frame;
+    uint32_t voice_next_ms;         // next 10ms frame slot
+    uint8_t audio_pkt_counter;      // free-running 0x36 packet counter
+    bool voice_is_scream;
+    uint8_t voice_r, voice_g, voice_b;
+    bool voice_flash;               // flash lightbar while screaming
+    bool led_refresh;               // force normal LED resend after playback
+    bool mute_was_down;             // bench-trigger edge detect
+    uint8_t mute_streak;            // consecutive reports with mute down (glitch filter)
+    uint32_t trigger_last_ms;       // bench-trigger debounce
+    bool scan_quiet_pending;        // defer scan-stop out of BT event context
+    // Drop detector
+    uint8_t drop_state;
+    uint32_t drop_t0;               // current drop-state entry time
+    int64_t drop_peak_m2;           // peak |accel|^2 during landing window
+#endif
 } ds5_bt_data_t;
 
 static ds5_bt_data_t ds5_data[BTHID_MAX_DEVICES];
@@ -285,6 +356,298 @@ static void ds5_send_output(bthid_device_t* device, uint8_t rumble_left, uint8_t
     ds5->player_led = player_led;
 }
 
+#ifdef CONFIG_DS5_DROP_SCREAM
+// ============================================================================
+// DROP SCREAM: speaker audio over BT (report 0x36) + IMU drop detection
+// ============================================================================
+
+// Send a 0x31 with speaker routing armed (enable=true) or released (false).
+// Must be sent once before the first 0x36 audio frame to open the speaker path.
+static void ds5_send_output31_audio(bthid_device_t* device, bool enable)
+{
+    ds5_bt_data_t* ds5 = (ds5_bt_data_t*)device->driver_data;
+    if (!ds5) return;
+
+    static uint8_t buf[79];
+    memset(buf, 0, sizeof(buf));
+
+    buf[0] = 0xA2;                       // DATA | OUTPUT
+    buf[1] = 0x31;
+    buf[2] = (uint8_t)(ds5->output_seq++ << 4);
+    buf[3] = 0x10;                       // BT tag
+
+    // Pure audio-control report, mirroring DS5_Bridge send_speaker_output_state():
+    // no rumble/lightbar/LED flags — those are carried by 0x36 SetStateData.
+    if (enable) {
+        buf[4]  = 0x80 | 0x20;           // valid_flag0: audio_ctrl_en | speaker_vol_en
+        buf[5]  = 0x80;                  // valid_flag1: audio_control2_en
+        buf[9]  = 0x64;                  // speaker volume (max)
+        buf[11] = 0x30;                  // audio_control: speaker output path
+        buf[41] = 0x04;                  // audio_control2: speaker preamp gain (default 4)
+    } else {
+        buf[4]  = 0x80;                  // valid_flag0: audio_ctrl_en
+        buf[11] = 0x00;                  // audio_control: headphones path (off)
+    }
+
+    uint32_t crc = ds5_bt_crc32(&buf[1], 74);
+    buf[75] = (crc >> 0) & 0xFF;
+    buf[76] = (crc >> 8) & 0xFF;
+    buf[77] = (crc >> 16) & 0xFF;
+    buf[78] = (crc >> 24) & 0xFF;
+
+    bt_send_interrupt(device->conn_index, buf, 79);
+    printf("[DS5_BT] Speaker %s\n", enable ? "armed" : "released");
+}
+
+// Build and send one 0x36 audio frame: 0xA2 + 398-byte report.
+// Sub-packet chain (format from DS5_Bridge/SAxense reverse engineering):
+//   0x11 audio control | 0x10 SetStateData (63B) | 0x12 haptic PCM (64B) |
+//   0x13 speaker Opus (200B) | pad | CRC32
+static bool ds5_send_audio_frame(bthid_device_t* device)
+{
+    ds5_bt_data_t* ds5 = (ds5_bt_data_t*)device->driver_data;
+    if (!ds5 || !ds5->voice_clip) return false;
+
+    // Static: BTstack copies into its own buffer synchronously, but keep the
+    // existing driver convention (and 400B off the task stack).
+    static uint8_t buf[400];
+    memset(buf, 0, sizeof(buf));
+
+    buf[0] = 0xA2;                                   // DATA | OUTPUT
+    buf[1] = DS5_REPORT_BT_AUDIO;                    // 0x36
+    buf[2] = (uint8_t)((ds5->output_seq++ & 0x0F) << 4);
+
+    // --- Sub-packet 0x11: audio control / enable (7 bytes) ---
+    buf[3] = 0x11 | 0x80;                            // pid | sized
+    buf[4] = 7;
+    // Enable all audio sections EXCEPT mic streaming (bit 0): with mic on,
+    // the controller streams mic-audio input reports that got parsed as
+    // gamepad input — phantom mute presses and garbage accel data.
+    buf[5] = 0xFE;
+    buf[6] = buf[7] = buf[8] = buf[9] = buf[10] = 64; // haptic buffer length
+    buf[11] = ds5->audio_pkt_counter++;
+
+    // --- Sub-packet 0x10: SetStateData (63 bytes) ---
+    // Carries the full 0x31-equivalent state so LEDs/rumble stay alive while
+    // standalone 0x31 reports are suppressed during playback.
+    buf[12] = 0x10 | 0x80;
+    buf[13] = 63;
+    // Byte-exact mirror of DS5_Bridge controller_output_state state_data after
+    // controller_output_state_copy_audio_snapshot() in speaker mode.
+    uint8_t* st = &buf[14];
+    st[0] = 0xBD;                 // valid_flag0: vib+triggers+headphone+speaker+audio_ctrl (no mic)
+    st[1] = 0xF6;                 // valid_flag1: pwr_save+lightbar+player+lowpass+motor_pwr+audio_ctrl2
+    st[2] = ds5->rumble_right;
+    st[3] = ds5->rumble_left;
+    st[4] = 0x7F;                 // headphone volume
+    st[5] = 0x64;                 // speaker volume
+    st[6] = 0xFF;                 // mic volume (enable bit cleared — inert)
+    st[7] = 0x30;                 // audio_control: speaker output path
+    st[9] = 0x0F;                 // power_save_control: keep audio blocks awake
+    st[37] = 0x04;                // audio_control2: speaker preamp gain (default 4)
+    st[38] = 0x07;                // valid_flag2
+    st[41] = 0x02;                // lightbar_setup: light out
+    st[42] = 0x01;                // led brightness
+    st[43] = ds5->player_led;
+    // Lightbar acting: flash 100ms on/off while screaming, steady on quips
+    bool blank = ds5->voice_flash && ((ds5->voice_frame / 10) & 1);
+    st[44] = blank ? 0 : ds5->voice_r;
+    st[45] = blank ? 0 : ds5->voice_g;
+    st[46] = blank ? 0 : ds5->voice_b;
+
+    // --- Sub-packet 0x12: haptic PCM, 64 bytes of silence ---
+    buf[77] = 0x12 | 0x80;
+    buf[78] = 64;
+    // buf[79..142] already zero
+
+    // --- Sub-packet 0x13: speaker Opus frame (200 bytes) ---
+    buf[143] = 0x13 | 0x80;
+    buf[144] = 200;
+    memcpy(&buf[145], ds5->voice_clip->frames[ds5->voice_frame], 200);
+
+    // buf[345..394]: zero pad. CRC32 over report bytes [0..393] = buf[1..394].
+    uint32_t crc = ds5_bt_crc32(&buf[1], 394);
+    buf[395] = (crc >> 0) & 0xFF;
+    buf[396] = (crc >> 8) & 0xFF;
+    buf[397] = (crc >> 16) & 0xFF;
+    buf[398] = (crc >> 24) & 0xFF;
+
+    static uint32_t frames_ok = 0, frames_fail = 0;
+    bool ok = btstack_classic_send_interrupt_raw(device->conn_index, buf, 399);
+    if (ok) frames_ok++; else frames_fail++;
+    if (((frames_ok + frames_fail) % 100) == 1) {
+        printf("[DS5_BT] audio frames ok=%lu busy=%lu\n",
+               (unsigned long)frames_ok, (unsigned long)frames_fail);
+    }
+    return ok;
+}
+
+// Start a clip, or splice to a new clip if already streaming (frame-pointer
+// swap at the next 10ms slot — the lead-in silence baked into each clip
+// absorbs the Opus decoder-state discontinuity).
+static void ds5_voice_play(bthid_device_t* device, ds5_bt_data_t* ds5,
+                           const ds5_voice_clip_t* clip, bool is_scream,
+                           uint8_t r, uint8_t g, uint8_t b, bool flash)
+{
+    ds5->voice_clip = clip;
+    ds5->voice_frame = 0;
+    ds5->voice_is_scream = is_scream;
+    ds5->voice_r = r;
+    ds5->voice_g = g;
+    ds5->voice_b = b;
+    ds5->voice_flash = flash;
+
+    if (ds5->voice_state == DS5_VOICE_IDLE) {
+        // Diagnostic stage 1: white lightbar via the KNOWN-GOOD 0x31 path.
+        // Visible white = trigger + parse + BT send path all work.
+        ds5_send_output(device, 0, 0, 255, 255, 255, ds5->player_led);
+        ds5->voice_next_ms = platform_time_ms() + 20;
+        ds5->voice_state = DS5_VOICE_PREARM;
+    }
+}
+
+static void ds5_voice_stop(bthid_device_t* device, ds5_bt_data_t* ds5)
+{
+    if (ds5->voice_state == DS5_VOICE_IDLE) return;
+    ds5->voice_state = DS5_VOICE_IDLE;
+    ds5->voice_clip = NULL;
+    ds5_send_output31_audio(device, false);
+    ds5->led_refresh = true;  // normal task path resends player LED/lightbar
+}
+
+static void ds5_voice_quip(bthid_device_t* device, ds5_bt_data_t* ds5, bool impact)
+{
+    uint32_t pick = platform_time_ms();
+    const ds5_voice_clip_t* clip = impact
+        ? ds5_clips_impact[pick % DS5_CLIPS_IMPACT_COUNT]
+        : ds5_clips_catch[pick % DS5_CLIPS_CATCH_COUNT];
+    printf("[DS5_BT] Quip: %s\n", impact ? "impact" : "catch");
+    // Orange for hurt, green for relief
+    ds5_voice_play(device, ds5, clip, false,
+                   impact ? 255 : 0, impact ? 32 : 255, 0, false);
+}
+
+// 10ms frame pacer, called every ds5_task tick.
+// Returns true while playback owns the output channel (suppresses 0x31 path).
+static bool ds5_voice_task(bthid_device_t* device, ds5_bt_data_t* ds5)
+{
+    if (ds5->voice_state == DS5_VOICE_IDLE) return false;
+
+    uint32_t now = platform_time_ms();
+    if ((int32_t)(now - ds5->voice_next_ms) < 0) return true;
+
+    if (ds5->voice_state == DS5_VOICE_PREARM) {
+        // Diagnostic stage 2: open the speaker routing path
+        ds5_send_output31_audio(device, true);
+        ds5->voice_next_ms = now + 30;   // let routing settle
+        ds5->voice_state = DS5_VOICE_ARMING;
+        return true;
+    }
+
+    // Diagnostic stage 3: the 0x36 stream itself.
+    // Retry-don't-drop: if L2CAP can't take the packet this tick, keep the
+    // frame and retry next task pass — a dropped frame is an audible gap.
+    ds5->voice_state = DS5_VOICE_PLAYING;
+    if (!ds5_send_audio_frame(device)) {
+        if ((int32_t)(now - ds5->voice_next_ms) > 60) {
+            ds5->voice_next_ms = now;  // hopelessly behind: resync clock
+        }
+        return true;
+    }
+    ds5->voice_frame++;
+    // Controller consumes one 0x36 per 10.667ms (64-byte haptic buffer at
+    // 3kHz stereo = 32ms per 3 packets). Sending at a plain 10ms overflows
+    // its intake queue and it drops frames (audible stutter). +11,+11,+10.
+    ds5->voice_next_ms += ((ds5->voice_frame % 3) == 0) ? 10 : 11;
+    // Resync instead of bursting if the task loop stalled past a few slots
+    if ((int32_t)(now - ds5->voice_next_ms) > 30) {
+        ds5->voice_next_ms = now + 11;
+    }
+
+    if (ds5->voice_frame >= ds5->voice_clip->frame_count) {
+        ds5_voice_stop(device, ds5);
+        return false;
+    }
+    return true;
+}
+
+// Free-fall / impact / catch detector, fed raw accel from every input report.
+// A toss is ballistic (0g) just like a drop — physically indistinguishable,
+// and screaming when tossed is part of the bit.
+static void ds5_drop_update(bthid_device_t* device, ds5_bt_data_t* ds5,
+                            const int16_t accel[3])
+{
+    const int64_t ff2     = (int64_t)DS5_FF_THRESH * DS5_FF_THRESH;
+    const int64_t normal2 = (int64_t)DS5_NORMAL_THRESH * DS5_NORMAL_THRESH;
+    const int64_t impact2 = (int64_t)DS5_IMPACT_THRESH * DS5_IMPACT_THRESH;
+
+    int64_t m2 = (int64_t)accel[0] * accel[0] +
+                 (int64_t)accel[1] * accel[1] +
+                 (int64_t)accel[2] * accel[2];
+    uint32_t now = platform_time_ms();
+
+    switch (ds5->drop_state) {
+        case DS5_DROP_IDLE:
+            if (m2 < ff2) {
+                ds5->drop_state = DS5_DROP_PENDING;
+                ds5->drop_t0 = now;
+                // ~1g should read m2≈64 here (8192²>>20); near-zero = free-fall.
+                // If this line spams at rest, the accel parse is misaligned.
+                printf("[DS5_BT] Drop: near-zero g (m2>>20=%ld)\n", (long)(m2 >> 20));
+            }
+            break;
+
+        case DS5_DROP_PENDING:
+            if (m2 >= ff2) {
+                ds5->drop_state = DS5_DROP_IDLE;
+            } else if (now - ds5->drop_t0 >= DS5_FALL_CONFIRM_MS) {
+                printf("[DS5_BT] Free-fall — screaming\n");
+                ds5->drop_state = DS5_DROP_FALLING;
+                ds5->drop_t0 = now;
+                ds5_voice_play(device, ds5, &DS5_CLIP_SCREAM, true,
+                               255, 0, 0, true);  // flashing red
+            }
+            break;
+
+        case DS5_DROP_FALLING:
+            if (m2 > impact2) {
+                ds5_voice_quip(device, ds5, true);
+                ds5->drop_state = DS5_DROP_COOLDOWN;
+                ds5->drop_t0 = now;
+            } else if (m2 > normal2) {
+                // Free-fall ended without a hard spike yet — watch the window
+                ds5->drop_state = DS5_DROP_LANDING;
+                ds5->drop_t0 = now;
+                ds5->drop_peak_m2 = m2;
+            } else if (now - ds5->drop_t0 > DS5_FALL_TIMEOUT_MS) {
+                ds5_voice_stop(device, ds5);
+                ds5->drop_state = DS5_DROP_COOLDOWN;
+                ds5->drop_t0 = now;
+            }
+            break;
+
+        case DS5_DROP_LANDING:
+            if (m2 > ds5->drop_peak_m2) ds5->drop_peak_m2 = m2;
+            if (ds5->drop_peak_m2 > impact2) {
+                ds5_voice_quip(device, ds5, true);
+                ds5->drop_state = DS5_DROP_COOLDOWN;
+                ds5->drop_t0 = now;
+            } else if (now - ds5->drop_t0 >= DS5_LANDING_WINDOW_MS) {
+                ds5_voice_quip(device, ds5, false);  // soft decel = caught
+                ds5->drop_state = DS5_DROP_COOLDOWN;
+                ds5->drop_t0 = now;
+            }
+            break;
+
+        case DS5_DROP_COOLDOWN:
+            if (now - ds5->drop_t0 >= DS5_COOLDOWN_MS) {
+                ds5->drop_state = DS5_DROP_IDLE;
+            }
+            break;
+    }
+}
+#endif  // CONFIG_DS5_DROP_SCREAM
+
 // ============================================================================
 // DRIVER IMPLEMENTATION
 // ============================================================================
@@ -334,6 +697,20 @@ static bool ds5_init(bthid_device_t* device)
             ds5_data[i].player_led = PLAYER_LED_PATTERNS[0];
             ds5_data[i].tpad_last_pos = 0;
             ds5_data[i].tpad_dragging = false;
+#ifdef CONFIG_DS5_DROP_SCREAM
+            ds5_data[i].voice_state = DS5_VOICE_IDLE;
+            ds5_data[i].voice_clip = NULL;
+            ds5_data[i].voice_frame = 0;
+            ds5_data[i].audio_pkt_counter = 0;
+            ds5_data[i].led_refresh = false;
+            ds5_data[i].mute_was_down = false;
+            ds5_data[i].drop_state = DS5_DROP_IDLE;
+            // Radio silence: ongoing inquiry/scan windows starve the ACL link
+            // and stutter the audio stream. Deferred to ds5_task (main-loop
+            // context) — stopping GAP from inside the BT event handler that
+            // delivered this connection crash-reboots the stack.
+            ds5_data[i].scan_quiet_pending = true;
+#endif
 
             ds5_data[i].event.type = INPUT_TYPE_GAMEPAD;
             ds5_data[i].event.transport = INPUT_TRANSPORT_BT_CLASSIC;
@@ -371,6 +748,14 @@ static void ds5_process_report(bthid_device_t* device, const uint8_t* data, uint
     uint16_t report_len = 0;
 
     if (report_id == DS5_REPORT_BT_INPUT && len >= 12) {
+#ifdef CONFIG_DS5_DROP_SCREAM
+        // Strict shape gate: the gamepad input report is exactly 78 bytes.
+        // With audio armed the controller emits other (e.g. mic) reports that
+        // must not be parsed as input — that was the phantom-trigger source.
+        if (len != 78) {
+            return;
+        }
+#endif
         // Full BT report: report_id (1) + header (1) = skip 2 bytes
         report_data = data + 2;
         report_len = len - 2;
@@ -389,6 +774,18 @@ static void ds5_process_report(bthid_device_t* device, const uint8_t* data, uint
     }
 
     const ds5_input_report_t* rpt = (const ds5_input_report_t*)report_data;
+
+#ifdef CONFIG_DS5_DROP_SCREAM
+    // Layout probe: trigger/drop instrumentation showed garbage at the
+    // button/accel offsets — dump raw bytes to find the true BT layout.
+    static uint8_t probe_count = 0;
+    if (probe_count < 3) {
+        probe_count++;
+        printf("[DS5_BT] Probe id=0x%02X len=%u raw:", data[0], (unsigned)len);
+        for (int pi = 0; pi < 28 && pi < (int)len; pi++) printf(" %02X", data[pi]);
+        printf("\n");
+    }
+#endif
 
     // Parse D-pad (hat format)
     bool dpad_up    = (rpt->dpad == 0 || rpt->dpad == 1 || rpt->dpad == 7);
@@ -512,6 +909,36 @@ static void ds5_process_report(bthid_device_t* device, const uint8_t* data, uint
         ds5->event.has_touch = true;
     }
 
+#ifdef CONFIG_DS5_DROP_SCREAM
+    // Bench trigger on the mute button: idle → scream, screaming → impact quip,
+    // quipping → stop. Decoupled from the IMU for wire-format testing.
+    // Glitch-filtered (3 consecutive reports down) + 700ms debounce: the raw
+    // edge-detect thrashed the sequencer at input-report rate in HW testing.
+    if (rpt->mute) {
+        if (ds5->mute_streak < 255) ds5->mute_streak++;
+    } else {
+        ds5->mute_streak = 0;
+        ds5->mute_was_down = false;
+    }
+    uint32_t trig_now = platform_time_ms();
+    if (ds5->mute_streak == 3 && !ds5->mute_was_down &&
+        (trig_now - ds5->trigger_last_ms) >= 700) {
+        ds5->mute_was_down = true;
+        ds5->trigger_last_ms = trig_now;
+        printf("[DS5_BT] Mute trigger: btn_bytes=%02X %02X %02X state=%d\n",
+               report_data[7], report_data[8], report_data[9], ds5->voice_state);
+        if (ds5->voice_state == DS5_VOICE_IDLE) {
+            ds5_voice_play(device, ds5, &DS5_CLIP_SCREAM, true, 255, 0, 0, true);
+        } else if (ds5->voice_is_scream) {
+            ds5_voice_quip(device, ds5, true);
+        } else {
+            ds5_voice_stop(device, ds5);
+        }
+    }
+
+    ds5_drop_update(device, ds5, rpt->accel);
+#endif
+
     // Submit to router
     router_submit_input(&ds5->event);
 }
@@ -522,6 +949,17 @@ static void ds5_task(bthid_device_t* device)
     if (!ds5) return;
 
     uint32_t now = platform_time_ms();
+
+#ifdef CONFIG_DS5_DROP_SCREAM
+    // Deferred from ds5_init: silence discovery from main-loop context.
+    // Inquiry/scan windows starve the ACL link and stutter the audio stream.
+    if (ds5->scan_quiet_pending) {
+        ds5->scan_quiet_pending = false;
+        btstack_host_suppress_scan(true);
+        btstack_host_stop_scan();
+        printf("[DS5_BT] Scan suppressed for audio streaming\n");
+    }
+#endif
 
     // State machine for activation with delays
     switch (ds5->activation_state) {
@@ -545,6 +983,11 @@ static void ds5_task(bthid_device_t* device)
 
         case 2:  // Activated - monitor feedback system for rumble/LED updates
             {
+#ifdef CONFIG_DS5_DROP_SCREAM
+                // While voice playback owns the channel, 0x36 frames carry the
+                // control state — suppress the standalone 0x31 path entirely.
+                if (ds5_voice_task(device, ds5)) break;
+#endif
                 int player_idx = find_player_index(ds5->event.dev_addr, ds5->event.instance);
                 if (player_idx >= 0) {
                     feedback_state_t* fb = feedback_get_state(player_idx);
@@ -629,6 +1072,14 @@ static void ds5_task(bthid_device_t* device)
                         need_update = true;
                     }
 
+#ifdef CONFIG_DS5_DROP_SCREAM
+                    // Voice playback just ended: resend LEDs the 0x36 acting overrode
+                    if (ds5->led_refresh) {
+                        ds5->led_refresh = false;
+                        need_update = true;
+                    }
+#endif
+
                     if (need_update) {
                         ds5_send_output(device, rumble_left, rumble_right, r, g, b, player_led);
                         feedback_clear_dirty(player_idx);
@@ -642,6 +1093,16 @@ static void ds5_task(bthid_device_t* device)
 static void ds5_disconnect(bthid_device_t* device)
 {
     printf("[DS5_BT] Disconnect: %s\n", device->name);
+
+#ifdef CONFIG_DS5_DROP_SCREAM
+    // ONLY clear the suppression flag (plain bool write, safe here). The
+    // existing "No devices connected, resuming scan" path performs the actual
+    // restart right after this callback — starting scan ourselves as well
+    // double-starts GAP inquiry, which desyncs its state so the NEXT
+    // connection's scan-stop doesn't fully stop it and the LMP encryption
+    // exchange starves (reconnect hangs after auth, no player LED).
+    btstack_host_suppress_scan(false);
+#endif
 
     ds5_bt_data_t* ds5 = (ds5_bt_data_t*)device->driver_data;
     if (ds5) {
