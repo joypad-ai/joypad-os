@@ -253,9 +253,11 @@ typedef struct {
     uint8_t voice_r, voice_g, voice_b;
     bool voice_flash;               // flash lightbar while screaming
     bool led_refresh;               // force normal LED resend after playback
-    bool mute_was_down;             // bench-trigger edge detect
+    bool drop_scream_enabled;       // armed via mute toggle (off by default)
+    uint32_t toggle_cue_until;      // hold arm/disarm lightbar cue until this time
+    bool mute_was_down;             // toggle edge detect
     uint8_t mute_streak;            // consecutive reports with mute down (glitch filter)
-    uint32_t trigger_last_ms;       // bench-trigger debounce
+    uint32_t trigger_last_ms;       // toggle debounce
     bool scan_quiet_pending;        // defer scan-stop out of BT event context
     // Drop detector
     uint8_t drop_state;
@@ -506,13 +508,25 @@ static void ds5_voice_play(bthid_device_t* device, ds5_bt_data_t* ds5,
     }
 }
 
+// Restore player-slot lightbar/LED via the normal 0x31 path (the cached-value
+// feedback logic can otherwise re-send a stale cue/acting color forever)
+static void ds5_restore_player_led(bthid_device_t* device, ds5_bt_data_t* ds5)
+{
+    int pidx = find_player_index(ds5->event.dev_addr, ds5->event.instance);
+    int idx = (pidx >= 0 && pidx < 7) ? pidx : 0;
+    int pat = (idx < 5) ? idx : idx % 5;
+    ds5_send_output(device, 0, 0,
+                    PLAYER_COLORS[idx][0], PLAYER_COLORS[idx][1], PLAYER_COLORS[idx][2],
+                    PLAYER_LED_PATTERNS[pat]);
+}
+
 static void ds5_voice_stop(bthid_device_t* device, ds5_bt_data_t* ds5)
 {
     if (ds5->voice_state == DS5_VOICE_IDLE) return;
     ds5->voice_state = DS5_VOICE_IDLE;
     ds5->voice_clip = NULL;
     ds5_send_output31_audio(device, false);
-    ds5->led_refresh = true;  // normal task path resends player LED/lightbar
+    ds5_restore_player_led(device, ds5);
 }
 
 static void ds5_voice_quip(bthid_device_t* device, ds5_bt_data_t* ds5, bool impact)
@@ -703,6 +717,8 @@ static bool ds5_init(bthid_device_t* device)
             ds5_data[i].voice_frame = 0;
             ds5_data[i].audio_pkt_counter = 0;
             ds5_data[i].led_refresh = false;
+            ds5_data[i].drop_scream_enabled = false;  // armed via mute toggle
+            ds5_data[i].toggle_cue_until = 0;
             ds5_data[i].mute_was_down = false;
             ds5_data[i].drop_state = DS5_DROP_IDLE;
             // Radio silence: ongoing inquiry/scan windows starve the ACL link
@@ -910,10 +926,9 @@ static void ds5_process_report(bthid_device_t* device, const uint8_t* data, uint
     }
 
 #ifdef CONFIG_DS5_DROP_SCREAM
-    // Bench trigger on the mute button: idle → scream, screaming → impact quip,
-    // quipping → stop. Decoupled from the IMU for wire-format testing.
-    // Glitch-filtered (3 consecutive reports down) + 700ms debounce: the raw
-    // edge-detect thrashed the sequencer at input-report rate in HW testing.
+    // Mute button = ARM/DISARM toggle for the drop-scream (off by default).
+    // It never plays audio directly — sound only happens on an actual fall.
+    // Glitch-filtered (3 consecutive reports down) + 700ms debounce.
     if (rpt->mute) {
         if (ds5->mute_streak < 255) ds5->mute_streak++;
     } else {
@@ -925,18 +940,25 @@ static void ds5_process_report(bthid_device_t* device, const uint8_t* data, uint
         (trig_now - ds5->trigger_last_ms) >= 700) {
         ds5->mute_was_down = true;
         ds5->trigger_last_ms = trig_now;
-        printf("[DS5_BT] Mute trigger: btn_bytes=%02X %02X %02X state=%d\n",
-               report_data[7], report_data[8], report_data[9], ds5->voice_state);
-        if (ds5->voice_state == DS5_VOICE_IDLE) {
-            ds5_voice_play(device, ds5, &DS5_CLIP_SCREAM, true, 255, 0, 0, true);
-        } else if (ds5->voice_is_scream) {
-            ds5_voice_quip(device, ds5, true);
-        } else {
-            ds5_voice_stop(device, ds5);
+        ds5->drop_scream_enabled = !ds5->drop_scream_enabled;
+        printf("[DS5_BT] Drop-scream %s\n",
+               ds5->drop_scream_enabled ? "ARMED" : "disarmed");
+        if (!ds5->drop_scream_enabled) {
+            ds5_voice_stop(device, ds5);   // no-op if idle
+            ds5->drop_state = DS5_DROP_IDLE;
         }
+        // Lightbar cue via the normal 0x31 path: green = armed, red = off.
+        // Held briefly by ds5_task, then player color is restored.
+        ds5_send_output(device, 0, 0,
+                        ds5->drop_scream_enabled ? 0 : 64,
+                        ds5->drop_scream_enabled ? 64 : 0,
+                        0, ds5->player_led);
+        ds5->toggle_cue_until = trig_now + 800;
     }
 
-    ds5_drop_update(device, ds5, rpt->accel);
+    if (ds5->drop_scream_enabled) {
+        ds5_drop_update(device, ds5, rpt->accel);
+    }
 #endif
 
     // Submit to router
@@ -987,6 +1009,13 @@ static void ds5_task(bthid_device_t* device)
                 // While voice playback owns the channel, 0x36 frames carry the
                 // control state — suppress the standalone 0x31 path entirely.
                 if (ds5_voice_task(device, ds5)) break;
+
+                // Hold the arm/disarm lightbar cue briefly, then restore
+                if (ds5->toggle_cue_until != 0) {
+                    if ((int32_t)(now - ds5->toggle_cue_until) < 0) break;
+                    ds5->toggle_cue_until = 0;
+                    ds5_restore_player_led(device, ds5);
+                }
 #endif
                 int player_idx = find_player_index(ds5->event.dev_addr, ds5->event.instance);
                 if (player_idx >= 0) {
