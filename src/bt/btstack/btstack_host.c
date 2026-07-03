@@ -327,7 +327,9 @@ static void ds5_cid_tap_log_packet(uint8_t packet_type, uint8_t in,
             memcpy(hid_intr_cids[free_slot].addr, addr, 6);
             hid_intr_cids[free_slot].cid = cid;
         }
-        printf("[BTSTACK_HOST] Captured HID interrupt CID=0x%04X (dump tap)\n", cid);
+        // NO printf here: this callback runs inside l2cap_emit_channel_opened,
+        // deeper than any app-level handler — blocking on UART/stdio from this
+        // context crashed the stack on reconnects (device reboot mid-handshake).
     } else if (packet[0] == L2CAP_EVENT_CHANNEL_CLOSED) {
         // [2..3]=local_cid
         uint16_t cid = little_endian_read_16(packet, 2);
