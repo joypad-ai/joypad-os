@@ -25,6 +25,11 @@
 #ifdef DS5_CLIP_SHOW
 #include "ds5_show_events.h"   // Grand Finale burst choreography (generated)
 #endif
+#ifdef CONFIG_DS5_ASTRO
+// Local-only sound pack header (gitignored — regenerate via encode.py after
+// placing astro_*.wav files in tools/ds5-scream/assets/)
+#include "ds5_astro_assets.h"
+#endif
 
 // btstack_host.c (gated): direct L2CAP interrupt-channel send with per-packet
 // can-send-now pacing — the hid_host_send_report path drops frames at 100Hz.
@@ -284,6 +289,9 @@ typedef struct {
     uint16_t show_burst_frame;      // active show burst (0xFFFF = none yet)
     uint8_t show_r, show_g, show_b;
     uint8_t show_big;
+#ifdef CONFIG_DS5_ASTRO
+    uint32_t astro_last_ms;         // last activity (idle-chirp timer)
+#endif
     bool led_refresh;               // force normal LED resend after playback
     bool drop_scream_enabled;       // armed via mute toggle (off by default)
     uint32_t toggle_cue_until;      // hold arm/disarm lightbar cue until this time
@@ -711,6 +719,11 @@ static void ds5_voice_quip(bthid_device_t* device, ds5_bt_data_t* ds5, bool impa
     const ds5_voice_clip_t* clip = impact
         ? ds5_clips_impact[pick % DS5_CLIPS_IMPACT_COUNT]
         : ds5_clips_catch[pick % DS5_CLIPS_CATCH_COUNT];
+#ifdef CONFIG_DS5_ASTRO
+    // Astro character sounds instead of the voice quips
+    clip = impact ? ds5_clips_astro_impact[pick % DS5_CLIPS_ASTRO_IMPACT_COUNT]
+                  : ds5_clips_astro_catch[pick % DS5_CLIPS_ASTRO_CATCH_COUNT];
+#endif
     printf("[DS5_BT] Quip: %s\n", impact ? "impact" : "catch");
     // Orange for hurt, green for relief
     ds5_voice_play(device, ds5, clip, false,
@@ -917,8 +930,13 @@ static void ds5_drop_update(bthid_device_t* device, ds5_bt_data_t* ds5,
                 printf("[DS5_BT] Free-fall — screaming\n");
                 ds5->drop_state = DS5_DROP_FALLING;
                 ds5->drop_t0 = now;
+#ifdef CONFIG_DS5_ASTRO
+                ds5_voice_play(device, ds5, &DS5_CLIP_ASTRO_FALL, true,
+                               90, 170, 255, DS5_LED_FLASH);  // worried blue warble
+#else
                 ds5_voice_play(device, ds5, &DS5_CLIP_SCREAM, true,
                                255, 0, 0, DS5_LED_FLASH);  // flashing red
+#endif
             }
             break;
 
@@ -1016,10 +1034,13 @@ static bool ds5_init(bthid_device_t* device)
             ds5_data[i].voice_frame = 0;
             ds5_data[i].audio_pkt_counter = 0;
             ds5_data[i].led_refresh = false;
-#ifdef CONFIG_DS5_FISHER_PRICE
-            ds5_data[i].drop_scream_enabled = true;   // kids mode: sounds on by default
+#if defined(CONFIG_DS5_FISHER_PRICE) || defined(CONFIG_DS5_ASTRO)
+            ds5_data[i].drop_scream_enabled = true;   // character modes: on by default
 #else
             ds5_data[i].drop_scream_enabled = false;  // armed via mute toggle
+#endif
+#ifdef CONFIG_DS5_ASTRO
+            ds5_data[i].astro_last_ms = platform_time_ms();
 #endif
             ds5_data[i].toggle_cue_until = 0;
             ds5_data[i].face_btns_prev = 0xFF;
@@ -1328,6 +1349,35 @@ static void ds5_process_report(bthid_device_t* device, const uint8_t* data, uint
                 ds5_voice_play(device, ds5, clip, false, cr, cg, cb, DS5_LED_STEADY);
             }
         }
+#elif defined(CONFIG_DS5_ASTRO)
+        // Astro mode: every button chirps (random from the pack pool) with
+        // blue/white light pops. Falls are handled by the drop detector with
+        // Astro's worried warble + impact/catch reactions.
+        uint16_t trig = (uint16_t)((rpt->triangle ? 0x01 : 0) |
+                                   (rpt->circle   ? 0x02 : 0) |
+                                   (rpt->cross    ? 0x04 : 0) |
+                                   (rpt->square   ? 0x08 : 0));
+        switch (rpt->dpad) {
+            case 0: trig |= 0x10; break;
+            case 2: trig |= 0x20; break;
+            case 4: trig |= 0x40; break;
+            case 6: trig |= 0x80; break;
+            default: break;
+        }
+        uint16_t rising = (uint16_t)(trig & ~ds5->face_btns_prev);
+        ds5->face_btns_prev = trig;
+        if (rising) {
+            uint32_t pick = platform_time_ms();
+            const ds5_voice_clip_t* c =
+                ds5_clips_astro_btn[pick % DS5_CLIPS_ASTRO_BTN_COUNT];
+            bool cool = (pick & 1) != 0;
+            ds5_voice_play(device, ds5, c, false,
+                           cool ? 90 : 235, cool ? 170 : 245, 255,
+                           DS5_LED_STEADY);
+            ds5->astro_last_ms = pick;
+        }
+
+        ds5_drop_update(device, ds5, rpt->accel);
 #else
         // Fireworks while armed. Full button map:
         //   Circle=red  Square=white  Cross=blue  Triangle=gold  (singles)
@@ -1434,6 +1484,18 @@ static void ds5_task(bthid_device_t* device)
                     ds5->toggle_cue_until = 0;
                     ds5_restore_player_led(device, ds5);
                 }
+
+#ifdef CONFIG_DS5_ASTRO
+                // Idle personality: a soft curious blip every ~20s of quiet
+                if (ds5->drop_scream_enabled &&
+                    ds5->voice_state == DS5_VOICE_IDLE &&
+                    now - ds5->astro_last_ms > 20000) {
+                    ds5->astro_last_ms = now;
+                    ds5_voice_play(device, ds5,
+                                   ds5_clips_astro_idle[now % DS5_CLIPS_ASTRO_IDLE_COUNT],
+                                   false, 120, 190, 255, DS5_LED_STEADY);
+                }
+#endif
 
 #ifdef CONFIG_DS5_COMPANION
                 // THINK: blink cyan until the host responds or resets state

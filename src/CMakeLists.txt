@@ -1425,6 +1425,13 @@ if (PICO_BOARD STREQUAL "pico_w" OR
             CONFIG_DS5_FISHER_PRICE=1
         )
     endif()
+    if (DEFINED ENV{DS5_ASTRO})
+        message(STATUS "joypad_bt2usb: DS5 Astro mode ENABLED (local sound pack)")
+        target_compile_definitions(joypad_bt2usb PRIVATE
+            CONFIG_DS5_DROP_SCREAM=1
+            CONFIG_DS5_ASTRO=1
+        )
+    endif()
     if (DEFINED ENV{DS5_COMPANION})
         message(STATUS "joypad_bt2usb: DS5 AI companion mode ENABLED")
         target_compile_definitions(joypad_bt2usb PRIVATE

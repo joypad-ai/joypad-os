@@ -139,6 +139,13 @@ def main():
     catches = find("catch_*")
     fireworks = find("firework_*")
     show = find("fwshow")
+    astro = {
+        "btn": find("astro_btn_*"),
+        "fall": find("astro_fall"),
+        "impact": find("astro_impact_*"),
+        "catch": find("astro_catch_*"),
+        "idle": find("astro_idle_*"),
+    }
     fisher_nums = find("fisher_num_*")
     fisher_abcs = find("fisher_abc_*")
     if not screams or not impacts or not catches:
@@ -217,6 +224,40 @@ def main():
         f.write("#define DS5_CLIP_SILENCE ds5_vc_silence\n")
         if show:
             f.write("#define DS5_CLIP_SHOW ds5_vc_show\n")
+
+    # --- Astro mode: separate, GITIGNORED header (pack audio stays local) ---
+    if astro["btn"]:
+        astro_out = os.path.join(os.path.dirname(OUT), "ds5_astro_assets.h")
+        with open(astro_out, "w") as f:
+            f.write("// ds5_astro_assets.h - GENERATED, GITIGNORED (local sound pack)\n")
+            f.write("// Regenerate: tools/ds5-scream/encode.py (uses assets/astro_*)\n")
+            f.write("#pragma once\n\n")
+            def group(name, paths):
+                names = []
+                for i, path in enumerate(paths):
+                    cname = f"ds5_vc_astro_{name}{i}"
+                    frames = encode_clip(path)
+                    f.write(f"// {os.path.basename(path)}: {len(frames)} frames\n")
+                    emit_clip(f, cname, frames)
+                    f.write(f"static const ds5_voice_clip_t {cname} = "
+                            f"{{ {cname}_frames, {len(frames)}, 0 }};\n\n")
+                    names.append(cname)
+                return names
+            btns = group("btn", astro["btn"])
+            falls = group("fall", astro["fall"])
+            imps = group("impact", astro["impact"])
+            cats = group("catch", astro["catch"])
+            idles = group("idle", astro["idle"])
+            for label, names in (("astro_btn", btns), ("astro_impact", imps),
+                                 ("astro_catch", cats), ("astro_idle", idles)):
+                f.write(f"static const ds5_voice_clip_t* const ds5_clips_{label}[] = {{\n")
+                for n in names:
+                    f.write(f"    &{n},\n")
+                f.write("};\n")
+                f.write(f"#define DS5_CLIPS_{label.upper()}_COUNT {len(names)}\n")
+            if falls:
+                f.write(f"#define DS5_CLIP_ASTRO_FALL {falls[0]}\n")
+        print(f"wrote {astro_out} (gitignored)")
 
     print(f"wrote {OUT}")
     for cname, (n, base) in encoded.items():
