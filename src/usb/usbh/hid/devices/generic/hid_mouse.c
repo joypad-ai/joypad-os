@@ -5,8 +5,8 @@
 #include "core/router/router.h"
 #include "core/input_event.h"
 
-static uint8_t local_x;
-static uint8_t local_y;
+static int8_t local_x;
+static int8_t local_y;
 
 // Button swap functionality
 // -------------------------
