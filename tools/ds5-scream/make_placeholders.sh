@@ -23,3 +23,8 @@ s catch_phew      "phew. that was a close one."
 s catch_life      "my life just flashed before my eyes."
 
 echo "placeholders written to $(pwd)/assets/"
+
+# Firework: whistle rise (1.15s) -> boom thump + crackle decay, one clip
+ffmpeg -y -loglevel error -f lavfi \
+    -i "aevalsrc='0.5*sin(2*PI*(420*t+340*t*t))*(1-0.72*t)*lt(t,1.15) + gte(t,1.2)*(0.95*sin(2*PI*62*(t-1.2))*exp(-4*(t-1.2)) + 0.55*(random(0)-0.5)*exp(-1.6*(t-1.2)))':d=3.2:s=48000" \
+    -af "volume=0.95" assets/firework.wav
