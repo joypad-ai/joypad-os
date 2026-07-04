@@ -1368,6 +1368,132 @@ static void cmd_cprofile_delete(const char* json)
     cmd_profile_delete(json);
 }
 
+#ifdef CONFIG_DS5_COMPANION
+// ============================================================================
+// AI COMPANION VOICE BRIDGE (DS5 mic -> host, host speech -> DS5 speaker)
+// ============================================================================
+
+// ds5_bt.c hooks
+extern bool ds5_companion_push_speak(const uint8_t* frame200);
+extern uint8_t ds5_companion_ring_free(void);
+extern void ds5_companion_set_state(uint8_t state);
+
+static const char b64_tab[] =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+static int voice_b64_encode(const uint8_t* in, int len, char* out, int out_max)
+{
+    int o = 0;
+    for (int i = 0; i < len; i += 3) {
+        if (o + 4 >= out_max) return -1;
+        uint32_t v = (uint32_t)in[i] << 16;
+        if (i + 1 < len) v |= (uint32_t)in[i + 1] << 8;
+        if (i + 2 < len) v |= in[i + 2];
+        out[o++] = b64_tab[(v >> 18) & 63];
+        out[o++] = b64_tab[(v >> 12) & 63];
+        out[o++] = (i + 1 < len) ? b64_tab[(v >> 6) & 63] : '=';
+        out[o++] = (i + 2 < len) ? b64_tab[v & 63] : '=';
+    }
+    out[o] = 0;
+    return o;
+}
+
+static int voice_b64_val(char c)
+{
+    if (c >= 'A' && c <= 'Z') return c - 'A';
+    if (c >= 'a' && c <= 'z') return c - 'a' + 26;
+    if (c >= '0' && c <= '9') return c - '0' + 52;
+    if (c == '+') return 62;
+    if (c == '/') return 63;
+    return -1;
+}
+
+static int voice_b64_decode(const char* in, int in_len, uint8_t* out, int out_max)
+{
+    int o = 0;
+    uint32_t acc = 0;
+    int bits = 0;
+    for (int i = 0; i < in_len; i++) {
+        if (in[i] == '=') break;
+        int v = voice_b64_val(in[i]);
+        if (v < 0) return -1;
+        acc = (acc << 6) | (uint32_t)v;
+        bits += 6;
+        if (bits >= 8) {
+            bits -= 8;
+            if (o >= out_max) return -1;
+            out[o++] = (uint8_t)(acc >> bits);
+        }
+    }
+    return o;
+}
+
+// Called from the DS5 driver for every mic-audio input report while listening.
+// Emitted on the event stream (bridge enables DEBUG.STREAM to attach).
+void cdc_voice_mic_event(const uint8_t* data, uint16_t len)
+{
+    if (!stream_ctx) return;
+    static char mic_buf[1200];
+    if (len > 800) len = 800;
+    int n = snprintf(mic_buf, sizeof(mic_buf), "{\"type\":\"mic\",\"d\":\"");
+    int e = voice_b64_encode(data, len, mic_buf + n, (int)sizeof(mic_buf) - n - 3);
+    if (e < 0) return;
+    n += e;
+    mic_buf[n++] = '\"';
+    mic_buf[n++] = '}';
+    mic_buf[n] = 0;
+    cdc_protocol_send_event(stream_ctx, mic_buf);
+}
+
+// Companion state notifications (listen / mic_end / speak_end)
+void cdc_voice_notify(const char* what)
+{
+    if (!stream_ctx) return;
+    static char ev_buf[64];
+    snprintf(ev_buf, sizeof(ev_buf), "{\"type\":\"voice\",\"ev\":\"%s\"}", what);
+    cdc_protocol_send_event(stream_ctx, ev_buf);
+}
+
+// {"cmd":"VOICE.SPEAK","d":"<base64 of exactly 200 Opus bytes>"}
+static void cmd_voice_speak(const char* json)
+{
+    int dlen;
+    const char* d = json_get_string(json, "d", &dlen);
+    if (!d) {
+        send_error("missing d");
+        return;
+    }
+    uint8_t frame[200];
+    int n = voice_b64_decode(d, dlen, frame, (int)sizeof(frame));
+    if (n != 200) {
+        send_error("frame must be 200 bytes");
+        return;
+    }
+    bool ok = ds5_companion_push_speak(frame);
+    snprintf(response_buf, sizeof(response_buf),
+             "{\"ok\":%s,\"free\":%u}",
+             ok ? "true" : "false", (unsigned)ds5_companion_ring_free());
+    send_json(response_buf);
+}
+
+// {"cmd":"VOICE.STATE","state":"idle"|"think"}
+static void cmd_voice_state(const char* json)
+{
+    int slen;
+    const char* st = json_get_string(json, "state", &slen);
+    if (!st) {
+        send_error("missing state");
+        return;
+    }
+    if (strncmp(st, "think", 5) == 0) {
+        ds5_companion_set_state(2);   // DS5_COMP_THINK
+    } else {
+        ds5_companion_set_state(0);   // DS5_COMP_IDLE
+    }
+    send_json("{\"ok\":true}");
+}
+#endif  // CONFIG_DS5_COMPANION
+
 // ============================================================================
 // DEBUG LOG STREAM COMMAND
 // ============================================================================
@@ -2924,6 +3050,10 @@ static const cmd_entry_t commands[] = {
     {"MAX3421.STATUS", cmd_max3421_status},
 #endif
 #ifdef ENABLE_BTSTACK
+#ifdef CONFIG_DS5_COMPANION
+    {"VOICE.SPEAK", cmd_voice_speak},
+    {"VOICE.STATE", cmd_voice_state},
+#endif
     {"BT.STATUS", cmd_bt_status},
     {"BT.BONDS.CLEAR", cmd_bt_bonds_clear},
     {"BT.FORGET", cmd_bt_forget},

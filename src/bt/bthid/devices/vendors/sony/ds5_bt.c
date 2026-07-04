@@ -92,6 +92,20 @@ enum {
     DS5_LED_FLASH,          // strobe (scream)
     DS5_LED_FIREWORK,       // dim rising flicker → color burst → sparkle fade
 };
+
+#ifdef CONFIG_DS5_COMPANION
+// AI companion states: hold mute = LISTEN (mic → host), release = THINK
+// (host is transcribing/inferring), host-driven SPEAK (response audio).
+enum {
+    DS5_COMP_IDLE = 0,
+    DS5_COMP_LISTEN,
+    DS5_COMP_THINK,
+    DS5_COMP_SPEAK,
+};
+#define DS5_COMP_HOLD_MS        250   // mute hold before LISTEN engages
+#define DS5_COMP_RING_FRAMES    24    // host speech ring (24 x 200B = ~256ms)
+#define DS5_COMP_UNDERRUN_MS    600   // stop SPEAK if host stalls this long
+#endif
 // Firework burst timing comes per-clip from ds5_voice_clip_t.fx_frame
 // (auto-detected by tools/ds5-scream/encode.py at asset build time)
 
@@ -269,6 +283,16 @@ typedef struct {
     uint8_t mute_streak;            // consecutive reports with mute down (glitch filter)
     uint32_t trigger_last_ms;       // toggle debounce
     bool scan_quiet_pending;        // defer scan-stop out of BT event context
+#ifdef CONFIG_DS5_COMPANION
+    uint8_t comp_state;             // DS5_COMP_*
+    bool comp_mute_prev;
+    bool mic_active;                // mic-streaming bit in the 0x11 enable mask
+    bool comp_stream;               // SPEAK: frames come from the host ring
+    bool comp_loop;                 // LISTEN: loop the silence keepalive clip
+    uint32_t comp_mute_t0;
+    uint32_t comp_blink_ms;
+    uint32_t comp_last_rx;          // last host speech frame arrival
+#endif
     // Drop detector
     uint8_t drop_state;
     uint32_t drop_t0;               // current drop-state entry time
@@ -435,7 +459,12 @@ static bool ds5_send_audio_frame(bthid_device_t* device)
     // Enable all audio sections EXCEPT mic streaming (bit 0): with mic on,
     // the controller streams mic-audio input reports that got parsed as
     // gamepad input — phantom mute presses and garbage accel data.
+    // (Companion LISTEN turns the mic bit on deliberately; those reports are
+    // intercepted by the strict len gate and forwarded to the host.)
     buf[5] = 0xFE;
+#ifdef CONFIG_DS5_COMPANION
+    if (ds5->mic_active) buf[5] = 0xFF;
+#endif
     buf[6] = buf[7] = buf[8] = buf[9] = buf[10] = 64; // haptic buffer length
     buf[11] = ds5->audio_pkt_counter++;
 
@@ -572,6 +601,25 @@ static void ds5_voice_play(bthid_device_t* device, ds5_bt_data_t* ds5,
     }
 }
 
+#ifdef CONFIG_DS5_COMPANION
+// Host speech ring (single companion controller at a time). The ring IS the
+// frame array of a pseudo-clip so the normal frame builder can read it.
+static uint8_t comp_ring[DS5_COMP_RING_FRAMES][200];
+static volatile uint8_t comp_head, comp_tail;
+static const ds5_voice_clip_t comp_ring_clip = { comp_ring, DS5_COMP_RING_FRAMES, 0 };
+static bthid_device_t* comp_device;
+
+// Provided by the CDC layer when a bridge is attached; weak no-op otherwise.
+__attribute__((weak)) void cdc_voice_mic_event(const uint8_t* data, uint16_t len)
+{
+    (void)data; (void)len;
+}
+__attribute__((weak)) void cdc_voice_notify(const char* what)
+{
+    (void)what;
+}
+#endif
+
 // Restore player-slot lightbar/LED via the normal 0x31 path (the cached-value
 // feedback logic can otherwise re-send a stale cue/acting color forever)
 static void ds5_restore_player_led(bthid_device_t* device, ds5_bt_data_t* ds5)
@@ -626,6 +674,35 @@ static bool ds5_voice_task(bthid_device_t* device, ds5_bt_data_t* ds5)
     // Retry-don't-drop: if L2CAP can't take the packet this tick, keep the
     // frame and retry next task pass — a dropped frame is an audible gap.
     ds5->voice_state = DS5_VOICE_PLAYING;
+
+#ifdef CONFIG_DS5_COMPANION
+    if (ds5->comp_stream) {
+        // SPEAK: frames come from the host ring, not a flash clip
+        if (comp_tail == comp_head) {
+            // Underrun: hold the slot; give up if the host stalls
+            if ((int32_t)(now - ds5->comp_last_rx) > DS5_COMP_UNDERRUN_MS) {
+                ds5->comp_stream = false;
+                ds5->comp_state = DS5_COMP_IDLE;
+                cdc_voice_notify("speak_end");
+                ds5_voice_stop(device, ds5);
+                return false;
+            }
+            ds5->voice_next_ms = now + 11;
+            return true;
+        }
+        ds5->voice_clip = &comp_ring_clip;
+        ds5->voice_frame = comp_tail;
+        if (!ds5_send_audio_frame(device)) {
+            if ((int32_t)(now - ds5->voice_next_ms) > 60) ds5->voice_next_ms = now;
+            return true;
+        }
+        comp_tail = (uint8_t)((comp_tail + 1) % DS5_COMP_RING_FRAMES);
+        ds5->voice_next_ms += ((comp_tail % 3) == 0) ? 10 : 11;
+        if ((int32_t)(now - ds5->voice_next_ms) > 30) ds5->voice_next_ms = now + 11;
+        return true;
+    }
+#endif
+
     if (!ds5_send_audio_frame(device)) {
         if ((int32_t)(now - ds5->voice_next_ms) > 60) {
             ds5->voice_next_ms = now;  // hopelessly behind: resync clock
@@ -643,11 +720,105 @@ static bool ds5_voice_task(bthid_device_t* device, ds5_bt_data_t* ds5)
     }
 
     if (ds5->voice_frame >= ds5->voice_clip->frame_count) {
+#ifdef CONFIG_DS5_COMPANION
+        if (ds5->comp_loop) {
+            ds5->voice_frame = 2;  // loop the keepalive past its lead-in
+            return true;
+        }
+#endif
         ds5_voice_stop(device, ds5);
         return false;
     }
     return true;
 }
+
+#ifdef CONFIG_DS5_COMPANION
+// ============================================================================
+// AI COMPANION: push-to-talk mic capture + host-driven speech
+// ============================================================================
+
+static void ds5_comp_enter_listen(bthid_device_t* device, ds5_bt_data_t* ds5)
+{
+    printf("[DS5_BT] Companion: LISTEN\n");
+    ds5->comp_state = DS5_COMP_LISTEN;
+    ds5->mic_active = true;
+    ds5->comp_loop = true;
+    // Silence keepalive stream carries the mic-enable bit; solid white = listening
+    ds5_voice_play(device, ds5, &DS5_CLIP_SILENCE, false, 255, 255, 255, DS5_LED_STEADY);
+    cdc_voice_notify("listen");
+}
+
+static void ds5_comp_enter_think(bthid_device_t* device, ds5_bt_data_t* ds5)
+{
+    printf("[DS5_BT] Companion: THINK\n");
+    ds5->comp_state = DS5_COMP_THINK;
+    ds5->mic_active = false;
+    ds5->comp_loop = false;
+    ds5_voice_stop(device, ds5);
+    ds5->comp_blink_ms = platform_time_ms();
+    cdc_voice_notify("mic_end");
+}
+
+// Mic-audio input reports (non-78-byte 0x31s while the mic bit is on) are
+// forwarded to the host bridge instead of being dropped.
+static bool ds5_companion_mic_capture(ds5_bt_data_t* ds5,
+                                      const uint8_t* data, uint16_t len)
+{
+    if (!ds5->mic_active) return false;
+    cdc_voice_mic_event(data, len);
+    return true;
+}
+
+// --- Hooks for the CDC bridge (cdc_commands.c) ---
+
+uint8_t ds5_companion_ring_free(void)
+{
+    return (uint8_t)((DS5_COMP_RING_FRAMES - 1 -
+                     (comp_head - comp_tail + DS5_COMP_RING_FRAMES) % DS5_COMP_RING_FRAMES));
+}
+
+bool ds5_companion_push_speak(const uint8_t* frame200)
+{
+    if (!comp_device) return false;
+    ds5_bt_data_t* ds5 = (ds5_bt_data_t*)comp_device->driver_data;
+    if (!ds5) return false;
+    uint8_t next = (uint8_t)((comp_head + 1) % DS5_COMP_RING_FRAMES);
+    if (next == comp_tail) return false;  // full — host must pace
+    memcpy(comp_ring[comp_head], frame200, 200);
+    comp_head = next;
+    ds5->comp_last_rx = platform_time_ms();
+    if (!ds5->comp_stream) {
+        // First frame of a response: start the SPEAK stream (player color LED)
+        ds5->comp_state = DS5_COMP_SPEAK;
+        ds5->comp_stream = true;
+        ds5->comp_loop = false;
+        int pidx = find_player_index(ds5->event.dev_addr, ds5->event.instance);
+        int idx = (pidx >= 0 && pidx < 7) ? pidx : 0;
+        ds5_voice_play(comp_device, ds5, &comp_ring_clip, false,
+                       (uint8_t)(PLAYER_COLORS[idx][0] * 3),
+                       (uint8_t)(PLAYER_COLORS[idx][1] * 3),
+                       (uint8_t)(PLAYER_COLORS[idx][2] * 3),
+                       DS5_LED_STEADY);
+    }
+    return true;
+}
+
+void ds5_companion_set_state(uint8_t state)
+{
+    if (!comp_device) return;
+    ds5_bt_data_t* ds5 = (ds5_bt_data_t*)comp_device->driver_data;
+    if (!ds5) return;
+    if (state == DS5_COMP_IDLE && ds5->comp_state != DS5_COMP_IDLE) {
+        ds5->comp_stream = false;
+        ds5->comp_loop = false;
+        ds5->comp_state = DS5_COMP_IDLE;
+        ds5_voice_stop(comp_device, ds5);
+    } else if (state == DS5_COMP_THINK) {
+        ds5->comp_state = DS5_COMP_THINK;
+        ds5->comp_blink_ms = platform_time_ms();
+    }
+}
+#endif  // CONFIG_DS5_COMPANION
 
 // Free-fall / impact / catch detector, fed raw accel from every input report.
 // A toss is ballistic (0g) just like a drop — physically indistinguishable,
@@ -781,9 +952,23 @@ static bool ds5_init(bthid_device_t* device)
             ds5_data[i].voice_frame = 0;
             ds5_data[i].audio_pkt_counter = 0;
             ds5_data[i].led_refresh = false;
+#ifdef CONFIG_DS5_FISHER_PRICE
+            ds5_data[i].drop_scream_enabled = true;   // kids mode: sounds on by default
+#else
             ds5_data[i].drop_scream_enabled = false;  // armed via mute toggle
+#endif
             ds5_data[i].toggle_cue_until = 0;
             ds5_data[i].face_btns_prev = 0xFF;
+#ifdef CONFIG_DS5_COMPANION
+            ds5_data[i].comp_state = DS5_COMP_IDLE;
+            ds5_data[i].comp_mute_prev = false;
+            ds5_data[i].mic_active = false;
+            ds5_data[i].comp_stream = false;
+            ds5_data[i].comp_loop = false;
+            comp_head = 0;
+            comp_tail = 0;
+            comp_device = device;
+#endif
             ds5_data[i].mute_was_down = false;
             ds5_data[i].drop_state = DS5_DROP_IDLE;
             // Radio silence: ongoing inquiry/scan windows starve the ACL link
@@ -834,6 +1019,12 @@ static void ds5_process_report(bthid_device_t* device, const uint8_t* data, uint
         // With audio armed the controller emits other (e.g. mic) reports that
         // must not be parsed as input — that was the phantom-trigger source.
         if (len != 78) {
+#ifdef CONFIG_DS5_COMPANION
+            // While listening, those "other" reports ARE the mic audio —
+            // forward them to the host bridge instead of dropping them.
+            ds5_bt_data_t* cds5 = (ds5_bt_data_t*)device->driver_data;
+            if (cds5) ds5_companion_mic_capture(cds5, data, len);
+#endif
             return;
         }
 #endif
@@ -990,7 +1181,25 @@ static void ds5_process_report(bthid_device_t* device, const uint8_t* data, uint
         ds5->event.has_touch = true;
     }
 
-#ifdef CONFIG_DS5_DROP_SCREAM
+#ifdef CONFIG_DS5_COMPANION
+    // Companion push-to-talk: hold mute = LISTEN (mic streams to host),
+    // release = THINK (host processes; LED blinks until it responds).
+    {
+        bool mdown = rpt->mute != 0;
+        uint32_t mnow = platform_time_ms();
+        if (mdown && !ds5->comp_mute_prev) {
+            ds5->comp_mute_t0 = mnow;
+        }
+        if (mdown && ds5->comp_state == DS5_COMP_IDLE &&
+            (mnow - ds5->comp_mute_t0) >= DS5_COMP_HOLD_MS) {
+            ds5_comp_enter_listen(device, ds5);
+        }
+        if (!mdown && ds5->comp_mute_prev && ds5->comp_state == DS5_COMP_LISTEN) {
+            ds5_comp_enter_think(device, ds5);
+        }
+        ds5->comp_mute_prev = mdown;
+    }
+#elif defined(CONFIG_DS5_DROP_SCREAM)
     // Mute button = ARM/DISARM toggle for the drop-scream (off by default).
     // It never plays audio directly — sound only happens on an actual fall.
     // Glitch-filtered (3 consecutive reports down) + 700ms debounce.
@@ -1022,6 +1231,40 @@ static void ds5_process_report(bthid_device_t* device, const uint8_t* data, uint
     }
 
     if (ds5->drop_scream_enabled) {
+#ifdef CONFIG_DS5_FISHER_PRICE
+        // Fisher-Price mode: dpad speaks numbers, face buttons speak letters,
+        // each with its own lightbar color. Mashing splices instantly.
+        // Bits: 0x01 triangle=A 0x02 circle=B 0x04 cross=C 0x08 square=D,
+        //       0x10 up=1 0x20 right=2 0x40 down=3 0x80 left=4
+        uint8_t trig = (uint8_t)((rpt->triangle ? 0x01 : 0) |
+                                 (rpt->circle   ? 0x02 : 0) |
+                                 (rpt->cross    ? 0x04 : 0) |
+                                 (rpt->square   ? 0x08 : 0));
+        switch (rpt->dpad) {
+            case 0: trig |= 0x10; break;   // up
+            case 2: trig |= 0x20; break;   // right
+            case 4: trig |= 0x40; break;   // down
+            case 6: trig |= 0x80; break;   // left
+            default: break;
+        }
+        uint8_t rising = (uint8_t)(trig & ~ds5->face_btns_prev);
+        ds5->face_btns_prev = trig;
+        if (rising) {
+            const ds5_voice_clip_t* clip = NULL;
+            uint8_t cr = 0, cg = 0, cb = 0;
+            if      (rising & 0x10) { clip = ds5_clips_fisher_num[0]; cr = 255; }
+            else if (rising & 0x20) { clip = ds5_clips_fisher_num[1]; cr = 255; cg = 190; }
+            else if (rising & 0x40) { clip = ds5_clips_fisher_num[2]; cg = 255; }
+            else if (rising & 0x80) { clip = ds5_clips_fisher_num[3]; cb = 255; }
+            else if (rising & 0x01) { clip = ds5_clips_fisher_abc[0]; cg = 255; cb = 70; }
+            else if (rising & 0x02) { clip = ds5_clips_fisher_abc[1]; cr = 255; cg = 45; }
+            else if (rising & 0x04) { clip = ds5_clips_fisher_abc[2]; cg = 110; cb = 255; }
+            else if (rising & 0x08) { clip = ds5_clips_fisher_abc[3]; cr = 255; cb = 170; }
+            if (clip) {
+                ds5_voice_play(device, ds5, clip, false, cr, cg, cb, DS5_LED_STEADY);
+            }
+        }
+#else
         // Fireworks while armed: face-button edges launch a color show.
         // PS button colors: Circle = red, Square = white(pink), Cross = blue.
         uint8_t face = (uint8_t)((rpt->circle ? 1 : 0) |
@@ -1042,8 +1285,9 @@ static void ds5_process_report(bthid_device_t* device, const uint8_t* data, uint
         }
 
         ds5_drop_update(device, ds5, rpt->accel);
+#endif
     } else {
-        ds5->face_btns_prev = 0xFF;  // no firework on the arming press itself
+        ds5->face_btns_prev = 0xFF;  // no trigger on the arming press itself
     }
 #endif
 
@@ -1102,6 +1346,20 @@ static void ds5_task(bthid_device_t* device)
                     ds5->toggle_cue_until = 0;
                     ds5_restore_player_led(device, ds5);
                 }
+
+#ifdef CONFIG_DS5_COMPANION
+                // THINK: blink cyan until the host responds or resets state
+                if (ds5->comp_state == DS5_COMP_THINK) {
+                    if (now - ds5->comp_blink_ms >= 300) {
+                        ds5->comp_blink_ms = now;
+                        bool on = ((now / 300) & 1) != 0;
+                        ds5_send_output(device, 0, 0, 0,
+                                        on ? 160 : 0, on ? 200 : 0,
+                                        ds5->player_led);
+                    }
+                    break;  // hold the blink; skip normal feedback path
+                }
+#endif
 #endif
                 int player_idx = find_player_index(ds5->event.dev_addr, ds5->event.instance);
                 if (player_idx >= 0) {
@@ -1209,6 +1467,9 @@ static void ds5_disconnect(bthid_device_t* device)
 {
     printf("[DS5_BT] Disconnect: %s\n", device->name);
 
+#ifdef CONFIG_DS5_COMPANION
+    if (comp_device == device) comp_device = NULL;
+#endif
 #ifdef CONFIG_DS5_DROP_SCREAM
     // ONLY clear the suppression flag (plain bool write, safe here). The
     // existing "No devices connected, resuming scan" path performs the actual
