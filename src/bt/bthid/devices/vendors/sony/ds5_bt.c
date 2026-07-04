@@ -22,6 +22,9 @@
 // via extended output report 0x36 (Opus frames baked into flash).
 // See .dev/docs/DUALSENSE_DROP_SCREAM_PLAN.md — disabled by default.
 #include "ds5_voice_assets.h"
+#ifdef DS5_CLIP_SHOW
+#include "ds5_show_events.h"   // Grand Finale burst choreography (generated)
+#endif
 
 // btstack_host.c (gated): direct L2CAP interrupt-channel send with per-packet
 // can-send-now pacing — the hid_host_send_report path drops frames at 100Hz.
@@ -91,6 +94,7 @@ enum {
     DS5_LED_STEADY = 0,
     DS5_LED_FLASH,          // strobe (scream)
     DS5_LED_FIREWORK,       // dim rising flicker → color burst → sparkle fade
+    DS5_LED_SHOW,           // Grand Finale: event-table-driven burst choreography
 };
 
 #ifdef CONFIG_DS5_COMPANION
@@ -275,7 +279,11 @@ typedef struct {
     bool voice_is_scream;
     uint8_t voice_r, voice_g, voice_b;
     uint8_t voice_led_prog;         // DS5_LED_* lightbar program during playback
-    uint8_t face_btns_prev;         // firework trigger edge detect
+    uint16_t face_btns_prev;        // firework/show trigger edge detect
+    uint8_t show_idx;               // next show event to fire
+    uint16_t show_burst_frame;      // active show burst (0xFFFF = none yet)
+    uint8_t show_r, show_g, show_b;
+    uint8_t show_big;
     bool led_refresh;               // force normal LED resend after playback
     bool drop_scream_enabled;       // armed via mute toggle (off by default)
     uint32_t toggle_cue_until;      // hold arm/disarm lightbar cue until this time
@@ -496,6 +504,45 @@ static bool ds5_send_audio_frame(bthid_device_t* device)
         case DS5_LED_FLASH:  // 100ms strobe while screaming
             if ((ds5->voice_frame / 10) & 1) { lr = 0; lg = 0; lb = 0; }
             break;
+#ifdef DS5_CLIP_SHOW
+        case DS5_LED_SHOW: {
+            // Advance the choreography; latch the most recent burst
+            while (ds5->show_idx < DS5_SHOW_EVENT_COUNT &&
+                   ds5->voice_frame >= ds5_show_events[ds5->show_idx].frame) {
+                const ds5_show_event_t* ev = &ds5_show_events[ds5->show_idx];
+                ds5->show_burst_frame = ev->frame;
+                ds5->show_r = ev->r;
+                ds5->show_g = ev->g;
+                ds5->show_b = ev->b;
+                ds5->show_big = ev->big;
+                ds5->show_idx++;
+            }
+            if (ds5->show_burst_frame == 0xFFFF) {
+                // Pre-show / between-launch shimmer
+                uint8_t v = ((ds5->voice_frame % 3) == 0) ? 6 : 22;
+                lr = v; lg = v; lb = v;
+                break;
+            }
+            uint16_t post = ds5->voice_frame - ds5->show_burst_frame;
+            uint16_t span = ds5->show_big ? 160 : 90;
+            uint16_t fade = (post >= span)
+                          ? 0 : (uint16_t)(255 - (post * 255) / span);
+            if (((ds5->voice_frame * 7) % 11) < 3) {
+                fade += fade / 2;
+                if (fade > 255) fade = 255;
+            }
+            if (fade == 0) {
+                // burst finished: shimmer until the next launch
+                uint8_t v = ((ds5->voice_frame % 3) == 0) ? 6 : 22;
+                lr = v; lg = v; lb = v;
+            } else {
+                lr = (uint8_t)((ds5->show_r * fade) / 255);
+                lg = (uint8_t)((ds5->show_g * fade) / 255);
+                lb = (uint8_t)((ds5->show_b * fade) / 255);
+            }
+            break;
+        }
+#endif
         case DS5_LED_FIREWORK:
             if (ds5->voice_frame < ds5->voice_clip->fx_frame) {
                 // Ascent: dim white flicker, brightening toward the burst
@@ -541,16 +588,31 @@ static bool ds5_send_audio_frame(bthid_device_t* device)
     // Explosion shake: full-scale ~60Hz square through the voice-coil haptics —
     // physically far stronger than the emulated rumble bytes (which must be
     // zeroed while haptic PCM is active; they conflict).
-    if (ds5->voice_led_prog == DS5_LED_FIREWORK &&
-        ds5->voice_frame >= ds5->voice_clip->fx_frame) {
-        uint16_t hpost = ds5->voice_frame - ds5->voice_clip->fx_frame;
+    {
+        uint16_t hpost = 0xFFFF;
+        int amp_max = 127;
+        if (ds5->voice_led_prog == DS5_LED_FIREWORK &&
+            ds5->voice_frame >= ds5->voice_clip->fx_frame) {
+            hpost = ds5->voice_frame - ds5->voice_clip->fx_frame;
+        }
+#ifdef DS5_CLIP_SHOW
+        else if (ds5->voice_led_prog == DS5_LED_SHOW &&
+                 ds5->show_burst_frame != 0xFFFF) {
+            hpost = ds5->voice_frame - ds5->show_burst_frame;
+            amp_max = ds5->show_big ? 127 : 100;
+        }
+#endif
         if (hpost < 110) {
-            int amp = 127 - hpost;                     // 127 → 17 over ~1.2s
-            for (int i = 0; i < 32; i++) {
-                uint32_t idx = (uint32_t)hpost * 32 + i;   // phase across frames
-                int8_t v = (int8_t)(((idx / 25) & 1) ? amp : -amp);  // ~60Hz
-                buf[79 + i * 2]     = (uint8_t)v;
-                buf[79 + i * 2 + 1] = (uint8_t)v;
+            int amp = amp_max - hpost;                 // full slam → fade
+            if (amp > 0) {
+                for (int i = 0; i < 32; i++) {
+                    uint32_t idx = (uint32_t)hpost * 32 + i;   // phase across frames
+                    int8_t v = (int8_t)(((idx / 25) & 1) ? amp : -amp);  // ~60Hz
+                    buf[79 + i * 2]     = (uint8_t)v;
+                    buf[79 + i * 2 + 1] = (uint8_t)v;
+                }
+                st[2] = 0;   // compat motors off while haptic PCM is live
+                st[3] = 0;
             }
         }
     }
@@ -591,6 +653,8 @@ static void ds5_voice_play(bthid_device_t* device, ds5_bt_data_t* ds5,
     ds5->voice_g = g;
     ds5->voice_b = b;
     ds5->voice_led_prog = led_prog;
+    ds5->show_idx = 0;
+    ds5->show_burst_frame = 0xFFFF;
 
     if (ds5->voice_state == DS5_VOICE_IDLE) {
         // Diagnostic stage 1: white lightbar via the KNOWN-GOOD 0x31 path.
@@ -1265,29 +1329,53 @@ static void ds5_process_report(bthid_device_t* device, const uint8_t* data, uint
             }
         }
 #else
-        // Fireworks while armed: face-button edges launch a color show.
-        // PS button colors: Circle = red, Square = white(pink), Cross = blue.
-        uint8_t face = (uint8_t)((rpt->circle ? 1 : 0) |
-                                 (rpt->square ? 2 : 0) |
-                                 (rpt->cross  ? 4 : 0));
-        uint8_t rising = (uint8_t)(face & ~ds5->face_btns_prev);
+        // Fireworks while armed. Full button map:
+        //   Circle=red  Square=white  Cross=blue  Triangle=gold  (singles)
+        //   Dpad up/right/down/left = red/white/blue/gold quick singles
+        //   Options = GRAND FINALE: 30s choreographed show (anthem + volley)
+        uint16_t face = (uint16_t)((rpt->circle   ? 0x001 : 0) |
+                                   (rpt->square   ? 0x002 : 0) |
+                                   (rpt->cross    ? 0x004 : 0) |
+                                   (rpt->triangle ? 0x008 : 0) |
+                                   (rpt->option   ? 0x010 : 0));
+        switch (rpt->dpad) {
+            case 0: face |= 0x020; break;
+            case 2: face |= 0x040; break;
+            case 4: face |= 0x080; break;
+            case 6: face |= 0x100; break;
+            default: break;
+        }
+        uint16_t rising = (uint16_t)(face & ~ds5->face_btns_prev);
         ds5->face_btns_prev = face;
+
+#ifdef DS5_CLIP_SHOW
+        if (rising & 0x010) {
+            // The Grand Finale interrupts anything (it IS the show)
+            printf("[DS5_BT] GRAND FINALE\n");
+            ds5_voice_play(device, ds5, &DS5_CLIP_SHOW, false,
+                           255, 255, 255, DS5_LED_SHOW);
+            rising = 0;
+        }
+#endif
         if (rising && ds5->voice_state == DS5_VOICE_IDLE) {
-            uint8_t fr = (rising & 3) ? 255 : 0;              // red for circle/square
-            uint8_t fg = (rising & 2) ? 255 : 0;              // square = white
-            uint8_t fb = (rising & 6) ? 255 : 0;              // blue for cross/square
-            const ds5_voice_clip_t* fw =
-                ds5_clips_firework[platform_time_ms() % DS5_CLIPS_FIREWORK_COUNT];
-            printf("[DS5_BT] Firework: %s (fx@%u)\n",
-                   (rising & 1) ? "red" : (rising & 2) ? "white" : "blue",
-                   (unsigned)fw->fx_frame);
-            ds5_voice_play(device, ds5, fw, false, fr, fg, fb, DS5_LED_FIREWORK);
+            uint8_t fr = 0, fg = 0, fb = 0;
+            if      (rising & (0x001 | 0x020)) { fr = 255; fg = 30;  fb = 30;  }
+            else if (rising & (0x002 | 0x040)) { fr = 255; fg = 255; fb = 255; }
+            else if (rising & (0x004 | 0x080)) { fr = 60;  fg = 90;  fb = 255; }
+            else if (rising & (0x008 | 0x100)) { fr = 255; fg = 150; fb = 20;  }
+            else rising = 0;
+            if (rising) {
+                const ds5_voice_clip_t* fw =
+                    ds5_clips_firework[platform_time_ms() % DS5_CLIPS_FIREWORK_COUNT];
+                printf("[DS5_BT] Firework (fx@%u)\n", (unsigned)fw->fx_frame);
+                ds5_voice_play(device, ds5, fw, false, fr, fg, fb, DS5_LED_FIREWORK);
+            }
         }
 
         ds5_drop_update(device, ds5, rpt->accel);
 #endif
     } else {
-        ds5->face_btns_prev = 0xFF;  // no trigger on the arming press itself
+        ds5->face_btns_prev = 0xFFFF;  // no trigger on the arming press itself
     }
 #endif
 

@@ -138,6 +138,7 @@ def main():
     impacts = find("impact_*")
     catches = find("catch_*")
     fireworks = find("firework_*")
+    show = find("fwshow")
     fisher_nums = find("fisher_num_*")
     fisher_abcs = find("fisher_abc_*")
     if not screams or not impacts or not catches:
@@ -148,6 +149,8 @@ def main():
     clips += [(f"ds5_vc_impact{i}", p) for i, p in enumerate(impacts)]
     clips += [(f"ds5_vc_catch{i}", p) for i, p in enumerate(catches)]
     clips += [(f"ds5_vc_firework{i}", p) for i, p in enumerate(fireworks)]
+    if show:
+        clips.append(("ds5_vc_show", show[0]))
     clips += [(f"ds5_vc_fnum{i}", p) for i, p in enumerate(fisher_nums)]
     clips += [(f"ds5_vc_fabc{i}", p) for i, p in enumerate(fisher_abcs)]
     # Synthetic silence clip (companion mode mic-keepalive stream)
@@ -212,6 +215,8 @@ def main():
                 f.write(f"#define DS5_CLIPS_{group.upper()}_COUNT {len(names)}\n")
         f.write("#define DS5_CLIP_SCREAM ds5_vc_scream\n")
         f.write("#define DS5_CLIP_SILENCE ds5_vc_silence\n")
+        if show:
+            f.write("#define DS5_CLIP_SHOW ds5_vc_show\n")
 
     print(f"wrote {OUT}")
     for cname, (n, base) in encoded.items():
