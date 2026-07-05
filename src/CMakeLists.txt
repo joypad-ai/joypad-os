@@ -786,6 +786,64 @@ target_link_libraries(joypad_neogeo_retrofrog PRIVATE ${COMMON_LIBRARIES})
 joypad_target_common(joypad_neogeo_retrofrog)
 joypad_add_btstack(joypad_neogeo_retrofrog)
 
+# --- NEOGEO TE ---
+# Stripped-down build: single default profile, consecutive remap only,
+# remap auto-clears on disconnect, no alt remap, no auto fire.
+add_executable(joypad_neogeo_te)
+target_compile_definitions(joypad_neogeo_te PRIVATE CONFIG_NEOGEO=1)
+target_sources(joypad_neogeo_te PUBLIC ${COMMON_SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2neogeo_te/gpio_device_te.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2neogeo_te/app.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2neogeo_te/remap.c
+)
+target_include_directories(joypad_neogeo_te PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2neogeo_te
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/device/gpio
+)
+target_link_libraries(joypad_neogeo_te PRIVATE ${COMMON_LIBRARIES})
+joypad_target_common(joypad_neogeo_te)
+joypad_add_btstack(joypad_neogeo_te)
+
+# NEOGEO TE — Pico
+add_executable(joypad_neogeo_te_pico)
+target_compile_definitions(joypad_neogeo_te_pico PRIVATE
+    CONFIG_NEOGEO=1
+    WS2812_PIN=25
+    USE_BOOTSEL_BUTTON=1
+    RPI_PICO_BUILD=1
+)
+target_sources(joypad_neogeo_te_pico PUBLIC ${COMMON_SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2neogeo_te/gpio_device_te.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2neogeo_te/app.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2neogeo_te/remap.c
+)
+target_include_directories(joypad_neogeo_te_pico PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2neogeo_te
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/device/gpio
+)
+target_link_libraries(joypad_neogeo_te_pico PRIVATE ${COMMON_LIBRARIES})
+joypad_target_common(joypad_neogeo_te_pico)
+joypad_add_btstack(joypad_neogeo_te_pico)
+
+# NEOGEO TE — RP2040-Zero
+add_executable(joypad_neogeo_te_rp2040zero)
+target_compile_definitions(joypad_neogeo_te_rp2040zero PRIVATE
+    CONFIG_NEOGEO=1
+    PICO_RP2040_ZERO_BUILD=1
+)
+target_sources(joypad_neogeo_te_rp2040zero PUBLIC ${COMMON_SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2neogeo_te/gpio_device_te.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2neogeo_te/app.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2neogeo_te/remap.c
+)
+target_include_directories(joypad_neogeo_te_rp2040zero PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2neogeo_te
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/device/gpio
+)
+target_link_libraries(joypad_neogeo_te_rp2040zero PRIVATE ${COMMON_LIBRARIES})
+joypad_target_common(joypad_neogeo_te_rp2040zero)
+joypad_add_btstack(joypad_neogeo_te_rp2040zero)
+
 # --- N64 to Dreamcast ---
 add_executable(joypad_n642dc)
 # Core 0 TX mode required: joybus uses PIO1 SM3, conflicts with Core 1 TX
