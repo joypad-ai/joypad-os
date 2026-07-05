@@ -10,8 +10,10 @@
 
 void neogeo_remap_ctx_init(neogeo_remap_ctx_t *ctx) {
     memset(ctx, 0, sizeof(neogeo_remap_ctx_t));
-    ctx->state        = REMAP_STATE_IDLE;
-    ctx->boot_checked = false;
+    ctx->state          = REMAP_STATE_IDLE;
+    ctx->boot_checked   = false;
+    ctx->mapped_mask    = 0;
+    ctx->error_flash_ms = 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -74,6 +76,7 @@ bool neogeo_remap_update(neogeo_remap_ctx_t *ctx,
             ctx->state = REMAP_STATE_COLLECTING;
             ctx->last_buttons = 0;
             ctx->last_activity_ms = now;
+            ctx->mapped_mask = 0;
         }
         return true;
 
@@ -100,7 +103,15 @@ bool neogeo_remap_update(neogeo_remap_ctx_t *ctx,
         // Ignore Start and Coin — not remappable
         if (newly_pressed & (JP_BUTTON_S1 | JP_BUTTON_S2)) return true;
 
+        // Ignore buttons already assigned to another slot
+        if (newly_pressed & ctx->mapped_mask) {
+            printf("[remap] Button already mapped, ignoring\n");
+            ctx->error_flash_ms = now;
+            return true;
+        }
+
         ctx->pending.buttons[ctx->count] = newly_pressed;
+        ctx->mapped_mask |= newly_pressed;
         ctx->count++;
         ctx->last_activity_ms = now;
 

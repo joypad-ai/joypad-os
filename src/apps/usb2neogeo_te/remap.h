@@ -64,6 +64,8 @@ typedef struct {
     uint8_t              count;            // how many buttons collected so far
     uint32_t             last_buttons;     // debounce: buttons held last frame
     uint32_t             last_activity_ms;
+    uint32_t             mapped_mask;      // bitmask of already-assigned input buttons
+    uint32_t             error_flash_ms;   // timestamp of last duplicate press (0 = none)
     bool                 boot_checked;     // true once plug-in window has closed
 } neogeo_remap_ctx_t;
 

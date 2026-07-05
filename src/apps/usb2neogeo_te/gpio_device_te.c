@@ -375,11 +375,18 @@ void gpio_device_task()
           printf("[te] Remap mode active — press 6 buttons in order\n");
       }
 
-      // Flash yellow while collecting
+      // Flash yellow while collecting, red briefly on duplicate press
       if (in_remap) {
           uint32_t now = platform_time_ms();
-          bool flash_on = (now / 250) % 2;
-          leds_set_color(flash_on ? 255 : 0, flash_on ? 180 : 0, 0);
+          if (remap_ctx[p].error_flash_ms != 0 &&
+              (now - remap_ctx[p].error_flash_ms) < 500) {
+              // Red flash for 500ms to signal invalid input
+              leds_set_color(180, 0, 0);
+          } else {
+              remap_ctx[p].error_flash_ms = 0;
+              bool flash_on = (now / 250) % 2;
+              leds_set_color(flash_on ? 255 : 0, flash_on ? 180 : 0, 0);
+          }
       }
 
       // Detect completion or abort
