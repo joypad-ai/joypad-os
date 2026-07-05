@@ -50,11 +50,11 @@ The LED on USB4AMI tells you what's going on at a glance.
 
 ## Choosing Your Platform
 
-USB4AMI needs to know which computer it's connected to. You select your platform by tapping the BOOTSEL button within the first **8 seconds** after powering on.
+USB4AMI needs to know which computer it's connected to. You select your platform by tapping the BOOTSEL button after powering on.
 
 **How to do it:**
 1. Power on your computer with USB4AMI connected.
-2. Within 8 seconds, tap the BOOTSEL button to cycle through modes:
+2. Tap the BOOTSEL button to cycle through modes:
    - First tap → C64 (blue)
    - Second tap → Atari (green)
    - Third tap → back to Amiga (amber)
@@ -62,7 +62,7 @@ USB4AMI needs to know which computer it's connected to. You select your platform
 
 Your choice is automatically saved and remembered next time you power on.
 
-> **Tip:** If you don't tap anything within 8 seconds, USB4AMI stays on your last saved platform.
+> **Tip:** If you don't tap the button at power on, USB4AMI stays on your last saved platform.
 
 ---
 
@@ -144,22 +144,24 @@ The LED returns to your platform color and your new setting is saved automatical
 4. Drag the `.uf2` file onto the `RP2350` drive that appears
 5. Done — the drive ejects and your adapter is running the new firmware
 
-> **Note:** USB4AMI automatically resets its settings to safe defaults after a firmware update. Your platform selection and DPI settings will need to be reconfigured.
+> **Note 1:** USB4AMI automatically resets its settings to safe defaults after a firmware update. Your platform selection and DPI settings will need to be reconfigured.
+
+> **Note 2:** You MUST use a USB-A male to male cable to plug in USB4AMI for firmware updates. A USB-A to USB-C will NOT work. This isn't because of any fault of the USB4AMI design, it's due to the fact that USB-A to C cables lack the 5.1k CC resistors on the USB-C side that would tell your computer that it's attached to a device and need to send 5 volts to it. If you need to update the firmware an all you have on your modern computer is USB-C ports (hello Apple!), you can use a female USB-A to male USB-C adapter as they have the correct resistors and are designed for this exact purpose. 
 
 ---
 
 ## Troubleshooting
 
 **The adapter doesn't seem to be doing anything.**
-Check the LED color to confirm which platform is active. If needed, power cycle and tap BOOTSEL within 8 seconds to cycle to your desired platform.
+Check the LED color to confirm which platform is active. If needed, tap BOOTSEL to cycle to your desired platform.
 
 **My mouse or gamepad isn't being recognized.**
 Most modern gamepads and mice work out of the box. Some very old or unusual USB devices may not be supported — try a different USB device.
 
 **The computer behaves strangely after a firmware update.**
-USB4AMI automatically resets its settings to safe defaults the first time it boots after a firmware update. If you experience issues, tap BOOTSEL within the first 8 seconds to cycle to your desired platform, which will rewrite your settings cleanly.
+USB4AMI automatically resets its settings to safe defaults the first time it boots after a firmware update. If you experience issues, tap BOOTSEL to cycle back through to your desired platform, which will rewrite your settings cleanly.
 
-**The cursor moves in the wrong direction.**
+**The mouse cursor moves in the wrong direction.**
 Make sure you're in the correct platform mode. Amiga and Atari use different quadrature encodings — confirm the LED color matches your computer.
 
 **I accidentally changed the DPI and want to reset it.**
@@ -167,6 +169,9 @@ Enter DPI adjustment mode (hold MMB 2 seconds), adjust until the speed feels rig
 
 **A CD32 game isn't recognizing all buttons after switching control profiles.**
 Exit the game and relaunch it. CD32 games detect the controller type at startup — relaunching allows USB4AMI to respond correctly to the CD32 detection handshake.
+
+**Why can't I change platforms with the BOOTSEL button after playing a CD32 game title on the Amiga?**
+This is by design as the BOOTSEL feature is disabled after starting a CD32 controls aware game. This is because having the BOOTSEL code running during CD32 controls may cause spurious button presses. Although there would be no need to do so, you would need to power cycle the adapter/computer to re-enable the BOOTSEL change function. 
 
 ---
 
@@ -183,5 +188,5 @@ We are actively working on the following features for a future firmware update:
 
 - USB4AMI remembers your platform and DPI settings across power cycles.
 - Settings are automatically reset to defaults the first time USB4AMI boots after a firmware update.
-- The BOOTSEL button is only active for platform selection during the first 8 seconds after power-on.
 - The Up as Jump profile is not saved across power cycles and resets to standard on each boot.
+- The USB controller port on USB4AMI has a 200mA polyfuse on its output protecting your vintage computers from supplying too much power to controllers. Because of this I advise not to plug in rechargeable controllers (such as the Switch Pro or Sony DS5) via USB as they consume too much current when charging their internal batteries. If the 200mA current is exceed, the polyfuse will trip and power will be cut to the USB controller. Simply power off your machine, disconnect the offending controller and wait 30 minutes before powering back on. Full recovery may take a couple hours. This is all designed to protect your vintage hardware. 

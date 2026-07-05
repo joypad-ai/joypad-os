@@ -9,7 +9,7 @@
 //
 // Button events:
 //   HOLD (1.5s)        — cycle platform (Amiga → C64 → Atari ST → Amiga)
-//   TAP (within 8s)    — cycle platform (Amiga → C64 → Atari ST → Amiga)
+//   TAP                — cycle platform (Amiga → C64 → Atari ST → Amiga) — disabled once CD32 detected
 //   DOUBLE_CLICK       — enter/exit DPI adjustment mode
 //   In DPI mode: L mouse / gamepad B1 = decrease, R mouse / gamepad B2 = increase
 
@@ -796,21 +796,17 @@ void amiga_device_task(void) {
         update_led();
     }
 
-    // Amiga vs Atari ST auto-detection
-    // BOOTSEL button handling — only during first 8 seconds after power-on
-    // After that, QSPI manipulation interferes with CD32 CLK timing
+    // BOOTSEL button handling — available any time CD32 is not active.
+    // Disabled once cd32_detected goes true (console confirmed via CLK edge)
+    // to avoid QSPI reads interfering with CD32 shift register transfers.
+    // Also skipped while cd32_transfer_active (mid-transfer before detection).
     {
-#define BOOTSEL_WINDOW_MS 8000
         static uint32_t last_button_read = 0;
         static bool button_was_pressed = false;
-        static bool window_open = true;
 
-        uint32_t now = to_ms_since_boot(get_absolute_time());
-
-        if (window_open) {
-            if (now >= BOOTSEL_WINDOW_MS || cd32_detected) {
-                window_open = false;
-            } else if (now - last_button_read >= 50) {
+        if (!cd32_detected && !cd32_transfer_active) {
+            uint32_t now = to_ms_since_boot(get_absolute_time());
+            if (now - last_button_read >= 50) {
                 last_button_read = now;
                 gpio_set_irq_enabled(AMIGA_PIN_JOYMODE, GPIO_IRQ_EDGE_FALL | GPIO_IRQ_EDGE_RISE, false);
                 bool pressed = read_bootsel_button();
