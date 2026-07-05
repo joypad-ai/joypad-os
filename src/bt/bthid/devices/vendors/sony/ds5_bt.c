@@ -25,11 +25,7 @@
 #ifdef DS5_CLIP_SHOW
 #include "ds5_show_events.h"   // Grand Finale burst choreography (generated)
 #endif
-#ifdef CONFIG_DS5_ASTRO
-// Local-only sound pack header (gitignored — regenerate via encode.py after
-// placing astro_*.wav files in tools/ds5-scream/assets/)
-#include "ds5_astro_assets.h"
-#endif
+
 
 // btstack_host.c (gated): direct L2CAP interrupt-channel send with per-packet
 // can-send-now pacing — the hid_host_send_report path drops frames at 100Hz.
@@ -284,13 +280,13 @@ typedef struct {
     bool voice_is_scream;
     uint8_t voice_r, voice_g, voice_b;
     uint8_t voice_led_prog;         // DS5_LED_* lightbar program during playback
-    uint16_t face_btns_prev;        // firework/show trigger edge detect
+    uint32_t face_btns_prev;        // trigger edge detect (robot: 18 inputs)
     uint8_t show_idx;               // next show event to fire
     uint16_t show_burst_frame;      // active show burst (0xFFFF = none yet)
     uint8_t show_r, show_g, show_b;
     uint8_t show_big;
-#ifdef CONFIG_DS5_ASTRO
-    uint32_t astro_last_ms;         // last activity (idle-chirp timer)
+#ifdef CONFIG_DS5_ROBOT
+    uint32_t robot_last_ms;         // last activity (idle-chirp timer)
 #endif
     bool led_refresh;               // force normal LED resend after playback
     bool drop_scream_enabled;       // armed via mute toggle (off by default)
@@ -719,10 +715,10 @@ static void ds5_voice_quip(bthid_device_t* device, ds5_bt_data_t* ds5, bool impa
     const ds5_voice_clip_t* clip = impact
         ? ds5_clips_impact[pick % DS5_CLIPS_IMPACT_COUNT]
         : ds5_clips_catch[pick % DS5_CLIPS_CATCH_COUNT];
-#ifdef CONFIG_DS5_ASTRO
-    // Astro character sounds instead of the voice quips
-    clip = impact ? ds5_clips_astro_impact[pick % DS5_CLIPS_ASTRO_IMPACT_COUNT]
-                  : ds5_clips_astro_catch[pick % DS5_CLIPS_ASTRO_CATCH_COUNT];
+#ifdef CONFIG_DS5_ROBOT
+    // Robot character sounds instead of the voice quips
+    clip = impact ? ds5_clips_robot_impact[pick % DS5_CLIPS_ROBOT_IMPACT_COUNT]
+                  : ds5_clips_robot_catch[pick % DS5_CLIPS_ROBOT_CATCH_COUNT];
 #endif
     printf("[DS5_BT] Quip: %s\n", impact ? "impact" : "catch");
     // Orange for hurt, green for relief
@@ -930,8 +926,8 @@ static void ds5_drop_update(bthid_device_t* device, ds5_bt_data_t* ds5,
                 printf("[DS5_BT] Free-fall — screaming\n");
                 ds5->drop_state = DS5_DROP_FALLING;
                 ds5->drop_t0 = now;
-#ifdef CONFIG_DS5_ASTRO
-                ds5_voice_play(device, ds5, &DS5_CLIP_ASTRO_FALL, true,
+#ifdef CONFIG_DS5_ROBOT
+                ds5_voice_play(device, ds5, &DS5_CLIP_ROBOT_FALL, true,
                                90, 170, 255, DS5_LED_FLASH);  // worried blue warble
 #else
                 ds5_voice_play(device, ds5, &DS5_CLIP_SCREAM, true,
@@ -1034,13 +1030,13 @@ static bool ds5_init(bthid_device_t* device)
             ds5_data[i].voice_frame = 0;
             ds5_data[i].audio_pkt_counter = 0;
             ds5_data[i].led_refresh = false;
-#if defined(CONFIG_DS5_FISHER_PRICE) || defined(CONFIG_DS5_ASTRO)
+#if defined(CONFIG_DS5_FISHER_PRICE) || defined(CONFIG_DS5_ROBOT)
             ds5_data[i].drop_scream_enabled = true;   // character modes: on by default
 #else
             ds5_data[i].drop_scream_enabled = false;  // armed via mute toggle
 #endif
-#ifdef CONFIG_DS5_ASTRO
-            ds5_data[i].astro_last_ms = platform_time_ms();
+#ifdef CONFIG_DS5_ROBOT
+            ds5_data[i].robot_last_ms = platform_time_ms();
 #endif
             ds5_data[i].toggle_cue_until = 0;
             ds5_data[i].face_btns_prev = 0xFF;
@@ -1349,32 +1345,56 @@ static void ds5_process_report(bthid_device_t* device, const uint8_t* data, uint
                 ds5_voice_play(device, ds5, clip, false, cr, cg, cb, DS5_LED_STEADY);
             }
         }
-#elif defined(CONFIG_DS5_ASTRO)
-        // Astro mode: every button chirps (random from the pack pool) with
-        // blue/white light pops. Falls are handled by the drop detector with
-        // Astro's worried warble + impact/catch reactions.
-        uint16_t trig = (uint16_t)((rpt->triangle ? 0x01 : 0) |
-                                   (rpt->circle   ? 0x02 : 0) |
-                                   (rpt->cross    ? 0x04 : 0) |
-                                   (rpt->square   ? 0x08 : 0));
+#elif defined(CONFIG_DS5_ROBOT)
+        // Robot mode: EVERY input has its own unique voice + lightbar color.
+        // Bit order matches robot_btn_NN asset numbering (encode.py order):
+        //  0 cross  1 circle  2 square  3 triangle  4 up  5 right  6 down
+        //  7 left   8 L1  9 R1  10 L2  11 R2  12 L3  13 R3  14 create
+        //  15 options  16 touchpad  17 PS
+        uint32_t trig = (uint32_t)((rpt->cross    ? 1u << 0  : 0) |
+                                   (rpt->circle   ? 1u << 1  : 0) |
+                                   (rpt->square   ? 1u << 2  : 0) |
+                                   (rpt->triangle ? 1u << 3  : 0) |
+                                   (rpt->l1       ? 1u << 8  : 0) |
+                                   (rpt->r1       ? 1u << 9  : 0) |
+                                   (rpt->l2       ? 1u << 10 : 0) |
+                                   (rpt->r2       ? 1u << 11 : 0) |
+                                   (rpt->l3       ? 1u << 12 : 0) |
+                                   (rpt->r3       ? 1u << 13 : 0) |
+                                   (rpt->create   ? 1u << 14 : 0) |
+                                   (rpt->option   ? 1u << 15 : 0) |
+                                   (rpt->tpad     ? 1u << 16 : 0) |
+                                   (rpt->ps       ? 1u << 17 : 0));
         switch (rpt->dpad) {
-            case 0: trig |= 0x10; break;
-            case 2: trig |= 0x20; break;
-            case 4: trig |= 0x40; break;
-            case 6: trig |= 0x80; break;
+            case 0: trig |= 1u << 4; break;
+            case 1: trig |= (1u << 4) | (1u << 5); break;
+            case 2: trig |= 1u << 5; break;
+            case 3: trig |= (1u << 5) | (1u << 6); break;
+            case 4: trig |= 1u << 6; break;
+            case 5: trig |= (1u << 6) | (1u << 7); break;
+            case 6: trig |= 1u << 7; break;
+            case 7: trig |= (1u << 7) | (1u << 4); break;
             default: break;
         }
-        uint16_t rising = (uint16_t)(trig & ~ds5->face_btns_prev);
+        uint32_t rising = trig & ~ds5->face_btns_prev;
         ds5->face_btns_prev = trig;
         if (rising) {
-            uint32_t pick = platform_time_ms();
-            const ds5_voice_clip_t* c =
-                ds5_clips_astro_btn[pick % DS5_CLIPS_ASTRO_BTN_COUNT];
-            bool cool = (pick & 1) != 0;
-            ds5_voice_play(device, ds5, c, false,
-                           cool ? 90 : 235, cool ? 170 : 245, 255,
-                           DS5_LED_STEADY);
-            ds5->astro_last_ms = pick;
+            // Per-button lightbar colors (hue wheel-ish, hand-tuned)
+            static const uint8_t ROBOT_RGB[18][3] = {
+                { 60,  90, 255}, {255,  60,  60}, {255, 120, 220}, { 60, 255, 120},
+                {255, 255, 255}, {255, 210,  60}, {120,  80, 255}, { 60, 210, 255},
+                {255, 140,  40}, { 40, 255, 200}, {255,  70, 160}, {160, 255,  60},
+                {200, 120, 255}, {255, 255, 120}, {180, 180, 255}, {255, 180, 120},
+                {120, 255, 255}, {255, 240, 200},
+            };
+            int bit = 0;
+            while (((rising >> bit) & 1u) == 0) bit++;
+            if (bit < DS5_CLIPS_ROBOT_BTN_COUNT) {
+                ds5_voice_play(device, ds5, ds5_clips_robot_btn[bit], false,
+                               ROBOT_RGB[bit][0], ROBOT_RGB[bit][1],
+                               ROBOT_RGB[bit][2], DS5_LED_STEADY);
+                ds5->robot_last_ms = platform_time_ms();
+            }
         }
 
         ds5_drop_update(device, ds5, rpt->accel);
@@ -1425,7 +1445,7 @@ static void ds5_process_report(bthid_device_t* device, const uint8_t* data, uint
         ds5_drop_update(device, ds5, rpt->accel);
 #endif
     } else {
-        ds5->face_btns_prev = 0xFFFF;  // no trigger on the arming press itself
+        ds5->face_btns_prev = 0xFFFFFFFFu;  // no trigger on the arming press itself
     }
 #endif
 
@@ -1485,14 +1505,14 @@ static void ds5_task(bthid_device_t* device)
                     ds5_restore_player_led(device, ds5);
                 }
 
-#ifdef CONFIG_DS5_ASTRO
+#ifdef CONFIG_DS5_ROBOT
                 // Idle personality: a soft curious blip every ~20s of quiet
                 if (ds5->drop_scream_enabled &&
                     ds5->voice_state == DS5_VOICE_IDLE &&
-                    now - ds5->astro_last_ms > 20000) {
-                    ds5->astro_last_ms = now;
+                    now - ds5->robot_last_ms > 20000) {
+                    ds5->robot_last_ms = now;
                     ds5_voice_play(device, ds5,
-                                   ds5_clips_astro_idle[now % DS5_CLIPS_ASTRO_IDLE_COUNT],
+                                   ds5_clips_robot_idle[now % DS5_CLIPS_ROBOT_IDLE_COUNT],
                                    false, 120, 190, 255, DS5_LED_STEADY);
                 }
 #endif

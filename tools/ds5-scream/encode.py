@@ -139,13 +139,11 @@ def main():
     catches = find("catch_*")
     fireworks = find("firework_*")
     show = find("fwshow")
-    astro = {
-        "btn": find("astro_btn_*"),
-        "fall": find("astro_fall"),
-        "impact": find("astro_impact_*"),
-        "catch": find("astro_catch_*"),
-        "idle": find("astro_idle_*"),
-    }
+    robot_btns = find("robot_btn_*")   # numeric prefix = firmware bit order
+    robot_falls = find("robot_fall")
+    robot_impacts = find("robot_impact_*")
+    robot_catches = find("robot_catch_*")
+    robot_idles = find("robot_idle_*")
     fisher_nums = find("fisher_num_*")
     fisher_abcs = find("fisher_abc_*")
     if not screams or not impacts or not catches:
@@ -158,6 +156,11 @@ def main():
     clips += [(f"ds5_vc_firework{i}", p) for i, p in enumerate(fireworks)]
     if show:
         clips.append(("ds5_vc_show", show[0]))
+    clips += [(f"ds5_vc_rbtn{i}", p) for i, p in enumerate(robot_btns)]
+    clips += [(f"ds5_vc_rfall{i}", p) for i, p in enumerate(robot_falls)]
+    clips += [(f"ds5_vc_rimpact{i}", p) for i, p in enumerate(robot_impacts)]
+    clips += [(f"ds5_vc_rcatch{i}", p) for i, p in enumerate(robot_catches)]
+    clips += [(f"ds5_vc_ridle{i}", p) for i, p in enumerate(robot_idles)]
     clips += [(f"ds5_vc_fnum{i}", p) for i, p in enumerate(fisher_nums)]
     clips += [(f"ds5_vc_fabc{i}", p) for i, p in enumerate(fisher_abcs)]
     # Synthetic silence clip (companion mode mic-keepalive stream)
@@ -212,7 +215,9 @@ def main():
         f.write("};\n")
         f.write("#define DS5_CLIPS_FIREWORK_COUNT "
                 f"{sum(1 for c, _ in clips if c.startswith('ds5_vc_firework'))}\n")
-        for group, prefix in (("fisher_num", "ds5_vc_fnum"), ("fisher_abc", "ds5_vc_fabc")):
+        for group, prefix in (("fisher_num", "ds5_vc_fnum"), ("fisher_abc", "ds5_vc_fabc"),
+                              ("robot_btn", "ds5_vc_rbtn"), ("robot_impact", "ds5_vc_rimpact"),
+                              ("robot_catch", "ds5_vc_rcatch"), ("robot_idle", "ds5_vc_ridle")):
             names = [c for c, _ in clips if c.startswith(prefix)]
             if names:
                 f.write(f"static const ds5_voice_clip_t* const ds5_clips_{group}[] = {{\n")
@@ -224,40 +229,8 @@ def main():
         f.write("#define DS5_CLIP_SILENCE ds5_vc_silence\n")
         if show:
             f.write("#define DS5_CLIP_SHOW ds5_vc_show\n")
-
-    # --- Astro mode: separate, GITIGNORED header (pack audio stays local) ---
-    if astro["btn"]:
-        astro_out = os.path.join(os.path.dirname(OUT), "ds5_astro_assets.h")
-        with open(astro_out, "w") as f:
-            f.write("// ds5_astro_assets.h - GENERATED, GITIGNORED (local sound pack)\n")
-            f.write("// Regenerate: tools/ds5-scream/encode.py (uses assets/astro_*)\n")
-            f.write("#pragma once\n\n")
-            def group(name, paths):
-                names = []
-                for i, path in enumerate(paths):
-                    cname = f"ds5_vc_astro_{name}{i}"
-                    frames = encode_clip(path)
-                    f.write(f"// {os.path.basename(path)}: {len(frames)} frames\n")
-                    emit_clip(f, cname, frames)
-                    f.write(f"static const ds5_voice_clip_t {cname} = "
-                            f"{{ {cname}_frames, {len(frames)}, 0 }};\n\n")
-                    names.append(cname)
-                return names
-            btns = group("btn", astro["btn"])
-            falls = group("fall", astro["fall"])
-            imps = group("impact", astro["impact"])
-            cats = group("catch", astro["catch"])
-            idles = group("idle", astro["idle"])
-            for label, names in (("astro_btn", btns), ("astro_impact", imps),
-                                 ("astro_catch", cats), ("astro_idle", idles)):
-                f.write(f"static const ds5_voice_clip_t* const ds5_clips_{label}[] = {{\n")
-                for n in names:
-                    f.write(f"    &{n},\n")
-                f.write("};\n")
-                f.write(f"#define DS5_CLIPS_{label.upper()}_COUNT {len(names)}\n")
-            if falls:
-                f.write(f"#define DS5_CLIP_ASTRO_FALL {falls[0]}\n")
-        print(f"wrote {astro_out} (gitignored)")
+        if robot_falls:
+            f.write("#define DS5_CLIP_ROBOT_FALL ds5_vc_rfall0\n")
 
     print(f"wrote {OUT}")
     for cname, (n, base) in encoded.items():
