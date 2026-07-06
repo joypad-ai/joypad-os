@@ -303,6 +303,7 @@ typedef struct {
     bool comp_stream;               // SPEAK: frames come from the host ring
     bool comp_loop;                 // LISTEN: loop the silence keepalive clip
     uint32_t comp_mute_t0;
+    uint8_t comp_release_streak;
     uint32_t comp_blink_ms;
     uint32_t comp_last_rx;          // last host speech frame arrival
 #endif
@@ -490,6 +491,11 @@ static bool ds5_send_audio_frame(bthid_device_t* device)
     // controller_output_state_copy_audio_snapshot() in speaker mode.
     uint8_t* st = &buf[14];
     st[0] = 0xBD;                 // valid_flag0: vib+triggers+headphone+speaker+audio_ctrl (no mic)
+#ifdef CONFIG_DS5_COMPANION
+    if (ds5->mic_active) {
+        st[0] = 0xFD;             // + mic-volume-enable: actually turn the mic ON
+    }
+#endif
     st[1] = 0xF6;                 // valid_flag1: pwr_save+lightbar+player+lowpass+motor_pwr+audio_ctrl2
     st[2] = ds5->rumble_right;
     st[3] = ds5->rumble_left;
@@ -1117,6 +1123,23 @@ static void ds5_process_report(bthid_device_t* device, const uint8_t* data, uint
 #endif
             return;
         }
+#ifdef CONFIG_DS5_COMPANION
+        else {
+            // Mic reports arrive AS 78-byte 0x31s. Their signature (decoded
+            // from live captures): data[3] == 0xD4 = sub-packet id 0x14|0x80
+            // — the mic member of the audio family (speaker 0x13, headset
+            // 0x16). A real input report has data[3] = left-stick Y, which
+            // only collides at exactly 0xD4 (1/256, transient). The earlier
+            // hat-validity check leaked ~56%% of mic packets into the input
+            // parser (garbage hats are valid 9/16 of the time), flapping the
+            // mute bit and halving the mic stream.
+            ds5_bt_data_t* cds5 = (ds5_bt_data_t*)device->driver_data;
+            if (cds5 && cds5->mic_active && data[3] == 0xD4) {
+                ds5_companion_mic_capture(cds5, data, len);
+                return;
+            }
+        }
+#endif
 #endif
         // Full BT report: report_id (1) + header (1) = skip 2 bytes
         report_data = data + 2;
@@ -1284,8 +1307,15 @@ static void ds5_process_report(bthid_device_t* device, const uint8_t* data, uint
             (mnow - ds5->comp_mute_t0) >= DS5_COMP_HOLD_MS) {
             ds5_comp_enter_listen(device, ds5);
         }
-        if (!mdown && ds5->comp_mute_prev && ds5->comp_state == DS5_COMP_LISTEN) {
-            ds5_comp_enter_think(device, ds5);
+        if (!mdown && ds5->comp_state == DS5_COMP_LISTEN) {
+            // Debounced release: any surviving imposter report could read
+            // the mute bit as 0 for one frame — require two in a row.
+            if (ds5->comp_release_streak < 255) ds5->comp_release_streak++;
+            if (ds5->comp_release_streak >= 2) {
+                ds5_comp_enter_think(device, ds5);
+            }
+        } else {
+            ds5->comp_release_streak = 0;
         }
         ds5->comp_mute_prev = mdown;
     }

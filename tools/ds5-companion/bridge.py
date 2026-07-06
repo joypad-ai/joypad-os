@@ -37,10 +37,11 @@ MSG_CMD = 0x01
 MSG_RSP = 0x02
 MSG_EVT = 0x03
 
-# Bytes to strip from the front of each DS5 mic input report to reach the Opus
-# payload. Placeholder until confirmed with --dump captures (report id + seq +
-# sub-header). DS5_Bridge decodes mic as Opus 48k; channel count TBD.
-MIC_HEADER_BYTES = 2
+# DS5 BT mic protocol (solved 2026-07-06 from live captures + DS5_Bridge):
+#   78-byte 0x31 report: [0x31][seq|0x2][counter][71B CBR Opus][CRC32 seed 0xA1]
+#   Opus: TOC 0xD4 = CELT fullband, MONO, 48kHz, 10ms frames, CBR 71 bytes.
+MIC_HEADER_BYTES = 3
+MIC_OPUS_SIZE = 71
 MIC_CHANNELS = 1
 
 
@@ -111,22 +112,56 @@ class Cdc:
 
 
 class OpusPipe:
-    """Opus decode/encode via opuslib (lazy import so --dump works without it)."""
+    """Opus decode/encode via ctypes + libopus (no pip dependencies)."""
+
+    LIB_PATHS = ["/opt/homebrew/lib/libopus.dylib", "/usr/local/lib/libopus.dylib",
+                 "libopus.so.0", "libopus.dylib"]
 
     def __init__(self):
-        import opuslib  # noqa: PLC0415
-        self.dec = opuslib.Decoder(48000, MIC_CHANNELS)
-        self.enc = opuslib.Encoder(48000, 2, opuslib.APPLICATION_AUDIO)
-        self.enc.bitrate = 160000
-        self.enc.vbr = 0  # hard CBR -> exactly 200B per 10ms frame
+        import ctypes
+        self.ct = ctypes
+        lib = None
+        for cand in self.LIB_PATHS:
+            try:
+                lib = ctypes.CDLL(cand)
+                break
+            except OSError:
+                continue
+        if lib is None:
+            sys.exit("libopus not found (brew install opus)")
+        self.lib = lib
+        lib.opus_decoder_create.restype = ctypes.c_void_p
+        lib.opus_decoder_create.argtypes = [ctypes.c_int, ctypes.c_int,
+                                            ctypes.POINTER(ctypes.c_int)]
+        lib.opus_decode.restype = ctypes.c_int
+        lib.opus_decode.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int,
+                                    ctypes.POINTER(ctypes.c_int16), ctypes.c_int,
+                                    ctypes.c_int]
+        lib.opus_encoder_create.restype = ctypes.c_void_p
+        lib.opus_encoder_create.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                                            ctypes.POINTER(ctypes.c_int)]
+        lib.opus_encode.restype = ctypes.c_int
+        lib.opus_encode.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_int16),
+                                    ctypes.c_int, ctypes.c_char_p, ctypes.c_int]
+        err = ctypes.c_int()
+        self.dec = lib.opus_decoder_create(48000, MIC_CHANNELS, ctypes.byref(err))
+        self.enc = lib.opus_encoder_create(48000, 2, 2049, ctypes.byref(err))  # APPLICATION_AUDIO
+        lib.opus_encoder_ctl(self.enc, 4002, 160000)  # OPUS_SET_BITRATE
+        lib.opus_encoder_ctl(self.enc, 4006, 0)       # OPUS_SET_VBR -> CBR
+        self._pcm = (ctypes.c_int16 * 5760)()
+        self._out = ctypes.create_string_buffer(1500)
 
     def decode_mic(self, pkt: bytes) -> bytes:
-        return self.dec.decode(pkt, 480)
+        n = self.lib.opus_decode(self.dec, pkt, len(pkt), self._pcm, 5760, 0)
+        if n <= 0:
+            raise ValueError(f"opus_decode: {n}")
+        return self.ct.string_at(self._pcm, n * 2 * MIC_CHANNELS)
 
     def encode_speaker(self, pcm_48k_stereo_10ms: bytes) -> bytes:
-        out = self.enc.encode(pcm_48k_stereo_10ms, 480)
-        assert len(out) == 200, f"expected 200B CBR frame, got {len(out)}"
-        return out
+        buf = (self.ct.c_int16 * 960).from_buffer_copy(pcm_48k_stereo_10ms)
+        n = self.lib.opus_encode(self.enc, buf, 480, self._out, 1500)
+        assert n == 200, f"expected 200B CBR frame, got {n}"
+        return self._out.raw[:200]
 
 
 class RealtimeSession:
@@ -214,10 +249,14 @@ def main():
     session = None if (args.dump or args.echo) else RealtimeSession()
 
     def speak_frames(frames_200):
-        """Stream 200B Opus frames to the firmware ring, paced by 'free'."""
-        for f in frames_200:
+        """Stream 200B Opus frames to the firmware ring: pre-roll a burst so
+        the drain never starves, then pace at the true 10.67ms drain rate."""
+        for i, f in enumerate(frames_200):
             cdc.send({"cmd": "VOICE.SPEAK", "d": base64.b64encode(f).decode()})
-            time.sleep(0.009)  # ~ring drain rate; firmware 'free' is advisory
+            if i > 8:
+                time.sleep(0.0105)
+            else:
+                time.sleep(0.002)
 
     print("[bridge] ready — hold mute on the DualSense and talk")
     utterance_pcm = b""
@@ -231,7 +270,7 @@ def main():
                         dump.write(struct.pack("<H", len(raw)) + raw)
                         print(f"[dump] mic report {len(raw)}B")
                         continue
-                    pkt = raw[MIC_HEADER_BYTES:]
+                    pkt = raw[MIC_HEADER_BYTES:MIC_HEADER_BYTES + MIC_OPUS_SIZE]
                     try:
                         pcm48 = opus.decode_mic(bytes(pkt))
                     except Exception:
