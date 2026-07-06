@@ -318,23 +318,31 @@ static ble_xbox_report_t last_sent_xbox;
 static sinput_report_t last_sent_sinput;
 
 // Report storage for hids_device_init_with_storage()
-// 8 slots covers every shipped mode (standard: 7 reports incl. SInput's report-3
-// output, sinput: 3, xbox: 3) — one slot per GATT report characteristic.
-static hids_device_report_t hid_report_storage[8];
+// 12 slots to cover the SInput composite (gamepad + keyboard + mouse) when
+// enabled; 8 suffices for the non-composite modes.
+static hids_device_report_t hid_report_storage[12];
 #define HID_REPORT_STORAGE_COUNT (sizeof(hid_report_storage) / sizeof(hid_report_storage[0]))
 
+// Toggle: BLE SInput composite (gamepad + keyboard + mouse). Define = composite
+// (Gamepad API + kbd/mouse over BLE); undefine = pure SInput gamepad. Both work
+// with the macOS Gamepad API — verified on hardware.
+#define SINPUT_BLE_COMPOSITE 1
+
 // Composite SInput report map = the SInput gamepad map (IDs 1/2/3) + keyboard (6)
-// + mouse (8) tail.
+// + mouse (8) tail. Works with the macOS Gamepad API (detects as STANDARD GAMEPAD,
+// buttons register). SDL keys on the gamepad collection + VID/PID (2E8A:10C6),
+// unchanged, so Steam is preserved. NUS config is reached via joypad-ble.
 //
-// DISABLED by default — define SINPUT_BLE_COMPOSITE to opt in. Making BLE SInput a
-// composite is a dead end for the Gamepad API on macOS: the OS stops claiming it
-// as a game controller, so it either vanishes from navigator.getGamepads() (with
-// a Consumer Control collection) or enumerates but never delivers input (kbd/mouse
-// only — detected as STANDARD GAMEPAD, then no buttons, doesn't recover). Pure
-// SInput gamepad is macOS-claimed → Gamepad API works, which is mission-critical.
-// NUS config is reached via joypad-ble (native BLE), NOT Web Bluetooth, so the
-// composite is no longer needed to unblock config. Kept for a future standalone
-// BLE composite mode. Built at init by concatenating onto sinput_report_descriptor.
+// TWO HARD-WON GOTCHAS:
+//  1) NEVER add a Consumer Control collection here. Over BLE, macOS reclassifies a
+//     device exposing Consumer Control as a media remote and drops it from the
+//     Gamepad API entirely. Keyboard + mouse are fine; consumer is not.
+//  2) Chrome caches the gamepad/HID descriptor PER DEVICE. After any report-map
+//     change, a page refresh will NOT pick it up — you must Forget the device in
+//     the OS and fully restart the browser. Skipping this makes a working build
+//     look broken ("detected then no input"); it cost hours of misdiagnosis.
+//
+// Built at init by concatenating onto sinput_report_descriptor.
 #ifdef SINPUT_BLE_COMPOSITE
 static const uint8_t sinput_kbd_mouse_tail[] = {
     // --- Keyboard, Report ID 6 (in: modifier+keys, out: lock LEDs) ---
@@ -765,16 +773,15 @@ void ble_output_late_init(void)
         hid_desc_size = ble_xbox_get_descriptor_size();
     } else if (current_mode == BLE_MODE_SINPUT) {
 #ifdef SINPUT_BLE_COMPOSITE
-        // Composite map (gamepad + keyboard/mouse tail). Off by default — it hides
-        // the pad from macOS's Gamepad API (see sinput_kbd_mouse_tail comment).
+        // Composite map (gamepad + keyboard/mouse). Works with the Gamepad API and
+        // adds kbd/mouse over BLE (see sinput_kbd_mouse_tail comment).
         memcpy(sinput_composite_desc, sinput_report_descriptor, sizeof(sinput_report_descriptor));
         memcpy(sinput_composite_desc + sizeof(sinput_report_descriptor),
                sinput_kbd_mouse_tail, sizeof(sinput_kbd_mouse_tail));
         hid_desc = sinput_composite_desc;
         hid_desc_size = sizeof(sinput_composite_desc);
 #else
-        // Pure SInput gamepad — macOS claims it as a game controller so the
-        // Gamepad API works (mission-critical). NUS config via joypad-ble.
+        // Pure SInput gamepad (no kbd/mouse). Also works with the Gamepad API.
         hid_desc = sinput_report_descriptor;
         hid_desc_size = sizeof(sinput_report_descriptor);
 #endif
