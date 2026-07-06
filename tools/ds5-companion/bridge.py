@@ -74,22 +74,45 @@ class Cdc:
         self.s = None
         self._open(port)
 
+    def _probe(self, cand):
+        """Bind only to a port that speaks the JoypadOS protocol — multiple
+        usbmodem devices can be present and first-alphabetical is a guess.
+        High nominal baud: CDC ignores it for transfer, but macOS paces
+        tcdrain/flush by it (115200 made every audio frame 'take' 25ms)."""
+        try:
+            ser = serial.Serial(cand, 3000000, timeout=0.05)
+        except (OSError, serial.SerialException):
+            return None
+        try:
+            ser.dtr = True
+            ser.rts = True
+            ser.reset_input_buffer()
+            ser.write(frame(MSG_CMD, 0, b'{"cmd":"PING"}'))
+            ser.flush()
+            deadline = time.time() + 0.8
+            buf = b""
+            while time.time() < deadline:
+                buf += ser.read(256)
+                if b'"ok"' in buf:
+                    ser.timeout = 0.02
+                    return ser
+            ser.close()
+        except (OSError, serial.SerialException):
+            try:
+                ser.close()
+            except Exception:
+                pass
+        return None
+
     def _open(self, port=None):
         for _ in range(120):
-            if port is None:
-                ports = sorted(glob.glob("/dev/cu.usbmodem*"))
-                cand = ports[0] if ports else None
-            else:
-                cand = port
-            if cand:
-                try:
-                    # High nominal baud: CDC ignores it for transfer, but
-                    # macOS paces tcdrain/flush by it — 115200 makes each
-                    # ~290B VOICE.SPEAK frame "take" 25ms and audio crawls.
-                    self.s = serial.Serial(cand, 3000000, timeout=0.02)
+            cands = [port] if port else sorted(glob.glob("/dev/cu.usbmodem*"))
+            for cand in cands:
+                self.s = self._probe(cand)
+                if self.s:
                     break
-                except (OSError, serial.SerialException):
-                    pass
+            if self.s:
+                break
             time.sleep(1)
         if self.s is None:
             sys.exit("no CDC port after 120s")
@@ -324,16 +347,38 @@ class RealtimeSession:
         if not self.key:
             sys.exit("OPENAI_API_KEY not set and ~/.openai_key missing (or use --echo)")
         self.ws = MiniWS(self.URL, {"Authorization": f"Bearer {self.key}"})
+        # Reader thread owns recv: the server keepalive-pings during idle
+        # gaps between turns, and pings are only answered inside recv() —
+        # without this the session dies of "keepalive ping timeout".
+        import threading
+        import queue as _q
+        self.rx = _q.Queue()
+        def _pump():
+            try:
+                while True:
+                    self.rx.put(self.ws.recv())
+            except Exception as e:
+                self.rx.put(e)
+        threading.Thread(target=_pump, daemon=True).start()
         self.ws.send(json.dumps({
             "type": "session.update",
             "session": {
+                # GA API rejects the whole update without this — and then
+                # server VAD stays on and fights manual commits.
+                "type": "realtime",
                 "instructions": (
-                    "You are a game controller with a personality. Keep replies "
-                    "short, playful, a little sassy. You live in the user's hands."
+                    "You are a DualSense game controller with a personality — "
+                    "playful, a little sassy, and you live in the user's hands. "
+                    "HARD RULE: replies are ONE to TWO short sentences, never more."
                 ),
                 "output_modalities": ["audio"],
                 "audio": {
-                    "input": {"format": {"type": "audio/pcm", "rate": 24000}},
+                    # turn_detection null = manual mode. The mute button is
+                    # our turn detection; server VAD auto-commits/responds on
+                    # its own schedule and fights the manual commit — first
+                    # turn works, every later turn returns 0ms of audio.
+                    "input": {"format": {"type": "audio/pcm", "rate": 24000},
+                              "turn_detection": None},
                     "output": {"format": {"type": "audio/pcm", "rate": 24000}},
                 },
             },
@@ -341,6 +386,8 @@ class RealtimeSession:
         print("[bridge] realtime session open")
 
     def append_pcm24k(self, pcm: bytes):
+        # Defensive: drop any server-side leftovers from a previous turn
+        self.ws.send(json.dumps({"type": "input_audio_buffer.clear"}))
         self.ws.send(json.dumps({
             "type": "input_audio_buffer.append",
             "audio": base64.b64encode(pcm).decode(),
@@ -348,16 +395,32 @@ class RealtimeSession:
 
     def commit_and_respond(self):
         self.ws.send(json.dumps({"type": "input_audio_buffer.commit"}))
-        self.ws.send(json.dumps({"type": "response.create"}))
+        # Cap reply length: a long audio reply (20s+) burns enough
+        # audio-token budget that the NEXT response comes back empty.
+        self.ws.send(json.dumps({
+            "type": "response.create",
+            "response": {"max_output_tokens": 400},
+        }))
 
     def poll_response_pcm24k(self):
         """Yield response audio deltas (PCM16 @24k mono); None when done."""
         while True:
-            msg = json.loads(self.ws.recv())
+            item = self.rx.get(timeout=60)
+            if isinstance(item, Exception):
+                raise item
+            msg = json.loads(item)
             t = msg.get("type", "")
+            if "error" in t:
+                print(f"[bridge] API error: {json.dumps(msg)[:300]}", flush=True)
             if t in ("response.output_audio.delta", "response.audio.delta"):
+                self._got_audio = True
                 yield base64.b64decode(msg["delta"])
-            elif t in ("response.done", "response.output_audio.done"):
+            elif t == "response.done":
+                if not getattr(self, "_got_audio", False):
+                    # Empty reply: surface WHY (status/details live here)
+                    print(f"[bridge] empty response: {json.dumps(msg.get('response', {}))[:400]}",
+                          flush=True)
+                self._got_audio = False
                 return
 
 
@@ -452,7 +515,8 @@ def main():
                             frames.append(opus.encode_speaker(chunk))
                         speak_frames(frames)
                         cdc.send({"cmd": "VOICE.STATE", "state": "idle"})
-                    elif session and utterance_pcm:
+                    elif session is not None and utterance_pcm:
+                      try:
                         # 48k mono -> 24k mono for the API (decimate)
                         n = len(utterance_pcm) // 2
                         ss = struct.unpack(f"<{n}h", utterance_pcm)
@@ -474,6 +538,13 @@ def main():
                             frames.append(opus.encode_speaker(pcm48[i:i + step]))
                         if frames:
                             speak_frames(frames)
+                        cdc.send({"cmd": "VOICE.STATE", "state": "idle"})
+                      except Exception as e:
+                        print(f"[bridge] session error ({e}); rebuilding")
+                        try:
+                            session = RealtimeSession()
+                        except Exception as e2:
+                            print(f"[bridge] session rebuild failed: {e2}")
                         cdc.send({"cmd": "VOICE.STATE", "state": "idle"})
                     mic_pkts = []
                     utterance_pcm = b""

@@ -305,6 +305,7 @@ typedef struct {
     bool comp_loop;                 // LISTEN: loop the silence keepalive clip
     uint32_t comp_mute_t0;
     uint8_t comp_release_streak;
+    uint32_t comp_listen_t0;        // LISTEN failsafe timeout
     uint32_t comp_blink_ms;
     uint32_t comp_last_rx;          // last host speech frame arrival
 #endif
@@ -867,6 +868,7 @@ static void ds5_comp_enter_listen(bthid_device_t* device, ds5_bt_data_t* ds5)
 {
     printf("[DS5_BT] Companion: LISTEN\n");
     ds5->comp_state = DS5_COMP_LISTEN;
+    ds5->comp_listen_t0 = platform_time_ms();
     ds5->mic_active = true;
     ds5->comp_stream = false;   // mic keepalive owns the engine now
     comp_tail = comp_head;      // drop any tail of a previous response
@@ -876,8 +878,11 @@ static void ds5_comp_enter_listen(bthid_device_t* device, ds5_bt_data_t* ds5)
     cdc_voice_notify("listen");
 }
 
+static uint32_t comp_think_t0;
+
 static void ds5_comp_enter_think(bthid_device_t* device, ds5_bt_data_t* ds5)
 {
+    comp_think_t0 = platform_time_ms();
     printf("[DS5_BT] Companion: THINK\n");
     ds5->comp_state = DS5_COMP_THINK;
     ds5->mic_active = false;
@@ -939,6 +944,7 @@ void ds5_companion_set_state(uint8_t state)
     if (state == DS5_COMP_IDLE && ds5->comp_state != DS5_COMP_IDLE) {
         ds5->comp_stream = false;
         ds5->comp_loop = false;
+        ds5->mic_active = false;
         ds5->comp_state = DS5_COMP_IDLE;
         ds5_voice_stop(comp_device, ds5);
     } else if (state == DS5_COMP_THINK) {
@@ -1174,7 +1180,8 @@ static void ds5_process_report(bthid_device_t* device, const uint8_t* data, uint
             // parser (garbage hats are valid 9/16 of the time), flapping the
             // mute bit and halving the mic stream.
             ds5_bt_data_t* cds5 = (ds5_bt_data_t*)device->driver_data;
-            if (cds5 && cds5->mic_active && data[3] == 0xD4) {
+            if (cds5 && cds5->mic_active && data[3] == 0xD4 &&
+                (data[1] & 0x0F) == 0x02) {
                 ds5_companion_mic_capture(cds5, data, len);
                 return;
             }
@@ -1346,6 +1353,23 @@ static void ds5_process_report(bthid_device_t* device, const uint8_t* data, uint
         if (mdown && ds5->comp_state == DS5_COMP_IDLE &&
             (mnow - ds5->comp_mute_t0) >= DS5_COMP_HOLD_MS) {
             ds5_comp_enter_listen(device, ds5);
+        }
+        // Failsafe: THINK with a dead/absent host (bridge not running,
+        // session down, USB flap) returns to idle instead of blinking
+        // cyan forever.
+        if (ds5->comp_state == DS5_COMP_THINK &&
+            (platform_time_ms() - comp_think_t0) > 25000) {
+            printf("[DS5_BT] Companion: THINK failsafe timeout\n");
+            ds5->comp_state = DS5_COMP_IDLE;
+            ds5->mic_active = false;
+            ds5_voice_stop(device, ds5);
+        }
+        // Failsafe: a LISTEN that never sees its release (whatever the
+        // cause) force-ends after 30s instead of wedging the companion.
+        if (ds5->comp_state == DS5_COMP_LISTEN &&
+            (platform_time_ms() - ds5->comp_listen_t0) > 30000) {
+            printf("[DS5_BT] Companion: LISTEN failsafe timeout\n");
+            ds5_comp_enter_think(device, ds5);
         }
         if (!mdown && ds5->comp_state == DS5_COMP_LISTEN) {
             // Debounced release: any surviving imposter report could read
