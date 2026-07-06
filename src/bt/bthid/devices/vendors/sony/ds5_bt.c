@@ -713,6 +713,13 @@ static void ds5_voice_stop(bthid_device_t* device, ds5_bt_data_t* ds5)
     if (ds5->voice_state == DS5_VOICE_IDLE) return;
     ds5->voice_state = DS5_VOICE_IDLE;
     ds5->voice_clip = NULL;
+#ifdef CONFIG_DS5_COMPANION
+    // Whatever stopped the engine, the host-stream state must not survive
+    // it: a stale comp_stream makes the NEXT speak skip its own arming
+    // (frames pile into a ring nobody drains — "works twice then silent").
+    ds5->comp_stream = false;
+    comp_tail = comp_head;
+#endif
     ds5_send_output31_audio(device, false);
     ds5_restore_player_led(device, ds5);
 }
@@ -842,6 +849,8 @@ static void ds5_comp_enter_listen(bthid_device_t* device, ds5_bt_data_t* ds5)
     printf("[DS5_BT] Companion: LISTEN\n");
     ds5->comp_state = DS5_COMP_LISTEN;
     ds5->mic_active = true;
+    ds5->comp_stream = false;   // mic keepalive owns the engine now
+    comp_tail = comp_head;      // drop any tail of a previous response
     ds5->comp_loop = true;
     // Silence keepalive stream carries the mic-enable bit; solid white = listening
     ds5_voice_play(device, ds5, &DS5_CLIP_SILENCE, false, 255, 255, 255, DS5_LED_STEADY);
@@ -887,7 +896,7 @@ bool ds5_companion_push_speak(const uint8_t* frame200)
     memcpy(comp_ring[comp_head], frame200, 200);
     comp_head = next;
     ds5->comp_last_rx = platform_time_ms();
-    if (!ds5->comp_stream) {
+    if (!ds5->comp_stream || ds5->voice_state == DS5_VOICE_IDLE) {
         // First frame of a response: start the SPEAK stream (player color LED)
         ds5->comp_state = DS5_COMP_SPEAK;
         ds5->comp_stream = true;
