@@ -318,26 +318,24 @@ static ble_xbox_report_t last_sent_xbox;
 static sinput_report_t last_sent_sinput;
 
 // Report storage for hids_device_init_with_storage()
-// 12 slots: composite SInput uses the most — gamepad in/feature-in/out (3) +
-// keyboard in/out (2) + mouse in (1) = 6, matched against the GATT's report
-// characteristics (which also carry standard/xbox slots).
-static hids_device_report_t hid_report_storage[12];
+// 8 slots covers every shipped mode (standard: 7 reports incl. SInput's report-3
+// output, sinput: 3, xbox: 3) — one slot per GATT report characteristic.
+static hids_device_report_t hid_report_storage[8];
 #define HID_REPORT_STORAGE_COUNT (sizeof(hid_report_storage) / sizeof(hid_report_storage[0]))
 
-// Composite SInput report map = the SInput gamepad map (report IDs 1/2/3) with a
-// keyboard (6) + mouse (8) tail appended, so BLE SInput matches the USB SInput
-// composite. The keyboard collection makes macOS treat the device as a composite
-// HID rather than a pure game controller it claims exclusively. SDL keys on the
-// gamepad collection + VID/PID (2E8A:10C6), unchanged, so Steam is preserved.
+// Composite SInput report map = the SInput gamepad map (IDs 1/2/3) + keyboard (6)
+// + mouse (8) tail.
 //
-// DO NOT add a Consumer Control collection here: over BLE, macOS reclassifies a
-// device that exposes Consumer Control as a media remote and HIDES it from the
-// Gamepad API entirely (navigator.getGamepads returns nothing). A generic
-// gamepad+kbd+mouse composite shows up fine; adding consumer breaks it. Verified
-// on hardware — keyboard/mouse are safe, consumer is not.
-//
-// Built at init by concatenating onto sinput_report_descriptor to avoid
-// duplicating its ~110 descriptor bytes.
+// DISABLED by default — define SINPUT_BLE_COMPOSITE to opt in. Making BLE SInput a
+// composite is a dead end for the Gamepad API on macOS: the OS stops claiming it
+// as a game controller, so it either vanishes from navigator.getGamepads() (with
+// a Consumer Control collection) or enumerates but never delivers input (kbd/mouse
+// only — detected as STANDARD GAMEPAD, then no buttons, doesn't recover). Pure
+// SInput gamepad is macOS-claimed → Gamepad API works, which is mission-critical.
+// NUS config is reached via joypad-ble (native BLE), NOT Web Bluetooth, so the
+// composite is no longer needed to unblock config. Kept for a future standalone
+// BLE composite mode. Built at init by concatenating onto sinput_report_descriptor.
+#ifdef SINPUT_BLE_COMPOSITE
 static const uint8_t sinput_kbd_mouse_tail[] = {
     // --- Keyboard, Report ID 6 (in: modifier+keys, out: lock LEDs) ---
     0x05,0x01, 0x09,0x06, 0xA1,0x01, 0x85,0x06,
@@ -356,6 +354,7 @@ static const uint8_t sinput_kbd_mouse_tail[] = {
     0xC0, 0xC0,
 };
 static uint8_t sinput_composite_desc[sizeof(sinput_report_descriptor) + sizeof(sinput_kbd_mouse_tail)];
+#endif  // SINPUT_BLE_COMPOSITE
 
 // Mode (loaded from flash on init)
 static ble_output_mode_t current_mode = BLE_MODE_STANDARD;
@@ -765,12 +764,20 @@ void ble_output_late_init(void)
         hid_desc = ble_xbox_get_descriptor();
         hid_desc_size = ble_xbox_get_descriptor_size();
     } else if (current_mode == BLE_MODE_SINPUT) {
-        // Assemble the composite map (gamepad + keyboard/consumer/mouse tail).
+#ifdef SINPUT_BLE_COMPOSITE
+        // Composite map (gamepad + keyboard/mouse tail). Off by default — it hides
+        // the pad from macOS's Gamepad API (see sinput_kbd_mouse_tail comment).
         memcpy(sinput_composite_desc, sinput_report_descriptor, sizeof(sinput_report_descriptor));
         memcpy(sinput_composite_desc + sizeof(sinput_report_descriptor),
                sinput_kbd_mouse_tail, sizeof(sinput_kbd_mouse_tail));
         hid_desc = sinput_composite_desc;
         hid_desc_size = sizeof(sinput_composite_desc);
+#else
+        // Pure SInput gamepad — macOS claims it as a game controller so the
+        // Gamepad API works (mission-critical). NUS config via joypad-ble.
+        hid_desc = sinput_report_descriptor;
+        hid_desc_size = sizeof(sinput_report_descriptor);
+#endif
     } else {
         hid_desc = standard_hid_descriptor;
         hid_desc_size = sizeof(standard_hid_descriptor);

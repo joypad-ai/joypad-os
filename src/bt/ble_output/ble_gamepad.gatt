@@ -38,23 +38,9 @@ REPORT_REFERENCE, READ, 4, 2
 CHARACTERISTIC, ORG_BLUETOOTH_CHARACTERISTIC_REPORT, DYNAMIC | READ | WRITE | ENCRYPTION_KEY_SIZE_16,
 REPORT_REFERENCE, READ, 5, 3
 
-// Composite SInput tail — keyboard + consumer + mouse. Only the SInput BLE mode's
-// report map declares IDs 6/7/8; other modes leave these slots unmapped. Their
-// presence makes macOS treat SInput as a composite HID, not a pure controller it
-// claims exclusively — which frees web-config NUS to connect while it's paired to
-// macOS. SDL still keys on the gamepad collection + VID/PID, so Steam is unaffected.
-// Report ID 6, Input — Keyboard (modifier + reserved + 6 keycodes)
-CHARACTERISTIC, ORG_BLUETOOTH_CHARACTERISTIC_REPORT, DYNAMIC | READ | WRITE | NOTIFY | ENCRYPTION_KEY_SIZE_16,
-REPORT_REFERENCE, READ, 6, 1
-// Report ID 6, Output — Keyboard lock LEDs
-CHARACTERISTIC, ORG_BLUETOOTH_CHARACTERISTIC_REPORT, DYNAMIC | READ | WRITE | WRITE_WITHOUT_RESPONSE | ENCRYPTION_KEY_SIZE_16,
-REPORT_REFERENCE, READ, 6, 2
-// Report ID 7, Input — Consumer control (16-bit media/AC usages)
-CHARACTERISTIC, ORG_BLUETOOTH_CHARACTERISTIC_REPORT, DYNAMIC | READ | WRITE | NOTIFY | ENCRYPTION_KEY_SIZE_16,
-REPORT_REFERENCE, READ, 7, 1
-// Report ID 8, Input — Mouse (5 buttons, 16-bit X/Y, wheel, pan)
-CHARACTERISTIC, ORG_BLUETOOTH_CHARACTERISTIC_REPORT, DYNAMIC | READ | WRITE | NOTIFY | ENCRYPTION_KEY_SIZE_16,
-REPORT_REFERENCE, READ, 8, 1
+// (Composite SInput report chars for IDs 6/7/8 were removed — the BLE SInput
+// composite hides the pad from macOS's Gamepad API. A future standalone BLE
+// composite mode can re-add them alongside SINPUT_BLE_COMPOSITE in ble_output.c.)
 
 CHARACTERISTIC, ORG_BLUETOOTH_CHARACTERISTIC_REPORT_MAP, DYNAMIC | READ,
 CHARACTERISTIC, ORG_BLUETOOTH_CHARACTERISTIC_BOOT_KEYBOARD_INPUT_REPORT, DYNAMIC | READ | WRITE | NOTIFY,
