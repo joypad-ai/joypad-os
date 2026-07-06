@@ -319,18 +319,23 @@ static sinput_report_t last_sent_sinput;
 
 // Report storage for hids_device_init_with_storage()
 // 12 slots: composite SInput uses the most — gamepad in/feature-in/out (3) +
-// keyboard in/out (2) + consumer in (1) + mouse in (1) = 7, matched against the
-// GATT's report characteristics (which also carry standard/xbox slots).
+// keyboard in/out (2) + mouse in (1) = 6, matched against the GATT's report
+// characteristics (which also carry standard/xbox slots).
 static hids_device_report_t hid_report_storage[12];
 #define HID_REPORT_STORAGE_COUNT (sizeof(hid_report_storage) / sizeof(hid_report_storage[0]))
 
 // Composite SInput report map = the SInput gamepad map (report IDs 1/2/3) with a
-// keyboard (6) + consumer (7) + mouse (8) tail appended, so BLE SInput matches
-// the USB SInput composite. The keyboard collection also makes macOS treat the
-// device as a composite HID rather than a pure game controller it claims
-// exclusively — which is what frees Web Bluetooth (web-config NUS) to connect
-// while the controller is paired to macOS. SDL keys on the gamepad collection +
-// VID/PID (2E8A:10C6), unchanged, so Steam recognition is preserved.
+// keyboard (6) + mouse (8) tail appended, so BLE SInput matches the USB SInput
+// composite. The keyboard collection makes macOS treat the device as a composite
+// HID rather than a pure game controller it claims exclusively. SDL keys on the
+// gamepad collection + VID/PID (2E8A:10C6), unchanged, so Steam is preserved.
+//
+// DO NOT add a Consumer Control collection here: over BLE, macOS reclassifies a
+// device that exposes Consumer Control as a media remote and HIDES it from the
+// Gamepad API entirely (navigator.getGamepads returns nothing). A generic
+// gamepad+kbd+mouse composite shows up fine; adding consumer breaks it. Verified
+// on hardware — keyboard/mouse are safe, consumer is not.
+//
 // Built at init by concatenating onto sinput_report_descriptor to avoid
 // duplicating its ~110 descriptor bytes.
 static const uint8_t sinput_kbd_mouse_tail[] = {
@@ -340,10 +345,6 @@ static const uint8_t sinput_kbd_mouse_tail[] = {
     0x95,0x01, 0x75,0x08, 0x81,0x01,
     0x95,0x05, 0x75,0x01, 0x05,0x08, 0x19,0x01, 0x29,0x05, 0x91,0x02, 0x95,0x01, 0x75,0x03, 0x91,0x01,
     0x95,0x06, 0x75,0x08, 0x15,0x00, 0x25,0x65, 0x05,0x07, 0x19,0x00, 0x29,0x65, 0x81,0x00,
-    0xC0,
-    // --- Consumer Control, Report ID 7 ---
-    0x05,0x0C, 0x09,0x01, 0xA1,0x01, 0x85,0x07,
-    0x15,0x00, 0x26,0xFF,0x03, 0x19,0x00, 0x2A,0xFF,0x03, 0x75,0x10, 0x95,0x01, 0x81,0x00,
     0xC0,
     // --- Mouse, Report ID 8 (5 buttons, 16-bit X/Y, wheel, pan) ---
     0x05,0x01, 0x09,0x02, 0xA1,0x01, 0x85,0x08, 0x09,0x01, 0xA1,0x00,
