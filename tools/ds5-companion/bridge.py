@@ -218,6 +218,94 @@ class OpusPipe:
         return self._out.raw[:200]
 
 
+
+class MiniWS:
+    """Minimal RFC6455 WebSocket client on pure stdlib (TLS, masking,
+    fragmentation, ping/pong). Exists because the local Python install
+    cannot pip-install anything; one known endpoint needs no more."""
+
+    def __init__(self, url, headers):
+        import ssl
+        import socket as sk
+        import urllib.parse
+        u = urllib.parse.urlsplit(url)
+        host, port = u.hostname, u.port or 443
+        path = u.path + ("?" + u.query if u.query else "")
+        raw = sk.create_connection((host, port), timeout=30)
+        self.s = ssl.create_default_context().wrap_socket(raw, server_hostname=host)
+        key = base64.b64encode(os.urandom(16)).decode()
+        req = (f"GET {path} HTTP/1.1\r\nHost: {host}\r\n"
+               "Upgrade: websocket\r\nConnection: Upgrade\r\n"
+               f"Sec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n")
+        for k, v in headers.items():
+            req += f"{k}: {v}\r\n"
+        self.s.sendall((req + "\r\n").encode())
+        buf = b""
+        while b"\r\n\r\n" not in buf:
+            chunk = self.s.recv(4096)
+            if not chunk:
+                raise ConnectionError("ws handshake EOF")
+            buf += chunk
+        head, self.rbuf = buf.split(b"\r\n\r\n", 1)
+        if b" 101" not in head.split(b"\r\n", 1)[0]:
+            raise ConnectionError("ws handshake failed: " + head.split(b"\r\n",1)[0].decode())
+        self.s.settimeout(None)
+
+    def _exact(self, n):
+        while len(self.rbuf) < n:
+            chunk = self.s.recv(65536)
+            if not chunk:
+                raise ConnectionError("ws closed")
+            self.rbuf += chunk
+        out, self.rbuf = self.rbuf[:n], self.rbuf[n:]
+        return out
+
+    def send(self, text):
+        payload = text.encode()
+        n = len(payload)
+        hdr = bytearray([0x81])  # FIN + text
+        if n < 126:
+            hdr.append(0x80 | n)
+        elif n < 65536:
+            hdr.append(0x80 | 126)
+            hdr += struct.pack(">H", n)
+        else:
+            hdr.append(0x80 | 127)
+            hdr += struct.pack(">Q", n)
+        mask = os.urandom(4)
+        hdr += mask
+        masked = bytes(b ^ mask[i % 4] for i, b in enumerate(payload))
+        self.s.sendall(bytes(hdr) + masked)
+
+    def _pong(self, payload):
+        mask = os.urandom(4)
+        frame = bytearray([0x8A, 0x80 | len(payload)]) + mask
+        frame += bytes(b ^ mask[i % 4] for i, b in enumerate(payload))
+        self.s.sendall(bytes(frame))
+
+    def recv(self):
+        message = b""
+        while True:
+            b0, b1 = self._exact(2)
+            fin, op = b0 & 0x80, b0 & 0x0F
+            n = b1 & 0x7F
+            if n == 126:
+                n = struct.unpack(">H", self._exact(2))[0]
+            elif n == 127:
+                n = struct.unpack(">Q", self._exact(8))[0]
+            payload = self._exact(n)
+            if op == 9:
+                self._pong(payload)
+                continue
+            if op == 10:
+                continue
+            if op == 8:
+                raise ConnectionError("ws close: " + payload[2:].decode("utf-8", "replace"))
+            message += payload
+            if fin:
+                return message.decode("utf-8", "replace")
+
+
 class RealtimeSession:
     """OpenAI Realtime API session (speech in -> speech out).
 
@@ -230,12 +318,12 @@ class RealtimeSession:
     def __init__(self):
         self.key = os.environ.get("OPENAI_API_KEY")
         if not self.key:
-            sys.exit("OPENAI_API_KEY not set (or use --echo)")
-        import websockets.sync.client  # noqa: PLC0415
-        self.ws = websockets.sync.client.connect(
-            self.URL,
-            additional_headers={"Authorization": f"Bearer {self.key}"},
-        )
+            keyfile = os.path.expanduser("~/.openai_key")
+            if os.path.exists(keyfile):
+                self.key = open(keyfile).read().strip()
+        if not self.key:
+            sys.exit("OPENAI_API_KEY not set and ~/.openai_key missing (or use --echo)")
+        self.ws = MiniWS(self.URL, {"Authorization": f"Bearer {self.key}"})
         self.ws.send(json.dumps({
             "type": "session.update",
             "session": {
@@ -365,22 +453,27 @@ def main():
                         speak_frames(frames)
                         cdc.send({"cmd": "VOICE.STATE", "state": "idle"})
                     elif session and utterance_pcm:
-                        # 48k stereo/mono -> 24k mono for the API (decimate)
+                        # 48k mono -> 24k mono for the API (decimate)
                         n = len(utterance_pcm) // 2
                         ss = struct.unpack(f"<{n}h", utterance_pcm)
-                        mono24 = struct.pack(f"<{n//2}h", *ss[::2])
-                        session.append_pcm24k(mono24)
+                        session.append_pcm24k(struct.pack(f"<{n//2}h", *ss[::2]))
                         session.commit_and_respond()
-                        pcm_run = b""
+                        # Collect the full reply, then play once — replies are
+                        # short, and per-delta playback re-triggers the
+                        # lead-in ceremony (stutters). Firmware blinks THINK
+                        # (cyan) for us while this blocks.
+                        pcm = b""
                         for delta in session.poll_response_pcm24k():
-                            pcm_run += resample_24k_mono_to_48k_stereo(delta)
-                            frames = []
-                            step = 480 * 2 * 2
-                            while len(pcm_run) >= step:
-                                frames.append(opus.encode_speaker(pcm_run[:step]))
-                                pcm_run = pcm_run[step:]
-                            if frames:
-                                speak_frames(frames)
+                            pcm += delta
+                        print(f"[bridge] reply: {len(pcm)//48} ms of audio")
+                        pcm48 = resample_24k_mono_to_48k_stereo(pcm)
+                        opus.reset_encoder()   # same order the echo path uses
+                        frames = []
+                        step = 480 * 2 * 2
+                        for i in range(0, len(pcm48) - step, step):
+                            frames.append(opus.encode_speaker(pcm48[i:i + step]))
+                        if frames:
+                            speak_frames(frames)
                         cdc.send({"cmd": "VOICE.STATE", "state": "idle"})
                     mic_pkts = []
                     utterance_pcm = b""
