@@ -80,6 +80,7 @@ typedef struct {
     cdc_packet_t packet;
     uint16_t payload_pos;
     uint16_t crc_received;
+    uint32_t last_rx_ms;    // for mid-frame timeout resync
 } cdc_receiver_t;
 
 // ============================================================================

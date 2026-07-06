@@ -1428,30 +1428,80 @@ static int voice_b64_decode(const char* in, int in_len, uint8_t* out, int out_ma
     return o;
 }
 
-// Called from the DS5 driver for every mic-audio input report while listening.
-// Emitted on the event stream (bridge enables DEBUG.STREAM to attach).
+// Called from the DS5 driver for every mic-audio input report while
+// listening — that call arrives DEEP in the BTstack packet-handler chain.
+// cdc_protocol_send() puts ~2KB of packet+CRC buffers on the stack, which
+// smashed the stack from that context at 100 reports/s and knocked the whole
+// device off USB the moment LISTEN engaged. So: enqueue-only here; the JSON
+// encode + CDC transmit happen in cdc_commands_task() (main loop, deep
+// stack, correct TinyUSB context).
+#define MIC_RING_SLOTS 16
+#define MIC_RING_MAX   96
+static uint8_t mic_ring[MIC_RING_SLOTS][MIC_RING_MAX];
+static uint8_t mic_ring_len[MIC_RING_SLOTS];
+static volatile uint8_t mic_ring_head, mic_ring_tail;
+
 void cdc_voice_mic_event(const uint8_t* data, uint16_t len)
 {
     if (!stream_ctx) return;
-    static char mic_buf[1200];
-    if (len > 800) len = 800;
-    int n = snprintf(mic_buf, sizeof(mic_buf), "{\"type\":\"mic\",\"d\":\"");
-    int e = voice_b64_encode(data, len, mic_buf + n, (int)sizeof(mic_buf) - n - 3);
-    if (e < 0) return;
-    n += e;
-    mic_buf[n++] = '\"';
-    mic_buf[n++] = '}';
-    mic_buf[n] = 0;
-    cdc_protocol_send_event(stream_ctx, mic_buf);
+    uint8_t next = (uint8_t)((mic_ring_head + 1) % MIC_RING_SLOTS);
+    if (next == mic_ring_tail) return;  // full: drop (host PLC covers gaps)
+    if (len > MIC_RING_MAX) len = MIC_RING_MAX;
+    memcpy(mic_ring[mic_ring_head], data, len);
+    mic_ring_len[mic_ring_head] = (uint8_t)len;
+    mic_ring_head = next;
 }
 
-// Companion state notifications (listen / mic_end / speak_end)
+// Drained from cdc_commands_task() — see above.
+static void mic_ring_drain(void)
+{
+    while (mic_ring_tail != mic_ring_head) {
+        if (!stream_ctx) {  // stream detached: discard
+            mic_ring_tail = mic_ring_head;
+            return;
+        }
+        static char mic_buf[1200];
+        const uint8_t* data = mic_ring[mic_ring_tail];
+        uint16_t len = mic_ring_len[mic_ring_tail];
+        int n = snprintf(mic_buf, sizeof(mic_buf), "{\"type\":\"mic\",\"d\":\"");
+        int e = voice_b64_encode(data, len, mic_buf + n, (int)sizeof(mic_buf) - n - 3);
+        if (e >= 0) {
+            n += e;
+            mic_buf[n++] = '\"';
+            mic_buf[n++] = '}';
+            mic_buf[n] = 0;
+            if (cdc_protocol_send_event(stream_ctx, mic_buf) == 0) {
+                return;  // TX backlogged: retry this slot next task tick
+            }
+        }
+        mic_ring_tail = (uint8_t)((mic_ring_tail + 1) % MIC_RING_SLOTS);
+    }
+}
+
+// Companion state notifications (listen / mic_end / speak_end).
+// Same BT-context hazard as mic events: queue the name, emit from task.
+static const char* voice_notify_q[4];
+static volatile uint8_t voice_nq_head, voice_nq_tail;
+
 void cdc_voice_notify(const char* what)
 {
     if (!stream_ctx) return;
-    static char ev_buf[64];
-    snprintf(ev_buf, sizeof(ev_buf), "{\"type\":\"voice\",\"ev\":\"%s\"}", what);
-    cdc_protocol_send_event(stream_ctx, ev_buf);
+    uint8_t next = (uint8_t)((voice_nq_head + 1) % 4);
+    if (next == voice_nq_tail) return;
+    voice_notify_q[voice_nq_head] = what;  // callers pass string literals
+    voice_nq_head = next;
+}
+
+static void voice_notify_drain(void)
+{
+    while (voice_nq_tail != voice_nq_head) {
+        if (!stream_ctx) { voice_nq_tail = voice_nq_head; return; }
+        static char ev_buf[64];
+        snprintf(ev_buf, sizeof(ev_buf), "{\"type\":\"voice\",\"ev\":\"%s\"}",
+                 voice_notify_q[voice_nq_tail]);
+        if (cdc_protocol_send_event(stream_ctx, ev_buf) == 0) return;
+        voice_nq_tail = (uint8_t)((voice_nq_tail + 1) % 4);
+    }
 }
 
 // {"cmd":"VOICE.SPEAK","d":"<base64 of exactly 200 Opus bytes>"}
@@ -1463,13 +1513,20 @@ static void cmd_voice_speak(const char* json)
         send_error("missing d");
         return;
     }
-    uint8_t frame[200];
-    int n = voice_b64_decode(d, dlen, frame, (int)sizeof(frame));
-    if (n != 200) {
-        send_error("frame must be 200 bytes");
+    // 1-3 Opus frames per command (200B each). Batching matters: during BT
+    // audio streaming the main loop slows and the host can only land a
+    // command every ~17ms — one frame per command (10.67ms budget) starves
+    // the ring and the audio chops. Three per command = 32ms budget.
+    uint8_t frames[600];
+    int n = voice_b64_decode(d, dlen, frames, (int)sizeof(frames));
+    if (n != 200 && n != 400 && n != 600) {
+        send_error("need 1-3 x 200-byte frames");
         return;
     }
-    bool ok = ds5_companion_push_speak(frame);
+    bool ok = true;
+    for (int off = 0; off < n; off += 200) {
+        ok = ds5_companion_push_speak(frames + off) && ok;
+    }
     snprintf(response_buf, sizeof(response_buf),
              "{\"ok\":%s,\"free\":%u}",
              ok ? "true" : "false", (unsigned)ds5_companion_ring_free());
@@ -1865,12 +1922,22 @@ static void cmd_bt_status(const char* json)
     const char* transport = "None";
 #endif
 
+    // Uptime discriminates reboot-vs-USB-linkflap after a drop; crash_pc is
+    // the hard-fault black box breadcrumb (0 = no fault since power-on).
+    uint32_t crash_pc = 0, crash_lr = 0;
+#ifdef CONFIG_DS5_DROP_SCREAM
+    extern void btstack_host_get_crash_info(uint32_t* pc, uint32_t* lr);
+    btstack_host_get_crash_info(&crash_pc, &crash_lr);
+#endif
     int pos = snprintf(response_buf, sizeof(response_buf),
-             "{\"enabled\":%s,\"scanning\":%s,\"connections\":%d,\"transport\":\"%s\",\"devices\":[",
+             "{\"enabled\":%s,\"scanning\":%s,\"connections\":%d,\"transport\":\"%s\","
+             "\"up_s\":%lu,\"crash_pc\":\"%08lx\",\"crash_lr\":\"%08lx\",\"devices\":[",
              btstack_host_is_initialized() ? "true" : "false",
              btstack_host_is_scanning() ? "true" : "false",
              btstack_classic_get_connection_count(),
-             transport);
+             transport,
+             (unsigned long)(platform_time_ms() / 1000),
+             (unsigned long)crash_pc, (unsigned long)crash_lr);
 
     // Track which bonded addresses are currently connected
     uint8_t connected_addrs[8][6];
@@ -2165,6 +2232,11 @@ static void cmd_rumble_stop(const char* json)
 // Call from main loop to auto-stop rumble after duration and drain log buffer
 void cdc_commands_task(void)
 {
+#ifdef CONFIG_DS5_COMPANION
+    mic_ring_drain();
+    voice_notify_drain();
+#endif
+
     // Handle deferred reboots (runs outside tud_task/protocol handler context)
     if (pending_reboot != PENDING_NONE) {
         uint32_t elapsed = platform_time_ms() - pending_reboot_time;

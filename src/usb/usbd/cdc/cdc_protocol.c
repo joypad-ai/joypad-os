@@ -4,6 +4,7 @@
 
 #include "cdc_protocol.h"
 #include "cdc.h"
+#include "platform/platform.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -51,6 +52,21 @@ void cdc_protocol_rx_reset(cdc_protocol_t* ctx)
 bool cdc_protocol_rx_byte(cdc_protocol_t* ctx, uint8_t byte)
 {
     cdc_receiver_t* rx = &ctx->rx;
+
+    // Mid-frame timeout: a frame torn by a killed writer or a USB drop leaves
+    // the parser waiting inside a phantom frame — worse, hunting resync can
+    // land on the '{' INSIDE a binary frame's JSON payload and drop into text
+    // mode, waiting for a newline that framed traffic never contains. That
+    // wedged the command channel permanently ("commands ignored until fresh
+    // boot"). Frames arrive as contiguous bursts, so any mid-frame gap this
+    // long means the frame is dead: resync.
+    uint32_t rx_now = platform_time_ms();
+    if (rx->state != CDC_RX_SYNC && (uint32_t)(rx_now - rx->last_rx_ms) > 300) {
+        rx->state = CDC_RX_SYNC;
+        rx->payload_pos = 0;
+        ctx->text_mode = false;
+    }
+    rx->last_rx_ms = rx_now;
 
     switch (rx->state) {
         case CDC_RX_SYNC:

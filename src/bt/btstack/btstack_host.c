@@ -306,6 +306,14 @@ void __not_in_flash_func(isr_hardfault)(void)
 
 static uint32_t crash_report_pc, crash_report_lr;
 static bool crash_report_pending;
+
+// Queryable anytime via BT.STATUS ("crash_pc"): a one-shot boot print gets
+// missed when no log listener is attached at the time.
+void btstack_host_get_crash_info(uint32_t* pc, uint32_t* lr)
+{
+    *pc = crash_report_pc;
+    *lr = crash_report_lr;
+}
 // HID interrupt-channel CIDs for direct l2cap_send() (DS5 audio streaming).
 // BTstack delivers L2CAP_EVENT_CHANNEL_OPENED only to the owning service
 // (hid_host), so we observe it via the public hci_dump interface instead:

@@ -780,6 +780,18 @@ static bool ds5_voice_task(bthid_device_t* device, ds5_bt_data_t* ds5)
         comp_tail = (uint8_t)((comp_tail + 1) % DS5_COMP_RING_FRAMES);
         ds5->voice_next_ms += ((comp_tail % 3) == 0) ? 10 : 11;
         if ((int32_t)(now - ds5->voice_next_ms) > 30) ds5->voice_next_ms = now + 11;
+        {
+            // Drain telemetry: cadence ground truth for stream debugging
+            static uint16_t comp_sent;
+            static uint32_t comp_t0;
+            if (comp_sent == 0) comp_t0 = now;
+            comp_sent++;
+            if ((comp_sent % 32) == 0) {
+                printf("[DS5_BT] comp: sent=%u dt=%lums ring=%u\n",
+                       comp_sent, (unsigned long)(now - comp_t0),
+                       (unsigned)((comp_head - comp_tail + DS5_COMP_RING_FRAMES) % DS5_COMP_RING_FRAMES));
+            }
+        }
         return true;
     }
 #endif

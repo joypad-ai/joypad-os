@@ -61,29 +61,73 @@ def frame(typ, seq, payload: bytes) -> bytes:
 
 
 class Cdc:
-    """Framed JSON command/event channel to the JoypadOS device."""
+    """Framed JSON command/event channel to the JoypadOS device.
+
+    Survives USB link drops: on serial failure it re-opens the port (waiting
+    for re-enumeration), re-attaches the event stream, and resets the
+    controller's voice state so it can't get stuck in THINK.
+    """
 
     def __init__(self, port=None):
-        if port is None:
-            ports = sorted(glob.glob("/dev/cu.usbmodem*"))
-            if not ports:
-                sys.exit("no /dev/cu.usbmodem* CDC port found")
-            port = ports[0]
-        self.s = serial.Serial(port, 115200, timeout=0.02)
+        self.buf = bytearray()
+        self.seq = 0
+        self.s = None
+        self._open(port)
+
+    def _open(self, port=None):
+        for _ in range(120):
+            if port is None:
+                ports = sorted(glob.glob("/dev/cu.usbmodem*"))
+                cand = ports[0] if ports else None
+            else:
+                cand = port
+            if cand:
+                try:
+                    # High nominal baud: CDC ignores it for transfer, but
+                    # macOS paces tcdrain/flush by it — 115200 makes each
+                    # ~290B VOICE.SPEAK frame "take" 25ms and audio crawls.
+                    self.s = serial.Serial(cand, 3000000, timeout=0.02)
+                    break
+                except (OSError, serial.SerialException):
+                    pass
+            time.sleep(1)
+        if self.s is None:
+            sys.exit("no CDC port after 120s")
         self.s.dtr = True
         self.s.rts = True
         self.buf = bytearray()
-        self.seq = 0
-        print(f"[bridge] connected to {port}")
+        print(f"[bridge] connected to {self.s.port}")
+        self.send({"cmd": "DEBUG.STREAM", "enable": True})
+        self.send({"cmd": "VOICE.STATE", "state": "idle"})  # unstick THINK
+
+    def _reconnect(self):
+        print("[bridge] !! device dropped off USB — waiting for it to return")
+        try:
+            self.s.close()
+        except Exception:
+            pass
+        self.s = None
+        self._open()
+        print("[bridge] reattached")
 
     def send(self, obj: dict):
-        self.s.write(frame(MSG_CMD, self.seq & 0xFF, json.dumps(obj).encode()))
-        self.s.flush()
+        try:
+            # Compact separators: the firmware command parser rejects JSON
+            # with whitespace after colons (json.dumps default) as
+            # "invalid command format".
+            payload = json.dumps(obj, separators=(",", ":")).encode()
+            self.s.write(frame(MSG_CMD, self.seq & 0xFF, payload))
+        except (OSError, serial.SerialException):
+            self._reconnect()
         self.seq += 1
 
     def poll(self):
         """Yield decoded JSON payloads (events and responses)."""
-        self.buf += self.s.read(8192)
+        try:
+            self.buf += self.s.read(8192)
+        except (OSError, serial.SerialException):
+            self._reconnect()
+            return
         while True:
             i = self.buf.find(bytes([SYNC]))
             if i < 0 or len(self.buf) - i < 7:
@@ -143,11 +187,15 @@ class OpusPipe:
         lib.opus_encode.restype = ctypes.c_int
         lib.opus_encode.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_int16),
                                     ctypes.c_int, ctypes.c_char_p, ctypes.c_int]
+        # Variadic ABI (Apple Silicon): declare ONLY fixed params for _ctl so
+        # ctypes routes the extra argument through the varargs path.
+        lib.opus_encoder_ctl.restype = ctypes.c_int
+        lib.opus_encoder_ctl.argtypes = [ctypes.c_void_p, ctypes.c_int]
         err = ctypes.c_int()
         self.dec = lib.opus_decoder_create(48000, MIC_CHANNELS, ctypes.byref(err))
         self.enc = lib.opus_encoder_create(48000, 2, 2049, ctypes.byref(err))  # APPLICATION_AUDIO
-        lib.opus_encoder_ctl(self.enc, 4002, 160000)  # OPUS_SET_BITRATE
-        lib.opus_encoder_ctl(self.enc, 4006, 0)       # OPUS_SET_VBR -> CBR
+        lib.opus_encoder_ctl(self.enc, 4002, ctypes.c_int(160000))  # OPUS_SET_BITRATE
+        lib.opus_encoder_ctl(self.enc, 4006, ctypes.c_int(0))       # OPUS_SET_VBR -> CBR
         self._pcm = (ctypes.c_int16 * 5760)()
         self._out = ctypes.create_string_buffer(1500)
 
@@ -241,7 +289,6 @@ def main():
     args = ap.parse_args()
 
     cdc = Cdc(args.port)
-    cdc.send({"cmd": "DEBUG.STREAM", "enable": True})  # attaches the event stream
 
     mic_pkts = []
     dump = open("mic_dump.bin", "ab") if args.dump else None
@@ -249,14 +296,28 @@ def main():
     session = None if (args.dump or args.echo) else RealtimeSession()
 
     def speak_frames(frames_200):
-        """Stream 200B Opus frames to the firmware ring: pre-roll a burst so
-        the drain never starves, then pace at the true 10.67ms drain rate."""
-        for i, f in enumerate(frames_200):
-            cdc.send({"cmd": "VOICE.SPEAK", "d": base64.b64encode(f).decode()})
-            if i > 8:
-                time.sleep(0.0105)
-            else:
-                time.sleep(0.002)
+        """Stream Opus frames to the firmware ring, 3 per command.
+
+        Batching is load-bearing: while BT audio streams, the device can only
+        absorb a command every ~17ms — 1 frame/command (10.67ms budget)
+        starves the ring (choppy); 3/command gives a 32ms budget. Lead-in
+        silence swallows the speaker-arming pop ("headphone jack" static).
+        Absolute-clock pacing avoids cumulative sleep drift."""
+        silence = opus.encode_speaker(bytes(1920))
+        frames = [silence] * 15 + list(frames_200)
+        batches = [frames[i:i+3] for i in range(0, len(frames), 3)]
+        PREROLL = 7          # commands (21 frames ≈ ring depth)
+        PERIOD = 0.032       # 3 frames per command
+        t0 = None
+        for i, batch in enumerate(batches):
+            if i >= PREROLL:
+                if t0 is None:
+                    t0 = time.monotonic()
+                delay = t0 + (i - PREROLL) * PERIOD - time.monotonic()
+                if delay > 0:
+                    time.sleep(delay)
+            cdc.send({"cmd": "VOICE.SPEAK",
+                      "d": base64.b64encode(b"".join(batch)).decode()})
 
     print("[bridge] ready — hold mute on the DualSense and talk")
     utterance_pcm = b""
