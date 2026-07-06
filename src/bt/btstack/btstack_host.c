@@ -284,6 +284,28 @@ typedef struct {
 } classic_connection_t;
 
 #ifdef CONFIG_DS5_DROP_SCREAM
+#include "pico.h"             // __not_in_flash_func for the RAM-resident tap
+#include "hardware/watchdog.h"
+#include "hardware/structs/watchdog.h"
+
+// Hard-fault black box: stash the faulting PC/LR in watchdog scratch
+// registers (survive reboot) and reset. Reported ~5s after next boot so a
+// reattached log listener catches it. scratch[4] = magic, [5] = PC, [6] = LR.
+#define DS5_CRASH_MAGIC 0xDEADFA11u
+
+void __not_in_flash_func(isr_hardfault)(void)
+{
+    uint32_t* sp;
+    __asm volatile ("mrs %0, msp" : "=r"(sp));
+    watchdog_hw->scratch[4] = DS5_CRASH_MAGIC;
+    watchdog_hw->scratch[5] = sp[6];   // stacked PC
+    watchdog_hw->scratch[6] = sp[5];   // stacked LR
+    watchdog_reboot(0, 0, 10);
+    while (1) { __asm volatile ("nop"); }
+}
+
+static uint32_t crash_report_pc, crash_report_lr;
+static bool crash_report_pending;
 // HID interrupt-channel CIDs for direct l2cap_send() (DS5 audio streaming).
 // BTstack delivers L2CAP_EVENT_CHANNEL_OPENED only to the owning service
 // (hid_host), so we observe it via the public hci_dump interface instead:
@@ -296,13 +318,20 @@ static struct {
     uint16_t cid;
 } hid_intr_cids[4];  // MAX_CLASSIC_CONNECTIONS
 
-static void ds5_cid_tap_reset(void) {}
-static void ds5_cid_tap_log_message(int log_level, const char* format, va_list argptr)
+static void __not_in_flash_func(ds5_cid_tap_reset)(void) {}
+static void __not_in_flash_func(ds5_cid_tap_log_message)(int log_level, const char* format,
+                                                         va_list argptr)
 {
     (void)log_level; (void)format; (void)argptr;
 }
-static void ds5_cid_tap_log_packet(uint8_t packet_type, uint8_t in,
-                                   uint8_t* packet, uint16_t len)
+// RAM-resident and self-contained: this callback fires for every HCI event,
+// including during BTstack link-key FLASH writes (pairing/auth). A
+// flash-resident function executing in that window can hard-fault the chip
+// (same class of bug as the Core1 flash-contention issues elsewhere in this
+// repo) — the adapter rebooted mid-handshake. No printf, no libc, no
+// flash-resident callees in here.
+static void __not_in_flash_func(ds5_cid_tap_log_packet)(uint8_t packet_type, uint8_t in,
+                                                        uint8_t* packet, uint16_t len)
 {
     (void)in;
     if (packet_type != HCI_EVENT_PACKET || len < 4) return;
@@ -310,33 +339,34 @@ static void ds5_cid_tap_log_packet(uint8_t packet_type, uint8_t in,
     if (packet[0] == L2CAP_EVENT_CHANNEL_OPENED && len >= 24) {
         // [2]=status [3..8]=addr(reversed) [11..12]=psm [13..14]=local_cid
         if (packet[2] != 0) return;
-        uint16_t psm = little_endian_read_16(packet, 11);
+        uint16_t psm = (uint16_t)(packet[11] | (packet[12] << 8));
         if (psm != PSM_HID_INTERRUPT) return;
-        uint16_t cid = little_endian_read_16(packet, 13);
-        bd_addr_t addr;
-        reverse_bd_addr(&packet[3], addr);
+        uint16_t cid = (uint16_t)(packet[13] | (packet[14] << 8));
+        uint8_t addr[6];
+        for (int b = 0; b < 6; b++) addr[b] = packet[3 + 5 - b];
         int free_slot = -1;
         for (int ci = 0; ci < 4; ci++) {
-            if (memcmp(hid_intr_cids[ci].addr, addr, 6) == 0) {
+            bool same = true;
+            for (int b = 0; b < 6; b++) {
+                if (hid_intr_cids[ci].addr[b] != addr[b]) { same = false; break; }
+            }
+            if (same) {
                 hid_intr_cids[ci].cid = cid;
                 return;
             }
             if (free_slot < 0 && hid_intr_cids[ci].cid == 0) free_slot = ci;
         }
         if (free_slot >= 0) {
-            memcpy(hid_intr_cids[free_slot].addr, addr, 6);
+            for (int b = 0; b < 6; b++) hid_intr_cids[free_slot].addr[b] = addr[b];
             hid_intr_cids[free_slot].cid = cid;
         }
-        // NO printf here: this callback runs inside l2cap_emit_channel_opened,
-        // deeper than any app-level handler — blocking on UART/stdio from this
-        // context crashed the stack on reconnects (device reboot mid-handshake).
     } else if (packet[0] == L2CAP_EVENT_CHANNEL_CLOSED) {
         // [2..3]=local_cid
-        uint16_t cid = little_endian_read_16(packet, 2);
+        uint16_t cid = (uint16_t)(packet[2] | (packet[3] << 8));
         for (int ci = 0; ci < 4; ci++) {
             if (hid_intr_cids[ci].cid == cid) {
                 hid_intr_cids[ci].cid = 0;
-                memset(hid_intr_cids[ci].addr, 0, 6);
+                for (int b = 0; b < 6; b++) hid_intr_cids[ci].addr[b] = 0;
             }
         }
     }
@@ -802,6 +832,15 @@ void btstack_host_init_hid_handlers(void)
     // NOTE: must be here — btstack_host_init() is USB-dongle-transport only.
     hci_dump_init(&ds5_cid_tap);
     printf("[BTSTACK_HOST] DS5 audio CID tap registered\n");
+
+    if (watchdog_hw->scratch[4] == DS5_CRASH_MAGIC) {
+        crash_report_pc = watchdog_hw->scratch[5];
+        crash_report_lr = watchdog_hw->scratch[6];
+        crash_report_pending = true;
+        watchdog_hw->scratch[4] = 0;
+        printf("[CRASH] Previous boot HardFault PC=0x%08lx LR=0x%08lx\n",
+               (unsigned long)crash_report_pc, (unsigned long)crash_report_lr);
+    }
 #endif
 
     printf("[BTSTACK_HOST] HID handlers initialized OK\n");
@@ -1055,6 +1094,16 @@ void btstack_host_process(void)
 
     // Process transport-specific tasks (e.g., USB polling, CYW43 async context)
     btstack_host_transport_process();
+
+#ifdef CONFIG_DS5_DROP_SCREAM
+    // Re-announce last crash after log listeners have had time to reattach
+    if (crash_report_pending &&
+        btstack_run_loop_get_time_ms() > 6000) {
+        crash_report_pending = false;
+        printf("[CRASH] !!! Previous boot HardFault PC=0x%08lx LR=0x%08lx — addr2line these !!!\n",
+               (unsigned long)crash_report_pc, (unsigned long)crash_report_lr);
+    }
+#endif
 
 
 #if !defined(BTSTACK_USE_CYW43) && !defined(BTSTACK_USE_ESP32) && !defined(BTSTACK_USE_NRF)
@@ -1772,6 +1821,18 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
             classic_state.pending_valid = true;
             classic_state.pending_outgoing = false;  // Device initiated this connection
             classic_state.waiting_for_incoming_time = 0;  // Device reconnected
+
+            // Silence the radio NOW, before the handshake starts. Bonded
+            // reconnects begin the LMP auth/encryption exchange immediately
+            // after the ACL — racing the old stop-scan (which waited for the
+            // remote name). If inquiry is still running when encryption
+            // negotiates, the exchange starves and dies ~30s later with
+            // reason 0x22. Scanning resumes via the normal paths if this
+            // connection fails or ends.
+            if (link_type == 1 /* ACL */) {
+                printf("[BTSTACK_HOST] Incoming ACL: pausing scan for handshake\n");
+                btstack_host_stop_scan();
+            }
             // BTstack will auto-accept with the current master_slave_policy
             break;
         }
@@ -2437,6 +2498,19 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                 if (classic_state.pending_valid) {
                     classic_state.pending_valid = false;
                     classic_state.pending_hid_connect = false;
+                }
+
+                // Fully reset direct-L2CAP (wiimote-path) state for this ACL.
+                // Nothing else clears it on a normal disconnect of an
+                // established session, and a stale wiimote_conn.active with a
+                // RECYCLED ACL handle makes the incoming-channel guard decline
+                // the next reconnection's HID channels — the controller then
+                // stalls in the encryption phase and drops with reason 0x22.
+                // (Affects Wiimotes and the Sony-direct-L2CAP path alike.)
+                if (wiimote_conn.active && wiimote_conn.acl_handle == handle) {
+                    printf("[BTSTACK_HOST] Clearing direct-L2CAP state for handle 0x%04X\n", handle);
+                    memset(&wiimote_conn, 0, sizeof(wiimote_conn));
+                    wiimote_conn.acl_handle = HCI_CON_HANDLE_INVALID;
                 }
             }
             break;
@@ -4898,14 +4972,22 @@ bool btstack_classic_send_interrupt_raw(uint8_t conn_index, const uint8_t* data,
 {
     if (conn_index >= MAX_CLASSIC_CONNECTIONS) return false;
     classic_connection_t* conn = &classic_state.connections[conn_index];
-    if (!conn->active || !conn->hid_ready || conn->hid_cid == 0xFFFF) return false;
+    if (!conn->active || !conn->hid_ready) return false;
 
     uint16_t interrupt_cid = 0;
-    for (int ci = 0; ci < MAX_CLASSIC_CONNECTIONS; ci++) {
-        if (hid_intr_cids[ci].cid != 0 &&
-            memcmp(hid_intr_cids[ci].addr, conn->addr, 6) == 0) {
-            interrupt_cid = hid_intr_cids[ci].cid;
-            break;
+    if (conn->hid_cid == 0xFFFF) {
+        // Direct-L2CAP path (Sony-on-CYW43 / Wiimote outgoing connections):
+        // the channels are our own — CIDs live in wiimote_conn.
+        if (wiimote_conn.active && wiimote_conn.conn_index == conn_index) {
+            interrupt_cid = wiimote_conn.interrupt_cid;
+        }
+    } else {
+        for (int ci = 0; ci < MAX_CLASSIC_CONNECTIONS; ci++) {
+            if (hid_intr_cids[ci].cid != 0 &&
+                memcmp(hid_intr_cids[ci].addr, conn->addr, 6) == 0) {
+                interrupt_cid = hid_intr_cids[ci].cid;
+                break;
+            }
         }
     }
     if (interrupt_cid == 0) return false;

@@ -276,6 +276,7 @@ typedef struct {
     const ds5_voice_clip_t* voice_clip;
     uint16_t voice_frame;
     uint32_t voice_next_ms;         // next 10ms frame slot
+    uint32_t voice_started_ms;      // for dead-channel give-up
     uint8_t audio_pkt_counter;      // free-running 0x36 packet counter
     bool voice_is_scream;
     uint8_t voice_r, voice_g, voice_b;
@@ -659,6 +660,7 @@ static void ds5_voice_play(bthid_device_t* device, ds5_bt_data_t* ds5,
     ds5->voice_led_prog = led_prog;
     ds5->show_idx = 0;
     ds5->show_burst_frame = 0xFFFF;
+    ds5->voice_started_ms = platform_time_ms();
 
     if (ds5->voice_state == DS5_VOICE_IDLE) {
         // Diagnostic stage 1: white lightbar via the KNOWN-GOOD 0x31 path.
@@ -779,6 +781,13 @@ static bool ds5_voice_task(bthid_device_t* device, ds5_bt_data_t* ds5)
     if (!ds5_send_audio_frame(device)) {
         if ((int32_t)(now - ds5->voice_next_ms) > 60) {
             ds5->voice_next_ms = now;  // hopelessly behind: resync clock
+        }
+        // Dead channel guard: if nothing has been accepted for ~3s, stop —
+        // an endless retry wedges the LED/rumble path for the whole session
+        if (ds5->voice_frame == 0 && (now - ds5->voice_started_ms) > 3000) {
+            printf("[DS5_BT] Voice: channel dead, giving up\n");
+            ds5_voice_stop(device, ds5);
+            return false;
         }
         return true;
     }
