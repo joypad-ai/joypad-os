@@ -25,6 +25,7 @@
 #include "core/services/storage/storage.h"
 #ifdef CONFIG_CONTROLLER_BTUSB
 #include "imu_nrf.h"
+#include "bt/ble_output/ble_output.h"
 #endif
 
 // App layer
@@ -151,6 +152,65 @@ static void usb_power_init(void)
            !!(NRF_USBD->USBPULLUP));
 }
 
+#if defined(CONFIG_CONTROLLER_BTUSB) && defined(CONFIG_BOARD_XIAO_BLE)
+// ============================================================================
+// BATTERY PROTECTION + IDLE DEEP-SLEEP
+// ============================================================================
+// On battery the firmware otherwise runs full-tilt forever (IMU 100 Hz + BLE +
+// ~1 kHz loop = several mA) with no low-voltage cutoff. That flattened a LiPo to
+// 1.7 V and destroyed it. Guard against it: drop to System OFF when the cell hits
+// a safe floor (prevents the over-discharge that ruins the battery) or after
+// being idle+disconnected (saves power). Wakes on the XIAO D1 button.
+#define PWR_WAKE_GPIO        3       // P0.03 = XIAO D1 / user button
+#define PWR_WAKE_ACTIVE_HIGH false   // active-low (pull-up)
+#define PWR_LOW_BATT_MV      3300u   // safe LiPo floor — huge margin over ~2.5 V danger
+#define PWR_IDLE_TIMEOUT_MS  (10u * 60u * 1000u)  // disconnected+idle this long → sleep
+#define PWR_CHECK_MS         3000u
+
+static void power_task(void)
+{
+    static uint32_t last_check = 0;
+    static uint32_t last_active = 0;
+    static uint8_t  low_count = 0;
+    uint32_t now = platform_time_ms();
+
+    // On USB: charging and must stay enumerated — never sleep. Reset trackers.
+    if (platform_usb_powered()) {
+        last_active = now;
+        low_count = 0;
+        return;
+    }
+    // A connected host means it's in use — keep it awake (the low-batt guard
+    // below still fires; protecting the cell outranks staying connected).
+    if (ble_output_is_connected()) {
+        last_active = now;
+    }
+
+    if ((uint32_t)(now - last_check) < PWR_CHECK_MS) return;
+    last_check = now;
+
+    // Critical: low-voltage cutoff. Debounced so a transient TX load sag doesn't
+    // trip it. Fires regardless of connection state — over-discharge is forever.
+    int mv = platform_battery_millivolts();
+    if (mv > 0 && (uint32_t)mv < PWR_LOW_BATT_MV) {
+        if (++low_count >= 3) {
+            printf("[power] battery %d mV < %u — System OFF to protect the cell\n",
+                   mv, PWR_LOW_BATT_MV);
+            platform_deep_sleep(PWR_WAKE_GPIO, PWR_WAKE_ACTIVE_HIGH);
+        }
+        return;
+    }
+    low_count = 0;
+
+    // Power saving: idle and disconnected for a while → sleep.
+    if ((uint32_t)(now - last_active) > PWR_IDLE_TIMEOUT_MS) {
+        printf("[power] idle %us on battery — System OFF\n",
+               (unsigned)((now - last_active) / 1000u));
+        platform_deep_sleep(PWR_WAKE_GPIO, PWR_WAKE_ACTIVE_HIGH);
+    }
+}
+#endif  // CONFIG_CONTROLLER_BTUSB && CONFIG_BOARD_XIAO_BLE
+
 // ============================================================================
 // MAIN
 // ============================================================================
@@ -276,6 +336,10 @@ int main(void)
 
 #ifdef CONFIG_CONTROLLER_BTUSB
         imu_task();  // sample onboard IMU → router (throttled to ~100 Hz)
+#endif
+
+#if defined(CONFIG_CONTROLLER_BTUSB) && defined(CONFIG_BOARD_XIAO_BLE)
+        power_task();  // low-battery cutoff + idle deep-sleep (protects the cell)
 #endif
 
         // Yield to other Zephyr threads (BTstack runs in its own thread)
