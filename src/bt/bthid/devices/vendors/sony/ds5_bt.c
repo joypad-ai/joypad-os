@@ -277,6 +277,7 @@ typedef struct {
     uint16_t voice_frame;
     uint32_t voice_next_ms;         // next 10ms frame slot
     uint32_t voice_started_ms;      // for dead-channel give-up
+    uint8_t voice_ramp;             // frames since arm, for pop-free volume ramp
     uint8_t audio_pkt_counter;      // free-running 0x36 packet counter
     bool voice_is_scream;
     uint8_t voice_r, voice_g, voice_b;
@@ -431,7 +432,9 @@ static void ds5_send_output31_audio(bthid_device_t* device, bool enable)
     if (enable) {
         buf[4]  = 0x80 | 0x20;           // valid_flag0: audio_ctrl_en | speaker_vol_en
         buf[5]  = 0x80;                  // valid_flag1: audio_control2_en
-        buf[9]  = 0x64;                  // speaker volume (max)
+        buf[9]  = 0x00;                  // speaker volume: 0 at arm — the
+                                         // routing pop lands silent; the 0x36
+                                         // stream ramps volume up afterwards
         buf[11] = 0x30;                  // audio_control: speaker output path
         buf[41] = 0x04;                  // audio_control2: speaker preamp gain (default 4)
     } else {
@@ -500,7 +503,22 @@ static bool ds5_send_audio_frame(bthid_device_t* device)
     st[2] = ds5->rumble_right;
     st[3] = ds5->rumble_left;
     st[4] = 0x7F;                 // headphone volume
-    st[5] = 0x64;                 // speaker volume
+    // Speaker volume: the routing-enable transient pops audibly, so it must
+    // happen at volume 0. LISTEN's mic keepalive stays silent outright;
+    // playback ramps up across its lead-in frames.
+    uint8_t vol = 0x64;
+#ifdef CONFIG_DS5_COMPANION
+    if (ds5->comp_state == DS5_COMP_LISTEN) {
+        vol = 0;
+    } else
+#endif
+    {
+        if (ds5->voice_ramp < 0x64 / 7) {
+            vol = (uint8_t)(ds5->voice_ramp * 7);
+            ds5->voice_ramp++;
+        }
+    }
+    st[5] = vol;                  // speaker volume
     st[6] = 0xFF;                 // mic volume (enable bit cleared — inert)
     st[7] = 0x30;                 // audio_control: speaker output path
     st[9] = 0x0F;                 // power_save_control: keep audio blocks awake
@@ -667,6 +685,7 @@ static void ds5_voice_play(bthid_device_t* device, ds5_bt_data_t* ds5,
     ds5->show_idx = 0;
     ds5->show_burst_frame = 0xFFFF;
     ds5->voice_started_ms = platform_time_ms();
+    ds5->voice_ramp = 0;
 
     if (ds5->voice_state == DS5_VOICE_IDLE) {
         // Diagnostic stage 1: white lightbar via the KNOWN-GOOD 0x31 path.

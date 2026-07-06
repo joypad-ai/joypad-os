@@ -205,6 +205,12 @@ class OpusPipe:
             raise ValueError(f"opus_decode: {n}")
         return self.ct.string_at(self._pcm, n * 2 * MIC_CHANNELS)
 
+    def reset_encoder(self):
+        """Fresh encoder state per response: CBR packets are stateful, and
+        lead-in silence encoded with a stale encoder carries an audible
+        residue of the PREVIOUS utterance (the 'ehh' glitch)."""
+        self.lib.opus_encoder_ctl(self.enc, 4028)  # OPUS_RESET_STATE
+
     def encode_speaker(self, pcm_48k_stereo_10ms: bytes) -> bytes:
         buf = (self.ct.c_int16 * 960).from_buffer_copy(pcm_48k_stereo_10ms)
         n = self.lib.opus_encode(self.enc, buf, 480, self._out, 1500)
@@ -303,8 +309,11 @@ def main():
         starves the ring (choppy); 3/command gives a 32ms budget. Lead-in
         silence swallows the speaker-arming pop ("headphone jack" static).
         Absolute-clock pacing avoids cumulative sleep drift."""
-        silence = opus.encode_speaker(bytes(1920))
-        frames = [silence] * 15 + list(frames_200)
+        opus.reset_encoder()
+        # Encode each lead-in frame individually — repeating one identical
+        # stateful packet does not decode as silence.
+        frames = [opus.encode_speaker(bytes(1920)) for _ in range(15)]
+        frames += list(frames_200)
         batches = [frames[i:i+3] for i in range(0, len(frames), 3)]
         PREROLL = 7          # commands (21 frames ≈ ring depth)
         PERIOD = 0.032       # 3 frames per command
