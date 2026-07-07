@@ -638,16 +638,15 @@ def main():
                 parts.append("Most-pressed buttons this session (button:"
                              f"count): {ctx['top_btns']}.")
             if ctx.get("btns"):
-                parts.append("NEW buttons pressed since your previous reply, "
-                             f"oldest to newest: {ctx['btns']} (newest "
-                             f"{ctx.get('btn_age_s', '?')}s ago). COMPLETE "
-                             "list — anything you reported before is in the "
-                             "conversation already; do not re-report it and "
-                             "NEVER invent presses.")
+                parts.append("[SILENT DATA — mention ONLY if the user asks "
+                             "about button presses; otherwise ignore "
+                             "completely] New presses since your previous "
+                             f"reply, oldest to newest: {ctx['btns']}. If "
+                             "asked, report exactly these and nothing else.")
             else:
-                parts.append("NO new buttons pressed since your previous "
-                             "reply. If asked, say exactly that — never "
-                             "invent presses.")
+                parts.append("[SILENT DATA] No new button presses since your "
+                             "previous reply. Only relevant if the user asks "
+                             "about presses — then say none; never invent.")
         now = time.monotonic()
         for ts, ev in recent_events:
             if now - ts < 90:
@@ -864,9 +863,11 @@ def main():
                         ctx_text = build_context_text()
                         if ctx_text:
                             session.inject_context(
-                                "Background physical state — do NOT mention any of "
-                                "this unless the user asks or it is directly "
-                                "relevant to what they said: " + ctx_text)
+                                "Silent background telemetry. Rule: none of this "
+                                "is conversation material unless the user "
+                                "explicitly asks about it or it is the direct "
+                                "subject of what they said. Answer their "
+                                "actual words first and only: " + ctx_text)
                         session.commit_and_respond()
                         collect_and_speak()
                       except Exception as e:
