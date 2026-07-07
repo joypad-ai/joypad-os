@@ -1619,15 +1619,11 @@ static void ds5_process_report(bthid_device_t* device, const uint8_t* data, uint
         }
     }
 
-    // Charging edges (battery status nibble: 0=discharging 1=charging)
-    {
-        uint8_t chg = (ds5->batt_raw >> 4) & 0x0F;
-        if (chg != ds5->prev_chg_state) {
-            if (chg == 1) cdc_voice_notify("charging");
-            else if (ds5->prev_chg_state == 1) cdc_voice_notify("unplugged");
-            ds5->prev_chg_state = chg;
-        }
-    }
+    // Charging edges: DISABLED — the battery byte offset is unverified and
+    // the status nibble reads noise (28 phantom plug/unplug events in one
+    // session, each firing an unprompted model reaction that also fought
+    // the reply audio for the pipeline). Re-enable after verifying the
+    // offset against a raw report dump.
 
     // Squeeze: both analog triggers pinned for 500ms (20s cooldown)
     {

@@ -10,9 +10,12 @@
 #include "core/buttons.h"
 #include "core/input_event.h"
 #include "core/router/router.h"
+#include "platform/platform.h"
 #include "platform/platform_gpio.h"
 #include <stdio.h>
 #include <string.h>
+#include <math.h>
+#include <stdlib.h>
 
 // I2C expander support (RP2040-only — uses pico-sdk I2C directly)
 #if !defined(PLATFORM_ESP32) && !defined(PLATFORM_NRF)
@@ -49,6 +52,31 @@ typedef enum {
 } dpad_mode_t;
 
 static dpad_mode_t dpad_mode = DPAD_MODE_DPAD;
+
+// ---- Tilt steering: roll the controller → a stick X axis ---------------------
+// Roll drives whichever stick the D-pad ISN'T using: D-pad-as-buttons → LEFT
+// stick, D-pad→left-stick → RIGHT stick (so the toggle picks which stick steers
+// without a collision). Absolute (accelerometer / gravity-referenced): hold a
+// bank and the steer holds like a wheel; flat re-centers. Tunable live over
+// CDC/NUS via TILT.STEER without reflashing.
+static bool  tilt_steer_on = true;
+static float tilt_steer_range_deg = 45.0f;   // tilt for full stick lock
+static float tilt_steer_dead_deg  = 3.0f;    // center deadzone
+static float tilt_steer_sign      = -1.0f;   // flip if steering is reversed
+
+void pad_set_tilt_steer(int on, int range_deg, int dead_deg, int sign)
+{
+    if (on >= 0) tilt_steer_on = (on != 0);
+    if (range_deg > 0) tilt_steer_range_deg = (float)range_deg;
+    if (dead_deg >= 0) tilt_steer_dead_deg = (float)dead_deg;
+    if (sign != 0) tilt_steer_sign = (sign > 0) ? 1.0f : -1.0f;
+}
+
+// Last time real user input was seen (ms). Idle power-management reads this to
+// sleep a connected-but-unused controller — a static tilt or sensor noise must
+// NOT count, or it would never sleep.
+static uint32_t pad_last_activity_ms = 0;
+uint32_t pad_input_last_activity_ms(void) { return pad_last_activity_ms; }
 
 // S1+S2 combo state
 static bool prev_s1s2_held = false;
@@ -517,6 +545,10 @@ static void pad_poll_device(uint8_t device_index) {
         prev_s1s2_held = false;
     }
 
+    // Physical button state (incl. d-pad) before the d-pad→stick remap consumes
+    // it — used for idle-activity tracking below.
+    uint32_t phys_buttons = event->buttons;
+
     // =================================================================
     // Apply d-pad mode (remap d-pad to analog stick if needed)
     // Physical toggle switches can override the software d-pad mode
@@ -625,6 +657,48 @@ static void pad_poll_device(uint8_t device_index) {
         if (up || down || left || right) {
             event->buttons &= ~JP_BUTTON_R3;
         }
+    }
+
+    // Read the onboard motion once, for both idle-activity and tilt steering.
+    int16_t accel[3], gyro[3];
+    bool have_motion = router_onboard_motion_get(accel, gyro);
+
+    // ---- Idle-activity tracking (BEFORE tilt overwrites a stick) ----
+    // Real user input refreshes the activity timestamp so a controller left
+    // paired-but-idle still sleeps (a connected host alone must NOT keep it
+    // awake). Physical buttons, a physical/d-pad stick off-center, or the pad
+    // actually being moved (gyro magnitude, ~0 at rest) all count; a held static
+    // tilt and sensor noise do not. Checked before the tilt block below so a
+    // static tilt driving a stick can't masquerade as activity.
+    if (pad_last_activity_ms == 0) pad_last_activity_ms = platform_time_ms();
+    bool activity = (phys_buttons != 0)
+                 || (abs((int)event->analog[ANALOG_LX] - 128) > 24)
+                 || (abs((int)event->analog[ANALOG_LY] - 128) > 24);
+    if (!activity && have_motion) {
+        int gmag = abs((int)gyro[0]) + abs((int)gyro[1]) + abs((int)gyro[2]);
+        if (gmag > 1000) activity = true;   // pad being handled/rotated
+    }
+    if (activity) pad_last_activity_ms = platform_time_ms();
+
+    // ---- Tilt steering: roll → a stick X axis ----
+    // The gyro takes whichever stick the D-pad ISN'T using, so it never fights the
+    // D-pad remap:
+    //   D-pad as buttons (or → right stick) → roll drives the LEFT stick
+    //   D-pad → left stick                  → roll drives the RIGHT stick
+    // Roll is rotation about the forward axis, so gravity shifts between the left
+    // (X) and up (Z) accel axes; atan2 is scale-independent.
+    if (tilt_steer_on && have_motion) {
+        int axis = (effective_mode == DPAD_MODE_LEFT_STICK) ? ANALOG_RX : ANALOG_LX;
+        float roll_deg = atan2f((float)accel[0], (float)accel[2])
+                         * (180.0f / 3.14159265f);
+        float norm = 0.0f;
+        if (roll_deg > tilt_steer_dead_deg || roll_deg < -tilt_steer_dead_deg) {
+            norm = tilt_steer_sign * roll_deg / tilt_steer_range_deg;
+            if (norm > 1.0f) norm = 1.0f;
+            else if (norm < -1.0f) norm = -1.0f;
+        }
+        int v = (int)(128.0f + norm * 127.0f);
+        event->analog[axis] = (uint8_t)(v < 0 ? 0 : (v > 255 ? 255 : v));
     }
 }
 

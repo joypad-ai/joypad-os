@@ -91,6 +91,17 @@ void imu_init(void)
     printf("[imu] LSM6DS3TR-C @0x%02x configured (104 Hz, ±4 g, ±2000 dps)\n", imu_addr);
 }
 
+// Cut the IMU's power rail before System OFF. The SoC RETAINS GPIO output state
+// through deep sleep, so leaving P1.08 high keeps the LSM6DS3TR-C running at
+// ~0.7 mA — enough to bleed a near-empty cell past its safe floor into
+// over-discharge while the device is "asleep". Drive it low so the IMU draws
+// nothing; it re-inits on the next boot (System OFF wakes via reset).
+void imu_power_off(void)
+{
+    imu_ok = false;
+    nrf_gpio_pin_clear(IMU_PWR_PIN);
+}
+
 void imu_task(void)
 {
     if (!imu_ok) return;

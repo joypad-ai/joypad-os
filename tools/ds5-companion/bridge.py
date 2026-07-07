@@ -615,10 +615,10 @@ def main():
         parts = []
         ctx = fetch_ctx()
         if ctx:
-            parts.append(f"Your battery is at {ctx['batt']}%"
-                         + (" and charging" if ctx.get("chg") else "")
-                         + f". You've been held for {ctx.get('held_s', 0) // 60}"
-                           " minutes this session.")
+            # NOTE: battery/charging omitted — the firmware offset is
+            # unverified and reads noise (model kept citing phantom levels).
+            parts.append(f"You've been held for {ctx.get('held_s', 0) // 60}"
+                         " minutes this session.")
             if ctx.get("drops"):
                 parts.append(f"You've been dropped {ctx['drops']} time(s) and "
                              f"caught mid-air {ctx.get('catches', 0)} time(s) "
@@ -803,6 +803,10 @@ def main():
         while True:
             for typ, obj in cdc.poll() or ():
                 kind = obj.get("type")
+                if kind == "log":
+                    m = obj.get("msg", "")
+                    if "audio frames" in m or "comp:" in m:
+                        print("FW:", m.rstrip(), flush=True)
                 if kind == "mic":
                     raw = base64.b64decode(obj["d"])
                     if dump:
@@ -842,8 +846,9 @@ def main():
                         ctx_text = build_context_text()
                         if ctx_text:
                             session.inject_context(
-                                "Current physical state (weave in only if "
-                                "natural, never recite): " + ctx_text)
+                                "Background physical state — do NOT mention any of "
+                                "this unless the user asks or it is directly "
+                                "relevant to what they said: " + ctx_text)
                         session.commit_and_respond()
                         collect_and_speak()
                       except Exception as e:
@@ -859,8 +864,7 @@ def main():
                     ev = obj.get("ev")
                     print(f"[bridge] voice event: {ev}")
                     if ev in ("dropped", "caught", "shaken", "petted",
-                              "flipped", "charging", "unplugged", "squeezed",
-                              "lonely"):
+                              "flipped", "squeezed", "lonely"):
                         recent_events.append((time.monotonic(), ev))
                         react_to(ev)
             # Gameplay commentary: unprompted quips on active play

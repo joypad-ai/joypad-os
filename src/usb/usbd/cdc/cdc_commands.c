@@ -1588,6 +1588,43 @@ static void cmd_voice_ctx(const char* json)
     send_json(response_buf);
 }
 
+// {"cmd":"VOICE.FX","led":[r,g,b],"led_ms":N,"rumble":[lo,hi],"rumble_ms":N,
+//  "scream":true} — the model's body control (lightbar, rumble, scream)
+static bool fx_parse_triplet(const char* json, const char* key,
+                             int* a, int* b, int* c)
+{
+    char pat[24];
+    snprintf(pat, sizeof(pat), "\"%s\"", key);
+    const char* q = strstr(json, pat);
+    if (!q) return false;
+    q = strchr(q, '[');
+    if (!q) return false;
+    int n = sscanf(q, c ? "[%d,%d,%d" : "[%d,%d", a, b, c ? c : a);
+    return c ? n == 3 : n == 2;
+}
+
+static void cmd_voice_fx(const char* json)
+{
+    extern bool ds5_companion_fx(const uint8_t*, uint32_t, uint8_t, uint8_t,
+                                 uint32_t, bool);
+    int r = 0, g = 0, b = 0, lo = 0, hi = 0;
+    int led_ms = 0, rum_ms = 0, scream = 0;
+    bool has_led = fx_parse_triplet(json, "led", &r, &g, &b);
+    bool has_rum = fx_parse_triplet(json, "rumble", &lo, &hi, NULL);
+    json_get_int(json, "led_ms", &led_ms);
+    json_get_int(json, "rumble_ms", &rum_ms);
+    json_get_int(json, "scream", &scream);
+    uint8_t led[3] = { (uint8_t)r, (uint8_t)g, (uint8_t)b };
+    bool ok = ds5_companion_fx(led,
+                               has_led ? (uint32_t)(led_ms > 0 ? led_ms : 3000) : 0,
+                               (uint8_t)lo, (uint8_t)hi,
+                               has_rum ? (uint32_t)(rum_ms > 0 ? rum_ms : 1000) : 0,
+                               scream != 0);
+    snprintf(response_buf, sizeof(response_buf), "{\"ok\":%s}",
+             ok ? "true" : "false");
+    send_json(response_buf);
+}
+
 // {"cmd":"VOICE.STATE","state":"idle"|"think"}
 static void cmd_voice_state(const char* json)
 {
@@ -3181,6 +3218,7 @@ static const cmd_entry_t commands[] = {
 #ifdef CONFIG_DS5_COMPANION
     {"VOICE.SPEAK", cmd_voice_speak},
     {"VOICE.CTX", cmd_voice_ctx},
+    {"VOICE.FX", cmd_voice_fx},
     {"VOICE.STATE", cmd_voice_state},
 #endif
     {"BT.STATUS", cmd_bt_status},

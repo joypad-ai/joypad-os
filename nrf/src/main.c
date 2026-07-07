@@ -20,6 +20,7 @@
 #include "core/app_registry.h"
 #include "core/input_interface.h"
 #include "core/output_interface.h"
+#include "pad/pad_input.h"
 #include "core/services/players/manager.h"
 #include "core/services/leds/leds.h"
 #include "core/services/storage/storage.h"
@@ -170,20 +171,13 @@ static void usb_power_init(void)
 static void power_task(void)
 {
     static uint32_t last_check = 0;
-    static uint32_t last_active = 0;
     static uint8_t  low_count = 0;
     uint32_t now = platform_time_ms();
 
-    // On USB: charging and must stay enumerated — never sleep. Reset trackers.
+    // On USB: charging and must stay enumerated — never sleep.
     if (platform_usb_powered()) {
-        last_active = now;
         low_count = 0;
         return;
-    }
-    // A connected host means it's in use — keep it awake (the low-batt guard
-    // below still fires; protecting the cell outranks staying connected).
-    if (ble_output_is_connected()) {
-        last_active = now;
     }
 
     if ((uint32_t)(now - last_check) < PWR_CHECK_MS) return;
@@ -202,7 +196,11 @@ static void power_task(void)
     }
     low_count = 0;
 
-    // Power saving: idle and disconnected for a while → sleep.
+    // Power saving: no real user input for a while → sleep, EVEN WHILE CONNECTED.
+    // A controller left paired-but-idle to a host must not sit at full connected
+    // draw and bleed the cell down. Activity = buttons / physical sticks / the
+    // pad being moved (see pad_input); a static tilt or noise does not count.
+    uint32_t last_active = pad_input_last_activity_ms();
     if ((uint32_t)(now - last_active) > PWR_IDLE_TIMEOUT_MS) {
         printf("[power] idle %us on battery — System OFF\n",
                (unsigned)((now - last_active) / 1000u));

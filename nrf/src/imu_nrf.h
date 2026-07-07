@@ -8,4 +8,8 @@ void imu_init(void);
 // Poll the IMU (throttled internally to ~100 Hz) and push motion to the router.
 void imu_task(void);
 
+// Cut the IMU power rail (P1.08) before deep sleep so it draws nothing in
+// System OFF. Called from platform_deep_sleep().
+void imu_power_off(void);
+
 #endif // IMU_NRF_H

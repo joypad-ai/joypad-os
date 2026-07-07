@@ -201,6 +201,15 @@ void pad_input_clear_devices(void);
 // Set d-pad mode (0=dpad, 1=left stick, 2=right stick)
 void pad_input_set_dpad_mode(uint8_t mode);
 
+// Tilt steering (roll → right stick X while D-pad is in left-stick mode).
+// Tunable live over CDC/NUS (TILT.STEER). sign: +1/-1 to set, 0 = leave.
+void pad_set_tilt_steer(int on, int range_deg, int dead_deg, int sign);
+
+// Timestamp (ms) of the last real user input — buttons, physical sticks, or the
+// pad being moved. Idle power-management sleeps the controller when this is
+// stale, even while it's still connected to a host.
+uint32_t pad_input_last_activity_ms(void);
+
 // Get number of registered pad devices
 uint8_t pad_input_get_device_count(void);
 
