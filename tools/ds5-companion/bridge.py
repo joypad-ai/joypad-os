@@ -468,6 +468,13 @@ class RealtimeSession:
             "audio": base64.b64encode(pcm).decode(),
         }))
 
+    def respond_only(self):
+        """Response without user audio — for reacting to physical events."""
+        self.ws.send(json.dumps({
+            "type": "response.create",
+            "response": {"max_output_tokens": 2000},
+        }))
+
     def commit_and_respond(self):
         self.ws.send(json.dumps({"type": "input_audio_buffer.commit"}))
         # Length is governed by the personality prompt (voice-native
@@ -614,6 +621,52 @@ def main():
             cdc.send({"cmd": "VOICE.SPEAK",
                       "d": base64.b64encode(b"".join(batch)).decode()})
 
+    def collect_and_speak():
+        """Collect the full reply, then play once — replies are short, and
+        per-delta playback re-triggers the lead-in ceremony (stutters).
+        Firmware blinks THINK (cyan) while this blocks."""
+        pcm = b""
+        for delta in session.poll_response_pcm24k():
+            pcm += delta
+        print(f"[bridge] reply: {len(pcm)//48} ms of audio")
+        pcm48 = resample_24k_mono_to_48k_stereo(pcm)
+        opus.reset_encoder()
+        frames = []
+        step = 480 * 2 * 2
+        for i in range(0, len(pcm48) - step, step):
+            frames.append(opus.encode_speaker(pcm48[i:i + step]))
+        if frames:
+            speak_frames(frames)
+        cdc.send({"cmd": "VOICE.STATE", "state": "idle"})
+        append_memory(session.last_user_text, session.last_pad_text)
+        session.last_user_text = ""
+        session.last_pad_text = ""
+
+    last_reaction = [0.0]
+
+    def react_to(ev):
+        """Unprompted spoken reaction to a physical event (drop/catch)."""
+        if session is None:
+            return
+        now = time.monotonic()
+        if now - last_reaction[0] < 10:
+            return  # don't chain-react to a bouncy landing
+        last_reaction[0] = now
+        time.sleep(1.2)  # let the scream/impact moment finish
+        try:
+            session.inject_context(
+                "PHYSICAL EVENT, just now: you were "
+                + ("DROPPED and hit a surface. You screamed on the way down."
+                   if ev == "dropped" else
+                   "tossed into the air and caught cleanly.")
+                + " React out loud RIGHT NOW, in character — one short "
+                  "exclamation or complaint. Nobody asked you anything; "
+                  "this is you reacting.")
+            session.respond_only()
+            collect_and_speak()
+        except Exception as e:
+            print(f"[bridge] reaction failed ({e})")
+
     print("[bridge] ready — hold mute on the DualSense and talk")
     utterance_pcm = b""
     try:
@@ -662,27 +715,7 @@ def main():
                                 "Current physical state (weave in only if "
                                 "natural, never recite): " + ctx_text)
                         session.commit_and_respond()
-                        # Collect the full reply, then play once — replies are
-                        # short, and per-delta playback re-triggers the
-                        # lead-in ceremony (stutters). Firmware blinks THINK
-                        # (cyan) for us while this blocks.
-                        pcm = b""
-                        for delta in session.poll_response_pcm24k():
-                            pcm += delta
-                        print(f"[bridge] reply: {len(pcm)//48} ms of audio")
-                        pcm48 = resample_24k_mono_to_48k_stereo(pcm)
-                        opus.reset_encoder()   # same order the echo path uses
-                        frames = []
-                        step = 480 * 2 * 2
-                        for i in range(0, len(pcm48) - step, step):
-                            frames.append(opus.encode_speaker(pcm48[i:i + step]))
-                        if frames:
-                            speak_frames(frames)
-                        cdc.send({"cmd": "VOICE.STATE", "state": "idle"})
-                        append_memory(session.last_user_text,
-                                      session.last_pad_text)
-                        session.last_user_text = ""
-                        session.last_pad_text = ""
+                        collect_and_speak()
                       except Exception as e:
                         print(f"[bridge] session error ({e}); rebuilding")
                         try:
@@ -697,6 +730,7 @@ def main():
                     print(f"[bridge] voice event: {ev}")
                     if ev in ("dropped", "caught"):
                         recent_events.append((time.monotonic(), ev))
+                        react_to(ev)
             time.sleep(0.002)
     except KeyboardInterrupt:
         cdc.send({"cmd": "DEBUG.STREAM", "enable": False})
