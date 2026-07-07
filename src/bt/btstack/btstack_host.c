@@ -1524,7 +1524,11 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
 
             // Log all BLE advertisements with names for debugging
             if (name[0] != 0) {
-                printf("[BTSTACK_HOST] BLE adv: %02X:%02X:%02X:%02X:%02X:%02X name=\"%s\"\n",
+                #ifdef CONFIG_DS5_COMPANION
+            extern bool ds5_companion_audio_active(void);
+            if (!ds5_companion_audio_active())
+#endif
+            printf("[BTSTACK_HOST] BLE adv: %02X:%02X:%02X:%02X:%02X:%02X name=\"%s\"\n",
                        addr[5], addr[4], addr[3], addr[2], addr[1], addr[0], name);
             }
 

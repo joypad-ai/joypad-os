@@ -670,6 +670,8 @@ def main():
         PREROLL = 7          # commands (21 frames ≈ ring depth)
         PERIOD = 0.032       # 3 frames per command
         t0 = None
+        slow = 0
+        worst = 0.0
         for i, batch in enumerate(batches):
             if i >= PREROLL:
                 if t0 is None:
@@ -677,8 +679,18 @@ def main():
                 delay = t0 + (i - PREROLL) * PERIOD - time.monotonic()
                 if delay > 0:
                     time.sleep(delay)
+            w0 = time.monotonic()
             cdc.send({"cmd": "VOICE.SPEAK",
                       "d": base64.b64encode(b"".join(batch)).decode()})
+            w = time.monotonic() - w0
+            if w > 0.032:
+                slow += 1
+                worst = max(worst, w)
+        if slow:
+            print(f"[bridge] FEED: {slow}/{len(batches)} sends over budget, "
+                  f"worst {worst*1000:.0f}ms", flush=True)
+        else:
+            print(f"[bridge] FEED: all {len(batches)} sends on time", flush=True)
 
     persona_swap = [None]
 

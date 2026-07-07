@@ -1032,6 +1032,15 @@ bool ds5_companion_get_ctx(uint8_t* batt_pct, bool* charging,
     return true;
 }
 
+// True while the 0x36 audio stream runs — used to mute log spam that
+// competes with the stream for main-loop time and CDC TX.
+bool ds5_companion_audio_active(void)
+{
+    if (!comp_device) return false;
+    ds5_bt_data_t* ds5 = (ds5_bt_data_t*)comp_device->driver_data;
+    return ds5 && ds5->voice_state != DS5_VOICE_IDLE;
+}
+
 // Body control for the model (via CDC VOICE.FX): timed LED/rumble, scream
 bool ds5_companion_fx(const uint8_t led[3], uint32_t led_ms,
                       uint8_t rum_lo, uint8_t rum_hi, uint32_t rum_ms,

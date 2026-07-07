@@ -1544,14 +1544,12 @@ static void cmd_voice_speak(const char* json)
         send_error("need 1-3 x 200-byte frames");
         return;
     }
-    bool ok = true;
+    // Fire-and-forget: no response. 89/197 speak sends measured over budget
+    // (worst 103ms) — per-command response building + TX was throttling the
+    // host's write acceptance during playback. Errors still respond.
     for (int off = 0; off < n; off += 200) {
-        ok = ds5_companion_push_speak(frames + off) && ok;
+        (void)ds5_companion_push_speak(frames + off);
     }
-    snprintf(response_buf, sizeof(response_buf),
-             "{\"ok\":%s,\"free\":%u}",
-             ok ? "true" : "false", (unsigned)ds5_companion_ring_free());
-    send_json(response_buf);
 }
 
 // {"cmd":"VOICE.CTX"} -> controller context for the AI (battery, held time,
