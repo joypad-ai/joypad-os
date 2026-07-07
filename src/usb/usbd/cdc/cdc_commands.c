@@ -1533,6 +1533,26 @@ static void cmd_voice_speak(const char* json)
     send_json(response_buf);
 }
 
+// {"cmd":"VOICE.CTX"} -> controller context for the AI (battery, held time,
+// drop tally). The bridge injects this before each model turn.
+static void cmd_voice_ctx(const char* json)
+{
+    (void)json;
+    extern bool ds5_companion_get_ctx(uint8_t*, bool*, uint32_t*, uint8_t*, uint8_t*);
+    uint8_t batt = 0, drops = 0, catches = 0;
+    bool chg = false;
+    uint32_t held = 0;
+    if (!ds5_companion_get_ctx(&batt, &chg, &held, &drops, &catches)) {
+        send_error("no controller");
+        return;
+    }
+    snprintf(response_buf, sizeof(response_buf),
+             "{\"ok\":true,\"batt\":%u,\"chg\":%s,\"held_s\":%lu,"
+             "\"drops\":%u,\"catches\":%u}",
+             batt, chg ? "true" : "false", (unsigned long)held, drops, catches);
+    send_json(response_buf);
+}
+
 // {"cmd":"VOICE.STATE","state":"idle"|"think"}
 static void cmd_voice_state(const char* json)
 {
@@ -3124,6 +3144,7 @@ static const cmd_entry_t commands[] = {
 #ifdef ENABLE_BTSTACK
 #ifdef CONFIG_DS5_COMPANION
     {"VOICE.SPEAK", cmd_voice_speak},
+    {"VOICE.CTX", cmd_voice_ctx},
     {"VOICE.STATE", cmd_voice_state},
 #endif
     {"BT.STATUS", cmd_bt_status},

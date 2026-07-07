@@ -26,3 +26,4 @@ wch/toolchain/
 # DS5 Astro mode: local sound pack, never committed
 tools/ds5-scream/assets/astro_*
 src/bt/bthid/devices/vendors/sony/ds5_astro_assets.h
+tools/ds5-companion/memory.txt

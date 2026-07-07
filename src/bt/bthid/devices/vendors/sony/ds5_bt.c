@@ -306,6 +306,10 @@ typedef struct {
     uint32_t comp_mute_t0;
     uint8_t comp_release_streak;
     uint32_t comp_listen_t0;        // LISTEN failsafe timeout
+    uint32_t connected_at_ms;       // for held-time context
+    uint8_t batt_raw;               // report[52]: level nibble + charge bits
+    uint8_t drops_session;          // impacts since connect
+    uint8_t catches_session;        // soft catches since connect
     uint32_t comp_blink_ms;
     uint32_t comp_last_rx;          // last host speech frame arrival
 #endif
@@ -936,6 +940,22 @@ bool ds5_companion_push_speak(const uint8_t* frame200)
     return true;
 }
 
+// Context snapshot for the bridge (battery, held time, drop tally)
+bool ds5_companion_get_ctx(uint8_t* batt_pct, bool* charging,
+                           uint32_t* held_s, uint8_t* drops, uint8_t* catches)
+{
+    if (!comp_device) return false;
+    ds5_bt_data_t* ds5 = (ds5_bt_data_t*)comp_device->driver_data;
+    if (!ds5) return false;
+    uint8_t lvl = ds5->batt_raw & 0x0F;          // 0..10
+    *batt_pct = (uint8_t)(lvl >= 10 ? 100 : lvl * 10 + 5);
+    *charging = ((ds5->batt_raw >> 4) & 0x0F) == 1;
+    *held_s = (platform_time_ms() - ds5->connected_at_ms) / 1000;
+    *drops = ds5->drops_session;
+    *catches = ds5->catches_session;
+    return true;
+}
+
 void ds5_companion_set_state(uint8_t state)
 {
     if (!comp_device) return;
@@ -999,7 +1019,13 @@ static void ds5_drop_update(bthid_device_t* device, ds5_bt_data_t* ds5,
 
         case DS5_DROP_FALLING:
             if (m2 > impact2) {
+#ifdef CONFIG_DS5_COMPANION
+                ds5->drops_session++;
+                cdc_voice_notify("dropped");
+                ds5_voice_stop(device, ds5);
+#else
                 ds5_voice_quip(device, ds5, true);
+#endif
                 ds5->drop_state = DS5_DROP_COOLDOWN;
                 ds5->drop_t0 = now;
             } else if (m2 > normal2) {
@@ -1017,11 +1043,23 @@ static void ds5_drop_update(bthid_device_t* device, ds5_bt_data_t* ds5,
         case DS5_DROP_LANDING:
             if (m2 > ds5->drop_peak_m2) ds5->drop_peak_m2 = m2;
             if (ds5->drop_peak_m2 > impact2) {
+#ifdef CONFIG_DS5_COMPANION
+                ds5->drops_session++;
+                cdc_voice_notify("dropped");
+                ds5_voice_stop(device, ds5);
+#else
                 ds5_voice_quip(device, ds5, true);
+#endif
                 ds5->drop_state = DS5_DROP_COOLDOWN;
                 ds5->drop_t0 = now;
             } else if (now - ds5->drop_t0 >= DS5_LANDING_WINDOW_MS) {
+#ifdef CONFIG_DS5_COMPANION
+                ds5->catches_session++;
+                cdc_voice_notify("caught");
+                ds5_voice_stop(device, ds5);
+#else
                 ds5_voice_quip(device, ds5, false);  // soft decel = caught
+#endif
                 ds5->drop_state = DS5_DROP_COOLDOWN;
                 ds5->drop_t0 = now;
             }
@@ -1110,6 +1148,10 @@ static bool ds5_init(bthid_device_t* device)
             comp_head = 0;
             comp_tail = 0;
             comp_device = device;
+            ds5_data[i].connected_at_ms = platform_time_ms();
+            ds5_data[i].batt_raw = 0;
+            ds5_data[i].drops_session = 0;
+            ds5_data[i].catches_session = 0;
 #endif
             ds5_data[i].mute_was_down = false;
             ds5_data[i].drop_state = DS5_DROP_IDLE;
@@ -1342,6 +1384,11 @@ static void ds5_process_report(bthid_device_t* device, const uint8_t* data, uint
     }
 
 #ifdef CONFIG_DS5_COMPANION
+    // Senses: free-fall/impact detection feeds the AI's context (it screams
+    // on the way down like always — then complains about it in conversation)
+    ds5_drop_update(device, ds5, rpt->accel);
+    ds5->batt_raw = ((const uint8_t*)rpt)[52];
+
     // Companion push-to-talk: hold mute = LISTEN (mic streams to host),
     // release = THINK (host processes; LED blinks until it responds).
     {

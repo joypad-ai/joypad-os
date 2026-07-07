@@ -329,6 +329,46 @@ class MiniWS:
                 return message.decode("utf-8", "replace")
 
 
+PERSONA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "personas")
+MEMORY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "memory.txt")
+
+
+def load_persona(path):
+    """Persona file: `key: value` header lines (voice, name), blank line,
+    then the instructions body."""
+    voice, name = None, "the controller"
+    lines = open(path).read().splitlines()
+    body_at = 0
+    for i, ln in enumerate(lines):
+        if not ln.strip():
+            body_at = i + 1
+            break
+        if ":" in ln:
+            k, v = ln.split(":", 1)
+            if k.strip().lower() == "voice":
+                voice = v.strip()
+            elif k.strip().lower() == "name":
+                name = v.strip()
+    return {"voice": voice, "name": name,
+            "instructions": "\n".join(lines[body_at:]).strip()}
+
+
+def load_memory_tail(max_lines=30):
+    if not os.path.exists(MEMORY_FILE):
+        return ""
+    lines = open(MEMORY_FILE).read().splitlines()
+    return "\n".join(lines[-max_lines:])
+
+
+def append_memory(user_text, pad_text):
+    stamp = time.strftime("%Y-%m-%d %H:%M")
+    with open(MEMORY_FILE, "a") as f:
+        if user_text:
+            f.write(f"[{stamp}] USER: {user_text}\n")
+        if pad_text:
+            f.write(f"[{stamp}] PAD: {pad_text}\n")
+
+
 class RealtimeSession:
     """OpenAI Realtime API session (speech in -> speech out).
 
@@ -338,7 +378,9 @@ class RealtimeSession:
 
     URL = "wss://api.openai.com/v1/realtime?model=gpt-realtime"
 
-    def __init__(self):
+    def __init__(self, persona=None, memory=""):
+        self.persona = persona or {}
+        self.memory = memory
         self.key = os.environ.get("OPENAI_API_KEY")
         if not self.key:
             keyfile = os.path.expanduser("~/.openai_key")
@@ -366,11 +408,7 @@ class RealtimeSession:
                 # GA API rejects the whole update without this — and then
                 # server VAD stays on and fights manual commits.
                 "type": "realtime",
-                "instructions": (
-                    "You are a DualSense game controller with a personality — "
-                    "playful, a little sassy, and you live in the user's hands. "
-                    "HARD RULE: replies are ONE to TWO short sentences, never more."
-                ),
+                "instructions": self._build_instructions(),
                 "output_modalities": ["audio"],
                 "audio": {
                     # turn_detection null = manual mode. The mute button is
@@ -378,12 +416,49 @@ class RealtimeSession:
                     # its own schedule and fights the manual commit — first
                     # turn works, every later turn returns 0ms of audio.
                     "input": {"format": {"type": "audio/pcm", "rate": 24000},
-                              "turn_detection": None},
-                    "output": {"format": {"type": "audio/pcm", "rate": 24000}},
+                              "turn_detection": None,
+                              # Whisper transcripts of the user feed the
+                              # cross-session memory file
+                              "transcription": {"model": "whisper-1"}},
+                    "output": dict(
+                        {"format": {"type": "audio/pcm", "rate": 24000}},
+                        **({"voice": self.persona["voice"]}
+                           if self.persona.get("voice") else {})),
                 },
             },
         }))
-        print("[bridge] realtime session open")
+        print(f"[bridge] realtime session open"
+              f" (persona: {self.persona.get('name', 'default')},"
+              f" voice: {self.persona.get('voice', 'default')})")
+        self.last_user_text = ""
+        self.last_pad_text = ""
+
+    VOICE_BASELINE = (
+        "You are a VOICE, not text: everything you say is spoken aloud "
+        "through your small built-in speaker to someone holding you. Speak "
+        "the way people talk — natural, conversational, economical. Default "
+        "to a quick, punchy remark; go longer only when the question truly "
+        "calls for it, and even then keep it tight — no lists, no headings, "
+        "no rambling. Never mention being an AI or a language model."
+    )
+
+    def _build_instructions(self):
+        parts = [self.persona.get("instructions") or
+                 "You are a DualSense game controller with a personality — "
+                 "playful, a little sassy, and you live in the user's hands."]
+        parts.append(self.VOICE_BASELINE)
+        if self.memory:
+            parts.append("Fragments you remember from previous conversations "
+                         "(use them naturally, don't recite them):\n" + self.memory)
+        return "\n\n".join(parts)
+
+    def inject_context(self, text):
+        """System-context item the model sees before its next reply."""
+        self.ws.send(json.dumps({
+            "type": "conversation.item.create",
+            "item": {"type": "message", "role": "system",
+                     "content": [{"type": "input_text", "text": text}]},
+        }))
 
     def append_pcm24k(self, pcm: bytes):
         # Defensive: drop any server-side leftovers from a previous turn
@@ -395,11 +470,14 @@ class RealtimeSession:
 
     def commit_and_respond(self):
         self.ws.send(json.dumps({"type": "input_audio_buffer.commit"}))
-        # Cap reply length: a long audio reply (20s+) burns enough
-        # audio-token budget that the NEXT response comes back empty.
+        # Length is governed by the personality prompt (voice-native
+        # brevity), NOT a tight token cap — caps truncate mid-sentence.
+        # This is only a runaway guard (~40s of speech), far beyond any
+        # reasonable reply, so a pathological response can't exhaust the
+        # audio budget and blank the next turn.
         self.ws.send(json.dumps({
             "type": "response.create",
-            "response": {"max_output_tokens": 400},
+            "response": {"max_output_tokens": 2000},
         }))
 
     def poll_response_pcm24k(self):
@@ -412,10 +490,20 @@ class RealtimeSession:
             t = msg.get("type", "")
             if "error" in t:
                 print(f"[bridge] API error: {json.dumps(msg)[:300]}", flush=True)
+            if t.endswith("input_audio_transcription.completed"):
+                self.last_user_text = (msg.get("transcript") or "").strip()
             if t in ("response.output_audio.delta", "response.audio.delta"):
                 self._got_audio = True
                 yield base64.b64decode(msg["delta"])
             elif t == "response.done":
+                # Assistant transcript for the memory file
+                try:
+                    for item in msg.get("response", {}).get("output", []):
+                        for c in item.get("content", []):
+                            if c.get("transcript"):
+                                self.last_pad_text = c["transcript"].strip()
+                except Exception:
+                    pass
                 if not getattr(self, "_got_audio", False):
                     # Empty reply: surface WHY (status/details live here)
                     print(f"[bridge] empty response: {json.dumps(msg.get('response', {}))[:400]}",
@@ -443,6 +531,8 @@ def main():
                     help="capture raw mic reports to mic_dump.bin and exit on ^C")
     ap.add_argument("--echo", action="store_true",
                     help="loopback: replay your own voice (no API key needed)")
+    ap.add_argument("--persona", default=os.path.join(PERSONA_DIR, "dusty.txt"),
+                    help="persona file (voice/name header + instructions)")
     args = ap.parse_args()
 
     cdc = Cdc(args.port)
@@ -450,7 +540,46 @@ def main():
     mic_pkts = []
     dump = open("mic_dump.bin", "ab") if args.dump else None
     opus = None if args.dump else OpusPipe()
-    session = None if (args.dump or args.echo) else RealtimeSession()
+    persona = None
+    if not (args.dump or args.echo):
+        persona = load_persona(args.persona)
+    session = (None if (args.dump or args.echo)
+               else RealtimeSession(persona, load_memory_tail()))
+
+    # Senses: recent physical events, injected as context each turn
+    recent_events = []   # (monotonic_ts, "dropped"/"caught")
+
+    def fetch_ctx():
+        """Query controller context (battery/held/drops) over CDC."""
+        cdc.send({"cmd": "VOICE.CTX"})
+        deadline = time.time() + 0.8
+        while time.time() < deadline:
+            for typ, obj in cdc.poll() or ():
+                if "batt" in obj:
+                    return obj
+        return None
+
+    def build_context_text():
+        parts = []
+        ctx = fetch_ctx()
+        if ctx:
+            parts.append(f"Your battery is at {ctx['batt']}%"
+                         + (" and charging" if ctx.get("chg") else "")
+                         + f". You've been held for {ctx.get('held_s', 0) // 60}"
+                           " minutes this session.")
+            if ctx.get("drops"):
+                parts.append(f"You've been dropped {ctx['drops']} time(s) and "
+                             f"caught mid-air {ctx.get('catches', 0)} time(s) "
+                             "this session.")
+        now = time.monotonic()
+        for ts, ev in recent_events:
+            if now - ts < 90:
+                parts.append("Moments ago you were "
+                             + ("DROPPED onto a surface. You felt it."
+                                if ev == "dropped" else
+                                "tossed and caught mid-air."))
+        recent_events.clear()
+        return " ".join(parts)
 
     def speak_frames(frames_200):
         """Stream Opus frames to the firmware ring, 3 per command.
@@ -521,6 +650,11 @@ def main():
                         n = len(utterance_pcm) // 2
                         ss = struct.unpack(f"<{n}h", utterance_pcm)
                         session.append_pcm24k(struct.pack(f"<{n//2}h", *ss[::2]))
+                        ctx_text = build_context_text()
+                        if ctx_text:
+                            session.inject_context(
+                                "Current physical state (weave in only if "
+                                "natural, never recite): " + ctx_text)
                         session.commit_and_respond()
                         # Collect the full reply, then play once — replies are
                         # short, and per-delta playback re-triggers the
@@ -539,17 +673,24 @@ def main():
                         if frames:
                             speak_frames(frames)
                         cdc.send({"cmd": "VOICE.STATE", "state": "idle"})
+                        append_memory(session.last_user_text,
+                                      session.last_pad_text)
+                        session.last_user_text = ""
+                        session.last_pad_text = ""
                       except Exception as e:
                         print(f"[bridge] session error ({e}); rebuilding")
                         try:
-                            session = RealtimeSession()
+                            session = RealtimeSession(persona, load_memory_tail())
                         except Exception as e2:
                             print(f"[bridge] session rebuild failed: {e2}")
                         cdc.send({"cmd": "VOICE.STATE", "state": "idle"})
                     mic_pkts = []
                     utterance_pcm = b""
                 elif kind == "voice":
-                    print(f"[bridge] voice event: {obj.get('ev')}")
+                    ev = obj.get("ev")
+                    print(f"[bridge] voice event: {ev}")
+                    if ev in ("dropped", "caught"):
+                        recent_events.append((time.monotonic(), ev))
             time.sleep(0.002)
     except KeyboardInterrupt:
         cdc.send({"cmd": "DEBUG.STREAM", "enable": False})
