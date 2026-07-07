@@ -1000,11 +1000,16 @@ bool ds5_companion_push_speak(const uint8_t* frame200)
     return true;
 }
 
-// Press-history ring (chronological; head = next write slot)
-#define DS5_PRESS_RING 16
+// Press-history ring (chronological; head = next write slot).
+// Watermark semantics: each VOICE.CTX read reports only presses NEWER than
+// the last read — "what did I press" twice in a row answers "nothing new"
+// instead of re-serving (and embellishing) the same stale list.
+#define DS5_PRESS_RING 32
 static uint8_t comp_press_ring[DS5_PRESS_RING];
 static uint32_t comp_press_ms[DS5_PRESS_RING];
 static uint8_t comp_press_head, comp_press_count;
+static uint32_t comp_press_total;      // lifetime press counter
+static uint32_t comp_press_reported;   // watermark: reported up to here
 static const char* const DS5_BTN_NAMES[18] = {
     "cross", "circle", "square", "triangle",
     "dpad-up", "dpad-right", "dpad-down", "dpad-left",
@@ -1017,25 +1022,24 @@ static const char* const DS5_BTN_NAMES[18] = {
 uint32_t ds5_companion_get_presses(char* buf, int buflen)
 {
     buf[0] = 0;
-    if (comp_press_count == 0) return 0xFFFFFFFFu;
-    // Only presses from the last 2 minutes: a stale ring made the model
-    // narrate hour-old presses (PS reconnects, handling bumps) as "just now".
-    uint32_t now = platform_time_ms();
-    int n = comp_press_count < 10 ? comp_press_count : 10;
-    int start = (comp_press_head - n + DS5_PRESS_RING) % DS5_PRESS_RING;
+    // Watermark: report only presses newer than the last report.
+    uint32_t from = comp_press_reported;
+    if (comp_press_total - from > DS5_PRESS_RING) {
+        from = comp_press_total - DS5_PRESS_RING;   // older ones rolled off
+    }
+    uint32_t n = comp_press_total - from;
+    comp_press_reported = comp_press_total;
+    if (n == 0) return 0xFFFFFFFFu;
+    int start = (int)((comp_press_head - n + 2u * DS5_PRESS_RING) % DS5_PRESS_RING);
     int pos = 0;
-    bool any = false;
-    for (int i = 0; i < n; i++) {
-        int idx = (start + i) % DS5_PRESS_RING;
-        if (now - comp_press_ms[idx] > 120000u) continue;
+    for (uint32_t i = 0; i < n; i++) {
+        int idx = (start + (int)i) % DS5_PRESS_RING;
         pos += snprintf(buf + pos, (size_t)(buflen - pos), "%s%s",
-                        any ? "," : "", DS5_BTN_NAMES[comp_press_ring[idx]]);
-        any = true;
+                        i ? "," : "", DS5_BTN_NAMES[comp_press_ring[idx]]);
         if (pos >= buflen - 1) break;
     }
-    if (!any) return 0xFFFFFFFFu;
     int last = (comp_press_head - 1 + DS5_PRESS_RING) % DS5_PRESS_RING;
-    return (now - comp_press_ms[last]) / 1000;
+    return (platform_time_ms() - comp_press_ms[last]) / 1000;
 }
 
 // Context snapshot for the bridge (battery, held time, drop tally)
@@ -1729,6 +1733,7 @@ static void ds5_process_report(bthid_device_t* device, const uint8_t* data, uint
                 ds5->lonely_sent = false;
                 comp_press_head = (uint8_t)((comp_press_head + 1) % DS5_PRESS_RING);
                 if (comp_press_count < DS5_PRESS_RING) comp_press_count++;
+                comp_press_total++;
             }
         }
     }

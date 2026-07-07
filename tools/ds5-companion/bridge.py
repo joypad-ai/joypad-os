@@ -638,15 +638,16 @@ def main():
                 parts.append("Most-pressed buttons this session (button:"
                              f"count): {ctx['top_btns']}.")
             if ctx.get("btns"):
-                parts.append("Buttons pressed on you in the LAST 2 MINUTES, "
-                             f"oldest to newest: {ctx['btns']} — the newest "
-                             f"was {ctx.get('btn_age_s', '?')}s ago. This is "
-                             "ground truth and it is COMPLETE: these and only "
-                             "these were pressed. Never invent others.")
+                parts.append("NEW buttons pressed since your previous reply, "
+                             f"oldest to newest: {ctx['btns']} (newest "
+                             f"{ctx.get('btn_age_s', '?')}s ago). COMPLETE "
+                             "list — anything you reported before is in the "
+                             "conversation already; do not re-report it and "
+                             "NEVER invent presses.")
             else:
-                parts.append("NO buttons were pressed in the last 2 minutes. "
-                             "If asked about button presses, say so — do not "
-                             "invent any.")
+                parts.append("NO new buttons pressed since your previous "
+                             "reply. If asked, say exactly that — never "
+                             "invent presses.")
         now = time.monotonic()
         for ts, ev in recent_events:
             if now - ts < 90:
