@@ -23,6 +23,10 @@
 // Build the 64-byte input report (ID 1) from a router output event.
 void sinput_report_build_from_event(sinput_report_t* out, const input_event_t* event);
 
+// Tilt steering (roll → left stick X). Pass -1 to leave a field unchanged;
+// sign: +1/-1 to set, 0 = leave. Tunable live over CDC/NUS (TILT.STEER command).
+void sinput_set_tilt_steer(int on, int range_deg, int dead_deg, int sign);
+
 // Build the 63-byte feature-response payload (ID 2). Returns the length (63).
 uint16_t sinput_build_feature_response(uint8_t feature_response[63]);
 

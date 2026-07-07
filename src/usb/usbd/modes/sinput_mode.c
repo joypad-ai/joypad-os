@@ -14,6 +14,7 @@
 #include "core/services/players/manager.h"
 #include "platform/platform.h"
 #include <string.h>
+#include <math.h>
 
 #if (defined(CONFIG_USB_HOST) || defined(CONFIG_USB)) && !defined(DISABLE_USB_HOST)
 #include "usb/usbh/hid/hid_registry.h"
@@ -752,6 +753,23 @@ bool sinput_feature_response_take(uint8_t out[63], uint16_t* len)
 // USB push/profile pipeline). Mirrors the field mapping in
 // sinput_mode_send_report(). Shared device-info/feature state is fine because
 // only one transport (USB or BLE) is the active SInput output at a time.
+// ---- Tilt steering: roll the controller → left stick X ----------------------
+// Absolute (accelerometer / gravity-referenced, so it holds a tilt like a wheel
+// and re-centers when flat). Runtime-tunable via the TILT.STEER CDC command so
+// sign/range/deadzone can be dialed in over BLE without reflashing.
+static bool  tilt_steer_on = true;
+static float tilt_steer_range_deg = 45.0f;   // tilt for full stick lock
+static float tilt_steer_dead_deg = 3.0f;     // center deadzone
+static float tilt_steer_sign = 1.0f;         // flip if steering is reversed
+
+void sinput_set_tilt_steer(int on, int range_deg, int dead_deg, int sign)
+{
+    if (on >= 0) tilt_steer_on = (on != 0);
+    if (range_deg > 0) tilt_steer_range_deg = (float)range_deg;
+    if (dead_deg >= 0) tilt_steer_dead_deg = (float)dead_deg;
+    if (sign != 0) tilt_steer_sign = (sign > 0) ? 1.0f : -1.0f;
+}
+
 void sinput_report_build_from_event(sinput_report_t* out, const input_event_t* event)
 {
     memset(out, 0, sizeof(*out));
@@ -782,6 +800,21 @@ void sinput_report_build_from_event(sinput_report_t* out, const input_event_t* e
     out->ry = convert_axis_to_s16(event->analog[ANALOG_RY]);
     out->lt = convert_trigger_to_s16(event->analog[ANALOG_L2]);
     out->rt = convert_trigger_to_s16(event->analog[ANALOG_R2]);
+
+    // Tilt steering: roll (bank) the controller → left stick X. Roll is the
+    // rotation about the forward axis, so gravity shifts between the left (X) and
+    // up (Z) accel axes; atan2 is scale-independent. Overrides the physical LX.
+    if (tilt_steer_on && event->has_motion) {
+        float roll_deg = atan2f((float)event->accel[0], (float)event->accel[2])
+                         * (180.0f / 3.14159265f);
+        float norm = 0.0f;
+        if (roll_deg > tilt_steer_dead_deg || roll_deg < -tilt_steer_dead_deg) {
+            norm = tilt_steer_sign * roll_deg / tilt_steer_range_deg;
+            if (norm > 1.0f) norm = 1.0f;
+            else if (norm < -1.0f) norm = -1.0f;
+        }
+        out->lx = (int16_t)(norm * 32767.0f);
+    }
 
     out->imu_timestamp = platform_time_us();
     if (event->has_motion) {
