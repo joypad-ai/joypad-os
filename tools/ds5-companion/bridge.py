@@ -410,6 +410,33 @@ class RealtimeSession:
                 "type": "realtime",
                 "instructions": self._build_instructions(),
                 "output_modalities": ["audio"],
+                "tools": [
+                    {"type": "function", "name": "set_lightbar",
+                     "description": "Set your lightbar color for a few "
+                        "seconds (it returns to player color after).",
+                     "parameters": {"type": "object", "properties": {
+                         "r": {"type": "integer"}, "g": {"type": "integer"},
+                         "b": {"type": "integer"},
+                         "seconds": {"type": "number"}},
+                         "required": ["r", "g", "b"]}},
+                    {"type": "function", "name": "rumble",
+                     "description": "Vibrate yourself. intensity 1-100.",
+                     "parameters": {"type": "object", "properties": {
+                         "intensity": {"type": "integer"},
+                         "seconds": {"type": "number"}},
+                         "required": ["intensity"]}},
+                    {"type": "function", "name": "scream",
+                     "description": "Play your falling scream out loud. Use "
+                        "sparingly, for comedic or dramatic effect.",
+                     "parameters": {"type": "object", "properties": {}}},
+                    {"type": "function", "name": "switch_persona",
+                     "description": "Hand the controller over to another "
+                        "personality. Available: dusty, reginald, voltage.",
+                     "parameters": {"type": "object", "properties": {
+                         "name": {"type": "string"}},
+                         "required": ["name"]}},
+                ],
+                "tool_choice": "auto",
                 "audio": {
                     # turn_detection null = manual mode. The mute button is
                     # our turn detection; server VAD auto-commits/responds on
@@ -451,6 +478,13 @@ class RealtimeSession:
             parts.append("Fragments you remember from previous conversations "
                          "(use them naturally, don't recite them):\n" + self.memory)
         return "\n\n".join(parts)
+
+    def send_tool_output(self, call_id, output):
+        self.ws.send(json.dumps({
+            "type": "conversation.item.create",
+            "item": {"type": "function_call_output",
+                     "call_id": call_id, "output": output},
+        }))
 
     def inject_context(self, text):
         """System-context item the model sees before its next reply."""
@@ -503,6 +537,13 @@ class RealtimeSession:
                 self._got_audio = True
                 yield base64.b64decode(msg["delta"])
             elif t == "response.done":
+                # Function calls the model made this round
+                self.pending_calls = []
+                for item in msg.get("response", {}).get("output", []):
+                    if item.get("type") == "function_call":
+                        self.pending_calls.append(
+                            (item.get("call_id"), item.get("name"),
+                             item.get("arguments") or "{}"))
                 # Assistant transcript for the memory file
                 try:
                     for item in msg.get("response", {}).get("output", []):
@@ -540,6 +581,9 @@ def main():
                     help="loopback: replay your own voice (no API key needed)")
     ap.add_argument("--persona", default=os.path.join(PERSONA_DIR, "dusty.txt"),
                     help="persona file (voice/name header + instructions)")
+    ap.add_argument("--commentary", type=float, default=0, metavar="MIN",
+                    help="every MIN minutes of active play, offer one "
+                         "unprompted quip about the button stats")
     args = ap.parse_args()
 
     cdc = Cdc(args.port)
@@ -635,13 +679,58 @@ def main():
             cdc.send({"cmd": "VOICE.SPEAK",
                       "d": base64.b64encode(b"".join(batch)).decode()})
 
+    persona_swap = [None]
+
+    def execute_tool(name, args_json):
+        """The model's hands: body control over CDC, persona handover."""
+        try:
+            args = json.loads(args_json)
+        except json.JSONDecodeError:
+            args = {}
+        print(f"[bridge] tool: {name}({args})")
+        if name == "set_lightbar":
+            ms = int(float(args.get("seconds", 3)) * 1000)
+            cdc.send({"cmd": "VOICE.FX",
+                      "led": [int(args.get("r", 0)) & 255,
+                              int(args.get("g", 0)) & 255,
+                              int(args.get("b", 0)) & 255],
+                      "led_ms": max(200, min(ms, 30000))})
+            return "lightbar set"
+        if name == "rumble":
+            inten = max(1, min(int(args.get("intensity", 50)), 100))
+            ms = int(float(args.get("seconds", 1)) * 1000)
+            v = int(inten * 2.55)
+            cdc.send({"cmd": "VOICE.FX", "rumble": [v, v // 2],
+                      "rumble_ms": max(100, min(ms, 10000))})
+            return "rumbling"
+        if name == "scream":
+            cdc.send({"cmd": "VOICE.FX", "scream": 1})
+            return "screamed"
+        if name == "switch_persona":
+            want = str(args.get("name", "")).lower().strip()
+            path = os.path.join(PERSONA_DIR, want + ".txt")
+            if not os.path.exists(path):
+                return f"no persona named {want}"
+            persona_swap[0] = path
+            return (f"handing over to {want} after this reply — say a brief "
+                    "goodbye in character")
+        return "unknown tool"
+
     def collect_and_speak():
-        """Collect the full reply, then play once — replies are short, and
-        per-delta playback re-triggers the lead-in ceremony (stutters).
-        Firmware blinks THINK (cyan) while this blocks."""
+        """Collect the full reply (executing any tool calls between rounds),
+        then play once. Firmware blinks THINK (cyan) while this blocks."""
+        nonlocal session, persona
         pcm = b""
-        for delta in session.poll_response_pcm24k():
-            pcm += delta
+        for _round in range(4):
+            for delta in session.poll_response_pcm24k():
+                pcm += delta
+            calls = getattr(session, "pending_calls", [])
+            session.pending_calls = []
+            if not calls:
+                break
+            for call_id, name, args_json in calls:
+                session.send_tool_output(call_id, execute_tool(name, args_json))
+            session.respond_only()   # let it narrate what it just did
         print(f"[bridge] reply: {len(pcm)//48} ms of audio")
         pcm48 = resample_24k_mono_to_48k_stereo(pcm)
         opus.reset_encoder()
@@ -655,6 +744,16 @@ def main():
         append_memory(session.last_user_text, session.last_pad_text)
         session.last_user_text = ""
         session.last_pad_text = ""
+        if persona_swap[0]:
+            path, persona_swap[0] = persona_swap[0], None
+            persona = load_persona(path)
+            print(f"[bridge] persona handover -> {persona['name']}")
+            session = RealtimeSession(persona, load_memory_tail())
+            session.inject_context(
+                "You just took over the controller from another personality. "
+                "Introduce yourself out loud, briefly, in character.")
+            session.respond_only()
+            collect_and_speak()
 
     last_reaction = [0.0]
 
@@ -698,6 +797,7 @@ def main():
 
     print("[bridge] ready — hold mute on the DualSense and talk")
     utterance_pcm = b""
+    last_comment_t = time.monotonic()
     try:
         while True:
             for typ, obj in cdc.poll() or ():
@@ -762,6 +862,24 @@ def main():
                               "lonely"):
                         recent_events.append((time.monotonic(), ev))
                         react_to(ev)
+            # Gameplay commentary: unprompted quips on active play
+            if (args.commentary and session is not None and
+                    time.monotonic() - last_comment_t > args.commentary * 60):
+                last_comment_t = time.monotonic()
+                ctx = fetch_ctx()
+                if ctx and ctx.get("btn_age_s", 10**9) < args.commentary * 60:
+                    try:
+                        session.inject_context(
+                            "COMMENTARY moment (nobody spoke to you): the "
+                            "user has been playing. Most-pressed buttons "
+                            f"(button:count): {ctx.get('top_btns', '')}. "
+                            f"Recent presses in order: {ctx.get('btns', '')}. "
+                            "Offer ONE short unprompted observation about "
+                            "their play style, in character.")
+                        session.respond_only()
+                        collect_and_speak()
+                    except Exception as e:
+                        print(f"[bridge] commentary failed ({e})")
             time.sleep(0.002)
     except KeyboardInterrupt:
         cdc.send({"cmd": "DEBUG.STREAM", "enable": False})
