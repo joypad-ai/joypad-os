@@ -308,6 +308,10 @@ typedef struct {
     uint32_t comp_listen_t0;        // LISTEN failsafe timeout
     uint32_t connected_at_ms;       // for held-time context
     uint32_t comp_btns_prev;        // press-history edge detection
+    int16_t shake_prev[3];          // last accel sample (jerk detection)
+    uint16_t shake_score;           // decaying violence accumulator
+    uint32_t shake_cooldown_until;  // one event per burst
+    uint8_t shakes_session;
     uint8_t batt_raw;               // report[52]: level nibble + charge bits
     uint8_t drops_session;          // impacts since connect
     uint8_t catches_session;        // soft catches since connect
@@ -974,7 +978,8 @@ uint32_t ds5_companion_get_presses(char* buf, int buflen)
 
 // Context snapshot for the bridge (battery, held time, drop tally)
 bool ds5_companion_get_ctx(uint8_t* batt_pct, bool* charging,
-                           uint32_t* held_s, uint8_t* drops, uint8_t* catches)
+                           uint32_t* held_s, uint8_t* drops, uint8_t* catches,
+                           uint8_t* shakes)
 {
     if (!comp_device) return false;
     ds5_bt_data_t* ds5 = (ds5_bt_data_t*)comp_device->driver_data;
@@ -985,6 +990,7 @@ bool ds5_companion_get_ctx(uint8_t* batt_pct, bool* charging,
     *held_s = (platform_time_ms() - ds5->connected_at_ms) / 1000;
     *drops = ds5->drops_session;
     *catches = ds5->catches_session;
+    *shakes = ds5->shakes_session;
     return true;
 }
 
@@ -1420,6 +1426,30 @@ static void ds5_process_report(bthid_device_t* device, const uint8_t* data, uint
     // on the way down like always — then complains about it in conversation)
     ds5_drop_update(device, ds5, rpt->accel);
     ds5->batt_raw = ((const uint8_t*)rpt)[52];
+
+    // Shake sense: sustained violent jerk (rapid accel direction changes)
+    // without the free-fall signature. Jerk accumulates into a decaying
+    // score; crossing the bar fires one "shaken" event per burst.
+    {
+        uint32_t snow = platform_time_ms();
+        int32_t d = 0;
+        for (int a = 0; a < 3; a++) {
+            int32_t dd = (int32_t)rpt->accel[a] - ds5->shake_prev[a];
+            d += dd < 0 ? -dd : dd;
+            ds5->shake_prev[a] = rpt->accel[a];
+        }
+        if (d > 8000 && ds5->drop_state == DS5_DROP_IDLE) {
+            if (ds5->shake_score < 400) ds5->shake_score += 3;
+        }
+        ds5->shake_score = (uint16_t)(ds5->shake_score * 31 / 32);
+        if (ds5->shake_score > 45 && snow > ds5->shake_cooldown_until) {
+            ds5->shake_cooldown_until = snow + 6000;
+            ds5->shake_score = 0;
+            ds5->shakes_session++;
+            printf("[DS5_BT] Companion: SHAKEN\n");
+            cdc_voice_notify("shaken");
+        }
+    }
 
     // Press history: rolling ring of recent button presses (rising edges),
     // in order, so the AI answers "what did I just press?" with facts

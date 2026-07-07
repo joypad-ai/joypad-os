@@ -578,6 +578,9 @@ def main():
                 parts.append(f"You've been dropped {ctx['drops']} time(s) and "
                              f"caught mid-air {ctx.get('catches', 0)} time(s) "
                              "this session.")
+            if ctx.get("shakes"):
+                parts.append(f"You've been shaken {ctx['shakes']} time(s) "
+                             "this session.")
             if ctx.get("btns"):
                 parts.append("Buttons pressed on you recently, in order from "
                              f"oldest to newest: {ctx['btns']} — the newest "
@@ -654,11 +657,13 @@ def main():
         last_reaction[0] = now
         time.sleep(1.2)  # let the scream/impact moment finish
         try:
+            desc = {"dropped": "DROPPED and hit a surface. You screamed "
+                               "on the way down.",
+                    "caught": "tossed into the air and caught cleanly.",
+                    "shaken": "SHAKEN violently, like a snow globe or a "
+                              "stubborn ketchup bottle."}[ev]
             session.inject_context(
-                "PHYSICAL EVENT, just now: you were "
-                + ("DROPPED and hit a surface. You screamed on the way down."
-                   if ev == "dropped" else
-                   "tossed into the air and caught cleanly.")
+                "PHYSICAL EVENT, just now: you were " + desc
                 + " React out loud RIGHT NOW, in character — one short "
                   "exclamation or complaint. Nobody asked you anything; "
                   "this is you reacting.")
@@ -728,7 +733,7 @@ def main():
                 elif kind == "voice":
                     ev = obj.get("ev")
                     print(f"[bridge] voice event: {ev}")
-                    if ev in ("dropped", "caught"):
+                    if ev in ("dropped", "caught", "shaken"):
                         recent_events.append((time.monotonic(), ev))
                         react_to(ev)
             time.sleep(0.002)

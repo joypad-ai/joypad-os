@@ -1552,11 +1552,11 @@ static void cmd_voice_speak(const char* json)
 static void cmd_voice_ctx(const char* json)
 {
     (void)json;
-    extern bool ds5_companion_get_ctx(uint8_t*, bool*, uint32_t*, uint8_t*, uint8_t*);
-    uint8_t batt = 0, drops = 0, catches = 0;
+    extern bool ds5_companion_get_ctx(uint8_t*, bool*, uint32_t*, uint8_t*, uint8_t*, uint8_t*);
+    uint8_t batt = 0, drops = 0, catches = 0, shakes = 0;
     bool chg = false;
     uint32_t held = 0;
-    if (!ds5_companion_get_ctx(&batt, &chg, &held, &drops, &catches)) {
+    if (!ds5_companion_get_ctx(&batt, &chg, &held, &drops, &catches, &shakes)) {
         send_error("no controller");
         return;
     }
@@ -1565,9 +1565,10 @@ static void cmd_voice_ctx(const char* json)
     uint32_t press_age = ds5_companion_get_presses(presses, sizeof(presses));
     snprintf(response_buf, sizeof(response_buf),
              "{\"ok\":true,\"batt\":%u,\"chg\":%s,\"held_s\":%lu,"
-             "\"drops\":%u,\"catches\":%u,\"btns\":\"%s\",\"btn_age_s\":%lu}",
+             "\"drops\":%u,\"catches\":%u,\"shakes\":%u,"
+             "\"btns\":\"%s\",\"btn_age_s\":%lu}",
              batt, chg ? "true" : "false", (unsigned long)held, drops, catches,
-             presses, (unsigned long)press_age);
+             shakes, presses, (unsigned long)press_age);
     send_json(response_buf);
 }
 
