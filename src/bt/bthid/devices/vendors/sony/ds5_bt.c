@@ -1422,17 +1422,17 @@ static void ds5_process_report(bthid_device_t* device, const uint8_t* data, uint
             // mute bit and halving the mic stream.
             ds5_bt_data_t* cds5 = (ds5_bt_data_t*)device->driver_data;
             if (cds5 && data[3] == 0xD4 && (data[1] & 0x0F) == 0x02) {
+                // Mic-signature frames are NEVER input, at any time: the
+                // controller streams them well past any drain window after
+                // LISTEN ends, and parsed as input they spray random
+                // buttons at the HID host. Unconditional quarantine. Cost:
+                // one legitimate input report (stick Y exactly 0xD4 AND seq
+                // nibble 2 — ~1/4096) dropped per ~16s of play; the next
+                // real report is 4ms behind it.
                 if (cds5->mic_active) {
                     ds5_companion_mic_capture(cds5, data, len);
-                    return;
                 }
-                // Drain window: the controller keeps sending mic frames for
-                // a beat after the mic-enable bit clears — parsed as input
-                // they become random button/stick/mute garbage that scrambles
-                // the host and the talk state machine. Discard them.
-                if ((int32_t)(platform_time_ms() - cds5->mic_drain_until) < 0) {
-                    return;
-                }
+                return;
             }
         }
 #endif
