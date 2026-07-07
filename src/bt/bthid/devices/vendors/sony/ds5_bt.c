@@ -1018,17 +1018,24 @@ uint32_t ds5_companion_get_presses(char* buf, int buflen)
 {
     buf[0] = 0;
     if (comp_press_count == 0) return 0xFFFFFFFFu;
+    // Only presses from the last 2 minutes: a stale ring made the model
+    // narrate hour-old presses (PS reconnects, handling bumps) as "just now".
+    uint32_t now = platform_time_ms();
     int n = comp_press_count < 10 ? comp_press_count : 10;
     int start = (comp_press_head - n + DS5_PRESS_RING) % DS5_PRESS_RING;
     int pos = 0;
+    bool any = false;
     for (int i = 0; i < n; i++) {
         int idx = (start + i) % DS5_PRESS_RING;
+        if (now - comp_press_ms[idx] > 120000u) continue;
         pos += snprintf(buf + pos, (size_t)(buflen - pos), "%s%s",
-                        i ? "," : "", DS5_BTN_NAMES[comp_press_ring[idx]]);
+                        any ? "," : "", DS5_BTN_NAMES[comp_press_ring[idx]]);
+        any = true;
         if (pos >= buflen - 1) break;
     }
+    if (!any) return 0xFFFFFFFFu;
     int last = (comp_press_head - 1 + DS5_PRESS_RING) % DS5_PRESS_RING;
-    return (platform_time_ms() - comp_press_ms[last]) / 1000;
+    return (now - comp_press_ms[last]) / 1000;
 }
 
 // Context snapshot for the bridge (battery, held time, drop tally)
