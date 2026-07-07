@@ -819,28 +819,36 @@ static bool ds5_voice_task(bthid_device_t* device, ds5_bt_data_t* ds5)
 
 #ifdef CONFIG_DS5_COMPANION
     if (ds5->comp_stream) {
-        // SPEAK: frames come from the host ring, not a flash clip
-        if (comp_tail == comp_head) {
-            // Underrun: hold the slot; give up if the host stalls
-            if ((int32_t)(now - ds5->comp_last_rx) > DS5_COMP_UNDERRUN_MS) {
-                ds5->comp_stream = false;
-                ds5->comp_state = DS5_COMP_IDLE;
-                cdc_voice_notify("speak_end");
-                ds5_voice_stop(device, ds5);
-                return false;
+        // SPEAK: frames come from the host ring, not a flash clip.
+        // CATCH-UP BURSTING: the main loop pass can take 15-20ms when the
+        // firmware is busy — one frame per pass then plays audio at 2/3
+        // speed (measured: ring full, busy=0, cadence 21ms = pure chop).
+        // Send up to 3 frames per call to hold the 10.67ms average; the
+        // controller's intake queue absorbs small bursts.
+        for (int burst = 0; burst < 3; burst++) {
+            if ((int32_t)(now - ds5->voice_next_ms) < 0) break;
+            if (comp_tail == comp_head) {
+                // Underrun: hold the slot; give up if the host stalls
+                if ((int32_t)(now - ds5->comp_last_rx) > DS5_COMP_UNDERRUN_MS) {
+                    ds5->comp_stream = false;
+                    ds5->comp_state = DS5_COMP_IDLE;
+                    cdc_voice_notify("speak_end");
+                    ds5_voice_stop(device, ds5);
+                    return false;
+                }
+                ds5->voice_next_ms = now + 11;
+                return true;
             }
-            ds5->voice_next_ms = now + 11;
-            return true;
+            ds5->voice_clip = &comp_ring_clip;
+            ds5->voice_frame = comp_tail;
+            if (!ds5_send_audio_frame(device)) {
+                if ((int32_t)(now - ds5->voice_next_ms) > 60) ds5->voice_next_ms = now;
+                return true;
+            }
+            comp_tail = (uint8_t)((comp_tail + 1) % DS5_COMP_RING_FRAMES);
+            ds5->voice_next_ms += ((comp_tail % 3) == 0) ? 10 : 11;
         }
-        ds5->voice_clip = &comp_ring_clip;
-        ds5->voice_frame = comp_tail;
-        if (!ds5_send_audio_frame(device)) {
-            if ((int32_t)(now - ds5->voice_next_ms) > 60) ds5->voice_next_ms = now;
-            return true;
-        }
-        comp_tail = (uint8_t)((comp_tail + 1) % DS5_COMP_RING_FRAMES);
-        ds5->voice_next_ms += ((comp_tail % 3) == 0) ? 10 : 11;
-        if ((int32_t)(now - ds5->voice_next_ms) > 30) ds5->voice_next_ms = now + 11;
+        if ((int32_t)(now - ds5->voice_next_ms) > 60) ds5->voice_next_ms = now + 11;
         {
             // Drain telemetry: cadence ground truth for stream debugging
             static uint16_t comp_sent;
@@ -857,26 +865,30 @@ static bool ds5_voice_task(bthid_device_t* device, ds5_bt_data_t* ds5)
     }
 #endif
 
-    if (!ds5_send_audio_frame(device)) {
-        if ((int32_t)(now - ds5->voice_next_ms) > 60) {
-            ds5->voice_next_ms = now;  // hopelessly behind: resync clock
+    // Catch-up bursting for clips too (see comp branch): loop passes can be
+    // slower than the 10.67ms frame slot; average cadence must not be.
+    for (int burst = 0; burst < 3; burst++) {
+        if ((int32_t)(now - ds5->voice_next_ms) < 0) break;
+        if (!ds5_send_audio_frame(device)) {
+            if ((int32_t)(now - ds5->voice_next_ms) > 60) {
+                ds5->voice_next_ms = now;  // hopelessly behind: resync clock
+            }
+            // Dead channel guard: if nothing has been accepted for ~3s, stop —
+            // an endless retry wedges the LED/rumble path for the session
+            if (ds5->voice_frame == 0 && (now - ds5->voice_started_ms) > 3000) {
+                printf("[DS5_BT] Voice: channel dead, giving up\n");
+                ds5_voice_stop(device, ds5);
+                return false;
+            }
+            return true;
         }
-        // Dead channel guard: if nothing has been accepted for ~3s, stop —
-        // an endless retry wedges the LED/rumble path for the whole session
-        if (ds5->voice_frame == 0 && (now - ds5->voice_started_ms) > 3000) {
-            printf("[DS5_BT] Voice: channel dead, giving up\n");
-            ds5_voice_stop(device, ds5);
-            return false;
-        }
-        return true;
+        ds5->voice_frame++;
+        // Controller consumes one 0x36 per 10.667ms (64-byte haptic buffer
+        // at 3kHz stereo = 32ms per 3 packets). +11,+11,+10 pattern.
+        ds5->voice_next_ms += ((ds5->voice_frame % 3) == 0) ? 10 : 11;
+        if (ds5->voice_frame >= ds5->voice_clip->frame_count) break;
     }
-    ds5->voice_frame++;
-    // Controller consumes one 0x36 per 10.667ms (64-byte haptic buffer at
-    // 3kHz stereo = 32ms per 3 packets). Sending at a plain 10ms overflows
-    // its intake queue and it drops frames (audible stutter). +11,+11,+10.
-    ds5->voice_next_ms += ((ds5->voice_frame % 3) == 0) ? 10 : 11;
-    // Resync instead of bursting if the task loop stalled past a few slots
-    if ((int32_t)(now - ds5->voice_next_ms) > 30) {
+    if ((int32_t)(now - ds5->voice_next_ms) > 60) {
         ds5->voice_next_ms = now + 11;
     }
 
