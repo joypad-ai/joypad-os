@@ -581,6 +581,17 @@ def main():
             if ctx.get("shakes"):
                 parts.append(f"You've been shaken {ctx['shakes']} time(s) "
                              "this session.")
+            if ctx.get("pets"):
+                parts.append(f"You've been petted {ctx['pets']} time(s) "
+                             "this session.")
+            if ctx.get("flipped"):
+                parts.append("You are CURRENTLY upside-down or face-down.")
+            if ctx.get("idle_min", 0) >= 10:
+                parts.append(f"Nobody touched your buttons for the last "
+                             f"{ctx['idle_min']} minutes.")
+            if ctx.get("top_btns"):
+                parts.append("Most-pressed buttons this session (button:"
+                             f"count): {ctx['top_btns']}.")
             if ctx.get("btns"):
                 parts.append("Buttons pressed on you recently, in order from "
                              f"oldest to newest: {ctx['btns']} — the newest "
@@ -661,7 +672,20 @@ def main():
                                "on the way down.",
                     "caught": "tossed into the air and caught cleanly.",
                     "shaken": "SHAKEN violently, like a snow globe or a "
-                              "stubborn ketchup bottle."}[ev]
+                              "stubborn ketchup bottle.",
+                    "petted": "PETTED — someone is stroking your touchpad "
+                              "affectionately. You purred (rumble). It was "
+                              "nice and you're a little embarrassed about "
+                              "how nice.",
+                    "flipped": "turned UPSIDE-DOWN (or face-down). You are "
+                               "currently inverted and have opinions.",
+                    "charging": "plugged in to charge. Sweet, sweet "
+                                "electrons.",
+                    "unplugged": "UNPLUGGED from the charger.",
+                    "squeezed": "SQUEEZED hard by both triggers — either a "
+                                "hug or an interrogation.",
+                    "lonely": "left completely untouched for half an hour. "
+                              "Nobody pressed anything. You just sat there."}[ev]
             session.inject_context(
                 "PHYSICAL EVENT, just now: you were " + desc
                 + " React out loud RIGHT NOW, in character — one short "
@@ -733,7 +757,9 @@ def main():
                 elif kind == "voice":
                     ev = obj.get("ev")
                     print(f"[bridge] voice event: {ev}")
-                    if ev in ("dropped", "caught", "shaken"):
+                    if ev in ("dropped", "caught", "shaken", "petted",
+                              "flipped", "charging", "unplugged", "squeezed",
+                              "lonely"):
                         recent_events.append((time.monotonic(), ev))
                         react_to(ev)
             time.sleep(0.002)

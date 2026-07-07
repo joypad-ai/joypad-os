@@ -376,9 +376,16 @@ static void cmd_imu_map(const char* json)
     send_json(response_buf);
 }
 
-// Tilt steering: roll the controller → left stick X. Tune live over CDC/NUS.
+// Tilt steering: roll the controller → right stick X (while D-pad is in LEFT-
+// stick mode). Tune live over CDC/NUS — no reflash.
 // {"cmd":"TILT.STEER","on":1,"range":45,"dead":3,"sign":-1} — all fields optional.
-extern void sinput_set_tilt_steer(int on, int range_deg, int dead_deg, int sign);
+// Weak no-op so apps that don't compile pad/pad_input.c (e.g. bt2usb) still
+// link; the real implementation overrides it wherever pad_input.c is built.
+__attribute__((weak)) void pad_set_tilt_steer(int on, int range_deg,
+                                              int dead_deg, int sign)
+{
+    (void)on; (void)range_deg; (void)dead_deg; (void)sign;
+}
 static void cmd_tilt_steer(const char* json)
 {
     int on = -1, range = -1, dead = -1, sign = 0;
@@ -386,7 +393,7 @@ static void cmd_tilt_steer(const char* json)
     json_get_int(json, "range", &range);
     json_get_int(json, "dead", &dead);
     json_get_int(json, "sign", &sign);
-    sinput_set_tilt_steer(on, range, dead, sign);
+    pad_set_tilt_steer(on, range, dead, sign);
     send_ok();
 }
 
@@ -1561,14 +1568,23 @@ static void cmd_voice_ctx(const char* json)
         return;
     }
     extern uint32_t ds5_companion_get_presses(char*, int);
+    extern bool ds5_companion_get_ctx2(uint8_t*, bool*, uint32_t*, char*, int);
     char presses[160];
     uint32_t press_age = ds5_companion_get_presses(presses, sizeof(presses));
+    uint8_t pets = 0;
+    bool flipped = false;
+    uint32_t idle_min = 0;
+    char top_btns[64] = "";
+    ds5_companion_get_ctx2(&pets, &flipped, &idle_min, top_btns, sizeof(top_btns));
     snprintf(response_buf, sizeof(response_buf),
              "{\"ok\":true,\"batt\":%u,\"chg\":%s,\"held_s\":%lu,"
-             "\"drops\":%u,\"catches\":%u,\"shakes\":%u,"
+             "\"drops\":%u,\"catches\":%u,\"shakes\":%u,\"pets\":%u,"
+             "\"flipped\":%s,\"idle_min\":%lu,\"top_btns\":\"%s\","
              "\"btns\":\"%s\",\"btn_age_s\":%lu}",
              batt, chg ? "true" : "false", (unsigned long)held, drops, catches,
-             shakes, presses, (unsigned long)press_age);
+             shakes, pets, flipped ? "true" : "false",
+             (unsigned long)idle_min, top_btns,
+             presses, (unsigned long)press_age);
     send_json(response_buf);
 }
 

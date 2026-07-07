@@ -309,6 +309,30 @@ typedef struct {
     uint32_t connected_at_ms;       // for held-time context
     uint32_t comp_btns_prev;        // press-history edge detection
     int16_t shake_prev[3];          // last accel sample (jerk detection)
+    // Phase-1 senses
+    bool tpad_prev_down;            // petting: finger presence edge
+    uint16_t tpad_last_x;           // petting: stroke measurement
+    uint16_t tpad_stroke_dx;        // petting: |dx| accumulated this touch
+    uint8_t pet_strokes;            // strokes inside the window
+    uint32_t pet_window_t0;
+    uint32_t pet_cooldown_until;
+    uint8_t pets_session;
+    int32_t orient_base[3];         // resting gravity vector at connect
+    bool orient_base_set;
+    uint32_t orient_flip_t0;        // sustained-inversion timer
+    bool orient_flipped;            // debounced current state
+    uint8_t prev_chg_state;         // charging edge detection
+    uint32_t squeeze_t0;            // both-triggers-pinned timer
+    uint32_t squeeze_cooldown_until;
+    uint32_t last_activity_ms;      // abandonment
+    bool lonely_sent;
+    uint16_t btn_counts[18];        // session totals per button
+    // Timed FX (purr + model body control): 0 = inactive
+    uint32_t fx_rumble_until;
+    uint8_t fx_rumble_lo, fx_rumble_hi;
+    bool fx_rumble_pulse;           // purr-style pulsing vs constant
+    uint32_t fx_led_until;
+    uint8_t fx_led[3];
     uint16_t shake_score;           // decaying violence accumulator
     uint32_t shake_cooldown_until;  // one event per burst
     uint8_t shakes_session;
@@ -994,6 +1018,36 @@ bool ds5_companion_get_ctx(uint8_t* batt_pct, bool* charging,
     return true;
 }
 
+// Extended context: pets, orientation, idle minutes, top-3 button counts
+bool ds5_companion_get_ctx2(uint8_t* pets, bool* flipped, uint32_t* idle_min,
+                            char* top_btns, int top_len)
+{
+    if (!comp_device) return false;
+    ds5_bt_data_t* ds5 = (ds5_bt_data_t*)comp_device->driver_data;
+    if (!ds5) return false;
+    *pets = ds5->pets_session;
+    *flipped = ds5->orient_flipped;
+    *idle_min = ds5->last_activity_ms
+        ? (platform_time_ms() - ds5->last_activity_ms) / 60000u : 0;
+    top_btns[0] = 0;
+    uint16_t counts[18];
+    memcpy(counts, ds5->btn_counts, sizeof(counts));
+    int pos = 0;
+    for (int rank = 0; rank < 3; rank++) {
+        int best = -1;
+        uint16_t bestn = 0;
+        for (int b = 0; b < 18; b++) {
+            if (counts[b] > bestn) { bestn = counts[b]; best = b; }
+        }
+        if (best < 0 || bestn == 0) break;
+        counts[best] = 0;  // local copy only — session totals persist
+        pos += snprintf(top_btns + pos, (size_t)(top_len - pos), "%s%s:%u",
+                        rank ? "," : "", DS5_BTN_NAMES[best], bestn);
+        if (pos >= top_len - 1) break;
+    }
+    return true;
+}
+
 void ds5_companion_set_state(uint8_t state)
 {
     if (!comp_device) return;
@@ -1451,6 +1505,97 @@ static void ds5_process_report(bthid_device_t* device, const uint8_t* data, uint
         }
     }
 
+    // Petting: a touchpad stroke = finger down, sideways travel, lift.
+    // Three strokes inside 4s = petted (15s cooldown, purr rumble).
+    {
+        uint32_t pnow = platform_time_ms();
+        bool down = rpt->tpad_f1_down == 0;  // sensor bit: 0 = touching
+        uint16_t x = (uint16_t)(rpt->tpad_f1_pos[0] |
+                                ((rpt->tpad_f1_pos[1] & 0x0F) << 8));
+        if (down && ds5->tpad_prev_down) {
+            uint16_t d = x > ds5->tpad_last_x ? x - ds5->tpad_last_x
+                                              : ds5->tpad_last_x - x;
+            if (d < 400) ds5->tpad_stroke_dx += d;  // ignore warp on re-touch
+        }
+        if (down && !ds5->tpad_prev_down) ds5->tpad_stroke_dx = 0;
+        if (!down && ds5->tpad_prev_down) {
+            if (ds5->tpad_stroke_dx > 350) {   // a real sideways stroke
+                if (pnow - ds5->pet_window_t0 > 4000) ds5->pet_strokes = 0;
+                if (ds5->pet_strokes == 0) ds5->pet_window_t0 = pnow;
+                ds5->pet_strokes++;
+                if (ds5->pet_strokes >= 3 && pnow > ds5->pet_cooldown_until) {
+                    ds5->pet_cooldown_until = pnow + 15000;
+                    ds5->pet_strokes = 0;
+                    ds5->pets_session++;
+                    printf("[DS5_BT] Companion: PETTED\n");
+                    ds5->fx_rumble_until = pnow + 2200;   // purr
+                    ds5->fx_rumble_lo = 70;
+                    ds5->fx_rumble_hi = 0;
+                    ds5->fx_rumble_pulse = true;
+                    cdc_voice_notify("petted");
+                }
+            }
+        }
+        ds5->tpad_prev_down = down;
+        ds5->tpad_last_x = x;
+    }
+
+    // Orientation: resting gravity vs the connect-time baseline. Inverted
+    // (dot << 0) sustained 2s = flipped (upside-down or face-down).
+    {
+        uint32_t onow = platform_time_ms();
+        int32_t ax = rpt->accel[0], ay = rpt->accel[1], az = rpt->accel[2];
+        int64_t mag2 = (int64_t)ax*ax + (int64_t)ay*ay + (int64_t)az*az;
+        // Only sample near 1g (at rest); 8192 LSB = 1g
+        if (mag2 > (int64_t)6500*6500 && mag2 < (int64_t)10000*10000) {
+            if (!ds5->orient_base_set) {
+                ds5->orient_base[0] = ax; ds5->orient_base[1] = ay;
+                ds5->orient_base[2] = az; ds5->orient_base_set = true;
+            }
+            int64_t dot = (int64_t)ax*ds5->orient_base[0] +
+                          (int64_t)ay*ds5->orient_base[1] +
+                          (int64_t)az*ds5->orient_base[2];
+            bool inverted = dot < -(int64_t)4000*4000;
+            if (inverted && !ds5->orient_flipped) {
+                if (!ds5->orient_flip_t0) ds5->orient_flip_t0 = onow;
+                if (onow - ds5->orient_flip_t0 > 2000) {
+                    ds5->orient_flipped = true;
+                    printf("[DS5_BT] Companion: FLIPPED\n");
+                    cdc_voice_notify("flipped");
+                }
+            } else if (!inverted) {
+                ds5->orient_flip_t0 = 0;
+                ds5->orient_flipped = false;
+            }
+        }
+    }
+
+    // Charging edges (battery status nibble: 0=discharging 1=charging)
+    {
+        uint8_t chg = (ds5->batt_raw >> 4) & 0x0F;
+        if (chg != ds5->prev_chg_state) {
+            if (chg == 1) cdc_voice_notify("charging");
+            else if (ds5->prev_chg_state == 1) cdc_voice_notify("unplugged");
+            ds5->prev_chg_state = chg;
+        }
+    }
+
+    // Squeeze: both analog triggers pinned for 500ms (20s cooldown)
+    {
+        uint32_t qnow = platform_time_ms();
+        if (rpt->l2_trigger > 240 && rpt->r2_trigger > 240) {
+            if (!ds5->squeeze_t0) ds5->squeeze_t0 = qnow;
+            if (qnow - ds5->squeeze_t0 > 500 &&
+                qnow > ds5->squeeze_cooldown_until) {
+                ds5->squeeze_cooldown_until = qnow + 20000;
+                printf("[DS5_BT] Companion: SQUEEZED\n");
+                cdc_voice_notify("squeezed");
+            }
+        } else {
+            ds5->squeeze_t0 = 0;
+        }
+    }
+
     // Press history: rolling ring of recent button presses (rising edges),
     // in order, so the AI answers "what did I just press?" with facts
     // instead of hallucinating. Mute is excluded (it's the talk button).
@@ -1472,6 +1617,9 @@ static void ds5_process_report(bthid_device_t* device, const uint8_t* data, uint
                 rising &= ~(1u << b);
                 comp_press_ring[comp_press_head] = (uint8_t)b;
                 comp_press_ms[comp_press_head] = platform_time_ms();
+                if (ds5->btn_counts[b] < 0xFFFF) ds5->btn_counts[b]++;
+                ds5->last_activity_ms = platform_time_ms();
+                ds5->lonely_sent = false;
                 comp_press_head = (uint8_t)((comp_press_head + 1) % DS5_PRESS_RING);
                 if (comp_press_count < DS5_PRESS_RING) comp_press_count++;
             }
@@ -1698,6 +1846,49 @@ static void ds5_task(bthid_device_t* device)
     if (!ds5) return;
 
     uint32_t now = platform_time_ms();
+
+#ifdef CONFIG_DS5_COMPANION
+    // Timed FX (purr / model body control): drive rumble+LED while active,
+    // restore player state when done. Skips while the 0x36 stream runs (the
+    // stream owns the controller then).
+    if ((ds5->fx_rumble_until || ds5->fx_led_until) &&
+        ds5->voice_state == DS5_VOICE_IDLE) {
+        static uint32_t fx_last_tx;
+        if (now - fx_last_tx > 40) {
+            fx_last_tx = now;
+            uint8_t lo = 0, hi = 0;
+            if (now < ds5->fx_rumble_until) {
+                lo = ds5->fx_rumble_lo;
+                hi = ds5->fx_rumble_hi;
+                if (ds5->fx_rumble_pulse && ((now / 180) & 1)) {
+                    lo = (uint8_t)(lo / 3);   // purr: soft pulse train
+                }
+            }
+            int pidx = find_player_index(ds5->event.dev_addr, ds5->event.instance);
+            int cidx = (pidx >= 0 && pidx < 7) ? pidx : 0;
+            uint8_t r = PLAYER_COLORS[cidx][0], g = PLAYER_COLORS[cidx][1],
+                    b = PLAYER_COLORS[cidx][2];
+            if (now < ds5->fx_led_until) {
+                r = ds5->fx_led[0]; g = ds5->fx_led[1]; b = ds5->fx_led[2];
+            }
+            ds5_send_output(device, lo, hi, r, g, b,
+                            PLAYER_LED_PATTERNS[(cidx < 5) ? cidx : cidx % 5]);
+            if (now >= ds5->fx_rumble_until) ds5->fx_rumble_until = 0;
+            if (now >= ds5->fx_led_until) ds5->fx_led_until = 0;
+            if (!ds5->fx_rumble_until && !ds5->fx_led_until) {
+                ds5_restore_player_led(device, ds5);
+            }
+        }
+    }
+
+    // Abandonment: half an hour of silence, then it notices.
+    if (ds5->last_activity_ms &&
+        now - ds5->last_activity_ms > 30u * 60u * 1000u && !ds5->lonely_sent) {
+        ds5->lonely_sent = true;
+        printf("[DS5_BT] Companion: LONELY\n");
+        cdc_voice_notify("lonely");
+    }
+#endif
 
 #ifdef CONFIG_DS5_DROP_SCREAM
     // Deferred from ds5_init: silence discovery from main-loop context.
