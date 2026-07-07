@@ -686,6 +686,7 @@ def main():
             if w > 0.032:
                 slow += 1
                 worst = max(worst, w)
+        cdc.send({"cmd": "VOICE.SPEAK", "end": 1})   # flush: play whatever queued
         if slow:
             print(f"[bridge] FEED: {slow}/{len(batches)} sends over budget, "
                   f"worst {worst*1000:.0f}ms", flush=True)

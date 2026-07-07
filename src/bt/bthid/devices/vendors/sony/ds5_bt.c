@@ -108,7 +108,7 @@ enum {
     DS5_COMP_SPEAK,
 };
 #define DS5_COMP_HOLD_MS        250   // mute hold before LISTEN engages
-#define DS5_COMP_RING_FRAMES    24    // host speech ring (24 x 200B = ~256ms)
+#define DS5_COMP_RING_FRAMES 192  // ~2s of audio: absorbs host-side write stalls (measured 100ms driver backoffs)    // host speech ring (24 x 200B = ~256ms)
 #define DS5_COMP_UNDERRUN_MS    600   // stop SPEAK if host stalls this long
 #endif
 // Firework burst timing comes per-clip from ds5_voice_clip_t.fx_frame
@@ -967,8 +967,14 @@ bool ds5_companion_push_speak(const uint8_t* frame200)
     memcpy(comp_ring[comp_head], frame200, 200);
     comp_head = next;
     ds5->comp_last_rx = platform_time_ms();
-    if (!ds5->comp_stream || ds5->voice_state == DS5_VOICE_IDLE) {
-        // First frame of a response: start the SPEAK stream (player color LED)
+    // Start playback only once a ~0.5s cushion exists — the cushion, not
+    // perfect timing, makes playback smooth. Short replies start via the
+    // end-marker flush (ds5_companion_speak_flush).
+    uint8_t depth = (uint8_t)((comp_head - comp_tail + DS5_COMP_RING_FRAMES)
+                              % DS5_COMP_RING_FRAMES);
+    if ((!ds5->comp_stream || ds5->voice_state == DS5_VOICE_IDLE) &&
+        depth >= 45) {
+        // Response under way: start the SPEAK stream (player color LED)
         ds5->comp_state = DS5_COMP_SPEAK;
         ds5->comp_stream = true;
         ds5->comp_loop = false;
@@ -1095,6 +1101,27 @@ bool ds5_companion_get_ctx2(uint8_t* pets, bool* flipped, uint32_t* idle_min,
         if (pos >= top_len - 1) break;
     }
     return true;
+}
+
+// End-of-response flush: start playback even if the cushion never filled
+// (replies shorter than the start threshold).
+void ds5_companion_speak_flush(void)
+{
+    if (!comp_device) return;
+    ds5_bt_data_t* ds5 = (ds5_bt_data_t*)comp_device->driver_data;
+    if (!ds5 || comp_head == comp_tail) return;
+    if (ds5->comp_stream && ds5->voice_state != DS5_VOICE_IDLE) return;
+    ds5->comp_state = DS5_COMP_SPEAK;
+    ds5->comp_stream = true;
+    ds5->comp_loop = false;
+    ds5->comp_last_rx = platform_time_ms();
+    int pidx = find_player_index(ds5->event.dev_addr, ds5->event.instance);
+    int idx = (pidx >= 0 && pidx < 7) ? pidx : 0;
+    ds5_voice_play(comp_device, ds5, &comp_ring_clip, false,
+                   (uint8_t)(PLAYER_COLORS[idx][0] * 3),
+                   (uint8_t)(PLAYER_COLORS[idx][1] * 3),
+                   (uint8_t)(PLAYER_COLORS[idx][2] * 3),
+                   DS5_LED_STEADY);
 }
 
 void ds5_companion_set_state(uint8_t state)

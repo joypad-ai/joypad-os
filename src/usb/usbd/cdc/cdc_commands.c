@@ -1529,6 +1529,13 @@ static void voice_notify_drain(void)
 static void cmd_voice_speak(const char* json)
 {
     int dlen;
+    int end = 0;
+    json_get_int(json, "end", &end);
+    if (end) {
+        extern void ds5_companion_speak_flush(void);
+        ds5_companion_speak_flush();
+        return;
+    }
     const char* d = json_get_string(json, "d", &dlen);
     if (!d) {
         send_error("missing d");
