@@ -307,6 +307,7 @@ typedef struct {
     uint8_t comp_release_streak;
     uint32_t comp_listen_t0;        // LISTEN failsafe timeout
     uint32_t mic_drain_until;       // classify+discard mic stragglers post-LISTEN
+    bool comp_end_pending;          // host said idle: finish the ring, then stop
     uint32_t connected_at_ms;       // for held-time context
     uint32_t comp_btns_prev;        // press-history edge detection
     int16_t shake_prev[3];          // last accel sample (jerk detection)
@@ -828,6 +829,15 @@ static bool ds5_voice_task(bthid_device_t* device, ds5_bt_data_t* ds5)
         for (int burst = 0; burst < 3; burst++) {
             if ((int32_t)(now - ds5->voice_next_ms) < 0) break;
             if (comp_tail == comp_head) {
+                if (ds5->comp_end_pending) {
+                    // Ring played out and the host already said "that's all"
+                    ds5->comp_end_pending = false;
+                    ds5->comp_stream = false;
+                    ds5->comp_state = DS5_COMP_IDLE;
+                    cdc_voice_notify("speak_end");
+                    ds5_voice_stop(device, ds5);
+                    return false;
+                }
                 // Underrun: hold the slot; give up if the host stalls
                 if ((int32_t)(now - ds5->comp_last_rx) > DS5_COMP_UNDERRUN_MS) {
                     ds5->comp_stream = false;
@@ -967,6 +977,7 @@ bool ds5_companion_push_speak(const uint8_t* frame200)
     memcpy(comp_ring[comp_head], frame200, 200);
     comp_head = next;
     ds5->comp_last_rx = platform_time_ms();
+    ds5->comp_end_pending = false;
     // Start playback only once a ~0.5s cushion exists — the cushion, not
     // perfect timing, makes playback smooth. Short replies start via the
     // end-marker flush (ds5_companion_speak_flush).
@@ -1130,6 +1141,14 @@ void ds5_companion_set_state(uint8_t state)
     ds5_bt_data_t* ds5 = (ds5_bt_data_t*)comp_device->driver_data;
     if (!ds5) return;
     if (state == DS5_COMP_IDLE && ds5->comp_state != DS5_COMP_IDLE) {
+        if (ds5->comp_stream && comp_head != comp_tail) {
+            // Playback still draining the ring — the host just means "no
+            // more frames coming". Hard-stopping here wiped the buffered
+            // tail (~0.5-1s with the cushion) and clipped every reply.
+            ds5->comp_end_pending = true;
+            ds5->mic_active = false;
+            return;
+        }
         ds5->comp_stream = false;
         ds5->comp_loop = false;
         ds5->mic_active = false;
