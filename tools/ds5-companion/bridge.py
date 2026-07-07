@@ -72,6 +72,7 @@ class Cdc:
         self.buf = bytearray()
         self.seq = 0
         self.s = None
+        self.pin = port   # explicit --port survives reconnects
         self._open(port)
 
     def _probe(self, cand):
@@ -130,7 +131,7 @@ class Cdc:
         except Exception:
             pass
         self.s = None
-        self._open()
+        self._open(self.pin)
         print("[bridge] reattached")
 
     def send(self, obj: dict):
