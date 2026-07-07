@@ -376,6 +376,20 @@ static void cmd_imu_map(const char* json)
     send_json(response_buf);
 }
 
+// Tilt steering: roll the controller → left stick X. Tune live over CDC/NUS.
+// {"cmd":"TILT.STEER","on":1,"range":45,"dead":3,"sign":-1} — all fields optional.
+extern void sinput_set_tilt_steer(int on, int range_deg, int dead_deg, int sign);
+static void cmd_tilt_steer(const char* json)
+{
+    int on = -1, range = -1, dead = -1, sign = 0;
+    json_get_int(json, "on", &on);
+    json_get_int(json, "range", &range);
+    json_get_int(json, "dead", &dead);
+    json_get_int(json, "sign", &sign);
+    sinput_set_tilt_steer(on, range, dead, sign);
+    send_ok();
+}
+
 static void cmd_mode_get(const char* json)
 {
     (void)json;
@@ -1546,10 +1560,14 @@ static void cmd_voice_ctx(const char* json)
         send_error("no controller");
         return;
     }
+    extern uint32_t ds5_companion_get_presses(char*, int);
+    char presses[160];
+    uint32_t press_age = ds5_companion_get_presses(presses, sizeof(presses));
     snprintf(response_buf, sizeof(response_buf),
              "{\"ok\":true,\"batt\":%u,\"chg\":%s,\"held_s\":%lu,"
-             "\"drops\":%u,\"catches\":%u}",
-             batt, chg ? "true" : "false", (unsigned long)held, drops, catches);
+             "\"drops\":%u,\"catches\":%u,\"btns\":\"%s\",\"btn_age_s\":%lu}",
+             batt, chg ? "true" : "false", (unsigned long)held, drops, catches,
+             presses, (unsigned long)press_age);
     send_json(response_buf);
 }
 
@@ -3094,6 +3112,7 @@ static const cmd_entry_t commands[] = {
     {"MODE.SET", cmd_mode_set},
     {"MODE.LIST", cmd_mode_list},
     {"IMU.MAP", cmd_imu_map},
+    {"TILT.STEER", cmd_tilt_steer},
     // Unified profile commands
     {"PROFILE.LIST", cmd_profile_list},
     {"PROFILE.GET", cmd_profile_get},

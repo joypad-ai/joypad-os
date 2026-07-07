@@ -571,6 +571,12 @@ def main():
                 parts.append(f"You've been dropped {ctx['drops']} time(s) and "
                              f"caught mid-air {ctx.get('catches', 0)} time(s) "
                              "this session.")
+            if ctx.get("btns"):
+                parts.append("Buttons pressed on you recently, in order from "
+                             f"oldest to newest: {ctx['btns']} — the newest "
+                             f"was {ctx.get('btn_age_s', '?')}s ago. This list "
+                             "is ground truth; if asked what was pressed, use "
+                             "exactly this, most recent last.")
         now = time.monotonic()
         for ts, ev in recent_events:
             if now - ts < 90:

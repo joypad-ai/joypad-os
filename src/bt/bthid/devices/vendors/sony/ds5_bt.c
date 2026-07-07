@@ -307,6 +307,7 @@ typedef struct {
     uint8_t comp_release_streak;
     uint32_t comp_listen_t0;        // LISTEN failsafe timeout
     uint32_t connected_at_ms;       // for held-time context
+    uint32_t comp_btns_prev;        // press-history edge detection
     uint8_t batt_raw;               // report[52]: level nibble + charge bits
     uint8_t drops_session;          // impacts since connect
     uint8_t catches_session;        // soft catches since connect
@@ -940,6 +941,37 @@ bool ds5_companion_push_speak(const uint8_t* frame200)
     return true;
 }
 
+// Press-history ring (chronological; head = next write slot)
+#define DS5_PRESS_RING 16
+static uint8_t comp_press_ring[DS5_PRESS_RING];
+static uint32_t comp_press_ms[DS5_PRESS_RING];
+static uint8_t comp_press_head, comp_press_count;
+static const char* const DS5_BTN_NAMES[18] = {
+    "cross", "circle", "square", "triangle",
+    "dpad-up", "dpad-right", "dpad-down", "dpad-left",
+    "L1", "R1", "L2", "R2", "L3", "R3",
+    "create", "options", "touchpad", "PS",
+};
+
+// Formats up to the last 10 presses, oldest first: "cross,circle,L1"
+// Returns seconds since the newest press (0xFFFFFFFF if none).
+uint32_t ds5_companion_get_presses(char* buf, int buflen)
+{
+    buf[0] = 0;
+    if (comp_press_count == 0) return 0xFFFFFFFFu;
+    int n = comp_press_count < 10 ? comp_press_count : 10;
+    int start = (comp_press_head - n + DS5_PRESS_RING) % DS5_PRESS_RING;
+    int pos = 0;
+    for (int i = 0; i < n; i++) {
+        int idx = (start + i) % DS5_PRESS_RING;
+        pos += snprintf(buf + pos, (size_t)(buflen - pos), "%s%s",
+                        i ? "," : "", DS5_BTN_NAMES[comp_press_ring[idx]]);
+        if (pos >= buflen - 1) break;
+    }
+    int last = (comp_press_head - 1 + DS5_PRESS_RING) % DS5_PRESS_RING;
+    return (platform_time_ms() - comp_press_ms[last]) / 1000;
+}
+
 // Context snapshot for the bridge (battery, held time, drop tally)
 bool ds5_companion_get_ctx(uint8_t* batt_pct, bool* charging,
                            uint32_t* held_s, uint8_t* drops, uint8_t* catches)
@@ -1388,6 +1420,33 @@ static void ds5_process_report(bthid_device_t* device, const uint8_t* data, uint
     // on the way down like always — then complains about it in conversation)
     ds5_drop_update(device, ds5, rpt->accel);
     ds5->batt_raw = ((const uint8_t*)rpt)[52];
+
+    // Press history: rolling ring of recent button presses (rising edges),
+    // in order, so the AI answers "what did I just press?" with facts
+    // instead of hallucinating. Mute is excluded (it's the talk button).
+    {
+        uint32_t bmap =
+            (rpt->cross    ? 1u << 0  : 0) | (rpt->circle  ? 1u << 1  : 0) |
+            (rpt->square   ? 1u << 2  : 0) | (rpt->triangle? 1u << 3  : 0) |
+            (dpad_up       ? 1u << 4  : 0) | (dpad_right   ? 1u << 5  : 0) |
+            (dpad_down     ? 1u << 6  : 0) | (dpad_left    ? 1u << 7  : 0) |
+            (rpt->l1       ? 1u << 8  : 0) | (rpt->r1      ? 1u << 9  : 0) |
+            (rpt->l2       ? 1u << 10 : 0) | (rpt->r2      ? 1u << 11 : 0) |
+            (rpt->l3       ? 1u << 12 : 0) | (rpt->r3      ? 1u << 13 : 0) |
+            (rpt->create   ? 1u << 14 : 0) | (rpt->option  ? 1u << 15 : 0) |
+            (rpt->tpad     ? 1u << 16 : 0) | (rpt->ps      ? 1u << 17 : 0);
+        uint32_t rising = bmap & ~ds5->comp_btns_prev;
+        ds5->comp_btns_prev = bmap;
+        for (int b = 0; b < 18 && rising; b++) {
+            if (rising & (1u << b)) {
+                rising &= ~(1u << b);
+                comp_press_ring[comp_press_head] = (uint8_t)b;
+                comp_press_ms[comp_press_head] = platform_time_ms();
+                comp_press_head = (uint8_t)((comp_press_head + 1) % DS5_PRESS_RING);
+                if (comp_press_count < DS5_PRESS_RING) comp_press_count++;
+            }
+        }
+    }
 
     // Companion push-to-talk: hold mute = LISTEN (mic streams to host),
     // release = THINK (host processes; LED blinks until it responds).
