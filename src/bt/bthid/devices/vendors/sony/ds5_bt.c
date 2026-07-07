@@ -306,6 +306,7 @@ typedef struct {
     uint32_t comp_mute_t0;
     uint8_t comp_release_streak;
     uint32_t comp_listen_t0;        // LISTEN failsafe timeout
+    uint32_t mic_drain_until;       // classify+discard mic stragglers post-LISTEN
     uint32_t connected_at_ms;       // for held-time context
     uint32_t comp_btns_prev;        // press-history edge detection
     int16_t shake_prev[3];          // last accel sample (jerk detection)
@@ -916,6 +917,7 @@ static uint32_t comp_think_t0;
 static void ds5_comp_enter_think(bthid_device_t* device, ds5_bt_data_t* ds5)
 {
     comp_think_t0 = platform_time_ms();
+    ds5->mic_drain_until = platform_time_ms() + 600;
     printf("[DS5_BT] Companion: THINK\n");
     ds5->comp_state = DS5_COMP_THINK;
     ds5->mic_active = false;
@@ -1018,6 +1020,32 @@ bool ds5_companion_get_ctx(uint8_t* batt_pct, bool* charging,
     return true;
 }
 
+// Body control for the model (via CDC VOICE.FX): timed LED/rumble, scream
+bool ds5_companion_fx(const uint8_t led[3], uint32_t led_ms,
+                      uint8_t rum_lo, uint8_t rum_hi, uint32_t rum_ms,
+                      bool scream)
+{
+    if (!comp_device) return false;
+    ds5_bt_data_t* ds5 = (ds5_bt_data_t*)comp_device->driver_data;
+    if (!ds5) return false;
+    uint32_t now = platform_time_ms();
+    if (led_ms) {
+        ds5->fx_led[0] = led[0]; ds5->fx_led[1] = led[1]; ds5->fx_led[2] = led[2];
+        ds5->fx_led_until = now + (led_ms > 30000 ? 30000 : led_ms);
+    }
+    if (rum_ms) {
+        ds5->fx_rumble_lo = rum_lo;
+        ds5->fx_rumble_hi = rum_hi;
+        ds5->fx_rumble_pulse = false;
+        ds5->fx_rumble_until = now + (rum_ms > 10000 ? 10000 : rum_ms);
+    }
+    if (scream && ds5->voice_state == DS5_VOICE_IDLE) {
+        ds5_voice_play(comp_device, ds5, &DS5_CLIP_SCREAM, false,
+                       255, 0, 0, DS5_LED_FLASH);
+    }
+    return true;
+}
+
 // Extended context: pets, orientation, idle minutes, top-3 button counts
 bool ds5_companion_get_ctx2(uint8_t* pets, bool* flipped, uint32_t* idle_min,
                             char* top_btns, int top_len)
@@ -1057,6 +1085,7 @@ void ds5_companion_set_state(uint8_t state)
         ds5->comp_stream = false;
         ds5->comp_loop = false;
         ds5->mic_active = false;
+        ds5->mic_drain_until = platform_time_ms() + 600;
         ds5->comp_state = DS5_COMP_IDLE;
         ds5_voice_stop(comp_device, ds5);
     } else if (state == DS5_COMP_THINK) {
@@ -1314,10 +1343,18 @@ static void ds5_process_report(bthid_device_t* device, const uint8_t* data, uint
             // parser (garbage hats are valid 9/16 of the time), flapping the
             // mute bit and halving the mic stream.
             ds5_bt_data_t* cds5 = (ds5_bt_data_t*)device->driver_data;
-            if (cds5 && cds5->mic_active && data[3] == 0xD4 &&
-                (data[1] & 0x0F) == 0x02) {
-                ds5_companion_mic_capture(cds5, data, len);
-                return;
+            if (cds5 && data[3] == 0xD4 && (data[1] & 0x0F) == 0x02) {
+                if (cds5->mic_active) {
+                    ds5_companion_mic_capture(cds5, data, len);
+                    return;
+                }
+                // Drain window: the controller keeps sending mic frames for
+                // a beat after the mic-enable bit clears — parsed as input
+                // they become random button/stick/mute garbage that scrambles
+                // the host and the talk state machine. Discard them.
+                if ((int32_t)(platform_time_ms() - cds5->mic_drain_until) < 0) {
+                    return;
+                }
             }
         }
 #endif
