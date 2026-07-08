@@ -1075,14 +1075,31 @@ class RealtimeSession:
 
 
 def resample_24k_mono_to_48k_stereo(pcm: bytes) -> bytes:
-    """Cheap 2x linear upsample + mono->stereo (fine for a controller speaker)."""
+    """24k mono -> controller-speaker stereo, correctly.
+
+    Two audible bugs lived here ("clipping/scratching" per viewer feedback):
+    - The controller consumes 480 samples per 10.667ms = a TRUE rate of
+      45kHz, not 48k. A 2.0x upsample played everything 6.7% slow and
+      pitched down; the correct ratio is 45000/24000 = 1.875.
+    - No gain management: near-full-scale TTS through a tiny speaker
+      clips. Peak-normalize each response to ~68% full scale.
+    """
     n = len(pcm) // 2
+    if n < 2:
+        return b""
     samples = struct.unpack(f"<{n}h", pcm[:n * 2])
+    peak = max(1, max(abs(v) for v in samples))
+    gain = min(0.68 * 32767 / peak, 1.0)
+    ratio = 24000.0 / 45000.0          # input samples per output sample
+    out_n = int((n - 1) / ratio)
     out = []
-    for i, s in enumerate(samples):
-        nxt = samples[i + 1] if i + 1 < n else s
-        mid = (s + nxt) // 2
-        out += [s, s, mid, mid]
+    for j in range(out_n):
+        pos = j * ratio
+        i = int(pos)
+        frac = pos - i
+        v = samples[i] * (1 - frac) + samples[i + 1] * frac
+        v = int(v * gain)
+        out += [v, v]
     return struct.pack(f"<{len(out)}h", *out)
 
 
