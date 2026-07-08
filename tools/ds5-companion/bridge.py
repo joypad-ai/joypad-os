@@ -734,10 +734,9 @@ def main():
                     "goodbye in character")
         return "unknown tool"
 
-    def collect_and_speak():
-        """Collect the full reply (executing any tool calls between rounds),
-        then play once. Firmware blinks THINK (cyan) while this blocks."""
-        nonlocal session, persona
+    def collect_pcm():
+        """Collect a full reply's audio (running tool calls between rounds)
+        WITHOUT playing it."""
         pcm = b""
         for _round in range(4):
             for delta in session.poll_response_pcm24k():
@@ -748,7 +747,24 @@ def main():
                 break
             for call_id, name, args_json in calls:
                 session.send_tool_output(call_id, execute_tool(name, args_json))
-            session.respond_only()   # let it narrate what it just did
+            session.respond_only()
+        return pcm
+
+    def speak_pcm(pcm):
+        pcm48 = resample_24k_mono_to_48k_stereo(pcm)
+        opus.reset_encoder()
+        frames = []
+        step = 480 * 2 * 2
+        for i in range(0, len(pcm48) - step, step):
+            frames.append(opus.encode_speaker(pcm48[i:i + step]))
+        if frames:
+            speak_frames(frames)
+        cdc.send({"cmd": "VOICE.STATE", "state": "idle"})
+
+    def collect_and_speak():
+        """Collect the full reply, then play once."""
+        nonlocal session, persona
+        pcm = collect_pcm()
         print(f"[bridge] reply: {len(pcm)//48} ms of audio")
         pcm48 = resample_24k_mono_to_48k_stereo(pcm)
         opus.reset_encoder()
@@ -807,7 +823,8 @@ def main():
                 "PHYSICAL EVENT, just now: you were " + desc
                 + " React out loud RIGHT NOW, in character — one short "
                   "exclamation or complaint. Nobody asked you anything; "
-                  "this is you reacting.")
+                  "this is you reacting. Do NOT use the scream tool — any "
+                  "screaming already happened for real.")
             session.respond_only()
             collect_and_speak()
         except Exception as e:
@@ -816,6 +833,7 @@ def main():
     print("[bridge] ready — hold mute on the DualSense and talk")
     utterance_pcm = b""
     last_comment_t = time.monotonic()
+    prewarmed = [None, 0.0]   # [pcm, prepared_at] — falling pre-warm
     try:
         while True:
             for typ, obj in cdc.poll() or ():
@@ -882,8 +900,31 @@ def main():
                 elif kind == "voice":
                     ev = obj.get("ev")
                     print(f"[bridge] voice event: {ev}")
-                    if ev in ("dropped", "caught", "shaken", "petted",
-                              "flipped", "squeezed", "lonely"):
+                    if ev == "falling" and session is not None:
+                        # Generate the landing line DURING the fall
+                        try:
+                            session.inject_context(
+                                "You are FALLING through the air RIGHT NOW, "
+                                "mid-scream. Prepare the single short thing "
+                                "you'll say the instant you land — dazed, "
+                                "annoyed, or dramatic, in character. Do NOT "
+                                "use the scream tool.")
+                            session.respond_only()
+                            prewarmed[0] = collect_pcm()
+                            prewarmed[1] = time.monotonic()
+                            print(f"[bridge] landing line ready "
+                                  f"({len(prewarmed[0])//48} ms)", flush=True)
+                        except Exception as e:
+                            print(f"[bridge] prewarm failed ({e})")
+                            prewarmed[0] = None
+                    elif ev in ("dropped", "caught") and prewarmed[0] and                             time.monotonic() - prewarmed[1] < 8:
+                        recent_events.append((time.monotonic(), ev))
+                        pcm = prewarmed[0]
+                        prewarmed[0] = None
+                        time.sleep(0.35)   # let the thud land first
+                        speak_pcm(pcm)
+                    elif ev in ("dropped", "caught", "shaken", "petted",
+                                "flipped", "squeezed", "lonely"):
                         recent_events.append((time.monotonic(), ev))
                         react_to(ev)
             # Gameplay commentary: unprompted quips on active play

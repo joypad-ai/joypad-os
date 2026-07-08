@@ -1212,6 +1212,10 @@ static void ds5_drop_update(bthid_device_t* device, ds5_bt_data_t* ds5,
 #else
                 ds5_voice_play(device, ds5, &DS5_CLIP_SCREAM, true,
                                255, 0, 0, DS5_LED_FLASH);  // flashing red
+#ifdef CONFIG_DS5_COMPANION
+                // Head start for the AI: reaction generates DURING the fall
+                cdc_voice_notify("falling");
+#endif
 #endif
             }
             break;
@@ -1607,11 +1611,11 @@ static void ds5_process_report(bthid_device_t* device, const uint8_t* data, uint
             d += dd < 0 ? -dd : dd;
             ds5->shake_prev[a] = rpt->accel[a];
         }
-        if (d > 8000 && ds5->drop_state == DS5_DROP_IDLE) {
+        if (d > 2600 && ds5->drop_state == DS5_DROP_IDLE) {
             if (ds5->shake_score < 400) ds5->shake_score += 3;
         }
         ds5->shake_score = (uint16_t)(ds5->shake_score * 31 / 32);
-        if (ds5->shake_score > 45 && snow > ds5->shake_cooldown_until) {
+        if (ds5->shake_score > 40 && snow > ds5->shake_cooldown_until) {
             ds5->shake_cooldown_until = snow + 6000;
             ds5->shake_score = 0;
             ds5->shakes_session++;
