@@ -474,9 +474,13 @@ def ask_guide(api_key, game, question):
     return openai_chat(
         api_key,
         "You are a walkthrough oracle. Answer the player's question "
-        "precisely and ONLY from the guide text provided. Give the exact "
-        "next steps (locations, items, actions), briefly. If the guide "
-        "doesn't cover it, say so plainly.",
+        "precisely and ONLY from the guide text provided. Quote the exact "
+        "next steps (locations, actions, triggers) — include the specific "
+        "thing the player must do to advance, not a summary. If the guide "
+        "covers multiple characters or scenarios (e.g. Chris vs Jill), use "
+        "the player's mentioned companions, items, or events to select the "
+        "right one, and say which scenario you used. If the guide doesn't "
+        "cover it, say so plainly.",
         f"GUIDE for {game}:\n{guide}\n\nPLAYER QUESTION: {question}")
 
 
@@ -720,8 +724,9 @@ class RealtimeSession:
     ADVISOR_BASELINE = (
         "You are also the player's gaming ADVISOR. When they are stuck or ask "
         "how to do something in their game: use your tools (ask_guide "
-        "first, then web_search/read_page) and give SHORT, actionable, "
-        "specific advice out loud — the next concrete step, not an essay. "
+        "first, then web_search/read_page) and deliver the guide's CONCRETE "
+        "steps out loud — the specific action, place, or trigger, not a "
+        "generalization of it. Short, but never vaguer than the source. "
         "Never spoil beyond what was asked. If a lookup will take a moment, "
         "you may say a brief acknowledgement first. If you don't know the "
         "current game, ask. A good companion is mostly concise and never "
@@ -1014,8 +1019,14 @@ def main():
             if not current_game[0]:
                 return "no current game set — call set_game first"
             q = str(args.get("question") or args.get("query") or "")
+            # The model's paraphrase drops load-bearing details (companions,
+            # items) — always ride the player's exact words along.
+            if session.last_user_text:
+                q += f' | player\'s exact words: "{session.last_user_text}"'
             try:
                 ans = ask_guide(session.key, current_game[0], q)
+                if ans:
+                    print(f"[oracle] {ans[:220]}", flush=True)
             except Exception as e:
                 print(f"[research] oracle failed ({e}); keyword fallback")
                 ans = None
