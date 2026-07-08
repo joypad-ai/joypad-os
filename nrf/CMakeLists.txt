@@ -44,6 +44,7 @@ set(SRCS
     "src/flash_nrf.c"
     "src/ws2812_nrf.c"
     "src/button_nrf.c"
+    "src/platform_gpio_nrf.c"
     "${SHARED_SRC}/platform/nrf/platform_nrf.c"
 
     # --- Display (SSD1306 I2C on XIAO Expansion Board / FeatherWing OLED) ---
@@ -152,6 +153,7 @@ if(APP_TYPE STREQUAL "usb2usb")
         "${SHARED_SRC}/usb/usbh/hid/devices/vendors/8bitdo/8bitdo_neo.c"
         "${SHARED_SRC}/usb/usbh/hid/devices/vendors/8bitdo/8bitdo_pce.c"
         "${SHARED_SRC}/usb/usbh/hid/devices/vendors/dragonrise/dragonrise.c"
+        "${SHARED_SRC}/usb/usbh/hid/devices/vendors/elo/elo_vagabond.c"
         "${SHARED_SRC}/usb/usbh/hid/devices/vendors/google/google_stadia.c"
         "${SHARED_SRC}/usb/usbh/hid/devices/vendors/hori/hori_horipad.c"
         "${SHARED_SRC}/usb/usbh/hid/devices/vendors/hori/hori_pokken.c"
@@ -229,6 +231,7 @@ elseif(APP_TYPE STREQUAL "btusb2usb")
         "${SHARED_SRC}/usb/usbh/hid/devices/vendors/8bitdo/8bitdo_neo.c"
         "${SHARED_SRC}/usb/usbh/hid/devices/vendors/8bitdo/8bitdo_pce.c"
         "${SHARED_SRC}/usb/usbh/hid/devices/vendors/dragonrise/dragonrise.c"
+        "${SHARED_SRC}/usb/usbh/hid/devices/vendors/elo/elo_vagabond.c"
         "${SHARED_SRC}/usb/usbh/hid/devices/vendors/google/google_stadia.c"
         "${SHARED_SRC}/usb/usbh/hid/devices/vendors/hori/hori_horipad.c"
         "${SHARED_SRC}/usb/usbh/hid/devices/vendors/hori/hori_pokken.c"
@@ -265,6 +268,7 @@ elseif(APP_TYPE STREQUAL "btusb2usb")
         "${SHARED_SRC}/bt/bthid/bthid.c"
         "${SHARED_SRC}/bt/bthid/bthid_registry.c"
         "${SHARED_SRC}/bt/bthid/devices/generic/bthid_gamepad.c"
+        "${SHARED_SRC}/bt/bthid/devices/generic/sinput_ble.c"
         "${SHARED_SRC}/bt/bthid/devices/vendors/sony/ds3_bt.c"
         "${SHARED_SRC}/bt/bthid/devices/vendors/sony/ds4_bt.c"
         "${SHARED_SRC}/bt/bthid/devices/vendors/sony/ds5_bt.c"
@@ -378,7 +382,6 @@ elseif(APP_TYPE STREQUAL "controller_btusb")
         "${SHARED_SRC}/pad/pad_input.c"
         "${SHARED_SRC}/pad/pad_config_flash.c"
         "src/pad_config_storage_nrf.c"
-        "src/platform_gpio_nrf.c"
 
         # --- Sensor drivers ---
         "${SHARED_SRC}/drivers/seesaw/seesaw.c"
@@ -404,6 +407,7 @@ elseif(APP_TYPE STREQUAL "controller_btusb")
         "${SHARED_SRC}/bt/bthid/bthid.c"
         "${SHARED_SRC}/bt/bthid/bthid_registry.c"
         "${SHARED_SRC}/bt/bthid/devices/generic/bthid_gamepad.c"
+        "${SHARED_SRC}/bt/bthid/devices/generic/sinput_ble.c"
         "${SHARED_SRC}/bt/bthid/devices/vendors/sony/ds3_bt.c"
         "${SHARED_SRC}/bt/bthid/devices/vendors/sony/ds4_bt.c"
         "${SHARED_SRC}/bt/bthid/devices/vendors/sony/ds5_bt.c"
@@ -572,6 +576,7 @@ else()
         "${SHARED_SRC}/bt/bthid/bthid.c"
         "${SHARED_SRC}/bt/bthid/bthid_registry.c"
         "${SHARED_SRC}/bt/bthid/devices/generic/bthid_gamepad.c"
+        "${SHARED_SRC}/bt/bthid/devices/generic/sinput_ble.c"
         "${SHARED_SRC}/bt/bthid/devices/vendors/sony/ds3_bt.c"
         "${SHARED_SRC}/bt/bthid/devices/vendors/sony/ds4_bt.c"
         "${SHARED_SRC}/bt/bthid/devices/vendors/sony/ds5_bt.c"
