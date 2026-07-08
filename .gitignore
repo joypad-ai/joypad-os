@@ -27,3 +27,4 @@ wch/toolchain/
 tools/ds5-scream/assets/astro_*
 src/bt/bthid/devices/vendors/sony/ds5_astro_assets.h
 tools/ds5-companion/memory.txt
+tools/ds5-companion/guides/

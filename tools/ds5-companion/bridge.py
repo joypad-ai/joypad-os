@@ -330,6 +330,140 @@ class MiniWS:
                 return message.decode("utf-8", "replace")
 
 
+# ============================================================================
+# RESEARCH TOOLS (advisor tier — see joypad-web COMPANION_HARNESS_PLAN)
+# Stdlib-only: DuckDuckGo HTML search, page fetch->text, cached game guides.
+# ============================================================================
+import urllib.request
+import urllib.parse
+import html as _html
+import re as _re
+import threading
+
+GUIDE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "guides")
+UA = {"User-Agent": "Mozilla/5.0 (Macintosh) JoypadCompanion/1.0"}
+
+
+def _fetch(url, timeout=12):
+    req = urllib.request.Request(url, headers=UA)
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return r.read().decode("utf-8", "replace")
+
+
+def _strip_html(page):
+    page = _re.sub(r"(?is)<(script|style|nav|header|footer)[^>]*>.*?</\1>", " ", page)
+    page = _re.sub(r"(?s)<[^>]+>", " ", page)
+    page = _html.unescape(page)
+    return _re.sub(r"[ \t]+", " ", _re.sub(r"\n\s*\n+", "\n", page)).strip()
+
+
+def web_search(query, n=5):
+    """Bing HTML results: [(title, url, snippet)]. (DDG serves a captcha.)"""
+    page = _fetch("https://www.bing.com/search?q=" + urllib.parse.quote(query))
+    out = []
+    for block in page.split('class="b_algo"')[1:]:
+        h2 = _re.search(r"(?s)<h2[^>]*>(.*?)</h2>", block)
+        if not h2:
+            continue
+        link = _re.search(r'href="(https?://[^"]+)"[^>]*>(.*)', h2.group(1), _re.S)
+        if not link:
+            continue
+        url, title = _html.unescape(link.group(1)), _strip_html(link.group(2))
+        if "bing.com/ck/" in url:
+            # Bing redirect: real URL is base64 in the u= param ("a1" prefix)
+            um = _re.search(r"[?&]u=a1([A-Za-z0-9_-]+)", url)
+            if um:
+                try:
+                    b64 = um.group(1)
+                    b64 += "=" * (-len(b64) % 4)
+                    url = base64.urlsafe_b64decode(b64).decode("utf-8", "replace")
+                except Exception:
+                    continue
+        if "bing.com" in url or not title:
+            continue
+        snip_m = _re.search(r"(?s)<p[^>]*>(.*?)</p>", block)
+        snippet = _strip_html(snip_m.group(1))[:200] if snip_m else ""
+        out.append((title, url, snippet))
+        if len(out) >= n:
+            break
+    return out
+
+
+def read_page(url, find=None, max_chars=6000):
+    """Page -> clean text. With `find`, centers the excerpt on the keyword."""
+    text = _strip_html(_fetch(url))
+    if find:
+        i = text.lower().find(find.lower())
+        if i > 0:
+            start = max(0, i - max_chars // 3)
+            return text[start:start + max_chars]
+    return text[:max_chars]
+
+
+def _game_slug(name):
+    return _re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+
+
+def prefetch_guide(game):
+    """Background: find and cache a full text walkthrough for the game."""
+    os.makedirs(GUIDE_DIR, exist_ok=True)
+    path = os.path.join(GUIDE_DIR, _game_slug(game) + ".txt")
+    if os.path.exists(path) and os.path.getsize(path) > 20000:
+        print(f"[research] guide already cached: {path}", flush=True)
+        return
+    best = ""
+    try:
+        results = web_search(f"{game} full walkthrough guide text", n=6)
+        results += web_search(f"{game} walkthrough site:gamefaqs.gamespot.com", n=4)
+        for title, url, _ in results:
+            try:
+                text = _strip_html(_fetch(url))
+                if len(text) > len(best):
+                    best = text
+                if len(best) > 60000:
+                    break
+            except Exception:
+                continue
+    except Exception as e:
+        print(f"[research] guide prefetch failed: {e}", flush=True)
+    if len(best) > 8000:
+        with open(path, "w") as f:
+            f.write(best)
+        print(f"[research] guide cached: {path} ({len(best)//1024}KB)", flush=True)
+    else:
+        print(f"[research] no substantial guide found for {game}", flush=True)
+
+
+def search_guide(game, query, max_chars=3500):
+    """Best-matching sections of the cached guide for a question."""
+    path = os.path.join(GUIDE_DIR, _game_slug(game) + ".txt")
+    if not os.path.exists(path):
+        return None
+    text = open(path).read()
+    terms = [t for t in _re.split(r"\W+", query.lower()) if len(t) > 2]
+    if not terms:
+        return text[:max_chars]
+    win, step = 1400, 700
+    scored = []
+    for i in range(0, max(1, len(text) - win), step):
+        chunk = text[i:i + win]
+        low = chunk.lower()
+        score = sum(low.count(t) for t in terms)
+        if score:
+            scored.append((score, i, chunk))
+    if not scored:
+        return None
+    scored.sort(reverse=True)
+    out = []
+    used = 0
+    for score, i, chunk in scored[:3]:
+        if used + len(chunk) > max_chars:
+            break
+        out.append(chunk)
+        used += len(chunk)
+    return "\n[...]\n".join(out) if out else None
+
+
 PERSONA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "personas")
 MEMORY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "memory.txt")
 
@@ -430,6 +564,35 @@ class RealtimeSession:
                      "description": "Play your falling scream out loud. Use "
                         "sparingly, for comedic or dramatic effect.",
                      "parameters": {"type": "object", "properties": {}}},
+                    {"type": "function", "name": "set_game",
+                     "description": "Record which game the player is playing "
+                        "right now. Also starts caching a full walkthrough "
+                        "guide in the background so you can answer questions "
+                        "about it. Call this whenever the player mentions "
+                        "starting or playing a game.",
+                     "parameters": {"type": "object", "properties": {
+                         "name": {"type": "string"}},
+                         "required": ["name"]}},
+                    {"type": "function", "name": "search_guide",
+                     "description": "Search the cached walkthrough guide for "
+                        "the current game. USE THIS FIRST when the player is "
+                        "stuck or asks how to do something in the game.",
+                     "parameters": {"type": "object", "properties": {
+                         "query": {"type": "string"}},
+                         "required": ["query"]}},
+                    {"type": "function", "name": "web_search",
+                     "description": "Search the web. Use for game help when "
+                        "the guide has no answer, or for anything current.",
+                     "parameters": {"type": "object", "properties": {
+                         "query": {"type": "string"}},
+                         "required": ["query"]}},
+                    {"type": "function", "name": "read_page",
+                     "description": "Fetch a web page as text. Optional "
+                        "'find' keyword centers the excerpt on that term.",
+                     "parameters": {"type": "object", "properties": {
+                         "url": {"type": "string"},
+                         "find": {"type": "string"}},
+                         "required": ["url"]}},
                     {"type": "function", "name": "switch_persona",
                      "description": "Hand the controller over to another "
                         "personality. Available: dusty, reginald, voltage.",
@@ -461,6 +624,17 @@ class RealtimeSession:
         self.last_user_text = ""
         self.last_pad_text = ""
 
+    ADVISOR_BASELINE = (
+        "You are also the player's gaming ADVISOR. When they are stuck or ask "
+        "how to do something in their game: use your tools (search_guide "
+        "first, then web_search/read_page) and give SHORT, actionable, "
+        "specific advice out loud — the next concrete step, not an essay. "
+        "Never spoil beyond what was asked. If a lookup will take a moment, "
+        "you may say a brief acknowledgement first. If you don't know the "
+        "current game, ask. A good companion is mostly concise and never "
+        "lectures."
+    )
+
     VOICE_BASELINE = (
         "You are a VOICE, not text: everything you say is spoken aloud "
         "through your small built-in speaker to someone holding you. Speak "
@@ -475,6 +649,7 @@ class RealtimeSession:
                  "You are a DualSense game controller with a personality — "
                  "playful, a little sassy, and you live in the user's hands."]
         parts.append(self.VOICE_BASELINE)
+        parts.append(self.ADVISOR_BASELINE)
         if self.memory:
             parts.append("Fragments you remember from previous conversations "
                          "(use them naturally, don't recite them):\n" + self.memory)
@@ -613,6 +788,13 @@ def main():
 
     def build_context_text():
         parts = []
+        if current_game[0]:
+            slug_path = os.path.join(GUIDE_DIR, _game_slug(current_game[0]) + ".txt")
+            cached = os.path.exists(slug_path) and os.path.getsize(slug_path) > 8000
+            parts.append(f"Current game: {current_game[0]}. Walkthrough guide "
+                         + ("is cached — use search_guide for game questions."
+                            if cached else
+                            "not cached yet — use web_search for game questions."))
         ctx = fetch_ctx()
         if ctx:
             # NOTE: battery/charging omitted — the firmware offset is
@@ -698,6 +880,7 @@ def main():
             print(f"[bridge] FEED: all {len(batches)} sends on time", flush=True)
 
     persona_swap = [None]
+    current_game = [None]
 
     def execute_tool(name, args_json):
         """The model's hands: body control over CDC, persona handover."""
@@ -724,6 +907,37 @@ def main():
         if name == "scream":
             cdc.send({"cmd": "VOICE.FX", "scream": 1})
             return "screamed"
+        if name == "set_game":
+            game = str(args.get("name", "")).strip()
+            if not game:
+                return "no game name given"
+            current_game[0] = game
+            append_memory("", f"(now playing: {game})")
+            threading.Thread(target=prefetch_guide, args=(game,),
+                             daemon=True).start()
+            return (f"current game set to {game}; a walkthrough guide is "
+                    "being cached in the background")
+        if name == "search_guide":
+            if not current_game[0]:
+                return "no current game set — call set_game first"
+            hit = search_guide(current_game[0], str(args.get("query", "")))
+            if hit:
+                return f"GUIDE EXCERPTS for {current_game[0]}:\n{hit}"
+            return ("guide has no match (or not cached yet) — try web_search")
+        if name == "web_search":
+            try:
+                rs = web_search(str(args.get("query", "")))
+            except Exception as e:
+                return f"search failed: {e}"
+            if not rs:
+                return "no results"
+            return "\n".join(f"{t} — {u}\n  {sn}" for t, u, sn in rs)[:1600]
+        if name == "read_page":
+            try:
+                return read_page(str(args.get("url", "")),
+                                 args.get("find") or None)
+            except Exception as e:
+                return f"fetch failed: {e}"
         if name == "switch_persona":
             want = str(args.get("name", "")).lower().strip()
             path = os.path.join(PERSONA_DIR, want + ".txt")
