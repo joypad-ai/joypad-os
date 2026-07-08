@@ -469,6 +469,8 @@ def ask_guide(api_key, game, question):
     scattered fragments and the companion improvised around them."""
     path = os.path.join(GUIDE_DIR, _game_slug(game) + ".txt")
     if not os.path.exists(path):
+        path = _find_existing_guide(game) or path
+    if not os.path.exists(path):
         return None
     guide = open(path).read()[:400000]
     return openai_chat(
@@ -488,12 +490,38 @@ def _game_slug(name):
     return _re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
 
 
+def _find_existing_guide(game):
+    """Fuzzy match: 'Resident Evil' reuses the 'Resident Evil Director's
+    Cut' guide (name-token subset, and the extra tokens carry no digits —
+    so 'Resident Evil 2' stays a different game)."""
+    want = set(_game_slug(game).split("-")) - {"s", "the", "of"}
+    if not os.path.isdir(GUIDE_DIR):
+        return None
+    for f in os.listdir(GUIDE_DIR):
+        if not f.endswith(".txt"):
+            continue
+        have = set(f[:-4].split("-")) - {"s", "the", "of"}
+        small, big = (want, have) if len(want) <= len(have) else (have, want)
+        if small and small <= big and not any(
+                t.isdigit() or t in ("ii", "iii", "iv", "v", "vi")
+                for t in big - small):
+            return os.path.join(GUIDE_DIR, f)
+    return None
+
+
 def prefetch_guide(game):
     """Background: find and cache a full text walkthrough for the game."""
     os.makedirs(GUIDE_DIR, exist_ok=True)
     path = os.path.join(GUIDE_DIR, _game_slug(game) + ".txt")
     if os.path.exists(path) and os.path.getsize(path) > 20000:
         print(f"[research] guide already cached: {path}", flush=True)
+        return
+    existing = _find_existing_guide(game)
+    if existing and os.path.getsize(existing) > 20000:
+        import shutil
+        shutil.copyfile(existing, path)
+        print(f"[research] guide reused from {os.path.basename(existing)}",
+              flush=True)
         return
     best = ""
     best_score = 0.0
@@ -512,12 +540,20 @@ def prefetch_guide(game):
                 continue
     except Exception as e:
         print(f"[research] guide prefetch failed: {e}", flush=True)
-    if len(best) > 8000:
+    # Quality floor: a lore/wiki page can be huge yet useless as a guide —
+    # require real walkthrough language density before calling it a guide.
+    low = best.lower()
+    hits = sum(low.count(k) for k in
+               ("walkthrough", "go to", "head to", "pick up", "unlock",
+                "save point", "boss", "puzzle"))
+    if len(best) > 8000 and hits >= 25:
         with open(path, "w") as f:
             f.write(best)
-        print(f"[research] guide cached: {path} ({len(best)//1024}KB)", flush=True)
+        print(f"[research] guide cached: {path} ({len(best)//1024}KB, "
+              f"{hits} walkthrough markers)", flush=True)
     else:
-        print(f"[research] no substantial guide found for {game}", flush=True)
+        print(f"[research] no real guide found for {game} "
+              f"({len(best)//1024}KB, {hits} markers) — not caching", flush=True)
 
 
 def search_guide(game, query, max_chars=3500):
