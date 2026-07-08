@@ -588,16 +588,29 @@ void cdc_task(void)
     // Drain any relay TX (e.g. MouthPad NUS -> CDC) before reading.
     if (cdc_task_hook) cdc_task_hook();
 
-    // Process incoming data on the data port
-    while (cdc_data_available() > 0) {
-        int32_t ch = cdc_data_read_byte();
-        if (ch < 0) break;
+    // Process incoming data on the data port.
+    //
+    // Pump the USB stack between drains: TinyUSB moves at most ONE endpoint
+    // transaction (64B) into the RX FIFO per tud_task() call, so draining
+    // once per main-loop pass caps host->device throughput at 64B/pass —
+    // ~17kB/s when BT audio streaming slows the loop to ~4ms/pass, which
+    // starved VOICE.SPEAK audio (needs ~26kB/s). Re-pumping while bytes
+    // keep arriving lets one cdc_task call swallow the host's whole burst.
+    for (int pump = 0; pump < 32; pump++) {
+        bool progress = false;
+        while (cdc_data_available() > 0) {
+            int32_t ch = cdc_data_read_byte();
+            if (ch < 0) break;
+            progress = true;
 
-        // Give the relay demux first look. If it claims the byte (part of a
-        // relay frame), don't pass it to the command parser.
-        if (cdc_rx_filter && cdc_rx_filter((uint8_t)ch)) continue;
+            // Give the relay demux first look. If it claims the byte (part of a
+            // relay frame), don't pass it to the command parser.
+            if (cdc_rx_filter && cdc_rx_filter((uint8_t)ch)) continue;
 
-        cdc_feed_command_byte((uint8_t)ch);
+            cdc_feed_command_byte((uint8_t)ch);
+        }
+        if (!progress) break;
+        tud_task_ext(0, false);  // move the next endpoint transaction in
     }
 }
 

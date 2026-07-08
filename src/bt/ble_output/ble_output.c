@@ -43,6 +43,8 @@ extern void feedback_set_rumble(uint8_t player_index, uint8_t left, uint8_t righ
 #include "ble/gatt-service/device_information_service_server.h"
 #include "ble/gatt-service/hids_device.h"
 
+#include "usb/usbd/modes/sinput_mode.h"  // SInput report/feature builders (shared)
+
 #include <stdio.h>
 #include <string.h>
 
@@ -253,6 +255,8 @@ typedef enum {
     PENDING_KEYBOARD,
     PENDING_MOUSE,
     PENDING_XBOX,
+    PENDING_SINPUT,          // SInput input report (ID 1)
+    PENDING_SINPUT_FEATURE,  // SInput feature response (ID 2)
 } pending_report_type_t;
 
 // ============================================================================
@@ -262,9 +266,38 @@ typedef enum {
 static hci_con_handle_t con_handle = HCI_CON_HANDLE_INVALID;
 static bool ble_connected = false;
 
+// GPIO (raw chip pin) to wake from deep sleep on; <0 disables sleep-on-disconnect.
+static int sleep_wake_pin = -1;
+static bool sleep_wake_active_high = false;
+
+// --- USB dominance: a USB *data host* takes priority over BT ---
+// When one is connected we disconnect BT and stop advertising; when it goes
+// away we resume the normal BT logic. A USB host requires VBUS, so gate on both
+// (tud_mounted() can read stale-true briefly after an unplug).
+extern bool tud_mounted(void);
+static bool ble_usb_host(void)
+{
+    return platform_usb_powered() && tud_mounted();
+}
+
+// Tracked advertising state so we can enable/disable idempotently.
+static bool adv_on = false;
+static void set_adv(bool on)
+{
+    if (on == adv_on) return;
+    adv_on = on;
+    gap_advertisements_enable(on ? 1 : 0);
+}
+
 bool ble_output_is_connected(void)
 {
     return ble_connected;
+}
+
+void ble_output_set_sleep_wake_pin(int gpio, bool active_high)
+{
+    sleep_wake_pin = gpio;
+    sleep_wake_active_high = active_high;
 }
 
 // Pending reports (flow-controlled — only one at a time)
@@ -273,17 +306,63 @@ static ble_gamepad_report_t pending_gamepad;
 static ble_keyboard_report_t pending_keyboard;
 static ble_mouse_report_t pending_mouse;
 static ble_xbox_report_t pending_xbox;
+static sinput_report_t pending_sinput;
+static uint8_t pending_feature[63];       // SInput feature response payload
+static uint16_t pending_feature_len;
 
 // Last sent reports (for change detection)
 static ble_gamepad_report_t last_sent_gamepad;
 static ble_keyboard_report_t last_sent_keyboard;
 static ble_mouse_report_t last_sent_mouse;
 static ble_xbox_report_t last_sent_xbox;
+static sinput_report_t last_sent_sinput;
 
 // Report storage for hids_device_init_with_storage()
-// 6 slots covers both modes (standard: 6 reports, xbox: 3 reports)
-static hids_device_report_t hid_report_storage[6];
+// 12 slots to cover the SInput composite (gamepad + keyboard + mouse) when
+// enabled; 8 suffices for the non-composite modes.
+static hids_device_report_t hid_report_storage[12];
 #define HID_REPORT_STORAGE_COUNT (sizeof(hid_report_storage) / sizeof(hid_report_storage[0]))
+
+// Toggle: BLE SInput composite (gamepad + keyboard + mouse). Define = composite
+// (Gamepad API + kbd/mouse over BLE); undefine = pure SInput gamepad. Both work
+// with the macOS Gamepad API — verified on hardware.
+#define SINPUT_BLE_COMPOSITE 1
+
+// Composite SInput report map = the SInput gamepad map (IDs 1/2/3) + keyboard (6)
+// + mouse (8) tail. Works with the macOS Gamepad API (detects as STANDARD GAMEPAD,
+// buttons register). SDL keys on the gamepad collection + VID/PID (2E8A:10C6),
+// unchanged, so Steam is preserved. NUS config is reached via joypad-ble.
+//
+// TWO HARD-WON GOTCHAS:
+//  1) NEVER add a Consumer Control collection here. Over BLE, macOS reclassifies a
+//     device exposing Consumer Control as a media remote and drops it from the
+//     Gamepad API entirely. Keyboard + mouse are fine; consumer is not.
+//  2) Chrome caches the gamepad/HID descriptor PER DEVICE. After any report-map
+//     change, a page refresh will NOT pick it up — you must Forget the device in
+//     the OS and fully restart the browser. Skipping this makes a working build
+//     look broken ("detected then no input"); it cost hours of misdiagnosis.
+//
+// Built at init by concatenating onto sinput_report_descriptor.
+#ifdef SINPUT_BLE_COMPOSITE
+static const uint8_t sinput_kbd_mouse_tail[] = {
+    // --- Keyboard, Report ID 6 (in: modifier+keys, out: lock LEDs) ---
+    0x05,0x01, 0x09,0x06, 0xA1,0x01, 0x85,0x06,
+    0x05,0x07, 0x19,0xE0, 0x29,0xE7, 0x15,0x00, 0x25,0x01, 0x75,0x01, 0x95,0x08, 0x81,0x02,
+    0x95,0x01, 0x75,0x08, 0x81,0x01,
+    0x95,0x05, 0x75,0x01, 0x05,0x08, 0x19,0x01, 0x29,0x05, 0x91,0x02, 0x95,0x01, 0x75,0x03, 0x91,0x01,
+    0x95,0x06, 0x75,0x08, 0x15,0x00, 0x25,0x65, 0x05,0x07, 0x19,0x00, 0x29,0x65, 0x81,0x00,
+    0xC0,
+    // --- Mouse, Report ID 8 (5 buttons, 16-bit X/Y, wheel, pan) ---
+    0x05,0x01, 0x09,0x02, 0xA1,0x01, 0x85,0x08, 0x09,0x01, 0xA1,0x00,
+    0x05,0x09, 0x19,0x01, 0x29,0x05, 0x15,0x00, 0x25,0x01, 0x95,0x05, 0x75,0x01, 0x81,0x02,
+    0x95,0x01, 0x75,0x03, 0x81,0x01,
+    0x05,0x01, 0x09,0x30, 0x09,0x31, 0x16,0x00,0x80, 0x26,0xFF,0x7F, 0x75,0x10, 0x95,0x02, 0x81,0x06,
+    0x09,0x38, 0x15,0x81, 0x25,0x7F, 0x75,0x08, 0x95,0x01, 0x81,0x06,
+    0x05,0x0C, 0x0A,0x38,0x02, 0x15,0x81, 0x25,0x7F, 0x75,0x08, 0x95,0x01, 0x81,0x06,
+    0xC0, 0xC0,
+};
+static uint8_t sinput_composite_desc[sizeof(sinput_report_descriptor) + sizeof(sinput_kbd_mouse_tail)];
+#endif  // SINPUT_BLE_COMPOSITE
 
 // Mode (loaded from flash on init)
 static ble_output_mode_t current_mode = BLE_MODE_STANDARD;
@@ -295,19 +374,27 @@ static btstack_packet_callback_registration_t sm_event_callback_registration;
 // ADVERTISING DATA
 // ============================================================================
 
+// NOTE: legacy BLE advertising payload is capped at 31 bytes. The full name
+// "JoypadOS Controller" (19 chars) + flags + UUID + appearance would be 32
+// bytes, which the controller silently REJECTS — the device then never
+// advertises. So the primary adv packet carries only flags + UUID + appearance
+// (11 bytes) and the complete name goes in the scan response below.
 static const uint8_t adv_data_standard[] = {
     // Flags: general discoverable, BR/EDR not supported
     0x02, BLUETOOTH_DATA_TYPE_FLAGS, 0x06,
-    // Complete local name: "JoypadOS Controller"
-    0x14, BLUETOOTH_DATA_TYPE_COMPLETE_LOCAL_NAME,
-    'J', 'o', 'y', 'p', 'a', 'd', 'O', 'S', ' ',
-    'C', 'o', 'n', 't', 'r', 'o', 'l', 'l', 'e', 'r',
     // 16-bit Service UUIDs: HID Service
     0x03, BLUETOOTH_DATA_TYPE_COMPLETE_LIST_OF_16_BIT_SERVICE_CLASS_UUIDS,
     ORG_BLUETOOTH_SERVICE_HUMAN_INTERFACE_DEVICE & 0xFF,
     ORG_BLUETOOTH_SERVICE_HUMAN_INTERFACE_DEVICE >> 8,
     // Appearance: Gamepad (0x03C4)
     0x03, BLUETOOTH_DATA_TYPE_APPEARANCE, 0xC4, 0x03,
+};
+
+// Scan response carries the complete local name (21 bytes, fits in 31).
+static const uint8_t scan_resp_standard[] = {
+    0x14, BLUETOOTH_DATA_TYPE_COMPLETE_LOCAL_NAME,
+    'J', 'o', 'y', 'p', 'a', 'd', 'O', 'S', ' ',
+    'C', 'o', 'n', 't', 'r', 'o', 'l', 'l', 'e', 'r',
 };
 
 static const uint8_t adv_data_xbox[] = {
@@ -382,13 +469,40 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
     if (packet_type != HCI_EVENT_PACKET) return;
 
     switch (hci_event_packet_get_type(packet)) {
-        case HCI_EVENT_DISCONNECTION_COMPLETE:
+        case HCI_EVENT_DISCONNECTION_COMPLETE: {
+            uint8_t reason = hci_event_disconnection_complete_get_reason(packet);
             con_handle = HCI_CON_HANDLE_INVALID;
             ble_connected = false;
             pending_type = PENDING_NONE;
-            printf("[ble_output] Disconnected, restarting advertising\n");
-            gap_advertisements_enable(1);
+
+            // Distinguish a deliberate host disconnect from a dropped link:
+            //   0x13 = remote user terminated   (host "disconnected")
+            //   0x16 = connection terminated by local host
+            //   0x08 = supervision timeout      (out of range / host slept)
+            // On a deliberate disconnect, power down instead of re-advertising
+            // — otherwise a bonded host (e.g. macOS) just auto-reconnects and
+            // hogs the link. A dropped link keeps advertising so we reconnect.
+            // USB is dominant: if a USB data host is connected, stay off — no
+            // re-advertise, no sleep (the device is usable over USB).
+            if (ble_usb_host()) {
+                adv_on = false;  // the link drop already stopped advertising
+                printf("[ble_output] Disconnected (reason 0x%02x), USB host present — BT off\n", reason);
+                break;
+            }
+
+            bool deliberate = (reason == 0x13 || reason == 0x16);
+            if (deliberate && sleep_wake_pin >= 0) {
+                // platform_deep_sleep() powers down (and never returns) on
+                // battery; it no-ops and returns false on USB.
+                if (platform_deep_sleep((uint8_t)sleep_wake_pin, sleep_wake_active_high)) {
+                    return;  // unreachable on success
+                }
+            }
+            printf("[ble_output] Disconnected (reason 0x%02x), restarting advertising\n", reason);
+            adv_on = false;  // the drop stopped advertising; set_adv re-enables
+            set_adv(true);
             break;
+        }
 
         case SM_EVENT_JUST_WORKS_REQUEST:
             sm_just_works_confirm(sm_event_just_works_request_get_handle(packet));
@@ -404,9 +518,8 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                     con_handle = hids_subevent_input_report_enable_get_con_handle(packet);
                     ble_connected = true;
                     printf("[ble_output] BLE connected (handle=0x%04x)\n", con_handle);
-                    // Keep advertising while connected so web config can
-                    // discover the device via Web Bluetooth for NUS access
-                    gap_advertisements_enable(1);
+                    // A connection stops advertising (single adv set on nRF).
+                    adv_on = false;
                     break;
 
                 case HIDS_SUBEVENT_CAN_SEND_NOW:
@@ -432,6 +545,19 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                                     (const uint8_t *)&pending_xbox, sizeof(pending_xbox));
                                 last_sent_xbox = pending_xbox;
                                 break;
+                            case PENDING_SINPUT:
+                                // Input report ID 1: skip the report_id byte (hids
+                                // adds it), send the 63-byte payload.
+                                hids_device_send_input_report_for_id(con_handle, SINPUT_REPORT_ID_INPUT,
+                                    ((const uint8_t *)&pending_sinput) + 1,
+                                    sizeof(pending_sinput) - 1);
+                                last_sent_sinput = pending_sinput;
+                                break;
+                            case PENDING_SINPUT_FEATURE:
+                                // Input report ID 2: the SInput feature response.
+                                hids_device_send_input_report_for_id(con_handle, SINPUT_REPORT_ID_FEATURES,
+                                    pending_feature, pending_feature_len);
+                                break;
                             default:
                                 break;
                         }
@@ -456,6 +582,15 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                             // Forward rumble to connected input controller
                             feedback_set_rumble(0, rumble_left, rumble_right);
                         }
+                    }
+                    if (current_mode == BLE_MODE_SINPUT && report_id == SINPUT_REPORT_ID_OUTPUT) {
+                        // SInput output report (haptic / player LED / RGB / features
+                        // request). report_data is the payload (command byte first).
+                        sinput_output_received(report_data, report_len);
+                        // Forward any updated rumble to the connected input controller.
+                        uint8_t rl = 0, rr = 0;
+                        sinput_get_rumble_lr(&rl, &rr);
+                        feedback_set_rumble(0, rl, rr);
                     }
                     // Standard mode: report_id 1 = keyboard LEDs, report_id 4 = player indicator
                     break;
@@ -483,6 +618,13 @@ void ble_output_init(void)
     if (settings && settings->ble_output_mode < BLE_MODE_COUNT) {
         current_mode = (ble_output_mode_t)settings->ble_output_mode;
     }
+
+#ifdef CONFIG_CONTROLLER_BTUSB
+    // controller_btusb is a gamepad and (on builds like the tucked-away XIAO)
+    // has no practical USB/CDC access to switch modes — SInput is THE BLE device
+    // mode here, carrying buttons + gyro/accel + battery to SDL/Steam.
+    current_mode = BLE_MODE_SINPUT;
+#endif
 
     printf("[ble_output] Initializing BLE output (mode: %s)\n",
            ble_output_get_mode_name(current_mode));
@@ -525,6 +667,46 @@ static int att_write_callback(hci_con_handle_t con_handle, uint16_t att_handle,
 // peripheral GATT profile, so it skips installing its minimal fallback server.
 bool btstack_host_external_att_server(void) { return true; }
 
+// --- BLE Battery Service: mirror the router's onboard battery percentage ---
+
+static btstack_timer_source_t battery_timer;
+
+static void battery_timer_handler(btstack_timer_source_t *ts)
+{
+    // The app samples the ADC (one reader, main thread) into the router; we
+    // just mirror it here. <0 means no battery sense on this board → leave the
+    // BAS at its init value. Runs in the BTstack thread, so set_battery_value
+    // is on the correct thread.
+    int pct = router_onboard_battery_percent();
+    if (pct >= 0) {
+        battery_service_server_set_battery_value((uint8_t)pct);
+    }
+    btstack_run_loop_set_timer(ts, 60000);  // battery changes slowly
+    btstack_run_loop_add_timer(ts);
+}
+
+// --- USB dominance enforcement (BTstack thread) ---
+static btstack_timer_source_t usb_dom_timer;
+
+static void usb_dom_timer_handler(btstack_timer_source_t *ts)
+{
+    if (ble_usb_host()) {
+        // A USB data host is connected → BT yields: drop any link and stop
+        // advertising. The disconnect handler sees the host and stays off.
+        if (con_handle != HCI_CON_HANDLE_INVALID) {
+            gap_disconnect(con_handle);
+        }
+        set_adv(false);
+    } else {
+        // No USB host → normal BT logic: advertise whenever not connected.
+        if (con_handle == HCI_CON_HANDLE_INVALID) {
+            set_adv(true);
+        }
+    }
+    btstack_run_loop_set_timer(ts, 500);
+    btstack_run_loop_add_timer(ts);
+}
+
 // Called after bt_init() — BTstack must be running before GATT/GAP setup
 void ble_output_late_init(void)
 {
@@ -548,6 +730,18 @@ void ble_output_late_init(void)
     extern void battery_monitor_init(void);
     battery_monitor_init();
 #endif
+    // Start sampling VBAT into the Battery Service. First sample shortly after
+    // boot so it isn't stuck at the 100% init value; then every 60s. No-op on
+    // boards where platform_battery_millivolts() returns -1.
+    btstack_run_loop_set_timer_handler(&battery_timer, battery_timer_handler);
+    btstack_run_loop_set_timer(&battery_timer, 2000);
+    btstack_run_loop_add_timer(&battery_timer);
+
+    // Enforce USB dominance (drop/suppress BT while a USB host is connected).
+    btstack_run_loop_set_timer_handler(&usb_dom_timer, usb_dom_timer_handler);
+    btstack_run_loop_set_timer(&usb_dom_timer, 500);
+    btstack_run_loop_add_timer(&usb_dom_timer);
+
     device_information_service_server_init();
 
     // Mode-dependent PnP ID and device info
@@ -557,6 +751,12 @@ void ble_output_late_init(void)
         device_information_service_server_set_software_revision("1.0.0");
         // PnP ID: USB IF (0x02), Microsoft VID 0x045E, Xbox Series X PID 0x0B13, version 5.17.0
         device_information_service_server_set_pnp_id(0x02, 0x045E, 0x0B13, 0x0511);
+    } else if (current_mode == BLE_MODE_SINPUT) {
+        device_information_service_server_set_manufacturer_name(SINPUT_MANUFACTURER);
+        device_information_service_server_set_model_number(SINPUT_PRODUCT);
+        device_information_service_server_set_software_revision("1.0.0");
+        // PnP ID: USB IF (0x02) + SInput VID/PID so SDL's SInput driver matches.
+        device_information_service_server_set_pnp_id(0x02, SINPUT_VID, SINPUT_PID, SINPUT_BCD_DEVICE);
     } else {
         device_information_service_server_set_manufacturer_name("Joypad");
         device_information_service_server_set_model_number(APP_NAME);
@@ -571,6 +771,20 @@ void ble_output_late_init(void)
     if (current_mode == BLE_MODE_XBOX) {
         hid_desc = ble_xbox_get_descriptor();
         hid_desc_size = ble_xbox_get_descriptor_size();
+    } else if (current_mode == BLE_MODE_SINPUT) {
+#ifdef SINPUT_BLE_COMPOSITE
+        // Composite map (gamepad + keyboard/mouse). Works with the Gamepad API and
+        // adds kbd/mouse over BLE (see sinput_kbd_mouse_tail comment).
+        memcpy(sinput_composite_desc, sinput_report_descriptor, sizeof(sinput_report_descriptor));
+        memcpy(sinput_composite_desc + sizeof(sinput_report_descriptor),
+               sinput_kbd_mouse_tail, sizeof(sinput_kbd_mouse_tail));
+        hid_desc = sinput_composite_desc;
+        hid_desc_size = sizeof(sinput_composite_desc);
+#else
+        // Pure SInput gamepad (no kbd/mouse). Also works with the Gamepad API.
+        hid_desc = sinput_report_descriptor;
+        hid_desc_size = sizeof(sinput_report_descriptor);
+#endif
     } else {
         hid_desc = standard_hid_descriptor;
         hid_desc_size = sizeof(standard_hid_descriptor);
@@ -596,6 +810,19 @@ void ble_output_late_init(void)
         gap_random_address_set_mode(GAP_RANDOM_ADDRESS_TYPE_STATIC);
         printf("[ble_output] Using distinct BLE address for mode %d\n", current_mode);
     }
+#ifdef BTSTACK_USE_NRF
+    else {
+        // Standard mode on nRF: the SoftDevice has no public BD_ADDR, so
+        // advertising must use a random static address. The nRF transport
+        // sets the address VALUE during HCI init (from the chip's static
+        // address), but the address MODE must be enabled here or BTstack
+        // advertises with (empty) public addressing and never goes on air —
+        // the device is not discoverable. Non-nRF transports (CYW43) have a
+        // real public address, so leave them on the default.
+        gap_random_address_set_mode(GAP_RANDOM_ADDRESS_TYPE_STATIC);
+        printf("[ble_output] Standard mode: using random static address (nRF)\n");
+    }
+#endif
 
     // Mode-dependent GAP name and advertising
     const char *gap_name;
@@ -605,6 +832,10 @@ void ble_output_late_init(void)
         gap_name = "Joypad Xinput";
         adv_data = adv_data_xbox;
         adv_data_len = sizeof(adv_data_xbox);
+    } else if (current_mode == BLE_MODE_SINPUT) {
+        gap_name = "Joypad SInput";
+        adv_data = adv_data_standard;  // generic HID adv (appearance = gamepad)
+        adv_data_len = sizeof(adv_data_standard);
     } else {
         gap_name = "JoypadOS Controller";
         adv_data = adv_data_standard;
@@ -618,7 +849,15 @@ void ble_output_late_init(void)
     memset(null_addr, 0, 6);
     gap_advertisements_set_params(adv_int_min, adv_int_max, 0, 0, null_addr, 0x07, 0x00);
     gap_advertisements_set_data(adv_data_len, (uint8_t *)adv_data);
-    gap_advertisements_enable(1);
+    // Standard mode keeps the complete name in the scan response (the primary
+    // adv packet has no room — see adv_data_standard note). Xbox mode's name
+    // fits in its adv packet, so no scan response needed there.
+    if (current_mode != BLE_MODE_XBOX) {
+        gap_scan_response_set_data(sizeof(scan_resp_standard), (uint8_t *)scan_resp_standard);
+    }
+    // Advertise unless a USB data host is already dominant; the usb_dom_timer
+    // below keeps it in sync as USB is plugged/unplugged.
+    set_adv(!ble_usb_host());
 
     // Register event handlers
     hci_event_callback_registration.callback = &packet_handler;
@@ -629,9 +868,11 @@ void ble_output_late_init(void)
 
     hids_device_register_packet_handler(packet_handler);
 
-    // Initialize NUS (Nordic UART Service) for wireless config — standard mode only
-    // (Xbox mode uses a different GATT profile without NUS)
-    if (current_mode == BLE_MODE_STANDARD) {
+    // Initialize NUS (Nordic UART Service) for wireless config. Standard and
+    // SInput modes share the composite GATT (which includes NUS); Xbox mode uses
+    // a different GATT profile without NUS. SDL matches SInput by VID/PID + HID,
+    // so the extra NUS service is inert to it.
+    if (current_mode == BLE_MODE_STANDARD || current_mode == BLE_MODE_SINPUT) {
         ble_nus_init();
     }
 
@@ -715,6 +956,43 @@ static void ble_output_task_xbox(void)
 }
 
 // ============================================================================
+// TASK — SInput BLE mode (SDL/Steam: buttons + IMU + battery + rumble)
+// ============================================================================
+
+static void ble_output_task_sinput(void)
+{
+    const input_event_t *event = router_get_output(OUTPUT_TARGET_BLE_PERIPHERAL, 0);
+    if (!event) return;
+
+    // Stream output event to CDC/NUS for web config (if enabled)
+    cdc_commands_send_player_output(0, event->buttons, event->analog);
+
+    // Flow-controlled: only one report queued at a time.
+    if (pending_type != PENDING_NONE) return;
+
+    // Build the input report; may flag a feature refresh on device change. The
+    // host's features request (output report) also sets the pending flag.
+    sinput_report_t report;
+    sinput_report_build_from_event(&report, event);
+
+    // Feature response takes priority — SDL blocks on the handshake.
+    uint16_t flen;
+    if (sinput_feature_response_take(pending_feature, &flen)) {
+        pending_feature_len = flen;
+        pending_type = PENDING_SINPUT_FEATURE;
+        hids_device_request_can_send_now_event(con_handle);
+        return;
+    }
+
+    // Otherwise send the input report when changed (the IMU timestamp advances
+    // each build, so a device with motion streams continuously).
+    if (memcmp(&report, &last_sent_sinput, sizeof(report)) == 0) return;
+    pending_sinput = report;
+    pending_type = PENDING_SINPUT;
+    hids_device_request_can_send_now_event(con_handle);
+}
+
+// ============================================================================
 // MAIN TASK DISPATCH
 // ============================================================================
 
@@ -724,6 +1002,8 @@ void ble_output_task(void)
 
     if (current_mode == BLE_MODE_XBOX) {
         ble_output_task_xbox();
+    } else if (current_mode == BLE_MODE_SINPUT) {
+        ble_output_task_sinput();
     } else {
         ble_output_task_standard();
     }
@@ -771,6 +1051,7 @@ const char* ble_output_get_mode_name(ble_output_mode_t mode)
     switch (mode) {
         case BLE_MODE_STANDARD: return "Standard BLE";
         case BLE_MODE_XBOX:     return "Xbox BLE";
+        case BLE_MODE_SINPUT:   return "SInput BLE";
         default:                return "Unknown";
     }
 }
@@ -780,6 +1061,7 @@ void ble_output_get_mode_color(ble_output_mode_t mode, uint8_t *r, uint8_t *g, u
     switch (mode) {
         case BLE_MODE_STANDARD: *r = 0; *g = 0; *b = 64; break;   // Blue
         case BLE_MODE_XBOX:     *r = 0; *g = 64; *b = 0; break;   // Green
+        case BLE_MODE_SINPUT:   *r = 0; *g = 32; *b = 64; break;  // Cyan
         default:                *r = 64; *g = 64; *b = 64; break;  // White
     }
 }

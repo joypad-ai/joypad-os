@@ -52,3 +52,36 @@ void platform_reboot_bootloader(void)
 {
     reset_usb_boot(0, 0);
 }
+
+void platform_reboot_ota(void)
+{
+    // No BLE OTA path on RP2040 — fall back to the USB bootloader.
+    reset_usb_boot(0, 0);
+}
+
+bool platform_usb_powered(void)
+{
+    // VBUS detect not wired on most RP2040 boards — assume powered.
+    return true;
+}
+
+bool platform_deep_sleep(uint8_t wake_gpio, bool wake_active_high)
+{
+    (void)wake_gpio; (void)wake_active_high;
+    return false;
+}
+
+uint32_t platform_last_reset_reason(void)
+{
+    return 0;
+}
+
+int platform_battery_millivolts(void)
+{
+    return -1;
+}
+
+int platform_battery_charging(void)
+{
+    return -1;
+}

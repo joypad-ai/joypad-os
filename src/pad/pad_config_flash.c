@@ -225,11 +225,26 @@ void pad_config_flash_init(void) {
     pad_config_storage_init();
 }
 
-// Range-check a pin field. Valid: -1 (disabled) or 0..29 (RP2040 GPIO).
-// Anything else means the saved config is corrupt or written by a build
-// for a different platform — reject it instead of letting it crash boot.
+// Range-check a pin field. Valid: -1 (disabled) or 0..PAD_MAX_GPIO for the
+// target SoC. Anything else means the saved config is corrupt or written by a
+// build for a different platform — reject it instead of letting it crash boot.
+// The cap is platform-specific: RP2040 GPIO is 0-29, but nRF52840 spans
+// P0.00-P0.31 (0-31) and P1.00-P1.15 (32-47), and ESP32-S3 goes higher. A flat
+// cap of 29 silently invalidated any nRF config using a P1.x pin (>=32) or
+// P0.30/31 — it saved fine but failed validation on load and reverted to
+// defaults.
+#ifndef PAD_MAX_GPIO
+#if defined(PLATFORM_NRF)
+#define PAD_MAX_GPIO 47
+#elif defined(PLATFORM_ESP32)
+#define PAD_MAX_GPIO 48
+#else
+#define PAD_MAX_GPIO 29
+#endif
+#endif
+
 static bool pin_ok(int16_t pin) {
-    return pin == -1 || (pin >= 0 && pin <= 29);
+    return pin == -1 || (pin >= 0 && pin <= PAD_MAX_GPIO);
 }
 
 static bool pad_config_flash_valid(const pad_config_flash_t* f) {

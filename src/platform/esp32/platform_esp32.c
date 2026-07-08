@@ -130,7 +130,39 @@ void platform_reboot_bootloader(void)
     while (1) { vTaskDelay(portMAX_DELAY); }
 }
 
+void platform_reboot_ota(void)
+{
+    // No BLE OTA path here — fall back to the TinyUF2 bootloader.
+    platform_reboot_bootloader();
+}
+
 void platform_clear_usb_persist(void)
 {
     chip_usb_set_persist_flags(0);
+}
+
+bool platform_usb_powered(void)
+{
+    return true;
+}
+
+bool platform_deep_sleep(uint8_t wake_gpio, bool wake_active_high)
+{
+    (void)wake_gpio; (void)wake_active_high;
+    return false;
+}
+
+uint32_t platform_last_reset_reason(void)
+{
+    return 0;
+}
+
+int platform_battery_millivolts(void)
+{
+    return -1;
+}
+
+int platform_battery_charging(void)
+{
+    return -1;
 }

@@ -64,8 +64,21 @@
 // BUFFER SIZES
 // ============================================================================
 
+#ifdef CONFIG_DS5_DROP_SCREAM
+// Route BTstack-emitted events (incl. L2CAP_EVENT_CHANNEL_OPENED) through the
+// public hci_dump interface — lets us observe HID channel CIDs for direct
+// audio sends without modifying the BTstack library.
+#define ENABLE_LOG_BTSTACK_EVENTS
+#endif
+
 // HCI ACL payload size (standard BT is 1021, but we use smaller for memory)
+#ifdef CONFIG_DS5_DROP_SCREAM
+// DualSense extended output report 0x36 (398 bytes + HID header) must fit a
+// single outgoing ACL buffer: l2cap max payload = HCI_ACL_PAYLOAD_SIZE - 4
+#define HCI_ACL_PAYLOAD_SIZE (512 + 4 + 3)
+#else
 #define HCI_ACL_PAYLOAD_SIZE 256
+#endif
 
 // Pre-buffer for L2CAP/BNEP headers
 #define HCI_INCOMING_PRE_BUFFER_SIZE 14

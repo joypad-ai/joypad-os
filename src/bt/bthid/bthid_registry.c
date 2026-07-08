@@ -16,6 +16,7 @@
 // xbox_bt.h and xbox_ble.h no longer registered — generic driver handles all Xbox
 #include "devices/vendors/google/stadia_bt.h"
 #include "devices/vendors/augmental/mouthpad_ble.h"
+#include "devices/generic/sinput_ble.h"
 
 void bthid_registry_init(void)
 {
@@ -44,6 +45,11 @@ void bthid_registry_init(void)
 
     // Augmental MouthPad (BLE mouse/keyboard/consumer — matches by name)
     mouthpad_ble_register();
+
+    // JoypadOS SInput controller over BLE (matches by VID/PID 2E8A:10C6 or name).
+    // Must register before the generic fallback so SInput's report ID 1 is parsed
+    // properly instead of by the generic gamepad driver.
+    sinput_ble_register();
 
     // Generic gamepad driver (fallback, lowest priority)
     bthid_gamepad_register();

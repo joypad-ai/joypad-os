@@ -242,6 +242,20 @@ static void set_off(void)
 // PUBLIC API
 // ============================================================================
 
+// Force the indicator LED fully off *now* (synchronous). Used right before
+// nRF System OFF: the SoC retains GPIO output state (and the WS2812 latches its
+// last color) through deep sleep, so without this the "connected" blue would
+// stay lit while asleep. Independent of leds_task, so it doesn't race.
+void neopixel_off(void)
+{
+#ifdef BOARD_FEATHER_NRF52840
+    neo_set_off();
+    blue_led_set(false);
+#else
+    set_off();
+#endif
+}
+
 void neopixel_set_pin(int8_t pin) {
 #ifdef BOARD_FEATHER_NRF52840
     if (pin >= 0) {

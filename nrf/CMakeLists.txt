@@ -44,6 +44,7 @@ set(SRCS
     "src/flash_nrf.c"
     "src/ws2812_nrf.c"
     "src/button_nrf.c"
+    "src/platform_gpio_nrf.c"
     "${SHARED_SRC}/platform/nrf/platform_nrf.c"
 
     # --- Display (SSD1306 I2C on XIAO Expansion Board / FeatherWing OLED) ---
@@ -152,6 +153,7 @@ if(APP_TYPE STREQUAL "usb2usb")
         "${SHARED_SRC}/usb/usbh/hid/devices/vendors/8bitdo/8bitdo_neo.c"
         "${SHARED_SRC}/usb/usbh/hid/devices/vendors/8bitdo/8bitdo_pce.c"
         "${SHARED_SRC}/usb/usbh/hid/devices/vendors/dragonrise/dragonrise.c"
+        "${SHARED_SRC}/usb/usbh/hid/devices/vendors/elo/elo_vagabond.c"
         "${SHARED_SRC}/usb/usbh/hid/devices/vendors/google/google_stadia.c"
         "${SHARED_SRC}/usb/usbh/hid/devices/vendors/hori/hori_horipad.c"
         "${SHARED_SRC}/usb/usbh/hid/devices/vendors/hori/hori_pokken.c"
@@ -229,6 +231,7 @@ elseif(APP_TYPE STREQUAL "btusb2usb")
         "${SHARED_SRC}/usb/usbh/hid/devices/vendors/8bitdo/8bitdo_neo.c"
         "${SHARED_SRC}/usb/usbh/hid/devices/vendors/8bitdo/8bitdo_pce.c"
         "${SHARED_SRC}/usb/usbh/hid/devices/vendors/dragonrise/dragonrise.c"
+        "${SHARED_SRC}/usb/usbh/hid/devices/vendors/elo/elo_vagabond.c"
         "${SHARED_SRC}/usb/usbh/hid/devices/vendors/google/google_stadia.c"
         "${SHARED_SRC}/usb/usbh/hid/devices/vendors/hori/hori_horipad.c"
         "${SHARED_SRC}/usb/usbh/hid/devices/vendors/hori/hori_pokken.c"
@@ -265,6 +268,7 @@ elseif(APP_TYPE STREQUAL "btusb2usb")
         "${SHARED_SRC}/bt/bthid/bthid.c"
         "${SHARED_SRC}/bt/bthid/bthid_registry.c"
         "${SHARED_SRC}/bt/bthid/devices/generic/bthid_gamepad.c"
+        "${SHARED_SRC}/bt/bthid/devices/generic/sinput_ble.c"
         "${SHARED_SRC}/bt/bthid/devices/vendors/sony/ds3_bt.c"
         "${SHARED_SRC}/bt/bthid/devices/vendors/sony/ds4_bt.c"
         "${SHARED_SRC}/bt/bthid/devices/vendors/sony/ds5_bt.c"
@@ -378,12 +382,12 @@ elseif(APP_TYPE STREQUAL "controller_btusb")
         "${SHARED_SRC}/pad/pad_input.c"
         "${SHARED_SRC}/pad/pad_config_flash.c"
         "src/pad_config_storage_nrf.c"
-        "src/platform_gpio_nrf.c"
 
         # --- Sensor drivers ---
         "${SHARED_SRC}/drivers/seesaw/seesaw.c"
         "${SHARED_SRC}/drivers/joywing/joywing_input.c"
         "${SHARED_SRC}/platform/nrf/platform_i2c_nrf.c"
+        "src/imu_nrf.c"   # onboard IMU (XIAO Sense LSM6DS3TR-C); no-op if absent
 
         # --- BLE output (peripheral mode) ---
         "${SHARED_SRC}/bt/ble_output/ble_output.c"
@@ -403,6 +407,7 @@ elseif(APP_TYPE STREQUAL "controller_btusb")
         "${SHARED_SRC}/bt/bthid/bthid.c"
         "${SHARED_SRC}/bt/bthid/bthid_registry.c"
         "${SHARED_SRC}/bt/bthid/devices/generic/bthid_gamepad.c"
+        "${SHARED_SRC}/bt/bthid/devices/generic/sinput_ble.c"
         "${SHARED_SRC}/bt/bthid/devices/vendors/sony/ds3_bt.c"
         "${SHARED_SRC}/bt/bthid/devices/vendors/sony/ds4_bt.c"
         "${SHARED_SRC}/bt/bthid/devices/vendors/sony/ds5_bt.c"
@@ -506,12 +511,42 @@ elseif(APP_TYPE STREQUAL "controller_btusb")
         ENABLE_BTSTACK=1
         REQUIRE_BLE_OUTPUT=1
         REQUIRE_BT_INPUT=1
-        SENSOR_JOYWING=1
         PLATFORM_NRF=1
         DISABLE_DISPLAY_SPI=1
-        OLED_I2C_DISPLAY=1
         CFG_TUSB_CONFIG_FILE="tusb_config_nrf.h"
     )
+
+    # JoyWing (seesaw I2C sensor) is a Feather-class accessory and registers a
+    # separate top-level input interface. On the bare XIAO it's just clutter in
+    # the device-info input list (and there's no seesaw attached), so enable it
+    # only on the Feather. Pad (GPIO) input is always available via SENSOR_PAD.
+    if(BOARD MATCHES "adafruit_feather_nrf52840")
+        target_compile_definitions(app PRIVATE SENSOR_JOYWING=1)
+    endif()
+
+    if(DEFINED JP_RECOVERY_WIPE_ON_BOOT)
+        target_compile_definitions(app PRIVATE JP_RECOVERY_WIPE_ON_BOOT=1)
+    endif()
+
+    # OLED display is opt-in per board. The boot-time SSD1306 probe does a
+    # blocking I2C transfer; on a bare board with no display and no external
+    # pull-ups (e.g. plain XIAO header), that transfer can hang the TWIM and
+    # stall boot before USB enumerates → app drops back to the bootloader.
+    # Enable it only where an OLED + pull-ups are actually present (Feather
+    # FeatherWing). Bare XIAO boots reliably without the probe; i2c0 stays
+    # available for a JoyWing when one is configured.
+    if(BOARD MATCHES "adafruit_feather_nrf52840")
+        target_compile_definitions(app PRIVATE OLED_I2C_DISPLAY=1)
+    endif()
+
+    # The XIAO has no dedicated user button; button_nrf.c otherwise grabs
+    # D1/P0.03 as the "user button", which collides with a gamepad button on
+    # that pad and makes presses cycle the USB output mode (double-click).
+    # Disable it so every pad GPIO is free for controller input. The Feather
+    # has a real user switch (P1.02), so keep it there.
+    if(BOARD MATCHES "xiao_ble")
+        target_compile_definitions(app PRIVATE DISABLE_USER_BUTTON=1)
+    endif()
 
 else()
     # -----------------------------------------------------------------------
@@ -541,6 +576,7 @@ else()
         "${SHARED_SRC}/bt/bthid/bthid.c"
         "${SHARED_SRC}/bt/bthid/bthid_registry.c"
         "${SHARED_SRC}/bt/bthid/devices/generic/bthid_gamepad.c"
+        "${SHARED_SRC}/bt/bthid/devices/generic/sinput_ble.c"
         "${SHARED_SRC}/bt/bthid/devices/vendors/sony/ds3_bt.c"
         "${SHARED_SRC}/bt/bthid/devices/vendors/sony/ds4_bt.c"
         "${SHARED_SRC}/bt/bthid/devices/vendors/sony/ds5_bt.c"

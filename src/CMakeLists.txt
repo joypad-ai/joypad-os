@@ -173,6 +173,7 @@ set(BTHID_DEVICE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/bt/bthid/bthid.c
     ${CMAKE_CURRENT_SOURCE_DIR}/bt/bthid/bthid_registry.c
     ${CMAKE_CURRENT_SOURCE_DIR}/bt/bthid/devices/generic/bthid_gamepad.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/bt/bthid/devices/generic/sinput_ble.c
     ${CMAKE_CURRENT_SOURCE_DIR}/bt/bthid/devices/vendors/sony/ds3_bt.c
     ${CMAKE_CURRENT_SOURCE_DIR}/bt/bthid/devices/vendors/sony/ds4_bt.c
     ${CMAKE_CURRENT_SOURCE_DIR}/bt/bthid/devices/vendors/sony/ds5_bt.c
@@ -694,8 +695,10 @@ target_compile_definitions(joypad_dc_rp2040zero PRIVATE
     MAPLE_PIN1=14 MAPLE_PIN5=15   # USB4Maple-compatible Maple Bus pins
     WS2812_PIN=16                 # onboard NeoPixel (kb2040 has none)
     USE_BOOTSEL_BUTTON=1
-    # SD card on SPI1: SCK=GP10, MOSI=GP11, MISO=GP12, CS=GP13
-    CONFIG_SD=1 SD_SPI_INST=1 SD_SCK_PIN=10 SD_MOSI_PIN=11 SD_MISO_PIN=12 SD_CS_PIN=13
+    # SD card (SPI1: SCK=GP10 MOSI=GP11 MISO=GP12 CS=GP13) is ONLY used for VMU
+    # persistence, which is disabled for release — leaving it off keeps both
+    # RP2040 usb2dc builds identical except GPIO. Re-enable alongside CONFIG_VMU.
+    # CONFIG_SD=1 SD_SPI_INST=1 SD_SCK_PIN=10 SD_MOSI_PIN=11 SD_MISO_PIN=12 SD_CS_PIN=13
 )
 target_compile_options(joypad_dc_rp2040zero PRIVATE ${USB2DC_FORCE_CONFIG})
 target_sources(joypad_dc_rp2040zero PUBLIC ${COMMON_SOURCES} ${SD_SOURCES}
@@ -1405,6 +1408,38 @@ if (PICO_BOARD STREQUAL "pico_w" OR
         BTSTACK_USE_CYW43=1
         ENABLE_BTSTACK=1
     )
+    # DualSense voice/show modes (opt-in, all disabled by default).
+    # CONFIG_DS5_DROP_SCREAM doubles as the base voice-engine flag (0x36 audio
+    # streaming, hci_dump CID tap, buffers); modes layer on top of it:
+    #   DS5_DROP_SCREAM=1  make bt2usb_pico_w   -> drop-scream + fireworks
+    #   DS5_FISHER_PRICE=1 make bt2usb_pico_w   -> kids numbers/letters mode
+    #   DS5_COMPANION=1    make bt2usb_pico_w   -> LLM voice companion bridge
+    # No BTstack modifications required. Assets: tools/ds5-scream/encode.py.
+    if (DEFINED ENV{DS5_DROP_SCREAM})
+        message(STATUS "joypad_bt2usb: DS5 drop-scream + fireworks ENABLED")
+        target_compile_definitions(joypad_bt2usb PRIVATE CONFIG_DS5_DROP_SCREAM=1)
+    endif()
+    if (DEFINED ENV{DS5_FISHER_PRICE})
+        message(STATUS "joypad_bt2usb: DS5 Fisher-Price mode ENABLED")
+        target_compile_definitions(joypad_bt2usb PRIVATE
+            CONFIG_DS5_DROP_SCREAM=1
+            CONFIG_DS5_FISHER_PRICE=1
+        )
+    endif()
+    if (DEFINED ENV{DS5_ROBOT})
+        message(STATUS "joypad_bt2usb: DS5 Robot mode ENABLED")
+        target_compile_definitions(joypad_bt2usb PRIVATE
+            CONFIG_DS5_DROP_SCREAM=1
+            CONFIG_DS5_ROBOT=1
+        )
+    endif()
+    if (DEFINED ENV{DS5_COMPANION})
+        message(STATUS "joypad_bt2usb: DS5 AI companion mode ENABLED")
+        target_compile_definitions(joypad_bt2usb PRIVATE
+            CONFIG_DS5_DROP_SCREAM=1
+            CONFIG_DS5_COMPANION=1
+        )
+    endif()
     target_sources(joypad_bt2usb PUBLIC
         ${CORE_SOURCES}
         ${USB_DEVICE_SOURCES}

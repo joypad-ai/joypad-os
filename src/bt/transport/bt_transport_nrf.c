@@ -269,26 +269,47 @@ static void btstack_event_handler(uint8_t packet_type, uint16_t channel, uint8_t
                         case BLUETOOTH_COMPANY_ID_NORDIC_SEMICONDUCTOR_ASA:
                         case BLUETOOTH_COMPANY_ID_THE_LINUX_FOUNDATION:
                             hci_set_chipset(btstack_chipset_zephyr_instance());
+                            // The zephyr chipset's static-address read returns
+                            // 00:00:00:00:00:00 here, so advertising would go
+                            // out with an all-zero address and never be
+                            // discoverable. Use the FICR factory static-random
+                            // address directly and enable random static
+                            // addressing so the BLE peripheral is on air.
+                            nrf_get_static_random_addr(local_addr);
+                            gap_random_address_set(local_addr);
+                            gap_random_address_set_mode(GAP_RANDOM_ADDRESS_TYPE_STATIC);
+                            printf("[BT_NRF] FICR static random addr %s\n",
+                                   bd_addr_to_str(local_addr));
                             break;
                         default:
                             nrf_get_static_random_addr(local_addr);
                             gap_random_address_set(local_addr);
+                            gap_random_address_set_mode(GAP_RANDOM_ADDRESS_TYPE_STATIC);
+                            printf("[BT_NRF] FICR static random addr %s\n",
+                                   bd_addr_to_str(local_addr));
                             break;
                     }
                     break;
                 }
                 case HCI_OPCODE_HCI_READ_BD_ADDR: {
-                    const uint8_t *params = hci_event_command_complete_get_return_parameters(packet);
-                    if (params[0] == 0 && size >= 12) {
-                        reverse_48(&params[1], local_addr);
-                    }
+                    // Public BD_ADDR is 00:00:00:00:00:00 on the nRF SoftDevice.
+                    // Do NOT let it clobber the FICR random static address we
+                    // set above (used for advertising + logging).
                     break;
                 }
                 case HCI_OPCODE_HCI_ZEPHYR_READ_STATIC_ADDRESS: {
                     const uint8_t *params = hci_event_command_complete_get_return_parameters(packet);
                     if (params[0] == 0 && size >= 13) {
-                        reverse_48(&params[2], local_addr);
-                        gap_random_address_set(local_addr);
+                        bd_addr_t a;
+                        reverse_48(&params[2], a);
+                        // Only apply a non-zero static address; the controller
+                        // returns all-zeros here, which would clobber FICR.
+                        static const uint8_t zero[6] = {0};
+                        if (memcmp(a, zero, 6) != 0) {
+                            memcpy(local_addr, a, 6);
+                            gap_random_address_set(local_addr);
+                            gap_random_address_set_mode(GAP_RANDOM_ADDRESS_TYPE_STATIC);
+                        }
                     }
                     break;
                 }

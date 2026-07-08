@@ -6,6 +6,7 @@
 
 #include "app.h"
 #include "core/router/router.h"
+#include "core/battery.h"
 #include "native/host/uart/uart_host.h"
 #include "core/services/players/manager.h"
 #include "core/services/button/button.h"
@@ -343,7 +344,14 @@ static void bt_central_post_init(void)
         btstack_host_start_timed_scan(60000);
         printf("[app:controller_btusb] BT Central enabled, scanning...\n");
     } else {
-        printf("[app:controller_btusb] BT Central disabled\n");
+        // Suppress the central's auto-scan. scan_suppressed defaults to
+        // false, so the host's state machine would otherwise keep BLE
+        // scanning running on power-on even though no input was requested —
+        // and concurrent scanning starves/hides our peripheral advertising
+        // on the nRF SoftDevice controller. Keep scanning off until the
+        // user explicitly enables BT input.
+        btstack_host_suppress_scan(true);
+        printf("[app:controller_btusb] BT Central disabled (scan suppressed)\n");
     }
 }
 #endif
@@ -387,6 +395,23 @@ const OutputInterface** app_get_output_interfaces(uint8_t* count)
     return output_interfaces;
 }
 
+#if REQUIRE_BLE_OUTPUT
+// Deep-sleep config (set in app_init from the pad config).
+// Idle timeout: power down after this long with no input. 0 = disabled.
+// Only nRF implements platform_deep_sleep; elsewhere it's a no-op, so leave
+// the idle timer off there to avoid pointless periodic checks.
+#ifndef CONTROLLER_BTUSB_IDLE_SLEEP_MS
+#ifdef PLATFORM_NRF
+#define CONTROLLER_BTUSB_IDLE_SLEEP_MS (5u * 60u * 1000u)  // 5 minutes
+#else
+#define CONTROLLER_BTUSB_IDLE_SLEEP_MS 0u
+#endif
+#endif
+static int s_sleep_wake_pin = -1;
+static bool s_sleep_wake_active_high = false;
+static uint32_t s_idle_sleep_ms = CONTROLLER_BTUSB_IDLE_SLEEP_MS;
+#endif
+
 // ============================================================================
 // APP INITIALIZATION
 // ============================================================================
@@ -394,6 +419,23 @@ const OutputInterface** app_get_output_interfaces(uint8_t* count)
 void app_init(void)
 {
     printf("[app:controller_btusb] Initializing ControllerBTUSB v%s\n", JOYPAD_VERSION);
+
+#ifdef JP_RECOVERY_WIPE_ON_BOOT
+    // RECOVERY BUILD ONLY: wipe all persisted config (factory reset) at the
+    // very top of boot, BEFORE any pad config is loaded or any GPIO is
+    // touched. Recovers a board soft-bricked by a bad/conflicting custom
+    // pad pin that faults during early boot (config lives in NVS, so a
+    // normal reflash can't clear it). Flash this once, let it boot, then
+    // flash the normal firmware.
+    {
+        extern void flash_factory_reset(void);
+        flash_factory_reset();
+#ifdef CONFIG_PAD_INPUT
+        pad_config_reset();
+#endif
+        printf("[RECOVERY] Factory reset on boot — config wiped\n");
+    }
+#endif
 
     // (Do NOT call set_sys_clock_khz here — pico-pio-usb adapts its bit-bang
     // timing to whatever clk_sys is, and changing the clock after stdio_init
@@ -483,6 +525,15 @@ void app_init(void)
         pad_input_add_device(pad_cfg);
         printf("[app:controller_btusb] Pad: %s (%s)\n", pad_cfg->name,
                pad_config_has_custom() ? "flash" : "default");
+#if REQUIRE_BLE_OUTPUT
+        // Deep-sleep wake pin = the B1 button. A deliberate host disconnect or
+        // an idle timeout powers the device down on battery; pressing B1 wakes
+        // it (full reboot). No B1 mapped → leave sleep disabled (else there'd
+        // be no way to wake it).
+        s_sleep_wake_pin = (pad_cfg->b1 >= 0) ? pad_cfg->b1 : -1;
+        s_sleep_wake_active_high = pad_cfg->active_high;
+        ble_output_set_sleep_wake_pin(s_sleep_wake_pin, s_sleep_wake_active_high);
+#endif
 #ifndef DISABLE_USB_HOST
         // Override PIO-USB D+ pin from pad config (before usbh_init runs).
         // Tri-state: >0 = override, 0 = use compile-time default,
@@ -737,6 +788,55 @@ void app_init(void)
 
 void app_task(void)
 {
+#if REQUIRE_BLE_OUTPUT
+    // Idle auto-sleep (battery only): after s_idle_sleep_ms with no input,
+    // deep-sleep to save battery. Checked ~1 Hz. Skipped on USB (docked /
+    // charging) — platform_deep_sleep would no-op there anyway, but checking
+    // VBUS first avoids the per-second log/attempt.
+    if (s_idle_sleep_ms > 0 && s_sleep_wake_pin >= 0) {
+        static uint32_t last_idle_check = 0;
+        uint32_t now = platform_time_ms();
+        if (now - last_idle_check >= 1000) {
+            last_idle_check = now;
+            if (!platform_usb_powered() &&
+                router_ms_since_activity() >= s_idle_sleep_ms) {
+                printf("[app:controller_btusb] Idle %u ms — deep sleep (wake on GPIO %d)\n",
+                       (unsigned)s_idle_sleep_ms, s_sleep_wake_pin);
+                platform_deep_sleep((uint8_t)s_sleep_wake_pin, s_sleep_wake_active_high);
+            }
+        }
+    }
+#endif
+
+    // Sample the onboard battery into the router so the SInput report's
+    // charge_level/plug_status (and the BLE Battery Service) reflect this
+    // device's own battery + charging state. Throttled — ADC reads are slow.
+    // No-op where platform_battery_millivolts() returns -1 (no battery sense).
+    {
+        static uint32_t last_batt_ms = 0;
+        static bool batt_first = true;
+        uint32_t now = platform_time_ms();
+        if (batt_first || now - last_batt_ms >= 30000) {
+            batt_first = false;
+            last_batt_ms = now;
+            int mv = platform_battery_millivolts();
+            if (mv >= 0) {
+                bool on_power = platform_usb_powered();
+                int chg = platform_battery_charging();  // 1=charging, 0=done/idle, -1=unknown
+                uint8_t pct = battery_percent_from_mv(mv);
+                if (pct < 1) pct = 1;  // a present battery is >=1% (0 = unknown)
+                // Charger reports complete while on external power → cell is
+                // full, so pin 100% (the curve may read ~96% at termination).
+                // Drives SInput plug_status: on_power+full → CHARGED(3),
+                // on_power+charging → CHARGING(2), off power → ON_BATTERY(4).
+                if (on_power && chg == 0) pct = 100;
+                router_set_onboard_battery(pct, on_power);
+            } else {
+                router_set_onboard_battery(-1, false);
+            }
+        }
+    }
+
 #ifdef CONFIG_UART_HOST
     // Drain UART RX → INPUT_EVENT packets → router. Every loop iteration
     // because the parser is called from main thread; latency is dominated
@@ -790,31 +890,35 @@ void app_task(void)
     // Process BLE transport
     bt_task();
 
-    // NeoPixel: show connection state and active output mode color
+    // NeoPixel: show connection state and active output mode color.
+    // A USB *data host* is dominant (BT is dropped/suppressed while it's
+    // connected), so treat its presence as "connected" — a steady USB color,
+    // not the BT-searching flash. Use the same VBUS+mounted test as the
+    // dominance logic (not usb_gamepad_active(), which is false in CDC mode).
     bool ble_conn = ble_output_is_connected();
-    bool usb_active = usb_gamepad_active();
-    leds_set_connected_devices((ble_conn || usb_active) ? 1 : 0);
+    bool usb_host = platform_usb_powered() && tud_mounted();
+    leds_set_connected_devices((ble_conn || usb_host) ? 1 : 0);
 
     // Track state changes for LED color updates
     static bool last_ble_conn = false;
-    static bool last_usb_active = false;
+    static bool last_usb_host = false;
     static ble_output_mode_t last_ble_mode = BLE_MODE_COUNT;
     static usb_output_mode_t last_usb_mode = USB_OUTPUT_MODE_COUNT;
 
     ble_output_mode_t ble_mode = ble_output_get_mode();
     usb_output_mode_t usb_mode = usbd_get_mode();
 
-    if (ble_conn != last_ble_conn || usb_active != last_usb_active ||
+    if (ble_conn != last_ble_conn || usb_host != last_usb_host ||
         ble_mode != last_ble_mode || usb_mode != last_usb_mode) {
         last_ble_conn = ble_conn;
-        last_usb_active = usb_active;
+        last_usb_host = usb_host;
         last_ble_mode = ble_mode;
         last_usb_mode = usb_mode;
 
         uint8_t r, g, b;
         if (ble_conn) {
             ble_output_get_mode_color(ble_mode, &r, &g, &b);
-        } else if (usb_active) {
+        } else if (usb_host) {
             usbd_get_mode_color(usb_mode, &r, &g, &b);
         } else {
             ble_output_get_mode_color(ble_mode, &r, &g, &b);

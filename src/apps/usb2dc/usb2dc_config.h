@@ -16,15 +16,27 @@
 // Output: Dreamcast Maple bus, with the VMU persisted to a QSPI flash partition.
 #define CONFIG_DC               1
 #define CONFIG_USB_HOST         1
-#define CONFIG_VMU              1
-#define CONFIG_VMU_QSPI         1
+// ---------------------------------------------------------------------------
+// VMU (simulated Dreamcast memory card) — DISABLED for release.
+// Internal-flash persistence (QSPI) still introduces Maple timing drops we
+// haven't fully resolved; ship without the memory card for now. RUMBLE is
+// unaffected — with CONFIG_VMU off, the DC still advertises controller +
+// PuruPuru (SUBPERIPHERAL1); only the VMU sub-peripheral (SUBPERIPHERAL0) is
+// dropped. All VMU logic stays behind #ifdef CONFIG_VMU for dev to continue.
+// Re-enable both lines to resume VMU development.
+// #define CONFIG_VMU              1
+// #define CONFIG_VMU_QSPI         1
 
-// Core allocation: USB host runs on Core 0, so the Maple response runs RX+TX on
-// the free Core 1 ("respond immediately", like GameCube). The whole Core-1 path
-// is RAM-resident, so flash writes need no multicore lockout — a lockout would
-// freeze Core 1 mid-poll and drop the controller.
-#define CONFIG_DC_CORE1_TX      1
-#define CONFIG_NO_FLASH_LOCKOUT 1
+// Core allocation: Core-0 TX (the proven workaround), mirroring rock-solid
+// n642dc. KB2040 has a known, never-root-caused *enumeration-dropoff bug* with
+// Core-1 TX (see commit 87ad2c4a) — RP2040-Zero validated Core-1 TX fine, only
+// KB2040 drops. Core-1 TX was re-enabled during the VMU work purely to keep the
+// flash flush off the TX core; with the VMU disabled there's no flush, so we
+// return to Core-0 TX and the dropoff goes away.
+// When VMU dev resumes, re-enable Core-1 TX *per board* (RP2040-Zero only) —
+// NOT on KB2040 until the dropoff is root-caused.
+// #define CONFIG_DC_CORE1_TX      1
+// #define CONFIG_NO_FLASH_LOCKOUT 1   // only relevant with the QSPI flush
 
 // Dreamcast = 4 controller ports, and the 128 KB VMU image is RAM-tight, so
 // right-size the USB host arrays below the global hub/device caps.

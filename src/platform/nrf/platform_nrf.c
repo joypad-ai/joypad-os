@@ -4,13 +4,17 @@
 // Mirrors platform_esp32.c but for nRF Connect SDK.
 
 #include "platform/platform.h"
+#include "platform/platform_gpio.h"
 #include <stdio.h>
 #include <string.h>
 
 #include <zephyr/kernel.h>
+#include <zephyr/irq.h>
 #include <zephyr/sys/reboot.h>
+#include <zephyr/sys/poweroff.h>
 #include <zephyr/drivers/hwinfo.h>
 #include <nrfx.h>
+#include <hal/nrf_gpio.h>
 
 // ============================================================================
 // TIME
@@ -92,4 +96,146 @@ void platform_reboot_bootloader(void)
     // Nordic DFU bootloader uses 0xB1 instead.
     NRF_POWER->GPREGRET = 0x57;
     sys_reboot(SYS_REBOOT_COLD);
+}
+
+void platform_reboot_ota(void)
+{
+    // Adafruit nRF52 bootloader: GPREGRET = 0xA8 (DFU_MAGIC_OTA_APP_RESET) boots
+    // straight into BLE OTA DFU mode (advertises "AdafruitDFU"), so firmware can
+    // be pushed over the air (nRF Connect DFU) with no USB.
+    NRF_POWER->GPREGRET = 0xA8;
+    sys_reboot(SYS_REBOOT_COLD);
+}
+
+// ============================================================================
+// POWER / DEEP SLEEP
+// ============================================================================
+
+bool platform_usb_powered(void)
+{
+    return (NRF_POWER->USBREGSTATUS & POWER_USBREGSTATUS_VBUSDETECT_Msk) != 0;
+}
+
+int platform_battery_millivolts(void)
+{
+#if defined(CONFIG_ADC) && defined(CONFIG_BOARD_XIAO_BLE)
+    // XIAO nRF52840: battery is read on AIN7 (P0.31) through a ~1/3 resistor
+    // divider that's gated by P0.14 — held LOW to connect it. Keep P0.14 LOW
+    // (driving it HIGH can push P0.31 past its 3.6 V limit). The SAADC is
+    // configured for gain 1/6 + 0.6 V internal ref → full-scale 3.6 V at the
+    // pin over 12 bits, so Vadc_mv = raw * 3600 / 4095, and the divider gives
+    // VBAT = Vadc * (1.0 + 0.51)/0.51 ≈ Vadc * 2.96.
+    static bool inited = false;
+    if (!inited) {
+        nrf_gpio_cfg_output(14);
+        nrf_gpio_pin_clear(14);       // P0.14 LOW: enable the divider
+        platform_adc_init();
+        platform_adc_init_channel(7); // AIN7 = P0.31
+        inited = true;
+        k_msleep(2);
+    }
+    uint16_t raw = platform_adc_read(7);
+    uint32_t vadc_mv = ((uint32_t)raw * 3600u) / 4095u;
+    uint32_t vbat_mv = (vadc_mv * 296u) / 100u;   // 1M/510k divider → *2.96
+
+    // The nRF SAADC internal 0.6V reference has a few % gain tolerance and
+    // reads low. Single-point trim calibrated against a known-full LP103454 on
+    // the charger (4.2V), which read ~4.06V uncorrected → factor ~1.033. Adjust
+    // XIAO_VBAT_TRIM_NUM/DEN if a BAT+ multimeter reading says otherwise.
+#ifndef XIAO_VBAT_TRIM_NUM
+#define XIAO_VBAT_TRIM_NUM 1033
+#define XIAO_VBAT_TRIM_DEN 1000
+#endif
+    vbat_mv = (vbat_mv * XIAO_VBAT_TRIM_NUM) / XIAO_VBAT_TRIM_DEN;
+    return (int)vbat_mv;
+#else
+    return -1;
+#endif
+}
+
+int platform_battery_charging(void)
+{
+#if defined(CONFIG_BOARD_XIAO_BLE)
+    // Only meaningful while on external power; on battery the charger/LED
+    // circuit is unpowered and the status pin floats.
+    if (!platform_usb_powered()) return 0;
+    // P0.17 = the XIAO charge-status / LED line off the BQ25100 CHG output:
+    // pulled LOW while actively charging (LED lit), released HIGH when charging
+    // completes or is idle. Read-only — high-Z input, doesn't disturb the LED.
+    static bool inited = false;
+    if (!inited) {
+        nrf_gpio_cfg_input(17, NRF_GPIO_PIN_NOPULL);
+        inited = true;
+    }
+    return nrf_gpio_pin_read(17) ? 0 : 1;  // HIGH=done(0), LOW=charging(1)
+#else
+    return -1;  // no charge-status pin on this board
+#endif
+}
+
+uint32_t platform_last_reset_reason(void)
+{
+    // RESETREAS accumulates bits until cleared (write-1-to-clear). Read once at
+    // first call (the boot cause) and clear so the next boot is fresh.
+    // Bits: 0x01 PIN, 0x02 DOG(watchdog), 0x04 SREQ(soft), 0x08 LOCKUP,
+    //       0x10000 OFF (System OFF GPIO/DETECT wake), 0x100000 VBUS wake.
+    static uint32_t cached = 0xFFFFFFFFUL;
+    if (cached == 0xFFFFFFFFUL) {
+        cached = NRF_POWER->RESETREAS;
+        NRF_POWER->RESETREAS = 0xFFFFFFFFUL;
+    }
+    return cached;
+}
+
+bool platform_deep_sleep(uint8_t wake_gpio, bool wake_active_high)
+{
+    // Never power down while USB-powered: USB needs the device awake, and the
+    // host is also charging the battery. The caller falls back to advertising.
+    if (platform_usb_powered()) {
+        return false;
+    }
+
+    printf("[platform] Entering System OFF (deep sleep), wake on GPIO %u (%s)\n",
+           (unsigned)wake_gpio, wake_active_high ? "active-high" : "active-low");
+
+    // Clear any latched GPIO DETECT events so a stale latch doesn't wake us
+    // immediately on entering System OFF.
+    NRF_P0->LATCH = 0xFFFFFFFFUL;
+    NRF_P1->LATCH = 0xFFFFFFFFUL;
+
+    // Hold the wake pin at its IDLE level with the matching internal pull, and
+    // SENSE on its PRESSED level — otherwise it wakes immediately. For an
+    // active-high button (idle low, press high): pull-down + sense-high. For an
+    // active-low button (idle high, press low): pull-up + sense-low. Uses the
+    // absolute nRF pin index (P0.00-31 = 0-31, P1.00-15 = 32-47), the same
+    // numbering the pad config uses.
+    if (wake_active_high) {
+        nrf_gpio_cfg_input(wake_gpio, NRF_GPIO_PIN_PULLDOWN);
+        nrf_gpio_cfg_sense_set(wake_gpio, NRF_GPIO_PIN_SENSE_HIGH);
+    } else {
+        nrf_gpio_cfg_input(wake_gpio, NRF_GPIO_PIN_PULLUP);
+        nrf_gpio_cfg_sense_set(wake_gpio, NRF_GPIO_PIN_SENSE_LOW);
+    }
+
+    // Let pending log/USB-detach settle first (needs interrupts on).
+    k_msleep(50);
+
+    // Force the indicator LED off as the VERY LAST step, with preemption locked
+    // so the leds_task thread can't repaint the "connected" blue between here
+    // and power-down. The SoC retains GPIO output state (and the WS2812 latches
+    // its color) through System OFF, so a stale-on LED would stay lit while
+    // asleep. irq_lock() stops thread switches; neopixel_off() is the final
+    // write; sys_poweroff() powers down without returning.
+    // Cut IMU power (P1.08 stays high through System OFF otherwise → ~0.7 mA
+    // drain that over-discharges a near-empty cell). Weak: only controller_btusb
+    // links an IMU; other nRF apps fall through.
+    extern void imu_power_off(void) __attribute__((weak));
+    extern void neopixel_off(void);
+    (void)irq_lock();
+    if (imu_power_off) imu_power_off();
+    neopixel_off();
+    sys_poweroff();
+
+    // sys_poweroff() does not return.
+    return true;
 }

@@ -18,6 +18,7 @@
 typedef enum {
     BLE_MODE_STANDARD = 0,  // Composite: gamepad + keyboard + mouse
     BLE_MODE_XBOX,          // Xbox BLE gamepad (future Phase 2)
+    BLE_MODE_SINPUT,        // SInput gamepad (SDL/Steam: buttons + IMU + battery)
     BLE_MODE_COUNT
 } ble_output_mode_t;
 
@@ -33,6 +34,12 @@ void ble_output_task(void);
 
 // Connection state
 bool ble_output_is_connected(void);
+
+// Set the GPIO (raw chip pin) to wake from deep sleep on, plus its pressed
+// level (active_high). When set (>=0), a deliberate host disconnect (not a
+// dropped link) powers the device down instead of re-advertising; a press on
+// this pin wakes/reboots it. <0 disables.
+void ble_output_set_sleep_wake_pin(int gpio, bool active_high);
 
 // Mode selection
 ble_output_mode_t ble_output_get_mode(void);

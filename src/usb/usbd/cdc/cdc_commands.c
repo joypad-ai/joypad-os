@@ -54,6 +54,7 @@ static char response_buf[CDC_MAX_PAYLOAD];
 #define PENDING_NONE    0
 #define PENDING_REBOOT  1
 #define PENDING_BOOTSEL 2
+#define PENDING_OTA     3
 static volatile uint8_t pending_reboot = PENDING_NONE;
 static uint32_t pending_reboot_time = 0;
 
@@ -231,6 +232,10 @@ static void send_json(const char* json)
 // COMMAND HANDLERS
 // ============================================================================
 
+// Diagnostic getter from sinput_mode.c (fwd-declared to avoid pulling the
+// SInput/tusb headers into this TU).
+extern uint32_t sinput_get_feature_count(void);
+
 static void cmd_info(const char* json)
 {
     (void)json;
@@ -238,11 +243,24 @@ static void cmd_info(const char* json)
     char serial[17];
     platform_get_serial(serial, sizeof(serial));
 
+    int16_t imu_a[3] = {0}, imu_g[3] = {0};
+    char imu_str[80];
+    if (router_onboard_motion_get(imu_a, imu_g)) {
+        snprintf(imu_str, sizeof(imu_str), "[%d,%d,%d,%d,%d,%d]",
+                 imu_a[0], imu_a[1], imu_a[2], imu_g[0], imu_g[1], imu_g[2]);
+    } else {
+        snprintf(imu_str, sizeof(imu_str), "false");  // no IMU reporting
+    }
+
     snprintf(response_buf, sizeof(response_buf),
              "{\"app\":\"%s\",\"version\":\"%s\",\"board\":\"%s\",\"serial\":\"%s\",\"commit\":\"%s\",\"build\":\"%s\""
+             ",\"reset\":\"0x%lx\",\"battery_mv\":%d,\"chg\":%d,\"imu\":%s,\"flashw\":%lu,\"featw\":%lu"
              ",\"features\":{\"onboard_led\":%s}}"
              ,
              APP_NAME, JOYPAD_VERSION, BOARD_NAME, serial, GIT_COMMIT, BUILD_TIME,
+             (unsigned long)platform_last_reset_reason(), platform_battery_millivolts(),
+             platform_battery_charging(), imu_str, (unsigned long)flash_get_write_count(),
+             (unsigned long)sinput_get_feature_count(),
 #ifdef BTSTACK_USE_CYW43
              "true"
 #elif defined(BOARD_LED_PIN)
@@ -325,6 +343,58 @@ static void cmd_bootsel(const char* json)
     // Defer reboot to cdc_commands_task() to avoid nested tud_task() calls
     pending_reboot = PENDING_BOOTSEL;
     pending_reboot_time = platform_time_ms();
+}
+
+// OTA — reboot into over-the-air (BLE) DFU. Works over the BLE NUS too (the NUS
+// tunnels this command protocol), so a USB-less nRF52 board can be updated
+// wirelessly: send OTA, then push the DFU .zip with nRF Connect.
+static void cmd_ota(const char* json)
+{
+    (void)json;
+    send_ok();
+    pending_reboot = PENDING_OTA;
+    pending_reboot_time = platform_time_ms();
+}
+
+// IMU.MAP — get/set the onboard-IMU axis remap (mounting orientation).
+// Optional x/y/z, each a signed source axis: ±1=X ±2=Y ±3=Z (negative inverts).
+// Omitted axes keep their current value. Always replies with the resulting map,
+// e.g. {"cmd":"IMU.MAP","x":-1,"y":-2,"z":3} → {"x":-1,"y":-2,"z":3}.
+static void cmd_imu_map(const char* json)
+{
+    int gx = 0, gy = 0, gz = 0;
+    bool hx = json_get_int(json, "x", &gx);
+    bool hy = json_get_int(json, "y", &gy);
+    bool hz = json_get_int(json, "z", &gz);
+    if (hx || hy || hz) {
+        router_set_motion_remap(hx ? gx : 0, hy ? gy : 0, hz ? gz : 0);
+    }
+    int m[3];
+    router_get_motion_remap(m);
+    snprintf(response_buf, sizeof(response_buf),
+             "{\"x\":%d,\"y\":%d,\"z\":%d}", m[0], m[1], m[2]);
+    send_json(response_buf);
+}
+
+// Tilt steering: roll the controller → right stick X (while D-pad is in LEFT-
+// stick mode). Tune live over CDC/NUS — no reflash.
+// {"cmd":"TILT.STEER","on":1,"range":45,"dead":3,"sign":-1} — all fields optional.
+// Weak no-op so apps that don't compile pad/pad_input.c (e.g. bt2usb) still
+// link; the real implementation overrides it wherever pad_input.c is built.
+__attribute__((weak)) void pad_set_tilt_steer(int on, int range_deg,
+                                              int dead_deg, int sign)
+{
+    (void)on; (void)range_deg; (void)dead_deg; (void)sign;
+}
+static void cmd_tilt_steer(const char* json)
+{
+    int on = -1, range = -1, dead = -1, sign = 0;
+    json_get_int(json, "on", &on);
+    json_get_int(json, "range", &range);
+    json_get_int(json, "dead", &dead);
+    json_get_int(json, "sign", &sign);
+    pad_set_tilt_steer(on, range, dead, sign);
+    send_ok();
 }
 
 static void cmd_mode_get(const char* json)
@@ -1319,6 +1389,265 @@ static void cmd_cprofile_delete(const char* json)
     cmd_profile_delete(json);
 }
 
+#ifdef CONFIG_DS5_COMPANION
+// ============================================================================
+// AI COMPANION VOICE BRIDGE (DS5 mic -> host, host speech -> DS5 speaker)
+// ============================================================================
+
+// ds5_bt.c hooks
+extern bool ds5_companion_push_speak(const uint8_t* frame200);
+extern uint8_t ds5_companion_ring_free(void);
+extern void ds5_companion_set_state(uint8_t state);
+
+static const char b64_tab[] =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+static int voice_b64_encode(const uint8_t* in, int len, char* out, int out_max)
+{
+    int o = 0;
+    for (int i = 0; i < len; i += 3) {
+        if (o + 4 >= out_max) return -1;
+        uint32_t v = (uint32_t)in[i] << 16;
+        if (i + 1 < len) v |= (uint32_t)in[i + 1] << 8;
+        if (i + 2 < len) v |= in[i + 2];
+        out[o++] = b64_tab[(v >> 18) & 63];
+        out[o++] = b64_tab[(v >> 12) & 63];
+        out[o++] = (i + 1 < len) ? b64_tab[(v >> 6) & 63] : '=';
+        out[o++] = (i + 2 < len) ? b64_tab[v & 63] : '=';
+    }
+    out[o] = 0;
+    return o;
+}
+
+static int voice_b64_val(char c)
+{
+    if (c >= 'A' && c <= 'Z') return c - 'A';
+    if (c >= 'a' && c <= 'z') return c - 'a' + 26;
+    if (c >= '0' && c <= '9') return c - '0' + 52;
+    if (c == '+') return 62;
+    if (c == '/') return 63;
+    return -1;
+}
+
+static int voice_b64_decode(const char* in, int in_len, uint8_t* out, int out_max)
+{
+    int o = 0;
+    uint32_t acc = 0;
+    int bits = 0;
+    for (int i = 0; i < in_len; i++) {
+        if (in[i] == '=') break;
+        int v = voice_b64_val(in[i]);
+        if (v < 0) return -1;
+        acc = (acc << 6) | (uint32_t)v;
+        bits += 6;
+        if (bits >= 8) {
+            bits -= 8;
+            if (o >= out_max) return -1;
+            out[o++] = (uint8_t)(acc >> bits);
+        }
+    }
+    return o;
+}
+
+// Called from the DS5 driver for every mic-audio input report while
+// listening — that call arrives DEEP in the BTstack packet-handler chain.
+// cdc_protocol_send() puts ~2KB of packet+CRC buffers on the stack, which
+// smashed the stack from that context at 100 reports/s and knocked the whole
+// device off USB the moment LISTEN engaged. So: enqueue-only here; the JSON
+// encode + CDC transmit happen in cdc_commands_task() (main loop, deep
+// stack, correct TinyUSB context).
+#define MIC_RING_SLOTS 16
+#define MIC_RING_MAX   96
+static uint8_t mic_ring[MIC_RING_SLOTS][MIC_RING_MAX];
+static uint8_t mic_ring_len[MIC_RING_SLOTS];
+static volatile uint8_t mic_ring_head, mic_ring_tail;
+
+void cdc_voice_mic_event(const uint8_t* data, uint16_t len)
+{
+    if (!stream_ctx) return;
+    uint8_t next = (uint8_t)((mic_ring_head + 1) % MIC_RING_SLOTS);
+    if (next == mic_ring_tail) return;  // full: drop (host PLC covers gaps)
+    if (len > MIC_RING_MAX) len = MIC_RING_MAX;
+    memcpy(mic_ring[mic_ring_head], data, len);
+    mic_ring_len[mic_ring_head] = (uint8_t)len;
+    mic_ring_head = next;
+}
+
+// Drained from cdc_commands_task() — see above.
+static void mic_ring_drain(void)
+{
+    while (mic_ring_tail != mic_ring_head) {
+        if (!stream_ctx) {  // stream detached: discard
+            mic_ring_tail = mic_ring_head;
+            return;
+        }
+        static char mic_buf[1200];
+        const uint8_t* data = mic_ring[mic_ring_tail];
+        uint16_t len = mic_ring_len[mic_ring_tail];
+        int n = snprintf(mic_buf, sizeof(mic_buf), "{\"type\":\"mic\",\"d\":\"");
+        int e = voice_b64_encode(data, len, mic_buf + n, (int)sizeof(mic_buf) - n - 3);
+        if (e >= 0) {
+            n += e;
+            mic_buf[n++] = '\"';
+            mic_buf[n++] = '}';
+            mic_buf[n] = 0;
+            if (cdc_protocol_send_event(stream_ctx, mic_buf) == 0) {
+                return;  // TX backlogged: retry this slot next task tick
+            }
+        }
+        mic_ring_tail = (uint8_t)((mic_ring_tail + 1) % MIC_RING_SLOTS);
+    }
+}
+
+// Companion state notifications (listen / mic_end / speak_end).
+// Same BT-context hazard as mic events: queue the name, emit from task.
+static const char* voice_notify_q[4];
+static volatile uint8_t voice_nq_head, voice_nq_tail;
+
+void cdc_voice_notify(const char* what)
+{
+    if (!stream_ctx) return;
+    uint8_t next = (uint8_t)((voice_nq_head + 1) % 4);
+    if (next == voice_nq_tail) return;
+    voice_notify_q[voice_nq_head] = what;  // callers pass string literals
+    voice_nq_head = next;
+}
+
+static void voice_notify_drain(void)
+{
+    while (voice_nq_tail != voice_nq_head) {
+        if (!stream_ctx) { voice_nq_tail = voice_nq_head; return; }
+        static char ev_buf[64];
+        snprintf(ev_buf, sizeof(ev_buf), "{\"type\":\"voice\",\"ev\":\"%s\"}",
+                 voice_notify_q[voice_nq_tail]);
+        if (cdc_protocol_send_event(stream_ctx, ev_buf) == 0) return;
+        voice_nq_tail = (uint8_t)((voice_nq_tail + 1) % 4);
+    }
+}
+
+// {"cmd":"VOICE.SPEAK","d":"<base64 of exactly 200 Opus bytes>"}
+static void cmd_voice_speak(const char* json)
+{
+    int dlen;
+    int end = 0;
+    json_get_int(json, "end", &end);
+    if (end) {
+        extern void ds5_companion_speak_flush(void);
+        ds5_companion_speak_flush();
+        return;
+    }
+    const char* d = json_get_string(json, "d", &dlen);
+    if (!d) {
+        send_error("missing d");
+        return;
+    }
+    // 1-3 Opus frames per command (200B each). Batching matters: during BT
+    // audio streaming the main loop slows and the host can only land a
+    // command every ~17ms — one frame per command (10.67ms budget) starves
+    // the ring and the audio chops. Three per command = 32ms budget.
+    uint8_t frames[600];
+    int n = voice_b64_decode(d, dlen, frames, (int)sizeof(frames));
+    if (n != 200 && n != 400 && n != 600) {
+        send_error("need 1-3 x 200-byte frames");
+        return;
+    }
+    // Fire-and-forget: no response. 89/197 speak sends measured over budget
+    // (worst 103ms) — per-command response building + TX was throttling the
+    // host's write acceptance during playback. Errors still respond.
+    for (int off = 0; off < n; off += 200) {
+        (void)ds5_companion_push_speak(frames + off);
+    }
+}
+
+// {"cmd":"VOICE.CTX"} -> controller context for the AI (battery, held time,
+// drop tally). The bridge injects this before each model turn.
+static void cmd_voice_ctx(const char* json)
+{
+    (void)json;
+    extern bool ds5_companion_get_ctx(uint8_t*, bool*, uint32_t*, uint8_t*, uint8_t*, uint8_t*);
+    uint8_t batt = 0, drops = 0, catches = 0, shakes = 0;
+    bool chg = false;
+    uint32_t held = 0;
+    if (!ds5_companion_get_ctx(&batt, &chg, &held, &drops, &catches, &shakes)) {
+        send_error("no controller");
+        return;
+    }
+    extern uint32_t ds5_companion_get_presses(char*, int);
+    extern bool ds5_companion_get_ctx2(uint8_t*, bool*, uint32_t*, char*, int);
+    char presses[160];
+    uint32_t press_age = ds5_companion_get_presses(presses, sizeof(presses));
+    uint8_t pets = 0;
+    bool flipped = false;
+    uint32_t idle_min = 0;
+    char top_btns[64] = "";
+    ds5_companion_get_ctx2(&pets, &flipped, &idle_min, top_btns, sizeof(top_btns));
+    snprintf(response_buf, sizeof(response_buf),
+             "{\"ok\":true,\"batt\":%u,\"chg\":%s,\"held_s\":%lu,"
+             "\"drops\":%u,\"catches\":%u,\"shakes\":%u,\"pets\":%u,"
+             "\"flipped\":%s,\"idle_min\":%lu,\"top_btns\":\"%s\","
+             "\"btns\":\"%s\",\"btn_age_s\":%lu}",
+             batt, chg ? "true" : "false", (unsigned long)held, drops, catches,
+             shakes, pets, flipped ? "true" : "false",
+             (unsigned long)idle_min, top_btns,
+             presses, (unsigned long)press_age);
+    send_json(response_buf);
+}
+
+// {"cmd":"VOICE.FX","led":[r,g,b],"led_ms":N,"rumble":[lo,hi],"rumble_ms":N,
+//  "scream":true} — the model's body control (lightbar, rumble, scream)
+static bool fx_parse_triplet(const char* json, const char* key,
+                             int* a, int* b, int* c)
+{
+    char pat[24];
+    snprintf(pat, sizeof(pat), "\"%s\"", key);
+    const char* q = strstr(json, pat);
+    if (!q) return false;
+    q = strchr(q, '[');
+    if (!q) return false;
+    int n = sscanf(q, c ? "[%d,%d,%d" : "[%d,%d", a, b, c ? c : a);
+    return c ? n == 3 : n == 2;
+}
+
+static void cmd_voice_fx(const char* json)
+{
+    extern bool ds5_companion_fx(const uint8_t*, uint32_t, uint8_t, uint8_t,
+                                 uint32_t, bool);
+    int r = 0, g = 0, b = 0, lo = 0, hi = 0;
+    int led_ms = 0, rum_ms = 0, scream = 0;
+    bool has_led = fx_parse_triplet(json, "led", &r, &g, &b);
+    bool has_rum = fx_parse_triplet(json, "rumble", &lo, &hi, NULL);
+    json_get_int(json, "led_ms", &led_ms);
+    json_get_int(json, "rumble_ms", &rum_ms);
+    json_get_int(json, "scream", &scream);
+    uint8_t led[3] = { (uint8_t)r, (uint8_t)g, (uint8_t)b };
+    bool ok = ds5_companion_fx(led,
+                               has_led ? (uint32_t)(led_ms > 0 ? led_ms : 3000) : 0,
+                               (uint8_t)lo, (uint8_t)hi,
+                               has_rum ? (uint32_t)(rum_ms > 0 ? rum_ms : 1000) : 0,
+                               scream != 0);
+    snprintf(response_buf, sizeof(response_buf), "{\"ok\":%s}",
+             ok ? "true" : "false");
+    send_json(response_buf);
+}
+
+// {"cmd":"VOICE.STATE","state":"idle"|"think"}
+static void cmd_voice_state(const char* json)
+{
+    int slen;
+    const char* st = json_get_string(json, "state", &slen);
+    if (!st) {
+        send_error("missing state");
+        return;
+    }
+    if (strncmp(st, "think", 5) == 0) {
+        ds5_companion_set_state(2);   // DS5_COMP_THINK
+    } else {
+        ds5_companion_set_state(0);   // DS5_COMP_IDLE
+    }
+    send_json("{\"ok\":true}");
+}
+#endif  // CONFIG_DS5_COMPANION
+
 // ============================================================================
 // DEBUG LOG STREAM COMMAND
 // ============================================================================
@@ -1455,6 +1784,14 @@ static void cmd_caps_get(const char* json)
     if (n < 0 || n >= rem) goto overflow;
     out += n; rem -= n;
 
+    // Track which input sources we've listed so we can backfill any source
+    // that routes reference but the input-interface registry doesn't expose
+    // (e.g. BLE Central on controller_btusb — it's routed as input but isn't
+    // a polled InputInterface). A CAPS payload whose routes point at a source
+    // missing from inputs[] is internally inconsistent and breaks host tools
+    // that map routes back to inputs.
+    uint32_t seen_sources = 0;
+    bool first_input = true;
     uint8_t in_count = 0;
     const InputInterface* const* ins = app_registry_inputs(&in_count);
     for (uint8_t i = 0; i < in_count; i++) {
@@ -1468,13 +1805,37 @@ static void cmd_caps_get(const char* json)
         n = snprintf(out, rem,
                      "%s{\"name\":\"%s\",\"source\":%d,\"source_name\":\"%s\""
                      ",\"connected\":%s,\"devices\":%u}",
-                     i == 0 ? "" : ",",
+                     first_input ? "" : ",",
                      name, (int)it->source,
                      app_registry_input_source_name(it->source),
                      has_conn ? (connected ? "true" : "false") : "null",
                      has_devs ? devs : 0);
         if (n < 0 || n >= rem) goto overflow;
         out += n; rem -= n;
+        first_input = false;
+        if ((unsigned)it->source < 32) seen_sources |= (1u << it->source);
+    }
+
+    // Backfill input sources referenced only by routes (not in the registry).
+    {
+        uint8_t rc = router_get_route_count();
+        for (uint8_t i = 0; i < rc; i++) {
+            const route_entry_t* r = router_get_route(i);
+            if (!r || !r->active) continue;
+            unsigned src = (unsigned)r->input;
+            if (src < 32 && (seen_sources & (1u << src))) continue;
+            if (src < 32) seen_sources |= (1u << src);
+            n = snprintf(out, rem,
+                         "%s{\"name\":\"%s\",\"source\":%d,\"source_name\":\"%s\""
+                         ",\"connected\":null,\"devices\":0}",
+                         first_input ? "" : ",",
+                         app_registry_input_source_name(r->input),
+                         (int)r->input,
+                         app_registry_input_source_name(r->input));
+            if (n < 0 || n >= rem) goto overflow;
+            out += n; rem -= n;
+            first_input = false;
+        }
     }
 
     n = snprintf(out, rem, "],\"outputs\":[");
@@ -1658,12 +2019,22 @@ static void cmd_bt_status(const char* json)
     const char* transport = "None";
 #endif
 
+    // Uptime discriminates reboot-vs-USB-linkflap after a drop; crash_pc is
+    // the hard-fault black box breadcrumb (0 = no fault since power-on).
+    uint32_t crash_pc = 0, crash_lr = 0;
+#ifdef CONFIG_DS5_DROP_SCREAM
+    extern void btstack_host_get_crash_info(uint32_t* pc, uint32_t* lr);
+    btstack_host_get_crash_info(&crash_pc, &crash_lr);
+#endif
     int pos = snprintf(response_buf, sizeof(response_buf),
-             "{\"enabled\":%s,\"scanning\":%s,\"connections\":%d,\"transport\":\"%s\",\"devices\":[",
+             "{\"enabled\":%s,\"scanning\":%s,\"connections\":%d,\"transport\":\"%s\","
+             "\"up_s\":%lu,\"crash_pc\":\"%08lx\",\"crash_lr\":\"%08lx\",\"devices\":[",
              btstack_host_is_initialized() ? "true" : "false",
              btstack_host_is_scanning() ? "true" : "false",
              btstack_classic_get_connection_count(),
-             transport);
+             transport,
+             (unsigned long)(platform_time_ms() / 1000),
+             (unsigned long)crash_pc, (unsigned long)crash_lr);
 
     // Track which bonded addresses are currently connected
     uint8_t connected_addrs[8][6];
@@ -1958,6 +2329,11 @@ static void cmd_rumble_stop(const char* json)
 // Call from main loop to auto-stop rumble after duration and drain log buffer
 void cdc_commands_task(void)
 {
+#ifdef CONFIG_DS5_COMPANION
+    mic_ring_drain();
+    voice_notify_drain();
+#endif
+
     // Handle deferred reboots (runs outside tud_task/protocol handler context)
     if (pending_reboot != PENDING_NONE) {
         uint32_t elapsed = platform_time_ms() - pending_reboot_time;
@@ -1965,12 +2341,15 @@ void cdc_commands_task(void)
             uint8_t type = pending_reboot;
             pending_reboot = PENDING_NONE;
             printf("[CDC] Executing deferred %s...\n",
-                   type == PENDING_BOOTSEL ? "bootloader" : "reboot");
+                   type == PENDING_BOOTSEL ? "bootloader" :
+                   type == PENDING_OTA ? "OTA DFU" : "reboot");
             // Disconnect USB cleanly so host sees device removal
             tud_disconnect();
             platform_sleep_ms(500);
             if (type == PENDING_BOOTSEL) {
                 platform_reboot_bootloader();
+            } else if (type == PENDING_OTA) {
+                platform_reboot_ota();
             } else {
                 platform_reboot();
             }
@@ -2787,9 +3166,12 @@ static const cmd_entry_t commands[] = {
     {"PING", cmd_ping},
     {"REBOOT", cmd_reboot},
     {"BOOTSEL", cmd_bootsel},
+    {"OTA", cmd_ota},
     {"MODE.GET", cmd_mode_get},
     {"MODE.SET", cmd_mode_set},
     {"MODE.LIST", cmd_mode_list},
+    {"IMU.MAP", cmd_imu_map},
+    {"TILT.STEER", cmd_tilt_steer},
     // Unified profile commands
     {"PROFILE.LIST", cmd_profile_list},
     {"PROFILE.GET", cmd_profile_get},
@@ -2838,6 +3220,12 @@ static const cmd_entry_t commands[] = {
     {"MAX3421.STATUS", cmd_max3421_status},
 #endif
 #ifdef ENABLE_BTSTACK
+#ifdef CONFIG_DS5_COMPANION
+    {"VOICE.SPEAK", cmd_voice_speak},
+    {"VOICE.CTX", cmd_voice_ctx},
+    {"VOICE.FX", cmd_voice_fx},
+    {"VOICE.STATE", cmd_voice_state},
+#endif
     {"BT.STATUS", cmd_bt_status},
     {"BT.BONDS.CLEAR", cmd_bt_bonds_clear},
     {"BT.FORGET", cmd_bt_forget},

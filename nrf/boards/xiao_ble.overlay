@@ -8,9 +8,70 @@
 	status = "disabled";
 };
 
+/* The nRF52840 P1 GPIO port (gpio1) is status="disabled" in the base SoC
+ * devicetree. The XIAO breaks out D6-D10 = P1.11-P1.15 (pad pins 43-47), so
+ * leaving gpio1 off makes every P1.x pad dead — device_is_ready(gpio1) fails,
+ * pad input skips configuring them, and reads return garbage. Enable it so the
+ * P1 pads are usable for buttons/D-pad. (gpio0/P0 is already enabled.) */
+&gpio1 {
+	status = "okay";
+};
+
 / {
 	chosen {
 		zephyr,console = &uart0;
 		zephyr,shell-uart = &uart0;
+	};
+};
+
+/*
+ * XIAO nRF52840 Sense onboard IMU: LSM6DS3TR-C at 0x6a on i2c0, wired to the
+ * internal pins P0.07 (SDA) / P0.27 (SCL) — NOT the D4/D5 header (that was for
+ * the Feather-only JoyWing, unused on XIAO). Powered by a fixed regulator on
+ * P1.08 (boot-on, 3ms settle) which Zephyr enables before the sensor inits.
+ * IRQ on P0.11. On a plain (non-Sense) XIAO there's no device at 0x6a and the
+ * driver just fails to init, harmlessly.
+ */
+/ {
+	lsm6ds3tr_c_en: lsm6ds3tr-c-en {
+		compatible = "regulator-fixed";
+		enable-gpios = <&gpio1 8 GPIO_ACTIVE_HIGH>;
+		regulator-name = "LSM6DS3TR_C_EN";
+		regulator-boot-on;
+		startup-delay-us = <3000>;
+	};
+};
+
+&pinctrl {
+	i2c0_imu_default: i2c0_imu_default {
+		group1 {
+			psels = <NRF_PSEL(TWIM_SDA, 0, 7)>,
+				<NRF_PSEL(TWIM_SCL, 0, 27)>;
+			bias-pull-up;
+		};
+	};
+
+	i2c0_imu_sleep: i2c0_imu_sleep {
+		group1 {
+			psels = <NRF_PSEL(TWIM_SDA, 0, 7)>,
+				<NRF_PSEL(TWIM_SCL, 0, 27)>;
+			low-power-enable;
+		};
+	};
+};
+
+&i2c0 {
+	compatible = "nordic,nrf-twim";
+	status = "okay";
+	pinctrl-0 = <&i2c0_imu_default>;
+	pinctrl-1 = <&i2c0_imu_sleep>;
+	pinctrl-names = "default", "sleep";
+	clock-frequency = <400000>;
+
+	lsm6ds3tr_c: lsm6ds3tr-c@6a {
+		compatible = "st,lsm6dsl";
+		reg = <0x6a>;
+		irq-gpios = <&gpio0 11 GPIO_ACTIVE_HIGH>;
+		status = "okay";
 	};
 };

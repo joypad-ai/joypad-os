@@ -145,6 +145,36 @@ void router_init(const router_config_t* config);
 // NOTE: This is the ONLY function input drivers should call!
 void router_submit_input(const input_event_t* event);
 
+// Milliseconds since the last "active" input (button held or stick off-center)
+// across all sources. Used for idle / auto-sleep timeouts.
+uint32_t router_ms_since_activity(void);
+
+// This device's OWN battery (controller-style apps with an onboard LiPo). The
+// router stamps it into output states that have no input-device battery, so the
+// SInput report carries real charge_level/plug_status. percent <0 = no battery.
+void router_set_onboard_battery(int percent, bool charging);
+int  router_onboard_battery_percent(void);
+bool router_onboard_battery_charging(void);
+
+// This device's OWN IMU motion (controller-style apps with an onboard IMU, e.g.
+// XIAO Sense LSM6DS3TR-C). Stamped into output states that have no input-device
+// motion, so the SInput report carries accel/gyro. accel/gyro are int16 scaled
+// to the given full-scale ranges (accel_range in milli-g, gyro_range in dps).
+void router_set_onboard_motion(const int16_t accel[3], const int16_t gyro[3],
+                               uint16_t accel_range, uint16_t gyro_range);
+
+// Read back the current onboard motion (for diagnostics). Returns false if no
+// onboard IMU has reported yet.
+bool router_onboard_motion_get(int16_t accel[3], int16_t gyro[3]);
+
+// Onboard IMU axis remap for mounting orientation. Each arg is a signed source
+// axis for the corresponding output axis: 1=+X 2=+Y 3=+Z, negative to invert
+// (e.g. router_set_motion_remap(-1,-2,3) flips X and Y for a 180° yaw mount).
+// Applied to accel and gyro together in router_set_onboard_motion(). 0 = leave
+// that axis unchanged. Defaults to identity {1,2,3}.
+void router_set_motion_remap(int x, int y, int z);
+void router_get_motion_remap(int out[3]);
+
 // Host-side synthetic input "press overlay" — buttons set via INPUT.INJECT
 // are OR'd into every real input event as it passes through the router.
 // Works in any routing mode (SIMPLE, MERGE, BROADCAST). Pass 0 to release.

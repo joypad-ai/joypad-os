@@ -89,6 +89,14 @@ static button_event_t fire_event(button_event_t event)
 
 void button_init(void)
 {
+#ifdef DISABLE_USER_BUTTON
+    // No dedicated user button on this board, and its default pin collides
+    // with a pad/gamepad GPIO (e.g. XIAO D1/P0.03). Leave button_port NULL so
+    // button_task() never fires events — frees the pin for pad input.
+    button_port = NULL;
+    printf("[button] User button disabled (pin reserved for pad input)\n");
+    return;
+#else
     button_port = DEVICE_DT_GET(BUTTON_PORT_LABEL);
     if (!device_is_ready(button_port)) {
         printf("[button] GPIO port not ready\n");
@@ -105,6 +113,7 @@ void button_init(void)
     click_count = 0;
 
     printf("[button] Initialized on %s\n", BUTTON_PIN_STR);
+#endif // DISABLE_USER_BUTTON
 }
 
 button_event_t button_task(void)

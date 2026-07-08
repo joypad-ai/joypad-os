@@ -332,6 +332,8 @@ help:
 	@echo "  make flash-btusb2usb_feather_nrf52840 - Flash Feather nRF52840 btusb2usb via UF2"
 	@echo "  make controller_btusb_feather_nrf52840 - Sensor/BLE -> USB HID (Feather nRF52840 + JoyWing)"
 	@echo "  make flash-controller_btusb_feather_nrf52840 - Flash Feather nRF52840 controller_btusb via UF2"
+	@echo "  make controller_btusb_seeed_xiao_nrf52840 - Sensor/BLE -> USB HID (Seeed XIAO nRF52840 + JoyWing)"
+	@echo "  make flash-controller_btusb_seeed_xiao_nrf52840 - Flash Seeed XIAO nRF52840 controller_btusb via UF2"
 	@echo "  make bt2loopy_pico_w    - Bluetooth -> Loopy (Pico W)"
 	@echo "  make bt2nuon_pico_w     - Bluetooth -> Nuon (Pico W)"
 	@echo "  make bt2n64_pico_w      - Bluetooth -> N64 (Pico W)"
@@ -476,6 +478,18 @@ init-wch:
 # Alias for all
 .PHONY: build
 build: all
+
+# Package the most recent nRF build into a BLE DFU .zip for wireless (OTA)
+# update via nRF Connect (Adafruit bootloader OTA). Send the `OTA` command over
+# BLE (NUS) or USB CDC first — the device reboots advertising "AdafruitDFU" —
+# then push this .zip from nRF Connect's DFU. Needs: pip install --user adafruit-nrfutil
+.PHONY: ota-zip
+ota-zip:
+	@command -v adafruit-nrfutil >/dev/null 2>&1 || { echo "adafruit-nrfutil not found — run: pip install --user adafruit-nrfutil"; exit 1; }
+	@test -f nrf/build/nrf/zephyr/zephyr.hex || { echo "no nRF build at nrf/build/nrf/zephyr/zephyr.hex — build an nRF app first"; exit 1; }
+	@mkdir -p $(RELEASE_DIR)
+	adafruit-nrfutil dfu genpkg --dev-type 0x0052 --application nrf/build/nrf/zephyr/zephyr.hex $(RELEASE_DIR)/joypad_ota.zip
+	@echo "$(GREEN)OTA package: $(RELEASE_DIR)/joypad_ota.zip$(NC)  → push via nRF Connect (DFU) to 'AdafruitDFU'"
 
 # Generic app build function
 # Output naming: joypad_<version|commit>_<app>.uf2
@@ -1014,6 +1028,26 @@ flash-controller_btusb_feather_nrf52840: controller_btusb_feather_nrf52840
 
 .PHONY: monitor-controller_btusb_feather_nrf52840
 monitor-controller_btusb_feather_nrf52840:
+	@cd nrf && $(MAKE) monitor
+
+# --- nRF52840 controller_btusb on Seeed XIAO nRF52840 (sensor + BLE peripheral + USB) ---
+.PHONY: controller_btusb_seeed_xiao_nrf52840
+controller_btusb_seeed_xiao_nrf52840:
+	@echo "$(YELLOW)Building controller_btusb for Seeed XIAO nRF52840...$(NC)"
+	@cd nrf && $(MAKE) build BOARD=xiao_ble APP_TYPE=controller_btusb
+	@mkdir -p $(RELEASE_DIR)
+	@cp nrf/build/nrf/zephyr/zephyr.uf2 \
+	    $(RELEASE_DIR)/joypad_$(VERSION_ID)_controller_btusb_seeed_xiao_nrf52840.uf2
+	@echo "$(GREEN)✓ controller_btusb_seeed_xiao_nrf52840 built successfully$(NC)"
+	@echo "  File: $(RELEASE_DIR)/joypad_$(VERSION_ID)_controller_btusb_seeed_xiao_nrf52840.uf2"
+	@echo ""
+
+.PHONY: flash-controller_btusb_seeed_xiao_nrf52840
+flash-controller_btusb_seeed_xiao_nrf52840: controller_btusb_seeed_xiao_nrf52840
+	@cd nrf && $(MAKE) flash-uf2
+
+.PHONY: monitor-controller_btusb_seeed_xiao_nrf52840
+monitor-controller_btusb_seeed_xiao_nrf52840:
 	@cd nrf && $(MAKE) monitor
 
 .PHONY: wifi2usb_pico_w

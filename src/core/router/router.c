@@ -287,6 +287,79 @@ static uint8_t route_count = 0;
 static router_tap_callback_t output_taps[MAX_OUTPUTS] = {NULL};
 static bool output_tap_exclusive[MAX_OUTPUTS] = {false};
 
+// Onboard battery: this device's OWN battery (e.g. controller_btusb on a board
+// with a LiPo), as opposed to a battery reported by a connected input
+// controller. The app updates it from an ADC read; the router stamps it into
+// output states that have no input-device battery, so the SInput report's
+// charge_level/plug_status reflect the device itself. percent <0 = none.
+static volatile int onboard_batt_pct = -1;
+static volatile bool onboard_batt_charging = false;
+
+void router_set_onboard_battery(int percent, bool charging) {
+    onboard_batt_pct = percent;
+    onboard_batt_charging = charging;
+}
+int router_onboard_battery_percent(void) { return onboard_batt_pct; }
+bool router_onboard_battery_charging(void) { return onboard_batt_charging; }
+
+// Onboard motion: this device's OWN IMU (e.g. controller_btusb on a XIAO Sense),
+// as opposed to motion from a connected input controller (DS4/DS5). The app
+// updates it from the IMU; the router stamps it into output states that have no
+// input-device motion, so the SInput report carries accel/gyro. valid=false
+// when there's no IMU.
+static struct {
+    int16_t accel[3];
+    int16_t gyro[3];
+    uint16_t accel_range;
+    uint16_t gyro_range;
+    volatile bool valid;
+} onboard_motion = { .accel_range = 4000, .gyro_range = 2000 };
+
+// Onboard IMU axis remap (mounting orientation). For each output axis i,
+// out[i] = sign(motion_remap[i]) * in[ |motion_remap[i]|-1 ]. Default {1,2,3}
+// is identity. Applied to accel and gyro together (same physical chip axes), so
+// a rotated/flipped IMU mount is corrected once, at the source, for every
+// consumer (SInput report, Steam/SDL, joypad-web). Set at runtime via the CDC
+// "IMU.MAP" command while tuning; bake the final values in as the default.
+static int8_t motion_remap[3] = { 1, 2, 3 };
+
+void router_set_motion_remap(int x, int y, int z) {
+    if (x >= -3 && x <= 3 && x != 0) motion_remap[0] = (int8_t)x;
+    if (y >= -3 && y <= 3 && y != 0) motion_remap[1] = (int8_t)y;
+    if (z >= -3 && z <= 3 && z != 0) motion_remap[2] = (int8_t)z;
+}
+
+void router_get_motion_remap(int out[3]) {
+    for (int i = 0; i < 3; i++) out[i] = motion_remap[i];
+}
+
+static inline int16_t remap_one(const int16_t v[3], int8_t m) {
+    int idx = (m < 0 ? -m : m) - 1;
+    int16_t val = v[idx];
+    if (val == INT16_MIN) val = INT16_MIN + 1;  // avoid negate overflow
+    return m < 0 ? (int16_t)(-val) : val;
+}
+
+void router_set_onboard_motion(const int16_t accel[3], const int16_t gyro[3],
+                               uint16_t accel_range, uint16_t gyro_range) {
+    for (int i = 0; i < 3; i++) {
+        onboard_motion.accel[i] = remap_one(accel, motion_remap[i]);
+        onboard_motion.gyro[i]  = remap_one(gyro,  motion_remap[i]);
+    }
+    onboard_motion.accel_range = accel_range;
+    onboard_motion.gyro_range = gyro_range;
+    onboard_motion.valid = true;
+}
+
+bool router_onboard_motion_get(int16_t accel[3], int16_t gyro[3]) {
+    if (!onboard_motion.valid) return false;
+    for (int i = 0; i < 3; i++) {
+        accel[i] = onboard_motion.accel[i];
+        gyro[i] = onboard_motion.gyro[i];
+    }
+    return true;
+}
+
 // ============================================================================
 // INITIALIZATION
 // ============================================================================
@@ -790,6 +863,21 @@ static inline void router_merge_mode(const input_event_t* event, output_target_t
                         first = false;
                     }
                 }
+                // Onboard battery fallback (see SIMPLE path) — no input device
+                // reported a battery, so use this device's own.
+                if (x_current_state.battery_level == 0 && onboard_batt_pct >= 0) {
+                    x_current_state.battery_level = (uint8_t)onboard_batt_pct;
+                    x_current_state.battery_charging = onboard_batt_charging;
+                }
+                if (!x_current_state.has_motion && onboard_motion.valid) {
+                    for (int mi = 0; mi < 3; mi++) {
+                        x_current_state.accel[mi] = onboard_motion.accel[mi];
+                        x_current_state.gyro[mi] = onboard_motion.gyro[mi];
+                    }
+                    x_current_state.accel_range = onboard_motion.accel_range;
+                    x_current_state.gyro_range = onboard_motion.gyro_range;
+                    x_current_state.has_motion = true;
+                }
                 out->current_state = x_current_state;
             }
             break;
@@ -830,9 +918,27 @@ uint32_t router_get_inject_buttons(void) {
     return s_inject_buttons;
 }
 
+// Timestamp of the last "active" input across all sources, for idle/sleep
+// detection. Active = any button held or a stick pushed past a noise margin.
+static volatile uint32_t s_last_activity_ms = 0;
+
+uint32_t router_ms_since_activity(void) {
+    return platform_time_ms() - s_last_activity_ms;
+}
+
 void router_submit_input(const input_event_t* event) {
     if (!event) return;
     if (route_count == 0) return;
+
+    // Track activity for idle-sleep: any button, or a stick off-center.
+    if (event->buttons != 0) {
+        s_last_activity_ms = platform_time_ms();
+    } else {
+        for (int i = 0; i < 4; i++) {  // analog[0..3] = LX,LY,RX,RY
+            int d = (int)event->analog[i] - 128;
+            if (d > 24 || d < -24) { s_last_activity_ms = platform_time_ms(); break; }
+        }
+    }
 
     // Stream input to CDC for web config (only when a host is actively
     // consuming the stream). Without this gate the prep work below —
@@ -1462,6 +1568,24 @@ void router_device_disconnected(uint8_t dev_addr, int8_t instance) {
                     out_state->current_state.battery_charging = dev->battery_charging;
                 }
             }
+        }
+
+        // No input controller reported a battery → fall back to this device's
+        // own battery (e.g. controller_btusb on a LiPo) so the SInput report
+        // carries real charge_level/plug_status.
+        if (out_state->current_state.battery_level == 0 && onboard_batt_pct >= 0) {
+            out_state->current_state.battery_level = (uint8_t)onboard_batt_pct;
+            out_state->current_state.battery_charging = onboard_batt_charging;
+        }
+        // Onboard IMU motion when no input device supplied any.
+        if (!out_state->current_state.has_motion && onboard_motion.valid) {
+            for (int mi = 0; mi < 3; mi++) {
+                out_state->current_state.accel[mi] = onboard_motion.accel[mi];
+                out_state->current_state.gyro[mi] = onboard_motion.gyro[mi];
+            }
+            out_state->current_state.accel_range = onboard_motion.accel_range;
+            out_state->current_state.gyro_range = onboard_motion.gyro_range;
+            out_state->current_state.has_motion = true;
         }
 
         out_state->updated = true;

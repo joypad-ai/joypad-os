@@ -174,7 +174,7 @@
   #define CFG_TUD_MSC               0
   #define CFG_TUD_MIDI              0
   #define CFG_TUD_VENDOR            0
-  #define CFG_TUD_CDC_RX_BUFSIZE    256
+  #define CFG_TUD_CDC_RX_BUFSIZE    4096  // large: audio-command streaming (VOICE.SPEAK) must survive slow main-loop passes during BT audio
   #define CFG_TUD_CDC_TX_BUFSIZE    2048
   #define CFG_TUD_CDC_EP_BUFSIZE    64
 #else
@@ -218,7 +218,7 @@
   #define CFG_TUD_HID_EP_BUFSIZE    64
 
   // CDC buffer sizes (TX enlarged for high-rate MouthPad NUS->CDC telemetry relay)
-  #define CFG_TUD_CDC_RX_BUFSIZE    256
+  #define CFG_TUD_CDC_RX_BUFSIZE    4096  // large: audio-command streaming (VOICE.SPEAK) must survive slow main-loop passes during BT audio
   #define CFG_TUD_CDC_TX_BUFSIZE    4096
   #define CFG_TUD_CDC_EP_BUFSIZE    64
 #endif
