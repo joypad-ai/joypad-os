@@ -463,16 +463,29 @@ def openai_chat(api_key, system, user, model="gpt-4o-mini", max_tokens=500):
     return out["choices"][0]["message"]["content"]
 
 
-def ask_guide(api_key, game, question):
-    """Precise guide Q&A: the WHOLE walkthrough + the question to a cheap
-    text model in one long-context call. Keyword-window retrieval returned
-    scattered fragments and the companion improvised around them."""
-    path = os.path.join(GUIDE_DIR, _game_slug(game) + ".txt")
-    if not os.path.exists(path):
-        path = _find_existing_guide(game) or path
-    if not os.path.exists(path):
+def ask_guide(api_key, game, question, gdir=None):
+    """Precise guide Q&A: the whole library (primary + secondary source) plus
+    the player's progress journal, one long-context call."""
+    gdir = gdir or resolve_game_dir(game)
+    if not gdir:
         return None
-    guide = open(path).read()[:400000]
+    gpath = os.path.join(gdir, "guide.txt")
+    if not os.path.exists(gpath):
+        return None
+    guide = open(gpath).read()[:330000]
+    g2path = os.path.join(gdir, "guide2.txt")
+    if os.path.exists(g2path):
+        guide += ("\n\n===== SECOND SOURCE (cross-check) =====\n"
+                  + open(g2path).read()[:60000])
+    progress = journal_tail(gdir)
+    progress_txt = ""
+    if progress:
+        progress_txt = ("\n\nPLAYER PROGRESS JOURNAL (previous exchanges, "
+                        "oldest first — use to infer where they are and "
+                        "which scenario/character they play):\n"
+                        + "\n".join(f"[{e['t']}] asked: {e['situation']} | "
+                                     f"advised: {e['advice']}"
+                                     for e in progress))
     return openai_chat(
         api_key,
         "You are a walkthrough oracle. Answer the player's question "
@@ -480,10 +493,167 @@ def ask_guide(api_key, game, question):
         "next steps (locations, actions, triggers) — include the specific "
         "thing the player must do to advance, not a summary. If the guide "
         "covers multiple characters or scenarios (e.g. Chris vs Jill), use "
-        "the player's mentioned companions, items, or events to select the "
-        "right one, and say which scenario you used. If the guide doesn't "
-        "cover it, say so plainly.",
-        f"GUIDE for {game}:\n{guide}\n\nPLAYER QUESTION: {question}")
+        "the player's mentioned companions, items, events, and their "
+        "progress journal to select the right one, and say which scenario "
+        "you used. If the sources disagree, prefer the primary and note it. "
+        "If the guide doesn't cover it, say so plainly.",
+        f"GUIDE for {game}:\n{guide}{progress_txt}"
+        f"\n\nPLAYER QUESTION: {question}")
+
+
+# ---- Phase 7: per-game knowledge libraries -------------------------------
+# guides/<slug>/manifest.json  {canonical, aliases, platform, sources[]}
+# guides/<slug>/guide.txt      primary walkthrough (raw text)
+# guides/<slug>/guide2.txt     secondary source (optional)
+# guides/<slug>/digest.md      structured pre-digest (chapters/items/branches)
+# guides/<slug>/journal.log    progress ledger: one JSON line per exchange
+
+def canonicalize_game(api_key, spoken):
+    """Spoken name -> {canonical, aliases, platform} via one cheap call.
+    'RE1', 'Resident Evil', 'the first resident evil' must be one game."""
+    try:
+        raw = openai_chat(
+            api_key, "Return STRICT JSON only. No prose, no fences.",
+            f'A player said they are playing: "{spoken}". Return '
+            '{"canonical":"<full official game title>",'
+            '"aliases":["<common nicknames/abbreviations>"],'
+            '"platform":"<primary platform>"}. RULE: if the spoken name IS '
+            "an official game title, that exact game is the answer — never "
+            "substitute a sequel, remake, or newer entry (\"Resident "
+            'Evil" means the 1996 original, not Village).', max_tokens=200)
+        raw = _re.sub(r"^```\w*|```$", "", raw.strip(), flags=_re.M).strip()
+        info = json.loads(raw)
+        if info.get("canonical"):
+            return info
+    except Exception as e:
+        print(f"[research] canonicalize failed ({e}); using spoken name",
+              flush=True)
+    return {"canonical": spoken, "aliases": [], "platform": ""}
+
+
+def _manifest_path(gdir):
+    return os.path.join(gdir, "manifest.json")
+
+
+def _load_manifest(gdir):
+    try:
+        return json.load(open(_manifest_path(gdir)))
+    except Exception:
+        return None
+
+
+def _save_manifest(gdir, m):
+    os.makedirs(gdir, exist_ok=True)
+    with open(_manifest_path(gdir), "w") as f:
+        json.dump(m, f, indent=1)
+
+
+def resolve_game_dir(name, create=False, info=None):
+    """Find (or create) the game's library dir: canonical slug, then alias
+    match across manifests, then fuzzy token match; migrates old flat
+    guides/<slug>.txt files into the dir layout."""
+    os.makedirs(GUIDE_DIR, exist_ok=True)
+    slug = _game_slug(info["canonical"] if info else name)
+    gdir = os.path.join(GUIDE_DIR, slug)
+    if os.path.isdir(gdir):
+        return gdir
+    # alias match across existing manifests
+    want = name.lower().strip()
+    for d in os.listdir(GUIDE_DIR):
+        full = os.path.join(GUIDE_DIR, d)
+        if not os.path.isdir(full):
+            continue
+        m = _load_manifest(full)
+        if not m:
+            continue
+        names = [m.get("canonical", "")] + list(m.get("aliases", []))
+        if any(want == a.lower().strip() for a in names if a):
+            return full
+    # fuzzy dir-slug match (same subset rule as flat files): "resident-evil"
+    # reuses "resident-evil-director-s-cut"; digits keep sequels apart
+    want_t = set(slug.split("-")) - {"s", "the", "of"}
+    for d in os.listdir(GUIDE_DIR):
+        full = os.path.join(GUIDE_DIR, d)
+        if not os.path.isdir(full):
+            continue
+        have_t = set(d.split("-")) - {"s", "the", "of"}
+        small, big = (want_t, have_t) if len(want_t) <= len(have_t) \
+            else (have_t, want_t)
+        if small and small <= big and not any(
+                t.isdigit() or t in ("ii", "iii", "iv", "v", "vi")
+                for t in big - small):
+            return full
+    # legacy flat file (fuzzy) -> migrate
+    flat = _find_existing_guide(info["canonical"] if info else name)
+    if flat:
+        os.makedirs(gdir, exist_ok=True)
+        import shutil
+        shutil.move(flat, os.path.join(gdir, "guide.txt"))
+        _save_manifest(gdir, {"canonical": (info or {}).get("canonical", name),
+                              "aliases": (info or {}).get("aliases", []),
+                              "platform": (info or {}).get("platform", ""),
+                              "sources": [{"url": "legacy", "note": "migrated"}]})
+        return gdir
+    if create:
+        os.makedirs(gdir, exist_ok=True)
+        _save_manifest(gdir, {"canonical": (info or {}).get("canonical", name),
+                              "aliases": (info or {}).get("aliases", []),
+                              "platform": (info or {}).get("platform", ""),
+                              "sources": []})
+        return gdir
+    return None
+
+
+def journal_append(gdir, situation, advice):
+    with open(os.path.join(gdir, "journal.log"), "a") as f:
+        f.write(json.dumps({"t": time.strftime("%Y-%m-%d %H:%M"),
+                            "situation": situation[:300],
+                            "advice": advice[:400]}) + "\n")
+
+
+def journal_tail(gdir, n=8):
+    path = os.path.join(gdir, "journal.log")
+    if not os.path.exists(path):
+        return []
+    lines = open(path).read().splitlines()[-n:]
+    out = []
+    for ln in lines:
+        try:
+            out.append(json.loads(ln))
+        except Exception:
+            continue
+    return out
+
+
+def build_digest(api_key, gdir, canonical):
+    """Pre-digest the guide once: structure the model carries every turn."""
+    gpath = os.path.join(gdir, "guide.txt")
+    if not os.path.exists(gpath):
+        return
+    dpath = os.path.join(gdir, "digest.md")
+    if os.path.exists(dpath):
+        return
+    try:
+        digest = openai_chat(
+            api_key,
+            "You compress game walkthroughs into structured digests.",
+            f"Digest this {canonical} walkthrough into at most 1200 "
+            "characters: areas/chapters IN ORDER, key items, bosses, and any "
+            "scenario/character branches (who gets what). Terse lines.\n\n"
+            + open(gpath).read()[:380000], max_tokens=700)
+        with open(dpath, "w") as f:
+            f.write(digest)
+        print(f"[research] digest built for {canonical} "
+              f"({len(digest)} chars)", flush=True)
+    except Exception as e:
+        print(f"[research] digest failed: {e}", flush=True)
+
+
+def get_digest(gdir):
+    try:
+        return open(os.path.join(gdir, "digest.md")).read()[:1300]
+    except Exception:
+        return None
 
 
 def _game_slug(name):
@@ -509,51 +679,85 @@ def _find_existing_guide(game):
     return None
 
 
-def prefetch_guide(game):
-    """Background: find and cache a full text walkthrough for the game."""
-    os.makedirs(GUIDE_DIR, exist_ok=True)
-    path = os.path.join(GUIDE_DIR, _game_slug(game) + ".txt")
-    if os.path.exists(path) and os.path.getsize(path) > 20000:
-        print(f"[research] guide already cached: {path}", flush=True)
-        return
-    existing = _find_existing_guide(game)
-    if existing and os.path.getsize(existing) > 20000:
-        import shutil
-        shutil.copyfile(existing, path)
-        print(f"[research] guide reused from {os.path.basename(existing)}",
-              flush=True)
-        return
-    best = ""
-    best_score = 0.0
+def _quality_ok(text):
+    low = text.lower()
+    hits = sum(low.count(k) for k in
+               ("walkthrough", "go to", "head to", "pick up", "unlock",
+                "save point", "boss", "puzzle"))
+    return len(text) > 8000 and hits >= 25, hits
+
+
+def _gamefaqs_guide_links(index_url):
+    """From a GameFAQs faqs index page, the individual guide URLs."""
     try:
-        results = web_search(f"{game} full walkthrough guide text", n=6)
-        results += web_search(f"{game} walkthrough site:gamefaqs.gamespot.com", n=4)
-        for title, url, _ in results:
+        page = fetch_any(index_url)
+    except Exception:
+        return []
+    base = _re.match(r"(https://gamefaqs\.gamespot\.com)", index_url)
+    links = _re.findall(r'href="(/[^"]+/faqs/\d+)"', page)
+    seen, out = set(), []
+    for l in links:
+        if l not in seen:
+            seen.add(l)
+            out.append("https://gamefaqs.gamespot.com" + l)
+    return out[:3]
+
+
+def prefetch_guide(game, api_key=None, gdir=None):
+    """Background: build the game's library — up to two quality sources,
+    manifest provenance, and a pre-digest."""
+    gdir = gdir or resolve_game_dir(game, create=True)
+    gpath = os.path.join(gdir, "guide.txt")
+    manifest = _load_manifest(gdir) or {"canonical": game, "aliases": [],
+                                        "platform": "", "sources": []}
+    if os.path.exists(gpath) and os.path.getsize(gpath) > 20000:
+        print(f"[research] guide already cached in {gdir}", flush=True)
+        if api_key:
+            build_digest(api_key, gdir, manifest.get("canonical", game))
+        return
+    canonical = manifest.get("canonical", game)
+    candidates = []   # (score, text, url)
+    try:
+        results = web_search(f"{canonical} full walkthrough guide text", n=5)
+        results += web_search(f"{canonical} walkthrough "
+                              "site:gamefaqs.gamespot.com", n=4)
+        # Expand GameFAQs FAQ-index pages into individual guides
+        urls = []
+        for _t, url, _s in results:
+            if _re.search(r"gamefaqs\.gamespot\.com/.+/faqs/?$", url):
+                urls += _gamefaqs_guide_links(url)
+            else:
+                urls.append(url)
+        for url in urls[:8]:
             try:
                 text = extract_guide_text(fetch_any(url))
-                score = _walkthrough_score(text)
-                if score > best_score:
-                    best, best_score = text, score
-                if len(best) > 150000:
-                    break
+                ok, hits = _quality_ok(text)
+                if ok:
+                    candidates.append((_walkthrough_score(text), text, url))
             except Exception:
                 continue
     except Exception as e:
         print(f"[research] guide prefetch failed: {e}", flush=True)
-    # Quality floor: a lore/wiki page can be huge yet useless as a guide —
-    # require real walkthrough language density before calling it a guide.
-    low = best.lower()
-    hits = sum(low.count(k) for k in
-               ("walkthrough", "go to", "head to", "pick up", "unlock",
-                "save point", "boss", "puzzle"))
-    if len(best) > 8000 and hits >= 25:
-        with open(path, "w") as f:
-            f.write(best)
-        print(f"[research] guide cached: {path} ({len(best)//1024}KB, "
-              f"{hits} walkthrough markers)", flush=True)
-    else:
-        print(f"[research] no real guide found for {game} "
-              f"({len(best)//1024}KB, {hits} markers) — not caching", flush=True)
+    candidates.sort(key=lambda c: -c[0])
+    if not candidates:
+        print(f"[research] no real guide found for {canonical}", flush=True)
+        return
+    with open(gpath, "w") as f:
+        f.write(candidates[0][1])
+    manifest["sources"] = [{"url": candidates[0][2],
+                            "size": len(candidates[0][1]),
+                            "fetched": time.strftime("%Y-%m-%d")}]
+    if len(candidates) > 1:
+        with open(os.path.join(gdir, "guide2.txt"), "w") as f:
+            f.write(candidates[1][1])
+        manifest["sources"].append({"url": candidates[1][2],
+                                    "size": len(candidates[1][1]),
+                                    "fetched": time.strftime("%Y-%m-%d")})
+    _save_manifest(gdir, manifest)
+    print(f"[research] library built: {gdir} "
+          f"({len(manifest['sources'])} source(s))", flush=True)
+    if api_key:
+        build_digest(api_key, gdir, canonical)
 
 
 def search_guide(game, query, max_chars=3500):
@@ -923,12 +1127,25 @@ def main():
     def build_context_text():
         parts = []
         if current_game[0]:
-            slug_path = os.path.join(GUIDE_DIR, _game_slug(current_game[0]) + ".txt")
-            cached = os.path.exists(slug_path) and os.path.getsize(slug_path) > 8000
-            parts.append(f"Current game: {current_game[0]}. Walkthrough guide "
-                         + ("is cached — use ask_guide for game questions."
+            gdir = current_gdir[0] or resolve_game_dir(current_game[0])
+            gpath = os.path.join(gdir, "guide.txt") if gdir else ""
+            cached = gpath and os.path.exists(gpath) and \
+                os.path.getsize(gpath) > 8000
+            parts.append(f"Current game: {current_game[0]}. Walkthrough "
+                         + ("library ready — use ask_guide for game questions."
                             if cached else
-                            "not cached yet — use web_search for game questions."))
+                            "library not ready — use web_search for game "
+                            "questions."))
+            if gdir:
+                digest = get_digest(gdir)
+                if digest:
+                    parts.append("[SILENT DATA] Game structure digest:\n"
+                                 + digest)
+                recent = journal_tail(gdir, 2)
+                if recent:
+                    parts.append("[SILENT DATA] Recent progress: "
+                                 + " | ".join(f"{e['situation'][:80]}"
+                                              for e in recent))
         ctx = fetch_ctx()
         if ctx:
             # NOTE: battery/charging omitted — the firmware offset is
@@ -1015,6 +1232,7 @@ def main():
 
     persona_swap = [None]
     current_game = [None]
+    current_gdir = [None]
 
     def execute_tool(name, args_json):
         """The model's hands: body control over CDC, persona handover."""
@@ -1045,12 +1263,30 @@ def main():
             game = str(args.get("name", "")).strip()
             if not game:
                 return "no game name given"
-            current_game[0] = game
-            append_memory("", f"(now playing: {game})")
-            threading.Thread(target=prefetch_guide, args=(game,),
+            gdir = resolve_game_dir(game)          # existing library first
+            if gdir:
+                info = {"canonical": (_load_manifest(gdir) or {}).get(
+                    "canonical", game), "aliases": [], "platform": ""}
+            else:
+                info = canonicalize_game(session.key, game)
+                gdir = resolve_game_dir(info["canonical"], create=True,
+                                        info=info)
+            m = _load_manifest(gdir) or {}
+            aliases = set(a.lower() for a in m.get("aliases", []))
+            for a in [game] + list(info.get("aliases", [])):
+                aliases.add(a.lower())
+            m.update({"canonical": m.get("canonical") or canonical,
+                      "aliases": sorted(aliases),
+                      "platform": m.get("platform") or info.get("platform", "")})
+            _save_manifest(gdir, m)
+            current_game[0] = m["canonical"]
+            current_gdir[0] = gdir
+            append_memory("", f"(now playing: {m['canonical']})")
+            threading.Thread(target=prefetch_guide,
+                             args=(m["canonical"], session.key, gdir),
                              daemon=True).start()
-            return (f"current game set to {game}; a walkthrough guide is "
-                    "being cached in the background")
+            return (f"current game: {m['canonical']} — the walkthrough "
+                    "library is being prepared in the background")
         if name in ("ask_guide", "search_guide"):
             if not current_game[0]:
                 return "no current game set — call set_game first"
@@ -1060,13 +1296,17 @@ def main():
             if session.last_user_text:
                 q += f' | player\'s exact words: "{session.last_user_text}"'
             try:
-                ans = ask_guide(session.key, current_game[0], q)
+                ans = ask_guide(session.key, current_game[0], q,
+                                gdir=current_gdir[0])
                 if ans:
                     print(f"[oracle] {ans[:220]}", flush=True)
             except Exception as e:
                 print(f"[research] oracle failed ({e}); keyword fallback")
                 ans = None
             if ans:
+                if current_gdir[0]:
+                    journal_append(current_gdir[0],
+                                   session.last_user_text or q, ans)
                 return f"GUIDE ANSWER for {current_game[0]}:\n{ans}"
             hit = search_guide(current_game[0], q)
             if hit:
@@ -1075,18 +1315,33 @@ def main():
         if name == "load_guide":
             if not current_game[0]:
                 return "no current game set — call set_game first"
+            url = str(args.get("url", ""))
             try:
-                text = extract_guide_text(fetch_any(str(args.get("url", ""))))
+                text = extract_guide_text(fetch_any(url))
             except Exception as e:
                 return f"guide fetch failed: {e}"
             if len(text) < 5000:
                 return "that page had no substantial guide text"
-            os.makedirs(GUIDE_DIR, exist_ok=True)
-            path = os.path.join(GUIDE_DIR, _game_slug(current_game[0]) + ".txt")
-            with open(path, "w") as f:
+            gdir = current_gdir[0] or resolve_game_dir(current_game[0],
+                                                       create=True)
+            current_gdir[0] = gdir
+            with open(os.path.join(gdir, "guide.txt"), "w") as f:
                 f.write(text)
+            m = _load_manifest(gdir) or {"canonical": current_game[0],
+                                         "aliases": [], "sources": []}
+            m["sources"] = ([{"url": url, "size": len(text),
+                              "fetched": time.strftime("%Y-%m-%d")}]
+                            + [x for x in m.get("sources", [])
+                               if x.get("url") != url])
+            _save_manifest(gdir, m)
+            dpath = os.path.join(gdir, "digest.md")
+            if os.path.exists(dpath):
+                os.remove(dpath)   # digest is stale for the new source
+            threading.Thread(target=build_digest,
+                             args=(session.key, gdir, current_game[0]),
+                             daemon=True).start()
             return (f"guide installed ({len(text)//1024}KB) — use "
-                    "search_guide to consult it")
+                    "ask_guide to consult it")
         if name == "web_search":
             try:
                 rs = web_search(str(args.get("query", "")))
