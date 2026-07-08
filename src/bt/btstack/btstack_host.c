@@ -632,6 +632,13 @@ static void setup_hid_handlers(void)
     printf("[BTSTACK_HOST] Init L2CAP...\n");
     l2cap_init();
 
+    // Raise the LE ATT MTU so large HID input reports fit in a single GATT
+    // notification. BLE notifications carry only (MTU-3) bytes; the default MTU
+    // of 23 caps that at 20, so a 64-byte SInput report (JoypadOS controllers)
+    // would never be delivered — the device connects but sends zero input.
+    // 247 covers the full report with margin (fits HCI_ACL_PAYLOAD_SIZE).
+    l2cap_set_max_le_mtu(247);
+
     printf("[BTSTACK_HOST] Init SM...\n");
     sm_init();
 
