@@ -446,6 +446,40 @@ def _walkthrough_score(text):
     return len(text) * (1 + min(hits, 400) / 100.0)
 
 
+def openai_chat(api_key, system, user, model="gpt-4o-mini", max_tokens=500):
+    """One-shot chat completion (stdlib) — used as the guide oracle."""
+    body = json.dumps({
+        "model": model,
+        "max_tokens": max_tokens,
+        "messages": [{"role": "system", "content": system},
+                     {"role": "user", "content": user}],
+    }).encode()
+    req = urllib.request.Request(
+        "https://api.openai.com/v1/chat/completions", data=body,
+        headers={"Authorization": f"Bearer {api_key}",
+                 "Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        out = json.loads(r.read())
+    return out["choices"][0]["message"]["content"]
+
+
+def ask_guide(api_key, game, question):
+    """Precise guide Q&A: the WHOLE walkthrough + the question to a cheap
+    text model in one long-context call. Keyword-window retrieval returned
+    scattered fragments and the companion improvised around them."""
+    path = os.path.join(GUIDE_DIR, _game_slug(game) + ".txt")
+    if not os.path.exists(path):
+        return None
+    guide = open(path).read()[:400000]
+    return openai_chat(
+        api_key,
+        "You are a walkthrough oracle. Answer the player's question "
+        "precisely and ONLY from the guide text provided. Give the exact "
+        "next steps (locations, items, actions), briefly. If the guide "
+        "doesn't cover it, say so plainly.",
+        f"GUIDE for {game}:\n{guide}\n\nPLAYER QUESTION: {question}")
+
+
 def _game_slug(name):
     return _re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
 
@@ -621,13 +655,16 @@ class RealtimeSession:
                      "parameters": {"type": "object", "properties": {
                          "name": {"type": "string"}},
                          "required": ["name"]}},
-                    {"type": "function", "name": "search_guide",
-                     "description": "Search the cached walkthrough guide for "
-                        "the current game. USE THIS FIRST when the player is "
-                        "stuck or asks how to do something in the game.",
+                    {"type": "function", "name": "ask_guide",
+                     "description": "Ask the full cached walkthrough a "
+                        "question — a reader consults the ENTIRE guide and "
+                        "returns the precise next steps. USE THIS FIRST "
+                        "whenever the player is stuck or asks how to do "
+                        "anything in their game. Pass the player's situation "
+                        "in detail.",
                      "parameters": {"type": "object", "properties": {
-                         "query": {"type": "string"}},
-                         "required": ["query"]}},
+                         "question": {"type": "string"}},
+                         "required": ["question"]}},
                     {"type": "function", "name": "load_guide",
                      "description": "Download a specific walkthrough/guide "
                         "URL (e.g. a GameFAQs guide found via web_search) and "
@@ -682,7 +719,7 @@ class RealtimeSession:
 
     ADVISOR_BASELINE = (
         "You are also the player's gaming ADVISOR. When they are stuck or ask "
-        "how to do something in their game: use your tools (search_guide "
+        "how to do something in their game: use your tools (ask_guide "
         "first, then web_search/read_page) and give SHORT, actionable, "
         "specific advice out loud — the next concrete step, not an essay. "
         "Never spoil beyond what was asked. If a lookup will take a moment, "
@@ -848,7 +885,7 @@ def main():
             slug_path = os.path.join(GUIDE_DIR, _game_slug(current_game[0]) + ".txt")
             cached = os.path.exists(slug_path) and os.path.getsize(slug_path) > 8000
             parts.append(f"Current game: {current_game[0]}. Walkthrough guide "
-                         + ("is cached — use search_guide for game questions."
+                         + ("is cached — use ask_guide for game questions."
                             if cached else
                             "not cached yet — use web_search for game questions."))
         ctx = fetch_ctx()
@@ -973,13 +1010,21 @@ def main():
                              daemon=True).start()
             return (f"current game set to {game}; a walkthrough guide is "
                     "being cached in the background")
-        if name == "search_guide":
+        if name in ("ask_guide", "search_guide"):
             if not current_game[0]:
                 return "no current game set — call set_game first"
-            hit = search_guide(current_game[0], str(args.get("query", "")))
+            q = str(args.get("question") or args.get("query") or "")
+            try:
+                ans = ask_guide(session.key, current_game[0], q)
+            except Exception as e:
+                print(f"[research] oracle failed ({e}); keyword fallback")
+                ans = None
+            if ans:
+                return f"GUIDE ANSWER for {current_game[0]}:\n{ans}"
+            hit = search_guide(current_game[0], q)
             if hit:
                 return f"GUIDE EXCERPTS for {current_game[0]}:\n{hit}"
-            return ("guide has no match (or not cached yet) — try web_search")
+            return "guide not cached or no match — try web_search/load_guide"
         if name == "load_guide":
             if not current_game[0]:
                 return "no current game set — call set_game first"
