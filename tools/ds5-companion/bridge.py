@@ -400,6 +400,52 @@ def read_page(url, find=None, max_chars=6000):
     return text[:max_chars]
 
 
+def safari_fetch(url, wait=8):
+    """Fetch through real Safari — passes Cloudflare walls (GameFAQs).
+    Opens a tab, grabs the source, closes the tab."""
+    import subprocess
+    script = f"""
+tell application "Safari"
+    open location "{url}"
+    delay {wait}
+    set pageSource to source of front document
+    close current tab of front window
+end tell
+return pageSource
+"""
+    r = subprocess.run(["osascript", "-e", script],
+                       capture_output=True, text=True, timeout=60)
+    if r.returncode != 0:
+        raise RuntimeError(f"safari fetch failed: {r.stderr.strip()[:120]}")
+    return r.stdout
+
+
+def extract_guide_text(page):
+    """GameFAQs text guides live in a faqtext div / pre block."""
+    m = (_re.search(r'(?s)<div[^>]*class="faqtext"[^>]*>(.*?)</div>\s*<div', page)
+         or _re.search(r"(?s)<pre[^>]*>(.*?)</pre>", page))
+    return _strip_html(m.group(1) if m else page)
+
+
+def fetch_any(url):
+    """Plain fetch, falling back to Safari for Cloudflare-walled hosts."""
+    try:
+        return _fetch(url)
+    except Exception:
+        if "gamefaqs" in url or "gamespot" in url:
+            return safari_fetch(url)
+        raise
+
+
+def _walkthrough_score(text):
+    """How walkthrough-ish is this text? Guides beat wikis and store pages."""
+    low = text.lower()
+    hits = sum(low.count(k) for k in
+               ("walkthrough", "boss", "item", "puzzle", "save point",
+                "go to", "head to", "pick up", "unlock", "chapter"))
+    return len(text) * (1 + min(hits, 400) / 100.0)
+
+
 def _game_slug(name):
     return _re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
 
@@ -412,15 +458,17 @@ def prefetch_guide(game):
         print(f"[research] guide already cached: {path}", flush=True)
         return
     best = ""
+    best_score = 0.0
     try:
         results = web_search(f"{game} full walkthrough guide text", n=6)
         results += web_search(f"{game} walkthrough site:gamefaqs.gamespot.com", n=4)
         for title, url, _ in results:
             try:
-                text = _strip_html(_fetch(url))
-                if len(text) > len(best):
-                    best = text
-                if len(best) > 60000:
+                text = extract_guide_text(fetch_any(url))
+                score = _walkthrough_score(text)
+                if score > best_score:
+                    best, best_score = text, score
+                if len(best) > 150000:
                     break
             except Exception:
                 continue
@@ -580,6 +628,14 @@ class RealtimeSession:
                      "parameters": {"type": "object", "properties": {
                          "query": {"type": "string"}},
                          "required": ["query"]}},
+                    {"type": "function", "name": "load_guide",
+                     "description": "Download a specific walkthrough/guide "
+                        "URL (e.g. a GameFAQs guide found via web_search) and "
+                        "install it as the current game's cached guide. Then "
+                        "use search_guide to consult it.",
+                     "parameters": {"type": "object", "properties": {
+                         "url": {"type": "string"}},
+                         "required": ["url"]}},
                     {"type": "function", "name": "web_search",
                      "description": "Search the web. Use for game help when "
                         "the guide has no answer, or for anything current.",
@@ -924,6 +980,21 @@ def main():
             if hit:
                 return f"GUIDE EXCERPTS for {current_game[0]}:\n{hit}"
             return ("guide has no match (or not cached yet) — try web_search")
+        if name == "load_guide":
+            if not current_game[0]:
+                return "no current game set — call set_game first"
+            try:
+                text = extract_guide_text(fetch_any(str(args.get("url", ""))))
+            except Exception as e:
+                return f"guide fetch failed: {e}"
+            if len(text) < 5000:
+                return "that page had no substantial guide text"
+            os.makedirs(GUIDE_DIR, exist_ok=True)
+            path = os.path.join(GUIDE_DIR, _game_slug(current_game[0]) + ".txt")
+            with open(path, "w") as f:
+                f.write(text)
+            return (f"guide installed ({len(text)//1024}KB) — use "
+                    "search_guide to consult it")
         if name == "web_search":
             try:
                 rs = web_search(str(args.get("query", "")))
