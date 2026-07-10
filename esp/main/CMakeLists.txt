@@ -340,6 +340,7 @@ if(APP_NEEDS_BTSTACK)
             "${SHARED_SRC}/bt/bthid/devices/vendors/microsoft/xbox_bt.c"
             "${SHARED_SRC}/bt/bthid/devices/vendors/microsoft/xbox_ble.c"
             "${SHARED_SRC}/bt/bthid/devices/vendors/google/stadia_bt.c"
+            "${SHARED_SRC}/bt/bthid/devices/vendors/valve/steam_controller_2_ble.c"
 
             # BTstack host + transport
             "${SHARED_SRC}/bt/btstack/btstack_host.c"

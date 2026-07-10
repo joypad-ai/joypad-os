@@ -21,6 +21,7 @@ typedef enum {
     BT_BLE_GATT_HIDS,  // Standard GATT HID Service discovery
     BT_BLE_DIRECT_ATT, // Direct ATT notification (Xbox - known handles)
     BT_BLE_CUSTOM,     // Custom protocol (Switch 2)
+    BT_BLE_VALVE,      // Valve proprietary GATT service (Steam Controller 2)
 } bt_ble_strategy_t;
 
 // PIN code type for legacy pairing
@@ -57,6 +58,7 @@ extern const bt_device_profile_t BT_PROFILE_SONY;
 extern const bt_device_profile_t BT_PROFILE_SWITCH;
 extern const bt_device_profile_t BT_PROFILE_SWITCH2;
 extern const bt_device_profile_t BT_PROFILE_STADIA;
+extern const bt_device_profile_t BT_PROFILE_STEAM_CONTROLLER2;
 
 // Lookup device profile by name and/or company ID.
 // Returns matching profile, or &BT_PROFILE_DEFAULT if no match.

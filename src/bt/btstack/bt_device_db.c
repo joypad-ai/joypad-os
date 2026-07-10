@@ -92,6 +92,20 @@ const bt_device_profile_t BT_PROFILE_STADIA = {
     .pin_type = BT_PIN_NONE,
 };
 
+// Valve Steam Controller 2 ("Triton"). BLE-only: it exposes Valve's proprietary
+// GATT service (100F6C32-…) rather than HOGP, so it uses the dedicated
+// BT_BLE_VALVE strategy (custom GATT client in btstack_host.c). VID/PID are not
+// advertised over the air, so identification is purely by advertised name.
+const bt_device_profile_t BT_PROFILE_STEAM_CONTROLLER2 = {
+    .name = "Steam Controller 2",
+    .classic = BT_CLASSIC_HID_HOST,  // unused (BLE-only), kept sane for defaults
+    .ble = BT_BLE_VALVE,
+    .hid_mode = BT_HID_MODE_REPORT,
+    .pin_type = BT_PIN_NONE,
+    .default_vid = 0x28DE,           // Valve
+    .default_pid = 0x1303,           // SC2 BLE (synthetic, per SDL)
+};
+
 // ============================================================================
 // NAME-BASED DEVICE TABLE
 // ============================================================================
@@ -113,6 +127,10 @@ static const bt_device_name_entry_t name_table[] = {
     { "Pro Controller",         &BT_PROFILE_SWITCH },
     { "Joy-Con",                &BT_PROFILE_SWITCH },
     { "Stadia",                 &BT_PROFILE_STADIA },
+    // Valve SC2 advertises a name beginning "Steam" (SDL matches "Steam Ctrl"
+    // on Android, "Steam" on iOS). strstr covers both; the Valve GATT client
+    // confirms the device by discovering the 100F6C32 service before use.
+    { "Steam",                  &BT_PROFILE_STEAM_CONTROLLER2 },
 };
 
 #define NAME_TABLE_SIZE (sizeof(name_table) / sizeof(name_table[0]))
