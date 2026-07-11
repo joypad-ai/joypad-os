@@ -91,6 +91,14 @@ static void dbl_tap_timer_cb(void *arg)
 //   3. If user resets again within 500ms → step 1 triggers
 void platform_check_double_tap(void)
 {
+#ifdef BOARD_LILYGO_TDISPLAY_S3_AMOLED
+    // Self-heal: clear the force-download-boot bit that our CDC BOOTSEL path
+    // sets. It lives in the RTC domain and survives resets, so once the app is
+    // running we clear it — otherwise a stray reset would drop back into ROM
+    // download mode instead of the app.
+    REG_CLR_BIT(RTC_CNTL_OPTION1_REG, RTC_CNTL_FORCE_DOWNLOAD_BOOT);
+#endif
+
     nvs_handle_t nvs;
     if (nvs_open("platform", NVS_READWRITE, &nvs) != ESP_OK) return;
 
@@ -122,12 +130,23 @@ void platform_check_double_tap(void)
 
 void platform_reboot_bootloader(void)
 {
+#ifdef BOARD_LILYGO_TDISPLAY_S3_AMOLED
+    // This board ships the stock bootloader (no TinyUF2). Force the ROM into
+    // USB/UART download mode so esptool can flash with no button combo.
+    // FORCE_DOWNLOAD_BOOT lives in the RTC domain and survives the SW reset;
+    // the ROM checks it on boot and stays in download mode.
+    printf("[platform] Rebooting into ROM download mode...\n");
+    REG_WRITE(RTC_CNTL_OPTION1_REG, RTC_CNTL_FORCE_DOWNLOAD_BOOT);
+    esp_restart();
+    while (1) { vTaskDelay(portMAX_DELAY); }
+#else
     // TinyUF2's custom bootloader checks RTC_CNTL_STORE6_REG for hint 0x11F2
     // on SW reset, and boots factory (TinyUF2) instead of the app.
     printf("[platform] Rebooting into TinyUF2...\n");
     REG_WRITE(RTC_CNTL_STORE6_REG, 0x80000000 | (0x11F2 << 16) | 0x11F2);
     esp_restart();
     while (1) { vTaskDelay(portMAX_DELAY); }
+#endif
 }
 
 void platform_reboot_ota(void)

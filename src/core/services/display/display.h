@@ -48,8 +48,10 @@ void display_clear(void);
 // Update display (send framebuffer to OLED)
 void display_update(void);
 
-// Set pixel at x,y (0=off, 1=on)
-void display_pixel(uint8_t x, uint8_t y, bool on);
+// Set pixel at x,y (0=off, 1=on). Coords are int16_t so a higher-resolution
+// backend (e.g. the AMOLED eyes canvas) can address beyond 255; the 128x64
+// OLED backend simply bounds-checks against its own dimensions.
+void display_pixel(int16_t x, int16_t y, bool on);
 
 // Draw text at position (using built-in 6x8 font)
 void display_text(uint8_t x, uint8_t y, const char* text);

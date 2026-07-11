@@ -1,0 +1,21 @@
+# LilyGo T-Display S3 AMOLED Plus — ESP32-S3R8, 16MB flash, 8MB OPI PSRAM,
+# RM67162 1.91" AMOLED (240x536, QSPI). USB-OTG -> bt2usb HID works.
+
+# 16MB flash, QIO 80MHz
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
+
+# 8MB Octal (OPI) PSRAM
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+
+# Standard partition table (no TinyUF2 — flashed via esptool / USB bootloader)
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions_lilygo_16mb.csv"
+CONFIG_PARTITION_TABLE_FILENAME="partitions_lilygo_16mb.csv"
+
+# No auto-reset circuit (native USB): enter download manually (hold BOOT, tap
+# RST), then esptool/idf.py flash uses no-reset. Matches xiao/feather boards.
+CONFIG_ESPTOOLPY_BEFORE_NORESET=y

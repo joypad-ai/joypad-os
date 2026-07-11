@@ -464,8 +464,8 @@ void display_set_contrast(uint8_t contrast) {
 // DRAWING PRIMITIVES
 // ============================================================================
 
-void display_pixel(uint8_t x, uint8_t y, bool on) {
-    if (x >= DISPLAY_WIDTH || y >= DISPLAY_HEIGHT) return;
+void display_pixel(int16_t x, int16_t y, bool on) {
+    if (x < 0 || x >= DISPLAY_WIDTH || y < 0 || y >= DISPLAY_HEIGHT) return;
 
     uint8_t page = y / 8;
     uint8_t bit = y % 8;

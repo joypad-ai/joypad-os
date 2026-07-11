@@ -115,6 +115,12 @@ void app_main(void)
     players_init();
     app_init();
 
+#ifdef BOARD_LILYGO_TDISPLAY_S3_AMOLED
+    // Start the animated eyes on the AMOLED (own task; inits the panel).
+    extern void eyes_start(void);
+    eyes_start();
+#endif
+
 #ifdef CONFIG_MAX3421
     // Initialize MAX3421E SPI host (must be before tusb_init/input init)
     if (!max3421_host_init()) {

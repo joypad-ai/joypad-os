@@ -23,26 +23,34 @@
 // GEOMETRY
 // ============================================================================
 
-#define SCREEN_W            DISPLAY_WIDTH    // 128
-#define SCREEN_H            DISPLAY_HEIGHT   // 64
+// EYES_SCALE renders the whole face at N× the base 128x64 canvas so a
+// high-resolution panel (e.g. the AMOLED) draws smooth eyes instead of a
+// nearest-neighbor upscale. Every pixel-space constant below is multiplied
+// by it; angles/ratios are not. Defaults to 1 (unchanged 128x64 OLEDs).
+#ifndef EYES_SCALE
+#define EYES_SCALE          1
+#endif
 
-#define EYE_BASE_W          36
-#define EYE_BASE_H          48
-#define EYE_CORNER_R        7
+#define SCREEN_W            (DISPLAY_WIDTH  * EYES_SCALE)   // 128 * S
+#define SCREEN_H            (DISPLAY_HEIGHT * EYES_SCALE)   // 64 * S
+
+#define EYE_BASE_W          (36 * EYES_SCALE)
+#define EYE_BASE_H          (48 * EYES_SCALE)
+#define EYE_CORNER_R        (7  * EYES_SCALE)
 
 // Centers 38px apart (was 44). With eye width 36 the inner edges nearly
 // touch (~2px gap) — gives the cute "wide face" character look instead
 // of two distant eyes.
-#define EYE_L_HOME_X        45
-#define EYE_R_HOME_X        83
-#define EYE_HOME_Y          32
+#define EYE_L_HOME_X        (45 * EYES_SCALE)
+#define EYE_R_HOME_X        (83 * EYES_SCALE)
+#define EYE_HOME_Y          (32 * EYES_SCALE)
 
 // Cylinder model (see header comment). Radius scaled with the new eye
 // size so parallax sweep matches the eye dimension.
-#define CYL_RADIUS          36.0f
+#define CYL_RADIUS          (36.0f * EYES_SCALE)
 #define CYL_EYE_THETA       0.55f
 #define CYL_ROT_RANGE       0.55f
-#define LOOK_RANGE_Y        6.0f
+#define LOOK_RANGE_Y        (6.0f * EYES_SCALE)
 
 #define LOOK_SMOOTH         0.18f
 
@@ -270,7 +278,7 @@ static float pupil_scale_current = 1.0f;
 static float pupil_jitter_x = 0.0f, pupil_jitter_y = 0.0f;
 static float pupil_jitter_tx = 0.0f, pupil_jitter_ty = 0.0f;
 static uint32_t next_pupil_jitter_ms = 0;
-#define PUPIL_JITTER_RANGE_PX   2.0f
+#define PUPIL_JITTER_RANGE_PX   (2.0f * EYES_SCALE)
 #define PUPIL_JITTER_MIN_MS     250
 #define PUPIL_JITTER_MAX_MS     1100
 #define PUPIL_JITTER_SMOOTH     0.16f
@@ -358,7 +366,7 @@ static void fill_rrect(int x, int y, int w, int h, int r, float shear, bool on) 
         if (px_l < 0) px_l = 0;
         if (px_r > SCREEN_W - 1) px_r = SCREEN_W - 1;
         for (int px = px_l; px <= px_r; px++) {
-            display_pixel((uint8_t)px, (uint8_t)py, on);
+            display_pixel((int16_t)px, (int16_t)py, on);
         }
     }
 }
@@ -383,7 +391,7 @@ static void fill_ellipse(int cx, int cy, int rx, int ry, float shear, bool on) {
             if (x * x * ry2 <= rhs) {
                 int px = cx + x + x_shift, py = cy + y;
                 if (px >= 0 && px < SCREEN_W && py >= 0 && py < SCREEN_H) {
-                    display_pixel((uint8_t)px, (uint8_t)py, on);
+                    display_pixel((int16_t)px, (int16_t)py, on);
                 }
             }
         }
@@ -406,7 +414,7 @@ static void cut_smile_arc(int cx, int cy_bottom, int half_w, int depth,
                                 + (y_from_center < 0 ? -0.5f : 0.5f));
             int px = cx + x + x_shift;
             if (px >= 0 && px < SCREEN_W && py >= 0 && py < SCREEN_H) {
-                display_pixel((uint8_t)px, (uint8_t)py, false);
+                display_pixel((int16_t)px, (int16_t)py, false);
             }
         }
     }
@@ -442,7 +450,7 @@ static void cut_brow(int eye_x, int eye_y, int eye_w, int eye_h, int tilt,
                                     + (y_from_center < 0 ? -0.5f : 0.5f));
                 int px = eye_x + x + x_shift;
                 if (px >= 0 && px < SCREEN_W && py >= 0 && py < SCREEN_H) {
-                    display_pixel((uint8_t)px, (uint8_t)py, false);
+                    display_pixel((int16_t)px, (int16_t)py, false);
                 }
             }
         }
@@ -465,7 +473,7 @@ static void cut_brow(int eye_x, int eye_y, int eye_w, int eye_h, int tilt,
         for (int dx = 0; dx < len; dx++) {
             int px = x_start + dx + x_shift;
             if (px >= 0 && px < SCREEN_W && y >= 0 && y < SCREEN_H) {
-                display_pixel((uint8_t)px, (uint8_t)y, false);
+                display_pixel((int16_t)px, (int16_t)y, false);
             }
         }
     }
@@ -520,8 +528,8 @@ static void render_eye(int x_left, int y_top, int w, int h,
         // on already-OFF is a no-op).
         int base_dim = (EYE_BASE_W < EYE_BASE_H) ? EYE_BASE_W : EYE_BASE_H;
         int base_r = base_dim / 3;
-        if (base_r < 2) base_r = 2;
-        if (base_r > 10) base_r = 10;   // slightly smaller "boba"
+        if (base_r < 2 * EYES_SCALE) base_r = 2 * EYES_SCALE;
+        if (base_r > 10 * EYES_SCALE) base_r = 10 * EYES_SCALE;   // slightly smaller "boba"
 
         // Curve fade: pupil shrinks as the smile-arc cut grows so it
         // doesn't get clipped into a half-moon at the cut boundary.
@@ -535,7 +543,7 @@ static void render_eye(int x_left, int y_top, int w, int h,
 
         int pupil_r = (int)((float)base_r * pupil_scale_current * curve_fade + 0.5f);
         if (pupil_r >= 1) {
-            int margin = 1;
+            int margin = EYES_SCALE;
             int max_dx = rx - pupil_r - margin;
             int max_dy = ry - pupil_r - margin;
             if (max_dx < 0) max_dx = 0;
@@ -544,7 +552,7 @@ static void render_eye(int x_left, int y_top, int w, int h,
             // resting pose, like the Starboy idle reference). Inner edge
             // for the left eye on screen is its RIGHT side → push +x;
             // for the right eye, push -x.
-            #define PUPIL_INWARD_BIAS_PX 3
+            #define PUPIL_INWARD_BIAS_PX (3 * EYES_SCALE)
             int inward = inner_left ? -PUPIL_INWARD_BIAS_PX : +PUPIL_INWARD_BIAS_PX;
             int pdx = pupil_dx + inward, pdy = pupil_dy;
             if (pdx >  max_dx) pdx =  max_dx;

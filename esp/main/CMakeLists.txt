@@ -26,6 +26,7 @@ set(ESP32_COMMON_SRCS
     "flash_esp32.c"
     "ws2812_esp32.c"
     "button_esp32.c"
+    "rm67162_amoled.c"
     "${SHARED_SRC}/platform/esp32/platform_esp32.c"
 )
 
@@ -277,6 +278,14 @@ set(SRCS
     "${TINYUSB_PATH}/src/portable/synopsys/dwc2/dwc2_common.c"
 )
 
+# Animated eyes on the LilyGo AMOLED (shared engine + ESP backend/task)
+if(CONFIG_BOARD STREQUAL "lilygo_tdisplay_s3_amoled")
+    list(APPEND SRCS
+        "${SHARED_SRC}/core/services/display/eyes_anim.c"
+        "eyes_esp32.c"
+    )
+endif()
+
 # Add BTstack sources when needed
 if(APP_NEEDS_BTSTACK)
     # --- BTstack core (shared by all BTstack modes) ---
@@ -385,6 +394,7 @@ set(INCLUDE_DIRS
     "."
     "${SHARED_SRC}"
     "${APP_INCLUDE_DIR}"
+    "${SHARED_SRC}/core/services/display"
     "${SHARED_SRC}/usb/usbd"
     "${SHARED_SRC}/pad"
     "${SHARED_SRC}/lib/libxsm3"
@@ -434,6 +444,7 @@ set(ESP_REQUIRES
     esp_driver_i2c
     esp_driver_rmt
     esp_driver_spi
+    esp_lcd
     esp_driver_uart
     esp_timer
     esp_hw_support
@@ -509,6 +520,11 @@ if(NOT DEFINED CONFIG_BOARD)
 endif()
 if(CONFIG_BOARD STREQUAL "feather_esp32s3")
     target_compile_definitions(${COMPONENT_LIB} PUBLIC BOARD_FEATHER_ESP32S3=1)
+endif()
+if(CONFIG_BOARD STREQUAL "lilygo_tdisplay_s3_amoled")
+    target_compile_definitions(${COMPONENT_LIB} PUBLIC
+        BOARD_LILYGO_TDISPLAY_S3_AMOLED=1
+        EYES_SCALE=4)
 endif()
 
 # App-specific definitions

@@ -744,6 +744,22 @@ flash-bt2usb_xiao_esp32s3:
 monitor-bt2usb_xiao_esp32s3:
 	@cd esp && $(MAKE) monitor
 
+# --- ESP32-S3 bt2usb on LilyGo T-Display S3 AMOLED Plus (requires ESP-IDF) ---
+# 1.91" RM67162 AMOLED shows animated companion eyes. No TinyUF2 bootloader:
+# to flash, hold BOOT + tap RST to enter ROM download, then
+#   cd esp && idf.py -DCONFIG_BOARD=lilygo_tdisplay_s3_amoled flash
+# (board config sets ESPTOOLPY_BEFORE_NORESET so esptool won't fight the reset).
+.PHONY: bt2usb_lilygo_tdisplay_s3_amoled
+bt2usb_lilygo_tdisplay_s3_amoled:
+	@echo "$(YELLOW)Building bt2usb for LilyGo T-Display S3 AMOLED Plus...$(NC)"
+	@cd esp && $(MAKE) build BOARD=lilygo_tdisplay_s3_amoled
+	@echo "$(GREEN)✓ bt2usb_lilygo_tdisplay_s3_amoled built successfully$(NC)"
+	@echo ""
+
+.PHONY: monitor-bt2usb_lilygo_tdisplay_s3_amoled
+monitor-bt2usb_lilygo_tdisplay_s3_amoled:
+	@cd esp && $(MAKE) monitor
+
 # --- ESP32-S3 bt2usb on Feather ESP32-S3 (requires ESP-IDF) ---
 .PHONY: bt2usb_feather_esp32s3
 bt2usb_feather_esp32s3:
