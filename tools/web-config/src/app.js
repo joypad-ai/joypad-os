@@ -11,6 +11,7 @@ import { FeedbackCard } from './components/leds.js';
 import { RouterCard } from './components/router.js';
 import { HotkeysCard } from './components/hotkeys.js';
 import { BtHostCard } from './components/bt-host.js';
+import { Ps4AuthCard } from './components/ps4-auth.js';
 import { AdvancedCard } from './components/advanced.js';
 
 /**
@@ -25,6 +26,7 @@ const PAGE_GROUPS = {
     'profiles':      'core',
     'hotkeys':       'core',
     'usb':           'output',
+    'ps4-auth':      'output',
     'bluetooth':     'output',
     'native-output': 'output',
     'leds':          'output',
@@ -67,6 +69,7 @@ class JoypadConfigApp {
         const log = (msg, type) => this.log(msg, type);
         this.deviceInfo = new DeviceInfoCard(document.getElementById('headerInfo'), document.getElementById('cardDeviceInfo'), this.protocol, log);
         this.usbOutput = new UsbOutputCard(document.getElementById('cardUsbOutput'), this.protocol, log);
+        this.ps4Auth = new Ps4AuthCard(document.getElementById('cardPs4Auth'), this.protocol, log);
         this.btOutput = new BtOutputCard(document.getElementById('cardBtOutput'), this.protocol, log);
         this.nativeOutput = new NativeOutputCard(document.getElementById('cardNativeOutput'), this.protocol, log);
         this.padConfig = new PadConfigCard(document.getElementById('cardPadConfig'), this.protocol, log);
@@ -82,6 +85,7 @@ class JoypadConfigApp {
         // Render component HTML
         this.deviceInfo.render();
         this.usbOutput.render();
+        this.ps4Auth.render();
         this.btOutput.render();
         this.nativeOutput.render();
         this.padConfig.render();
@@ -282,6 +286,12 @@ class JoypadConfigApp {
             nativeLink.style.display = this.nativeOutput.isAvailable() ? '' : 'none';
         }
 
+        // Hide PS4 Auth nav link on firmware without PS4AUTH support (ESP/nRF, older)
+        const ps4Link = document.getElementById('navPs4Auth');
+        if (ps4Link) {
+            ps4Link.style.display = this.ps4Auth.isAvailable() ? '' : 'none';
+        }
+
         // Hide Bluetooth host nav link if device has no BT host features
         const btHostLink = document.getElementById('navBtHost');
         if (btHostLink) {
@@ -448,6 +458,7 @@ class JoypadConfigApp {
     async loadAll() {
         await this.deviceInfo.load();
         await this.usbOutput.load();
+        await this.ps4Auth.load();
         await this.btOutput.load();
         await this.nativeOutput.load();
         await this.padConfig.load();
