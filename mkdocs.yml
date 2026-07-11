@@ -37,6 +37,7 @@ nav:
   - Overview:
     - Architecture: overview/architecture.md
     - Data Flow: overview/data-flow.md
+    - PS4 Authentication: architecture/ps4_auth.md
     - Glossary: overview/glossary.md
   - Input Interfaces:
     - Overview: input/index.md
@@ -141,6 +142,8 @@ nav:
     - PC Engine: protocols/PCENGINE.md
     - LodgeNet: protocols/lodgenet.md
     - SInput HID: protocols/sinput.md
+  - Features:
+    - SNES Rumble: features/SNES_RUMBLE.md
   - Development:
     - Contributing: development/index.md
 

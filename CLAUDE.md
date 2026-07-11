@@ -71,6 +71,18 @@ Output: `releases/joypad_<commit>_<app>_<board>.uf2`
 
 ### App Build Matrix
 
+# Flash (macOS - looks for /Volumes/RPI-RP2)
+make flash              # Flash most recent build
+make flash-usb2pce_kb2040  # Flash specific app
+
+# ESP32-S3 (requires ESP-IDF, see .dev/docs/esp32-port.md)
+make flash-bt2usb_xiao_esp32s3  # Flash via esptool
+```
+
+Output: `releases/joypad_<commit>_<app>_<board>.uf2`
+
+### App Build Matrix
+
 | App | Board | Input | Output |
 |-----|-------|-------|--------|
 | `usb2pce` | KB2040 | USB/BT | PCEngine |

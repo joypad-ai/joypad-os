@@ -50,9 +50,22 @@ const OutputInterface* active_output = NULL;
 // even when running in CDC config mode (no console plugged in).
 const OutputInterface* native_output = NULL;
 
+#ifdef ENABLE_PS4_LOCAL_AUTH
+// mbedTLS RSA-2048 signing on Core 1 needs ~6–8 KB of stack.
+// The default Core 1 stack lives in SCRATCH_X (4 KB total) and overflows,
+// causing a hard fault.  Allocate an 8 KB stack in main SRAM instead.
+static uint32_t s_core1_stack[0x2000 / sizeof(uint32_t)] __attribute__((aligned(8)));
+#endif
+
 // Store core1 task for wrapper - can be set after Core 1 launch
 static volatile void (*core1_actual_task)(void) = NULL;
 static volatile bool core1_task_ready = false;
+
+// Optional hook called from the Core 1 idle loop.
+// Override in an output-mode module to perform background work on Core 1.
+// IMPORTANT: Do NOT call flash_safe_execute() or any flash API from this hook —
+// flash ops must always originate from Core 0 while Core 1 handles lockout.
+__attribute__((weak)) void core1_idle_hook(void) {}
 
 // Core 1 wrapper - initializes flash safety, then waits for and runs actual task
 static void core1_wrapper(void) {
@@ -73,9 +86,12 @@ static void core1_wrapper(void) {
   if (core1_actual_task) {
     core1_actual_task();
   } else {
-    // No task - just idle forever while handling flash lockout requests
+    // No task - idle while handling flash lockout requests and optional hook work.
+    // core1_idle_hook() is a weak no-op by default; output modes may override it
+    // (e.g. PS4 auth offloads RSA signing here to avoid blocking Core 0).
     while (1) {
-      __wfi();  // Wait for interrupt (low power idle)
+      core1_idle_hook();
+      __wfe();  // Wait for event (woken by __sev() or interrupt)
     }
   }
 }
@@ -131,8 +147,14 @@ int main(void)
   // Console probes happen ~100-500ms after power-on. Every ms counts.
   // ========================================================================
 
-  // Launch Core 1 for flash_safe_execute support
+  // Launch Core 1 for flash_safe_execute support.
+  // When PS4 auth is enabled, use a larger stack in main SRAM because
+  // mbedTLS RSA-2048 signing overflows the 4 KB SCRATCH_X default region.
+#ifdef ENABLE_PS4_LOCAL_AUTH
+  multicore_launch_core1_with_stack(core1_wrapper, s_core1_stack, sizeof(s_core1_stack));
+#else
   multicore_launch_core1(core1_wrapper);
+#endif
 
   // PIO/joybus init — no dependency on stdio, flash, or profiles
   outputs = app_get_output_interfaces(&output_count);

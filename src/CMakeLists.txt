@@ -287,6 +287,19 @@ set(USB_DEVICE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/lib/libxsm3/excrypt_des.c
     ${CMAKE_CURRENT_SOURCE_DIR}/lib/libxsm3/excrypt_parve.c
     ${CMAKE_CURRENT_SOURCE_DIR}/lib/libxsm3/excrypt_sha.c
+    # PS4 auth flash storage — always compiled so PS4AUTH CDC commands are available
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/services/storage/ps4_auth_flash.c
+    # PS4 event log — flash-persistent debug log for auth troubleshooting
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/services/storage/ps4_event_log.c
+)
+
+# PS4 local auth sources (RSA signing via mbedTLS, optional)
+# Requires pico-sdk submodules to be initialized: make init
+# Enabled by default for USB device apps; disable with ENABLE_PS4_LOCAL_AUTH=OFF
+option(ENABLE_PS4_LOCAL_AUTH "Enable PS4 local RSA authentication (requires pico_mbedtls)" ON)
+
+set(PS4_LOCAL_AUTH_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd/modes/ps4_local_auth.c
 )
 
 # NES host sources
@@ -453,6 +466,35 @@ function(joypad_target_common TARGET)
     endif()
 endfunction()
 
+# Add PS4 local auth (mbedTLS RSA signing) to a target
+# Only added to targets that include USB_DEVICE_SOURCES (USB output apps)
+function(joypad_add_ps4_local_auth TARGET)
+    if(NOT ENABLE_PS4_LOCAL_AUTH)
+        return()
+    endif()
+
+    # pico_mbedtls is provided by pico-sdk (lib/mbedtls submodule).
+    # It must be available: run 'make init' to initialize all submodules.
+    if(NOT TARGET pico_mbedtls)
+        message(WARNING
+            "pico_mbedtls not found — PS4 local auth disabled for ${TARGET}. "
+            "Run 'make init' to initialize pico-sdk submodules.")
+        return()
+    endif()
+
+    target_sources(${TARGET} PRIVATE ${PS4_LOCAL_AUTH_SOURCES})
+    target_compile_definitions(${TARGET} PRIVATE
+        ENABLE_PS4_LOCAL_AUTH=1
+        MBEDTLS_CONFIG_FILE="ps4_mbedtls_config.h"
+    )
+    # Include the modes directory so MBEDTLS_CONFIG_FILE is found
+    target_include_directories(${TARGET} PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd/modes
+    )
+    target_link_libraries(${TARGET} PRIVATE pico_mbedtls pico_rand)
+    message(STATUS "${TARGET}: PS4 local auth enabled (pico_mbedtls)")
+endfunction()
+
 # Add BTstack support to a target
 function(joypad_add_btstack TARGET)
     target_compile_definitions(${TARGET} PRIVATE ${BTSTACK_DEFINITIONS})
@@ -464,6 +506,8 @@ function(joypad_add_btstack TARGET)
     target_include_directories(${TARGET} PUBLIC ${BTSTACK_INCLUDES})
     # Link hardware_flash and pico_flash for persistent link key storage
     target_link_libraries(${TARGET} PRIVATE hardware_flash pico_flash)
+    # Add PS4 local auth for all USB device targets (no-op if pico_mbedtls unavailable)
+    joypad_add_ps4_local_auth(${TARGET})
 endfunction()
 
 # USB host console app (USB input -> console output)
@@ -886,6 +930,8 @@ target_link_libraries(joypad_n642nuon PRIVATE ${COMMON_LIBRARIES} pico_bit_ops)
 joypad_target_common(joypad_n642nuon)
 # No BTstack - native N64 input only
 pico_generate_pio_header(joypad_n642nuon ${CMAKE_CURRENT_LIST_DIR}/lib/joybus-pio/src/joybus.pio)
+pico_generate_pio_header(joypad_n642nuon ${CMAKE_CURRENT_LIST_DIR}/native/device/nuon/polyface_read.pio)
+pico_generate_pio_header(joypad_n642nuon ${CMAKE_CURRENT_LIST_DIR}/native/device/nuon/polyface_send.pio)
 
 # --- N64 to Nuon (Aries64 board) ---
 # Aries64: RP2040 board with N64 data on GPIO11, Nuon polyface on GPIO12/13.
@@ -915,8 +961,6 @@ joypad_target_common(joypad_n642nuon_aries64)
 pico_generate_pio_header(joypad_n642nuon_aries64 ${CMAKE_CURRENT_LIST_DIR}/lib/joybus-pio/src/joybus.pio)
 pico_generate_pio_header(joypad_n642nuon_aries64 ${CMAKE_CURRENT_LIST_DIR}/native/device/nuon/polyface_read.pio)
 pico_generate_pio_header(joypad_n642nuon_aries64 ${CMAKE_CURRENT_LIST_DIR}/native/device/nuon/polyface_send.pio)
-pico_generate_pio_header(joypad_n642nuon ${CMAKE_CURRENT_LIST_DIR}/native/device/nuon/polyface_read.pio)
-pico_generate_pio_header(joypad_n642nuon ${CMAKE_CURRENT_LIST_DIR}/native/device/nuon/polyface_send.pio)
 
 # --- 3DO ---
 add_executable(joypad_3do)
@@ -1402,6 +1446,7 @@ if (PICO_BOARD STREQUAL "pico_w" OR
         CONFIG_BT2USB=1
         CONFIG_USB=1
         DISABLE_USB_HOST=1
+        USBD_DEFAULT_MODE=USB_OUTPUT_MODE_PS4
         USE_BOOTSEL_BUTTON=1
         CYW43_LWIP=0
         # BTstack uses async_context, not embedded run loop
@@ -1471,6 +1516,7 @@ if (PICO_BOARD STREQUAL "pico_w" OR
         tinyusb_board
     )
     joypad_target_common(joypad_bt2usb)
+    joypad_add_ps4_local_auth(joypad_bt2usb)
     pico_enable_stdio_usb(joypad_bt2usb 0)
     pico_enable_stdio_uart(joypad_bt2usb 1)
 

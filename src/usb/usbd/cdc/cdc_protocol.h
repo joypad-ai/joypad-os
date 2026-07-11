@@ -24,7 +24,10 @@ extern "C" {
 // ============================================================================
 
 #define CDC_SYNC_BYTE       0xAA
-#define CDC_MAX_PAYLOAD     1024    // Max payload size (JSON commands)
+// CDC_MAX_PAYLOAD: 1536 bytes to accommodate PS4AUTH.SET command which carries
+// ~1100 bytes of base64-encoded RSA key material in a single JSON payload.
+// Cost: +2KB RAM (receive buffer + response buffer). RP2040 has 264KB SRAM.
+#define CDC_MAX_PAYLOAD     1536    // Max payload size (JSON commands)
 #define CDC_HEADER_SIZE     5       // sync(1) + len(2) + type(1) + seq(1)
 #define CDC_CRC_SIZE        2
 #define CDC_MAX_PACKET      (CDC_HEADER_SIZE + CDC_MAX_PAYLOAD + CDC_CRC_SIZE)
