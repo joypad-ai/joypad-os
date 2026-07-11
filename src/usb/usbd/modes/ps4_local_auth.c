@@ -30,7 +30,12 @@
 #include "hardware/clocks.h"
 #include "hardware/sync.h"
 #include "hardware/watchdog.h"
+#if !PICO_RP2350
+// RP2040-only: chip_reset boot-source register lives in the VREG_AND_CHIP_RESET
+// block, which does not exist on RP2350 (moved into POWMAN). Used only for reset
+// diagnostics below, so guard it out on RP2350 rather than porting the readout.
 #include "hardware/structs/vreg_and_chip_reset.h"
+#endif
 #include "hardware/structs/watchdog.h"
 #include <string.h>
 #include <stdio.h>
@@ -285,6 +290,7 @@ bool ps4_local_auth_init(void)
     {
         bool wdog = watchdog_caused_reboot();
         bool wdog_en = watchdog_enable_caused_reboot();
+#if !PICO_RP2350
         uint32_t chip_reset = vreg_and_chip_reset_hw->chip_reset;
         // RP2040 bits: [20]=HAD_PSM_RESTART, [16]=HAD_RUN, [8]=HAD_POR
         bool had_por  = (chip_reset >>  8) & 1;
@@ -296,6 +302,14 @@ bool ps4_local_auth_init(void)
         ps4_log(rst);
         printf("[ps4_auth] %s wdog_en=%d chip_reset=0x%08lx\n",
                rst, wdog_en, (unsigned long)chip_reset);
+#else
+        // RP2350: chip_reset boot-source bits live in POWMAN; skip the detailed
+        // readout and just log the watchdog cause.
+        char rst[48];
+        snprintf(rst, sizeof(rst), "RST wd=%d wd_en=%d", wdog, wdog_en);
+        ps4_log(rst);
+        printf("[ps4_auth] %s\n", rst);
+#endif
     }
 
     // Log crash location from previous boot.

@@ -24,6 +24,7 @@ endif()
 set(ESP32_COMMON_SRCS
     "main.c"
     "flash_esp32.c"
+    "ps4_auth_stubs.c"
     "ws2812_esp32.c"
     "button_esp32.c"
     "${SHARED_SRC}/platform/esp32/platform_esp32.c"
