@@ -1,4 +1,4 @@
-# Joypad OS
+# Joypad OS (PS4 Auth Fork)
 
 <p align="center">
   <picture>
@@ -20,6 +20,38 @@
   <a href="https://docs.joypad.ai/"><img src="https://img.shields.io/badge/Docs-docs.joypad.ai-blue?style=for-the-badge" alt="Documentation" /></a>
   <a href="http://community.joypad.ai/"><img src="https://img.shields.io/discord/1133112432684978256?style=for-the-badge&logo=discord&label=Discord" alt="Discord" /></a>
 </p>
+
+---
+
+## 🚀 Differences from Original Repository
+
+This fork of **Joypad OS** adds support for **PlayStation 4 (DS4) Emulation with Local Authentication**. 
+
+Unlike the main repository which only supports PS4 without authentication (which makes it work for 8 minutes only), this version allows for **Local RSA Authentication**. This means you can use your adapter on a PS4 by using cryptographic keys extracted from a real DualShock 4.
+
+### ⚠️ Limitations & Compatibility
+- **Buttons:** Some games may have trouble recognizing the **L2** and **Options** buttons (e.g., tested and confirmed issues in **FC26**).
+- **Fighting Games:** This fork has been extensively tested and works perfectly with fighting games, including **Street Fighter** and various **Capcom Collections**.
+- **Setup:** To enable local authentication, you **must** upload your own controller keys.
+
+### 🎮 Touchpad Shortcuts
+For controllers that lack a dedicated touchpad button (like many Bluetooth controllers), you can use the following shortcuts:
+- **R1 + Options/Start**: Simulates a Touchpad click.
+- **Touchpad (or R1 + Options/Start) + D-Pad Left**: Simulates a Left Touchpad click.
+- **Touchpad (or R1 + Options/Start) + D-Pad Right**: Simulates a Right Touchpad click.
+
+This allows full compatibility with games that require specific touchpad interactions (left/right side clicks).
+
+### 🔑 Authentication Setup
+To use local authentication, you need to upload three specific files from a genuine DualShock 4 controller:
+1. `key.prm` (Private Key)
+2. `serial.txt` (Controller Serial Number)
+3. `sig.bin` (Sony Device Signature)
+
+Use the provided web tool located at:  
+[lucasleal.dev/joypad-os-ds4/tools/ps4-auth-upload/ps4_auth_upload.html](https://lucasleal.dev/joypad-os-ds4/tools/ps4-auth-upload/ps4_auth_upload.html)
+
+Simply open this link in a WebHID-compatible browser (like Chrome or Edge), connect your Joypad OS device via USB, and follow the instructions to upload your keys to the device's flash memory.
 
 ---
 
@@ -100,6 +132,7 @@ Use any USB or Bluetooth controller on retro consoles:
 
 | Console | Apps | Highlights | Build | Docs |
 |---------|------|-----------|-------|------|
+| **PlayStation 4** | usb2usb | Local RSA auth, passthrough, rumble | [DIY](docs/hardware/diy.md) | [Guide](docs/architecture/ps4_auth.md) |
 | **PCEngine / TurboGrafx-16** | usb2pce | Multitap (5 players), mouse, 2/3/6-button | [DIY](docs/hardware/diy.md) | [Guide](docs/apps/usb2pce.md) |
 | **GameCube / Wii** | usb2gc, bt2gc | Profiles, rumble, keyboard mode | [Build](docs/hardware/builds/usb2gc.md) | [Guide](docs/apps/usb2gc.md) |
 | **Sega Dreamcast** | usb2dc | Rumble, analog triggers, 4 players | [DIY](docs/hardware/diy.md) | [Guide](docs/apps/usb2dc.md) |
