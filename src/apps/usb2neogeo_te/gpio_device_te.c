@@ -23,6 +23,7 @@
 #include "remap.h"
 #include "core/services/leds/leds.h"
 #include "core/services/profiles/runtime_profile.h"
+#include "core/services/players/feedback.h"
 // ----------------------------------------------------------------------------
 
 // ============================================================================
@@ -174,13 +175,22 @@ static void gpio_apply_output(uint8_t player_index,
 
   // ---- REMAP INTEGRATION ---------------------------------------------------
   // Apply custom button remap on top of profile-mapped buttons.
-  // Remaps the 6 action buttons (A/B/C/D/Select/K3); Start, Coin, D-Pad
-  // are preserved unchanged.
-  uint8_t remapped = neogeo_remap_apply(&remap_active[player_index], mapped->buttons);
-  uint32_t preserve_mask = JP_BUTTON_S1 | JP_BUTTON_S2 |
-                           JP_BUTTON_DU | JP_BUTTON_DD |
+  // IMPORTANT: remap runs against the RAW input buttons (before profile),
+  // not mapped->buttons, so disabled inputs like L1/L2 still work as
+  // remap sources. The 6 Neo Geo outputs are then driven directly.
+  uint8_t remapped = neogeo_remap_apply(&remap_active[player_index], buttons);
+
+  // Start with D-pad from profile output (handles analog stick → dpad)
+  // then add S1/S2 directly from raw input — bypassing profile_apply
+  // which can suppress S1 (Coin) in certain states.
+  uint32_t preserve_mask = JP_BUTTON_DU | JP_BUTTON_DD |
                            JP_BUTTON_DL | JP_BUTTON_DR;
   uint32_t final_buttons = (mapped->buttons & preserve_mask);
+
+  // Pass Coin (S1) and Start (S2) directly from raw input
+  if (buttons & JP_BUTTON_S1) final_buttons |= JP_BUTTON_S1;
+  if (buttons & JP_BUTTON_S2) final_buttons |= JP_BUTTON_S2;
+
   if (remapped & (1 << NEOGEO_BTN_A))      final_buttons |= JP_BUTTON_B3;
   if (remapped & (1 << NEOGEO_BTN_B))      final_buttons |= JP_BUTTON_B4;
   if (remapped & (1 << NEOGEO_BTN_C))      final_buttons |= JP_BUTTON_R1;
@@ -260,6 +270,8 @@ void gpio_device_init()
       remap_active[i] = neogeo_remap_default;
       remap_was_active[i] = false;
   }
+  // Set idle color on boot — will be overridden green when controller connects
+  leds_set_color(0, 0, 32); // dim blue = waiting for controller
   // --------------------------------------------------------------------------
 
   router_set_tap_exclusive(OUTPUT_TARGET_GPIO, gpio_tap_callback);
@@ -310,15 +322,10 @@ void gpio_device_task()
   }
 
   if (playersCount > 0) {
-    // Profile-switch combo is suppressed while mapping so SELECT
-    // is exclusively reserved for the mapping trigger/cancel.
-    if (!runtime_profile_is_active()) {
-      uint8_t before = profile_get_active_index(OUTPUT_TARGET_GPIO);
-      profile_check_switch_combo(last_buttons);
-      if (profile_get_active_index(OUTPUT_TARGET_GPIO) != before) {
-        runtime_profile_clear();
-      }
-    }
+    // TE build: profile switching is intentionally disabled (single profile only).
+    // Calling profile_check_switch_combo would cause SELECT to be suppressed
+    // from output after being held 2s, breaking Coin input during normal play.
+    // runtime_profile_check_combo handles the remap trigger via SELECT alone.
     runtime_profile_check_combo(last_buttons, last_l2, last_r2);
 
     // Periodic re-apply: profile_apply reads platform_time_ms() so autofire
@@ -343,14 +350,15 @@ void gpio_device_task()
 
   if (playersCount != last_players_count) {
       for (int i = 0; i < GPIO_MAX_PLAYERS; i++) {
-          if (players[i].dev_addr == -1) {
+          if (players[i].dev_addr == -1 && i < last_players_count) {
               // Controller disconnected — reset remap and clear runtime profile
               neogeo_remap_ctx_init(&remap_ctx[i]);
               remap_active[i] = neogeo_remap_default;
               remap_was_active[i] = false;
               runtime_profile_clear();
+              leds_set_color(0, 0, 32); // dim blue = waiting for controller
               printf("[te] Player %d disconnected: remap reset\n", i);
-          } else if (last_players_count < playersCount) {
+          } else if (players[i].dev_addr != -1 && playersCount > last_players_count) {
               // Controller connected — open fresh boot window, go green
               neogeo_remap_ctx_init(&remap_ctx[i]);
               remap_active[i] = neogeo_remap_default;
@@ -373,31 +381,48 @@ void gpio_device_task()
 
       if (in_remap && !remap_was_active[p]) {
           printf("[te] Remap mode active — press 6 buttons in order\n");
+          // Short rumble pulse to signal remap mode entry
+          feedback_set_rumble(p, 255, 255);
+          remap_ctx[p].rumble_start_ms = platform_time_ms();
+          // Controller LED — yellow to match NeoPixel
+          feedback_set_led_rgb(p, 255, 180, 0);
       }
 
-      // Flash yellow while collecting, red briefly on duplicate press
+      // Stop rumble after 200ms
+      if (remap_ctx[p].rumble_start_ms != 0) {
+          if ((platform_time_ms() - remap_ctx[p].rumble_start_ms) >= 200) {
+              feedback_set_rumble(p, 0, 0);
+              remap_ctx[p].rumble_start_ms = 0;
+          }
+      }
+
+      // Flash yellow on NeoPixel while collecting, red briefly on duplicate
       if (in_remap) {
           uint32_t now = platform_time_ms();
           if (remap_ctx[p].error_flash_ms != 0 &&
               (now - remap_ctx[p].error_flash_ms) < 500) {
               // Red flash for 500ms to signal invalid input
               leds_set_color(180, 0, 0);
+              feedback_set_led_rgb(p, 180, 0, 0);
           } else {
               remap_ctx[p].error_flash_ms = 0;
               bool flash_on = (now / 250) % 2;
               leds_set_color(flash_on ? 255 : 0, flash_on ? 180 : 0, 0);
+              feedback_set_led_rgb(p, 255, 180, 0);
           }
       }
 
       // Detect completion or abort
       if (!in_remap && remap_was_active[p]) {
-          if (remap_active[p].buttons[0] != neogeo_remap_default.buttons[0]) {
+          if (remap_ctx[p].completed) {
               printf("[te] Remap complete\n");
               leds_set_color(0, 180, 0);
           } else {
               printf("[te] Remap aborted\n");
               leds_set_color(180, 0, 0);
           }
+          // Restore controller LED to normal player color
+          feedback_set_led_player(p, p + 1);
       }
 
       remap_was_active[p] = in_remap;

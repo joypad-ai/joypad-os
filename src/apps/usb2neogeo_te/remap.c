@@ -14,6 +14,8 @@ void neogeo_remap_ctx_init(neogeo_remap_ctx_t *ctx) {
     ctx->boot_checked   = false;
     ctx->mapped_mask    = 0;
     ctx->error_flash_ms = 0;
+    ctx->rumble_start_ms = 0;
+    ctx->completed      = false;
 }
 
 // ---------------------------------------------------------------------------
@@ -107,6 +109,7 @@ bool neogeo_remap_update(neogeo_remap_ctx_t *ctx,
         if (newly_pressed & ctx->mapped_mask) {
             printf("[remap] Button already mapped, ignoring\n");
             ctx->error_flash_ms = now;
+            ctx->last_activity_ms = now;  // reset timeout so player has time to try again
             return true;
         }
 
@@ -118,6 +121,7 @@ bool neogeo_remap_update(neogeo_remap_ctx_t *ctx,
         if (ctx->count >= NEOGEO_REMAP_BUTTON_COUNT) {
             // All 6 slots filled — apply to active remap (RAM only, no flash)
             memcpy(remap_out, &ctx->pending, sizeof(neogeo_remap_t));
+            ctx->completed = true;
             ctx->state = REMAP_STATE_DONE;
         }
         return true;
