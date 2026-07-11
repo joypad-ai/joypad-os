@@ -42,6 +42,7 @@ set(SRCS
     # --- nRF-specific ---
     "src/main.c"
     "src/flash_nrf.c"
+    "src/ps4_auth_stubs.c"
     "src/ws2812_nrf.c"
     "src/button_nrf.c"
     "src/platform_gpio_nrf.c"
