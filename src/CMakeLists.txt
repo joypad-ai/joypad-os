@@ -506,8 +506,6 @@ function(joypad_add_btstack TARGET)
     target_include_directories(${TARGET} PUBLIC ${BTSTACK_INCLUDES})
     # Link hardware_flash and pico_flash for persistent link key storage
     target_link_libraries(${TARGET} PRIVATE hardware_flash pico_flash)
-    # Add PS4 local auth for all USB device targets (no-op if pico_mbedtls unavailable)
-    joypad_add_ps4_local_auth(${TARGET})
 endfunction()
 
 # USB host console app (USB input -> console output)
@@ -1516,7 +1514,6 @@ if (PICO_BOARD STREQUAL "pico_w" OR
         tinyusb_board
     )
     joypad_target_common(joypad_bt2usb)
-    joypad_add_ps4_local_auth(joypad_bt2usb)
     pico_enable_stdio_usb(joypad_bt2usb 0)
     pico_enable_stdio_uart(joypad_bt2usb 1)
 
@@ -3016,3 +3013,30 @@ if(CMAKE_BUILD_TYPE MATCHES Debug)
 else()
     set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -O3")
 endif()
+
+# ============================================================================
+# PS4 LOCAL AUTH ATTACHMENT
+# ============================================================================
+# PS4 (DS4) local RSA authentication is a property of USB *output*, not of BT or
+# any single app. Every target that presents a USB gamepad compiles the PS4
+# output mode (ps4_mode.c, part of USB_DEVICE_SOURCES); console-output-only apps
+# (usb2dc, usb2gc, usb2pce, …) do not, so they never link mbedTLS.
+#
+# Rather than wire each of the ~55 USB-output targets by hand (and risk new apps
+# silently missing PS4 auth), attach the signing code + mbedTLS here, after all
+# targets are defined, to any executable whose sources include ps4_mode.c. This
+# is the single call site for joypad_add_ps4_local_auth() — the function is not
+# idempotent (it appends sources), so it must be invoked exactly once per target.
+#
+# Activation stays runtime-gated: local auth only engages once key material is
+# uploaded via PS4AUTH.SET (web config). No keys installed → passthrough / normal.
+get_property(_joypad_all_targets DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
+foreach(_t IN LISTS _joypad_all_targets)
+    get_target_property(_t_type ${_t} TYPE)
+    if(_t_type STREQUAL "EXECUTABLE")
+        get_target_property(_t_srcs ${_t} SOURCES)
+        if(_t_srcs MATCHES "ps4_mode\\.c")
+            joypad_add_ps4_local_auth(${_t})
+        endif()
+    endif()
+endforeach()
