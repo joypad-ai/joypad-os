@@ -67,6 +67,7 @@ typedef struct {
     uint32_t             mapped_mask;      // bitmask of already-assigned input buttons
     uint32_t             error_flash_ms;   // timestamp of last duplicate press (0 = none)
     uint32_t             rumble_start_ms;  // timestamp when rumble was started (0 = none)
+    uint32_t             connect_ms;       // timestamp when controller connected
     bool                 boot_checked;     // true once plug-in window has closed
     bool                 completed;        // true if remap finished successfully
 } neogeo_remap_ctx_t;

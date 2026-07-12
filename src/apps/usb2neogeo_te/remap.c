@@ -10,12 +10,13 @@
 
 void neogeo_remap_ctx_init(neogeo_remap_ctx_t *ctx) {
     memset(ctx, 0, sizeof(neogeo_remap_ctx_t));
-    ctx->state          = REMAP_STATE_IDLE;
-    ctx->boot_checked   = false;
-    ctx->mapped_mask    = 0;
-    ctx->error_flash_ms = 0;
+    ctx->state           = REMAP_STATE_IDLE;
+    ctx->boot_checked    = false;
+    ctx->mapped_mask     = 0;
+    ctx->error_flash_ms  = 0;
     ctx->rumble_start_ms = 0;
-    ctx->completed      = false;
+    ctx->completed       = false;
+    ctx->connect_ms      = platform_time_ms();
 }
 
 // ---------------------------------------------------------------------------
@@ -44,7 +45,8 @@ bool neogeo_remap_update(neogeo_remap_ctx_t *ctx,
         if ((current_buttons & NEOGEO_REMAP_TRIGGER_MASK) == NEOGEO_REMAP_TRIGGER_MASK) {
             ctx->state = REMAP_STATE_HOLDING;
             ctx->last_activity_ms = now;
-        } else if (now > NEOGEO_REMAP_BOOT_WINDOW_MS) {
+        } else if ((now - ctx->connect_ms) > NEOGEO_REMAP_BOOT_WINDOW_MS) {
+            // Boot window expired since controller connected
             ctx->boot_checked = true;
         }
         return false;
