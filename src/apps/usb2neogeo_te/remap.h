@@ -10,7 +10,14 @@
 
 // The 3-button combo that triggers remap mode on plug-in.
 // Square + Triangle + R1 (matches Undamned adapter convention).
-#define NEOGEO_REMAP_TRIGGER_MASK (JP_BUTTON_B3 | JP_BUTTON_B4 | JP_BUTTON_R1)
+#define NEOGEO_REMAP_TRIGGER_MASK    (JP_BUTTON_B3 | JP_BUTTON_B4 | JP_BUTTON_R1)
+
+// Alternate single-button triggers for controllers without easy access to
+// Square + Triangle + R1. Either Select or Start alone can trigger remap.
+// These follow the same rules -- must be held within the 3-second boot window
+// for 1 second. Outside the boot window they function as normal.
+#define NEOGEO_REMAP_TRIGGER_SELECT  (JP_BUTTON_S1)
+#define NEOGEO_REMAP_TRIGGER_START   (JP_BUTTON_S2)
 
 // How long the combo must be held before remap mode activates (ms)
 #define NEOGEO_REMAP_HOLD_MS 1000
@@ -68,6 +75,7 @@ typedef struct {
     uint32_t             error_flash_ms;   // timestamp of last duplicate press (0 = none)
     uint32_t             rumble_start_ms;  // timestamp when rumble was started (0 = none)
     uint32_t             connect_ms;       // timestamp when controller connected
+    uint32_t             active_trigger;   // which trigger mask fired (to wait for release)
     bool                 boot_checked;     // true once plug-in window has closed
     bool                 completed;        // true if remap finished successfully
 } neogeo_remap_ctx_t;

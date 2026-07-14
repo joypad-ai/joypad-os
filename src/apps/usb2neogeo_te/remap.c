@@ -17,6 +17,7 @@ void neogeo_remap_ctx_init(neogeo_remap_ctx_t *ctx) {
     ctx->rumble_start_ms = 0;
     ctx->completed       = false;
     ctx->connect_ms      = platform_time_ms();
+    ctx->active_trigger  = 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -42,9 +43,24 @@ bool neogeo_remap_update(neogeo_remap_ctx_t *ctx,
         // Once the boot window has closed, never check again this session
         if (ctx->boot_checked) return false;
 
+        // Check all three trigger options -- main combo, Select alone, Start alone
+        uint32_t trigger = 0;
         if ((current_buttons & NEOGEO_REMAP_TRIGGER_MASK) == NEOGEO_REMAP_TRIGGER_MASK) {
+            trigger = NEOGEO_REMAP_TRIGGER_MASK;
+        } else if ((current_buttons & NEOGEO_REMAP_TRIGGER_SELECT) &&
+                   !(current_buttons & ~NEOGEO_REMAP_TRIGGER_SELECT)) {
+            // Select alone -- no other buttons held
+            trigger = NEOGEO_REMAP_TRIGGER_SELECT;
+        } else if ((current_buttons & NEOGEO_REMAP_TRIGGER_START) &&
+                   !(current_buttons & ~NEOGEO_REMAP_TRIGGER_START)) {
+            // Start alone -- no other buttons held
+            trigger = NEOGEO_REMAP_TRIGGER_START;
+        }
+
+        if (trigger) {
             ctx->state = REMAP_STATE_HOLDING;
             ctx->last_activity_ms = now;
+            ctx->active_trigger = trigger;
         } else if ((now - ctx->connect_ms) > NEOGEO_REMAP_BOOT_WINDOW_MS) {
             // Boot window expired since controller connected
             ctx->boot_checked = true;
@@ -52,10 +68,11 @@ bool neogeo_remap_update(neogeo_remap_ctx_t *ctx,
         return false;
 
     case REMAP_STATE_HOLDING:
-        if ((current_buttons & NEOGEO_REMAP_TRIGGER_MASK) != NEOGEO_REMAP_TRIGGER_MASK) {
+        if ((current_buttons & ctx->active_trigger) != ctx->active_trigger) {
             // Released early — close the boot window, go to normal play
             ctx->state = REMAP_STATE_IDLE;
             ctx->boot_checked = true;
+            ctx->active_trigger = 0;
             return false;
         }
         if ((now - ctx->last_activity_ms) >= NEOGEO_REMAP_HOLD_MS) {
@@ -63,6 +80,7 @@ bool neogeo_remap_update(neogeo_remap_ctx_t *ctx,
             ctx->state = REMAP_STATE_WAITING;
             ctx->last_activity_ms = now;
             ctx->count = 0;
+            ctx->mapped_mask = 0;
             memset(&ctx->pending, 0, sizeof(neogeo_remap_t));
             return true; // caller fires rumble/LED feedback this frame
         }
@@ -76,7 +94,7 @@ bool neogeo_remap_update(neogeo_remap_ctx_t *ctx,
         }
         // Wait for all trigger buttons to be released before collecting,
         // so they don't accidentally register as the first mapped button.
-        if ((current_buttons & NEOGEO_REMAP_TRIGGER_MASK) == 0) {
+        if ((current_buttons & ctx->active_trigger) == 0) {
             ctx->state = REMAP_STATE_COLLECTING;
             ctx->last_buttons = 0;
             ctx->last_activity_ms = now;
@@ -104,7 +122,7 @@ bool neogeo_remap_update(neogeo_remap_ctx_t *ctx,
                                JP_BUTTON_DL | JP_BUTTON_DR;
         if (newly_pressed & ignore_mask) return true;
 
-        // Ignore Start and Coin — not remappable
+        // Ignore Start and Coin — always passthrough, never remappable
         if (newly_pressed & (JP_BUTTON_S1 | JP_BUTTON_S2)) return true;
 
         // Ignore buttons already assigned to another slot

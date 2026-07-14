@@ -46,7 +46,7 @@ static const profile_t neogeo_te_profile_default = {
     .left_stick_sensitivity = 1.0f,
     .right_stick_sensitivity = 1.0f,
     .adaptive_triggers = false,
-    .socd_mode = SOCD_UP_PRIORITY,
+    .socd_mode = SOCD_NEUTRAL,
 };
 
 // ============================================================================
@@ -101,7 +101,7 @@ static profile_t neogeo_te_runtime_profile = {
     .left_stick_sensitivity = 1.0f,
     .right_stick_sensitivity = 1.0f,
     .adaptive_triggers = false,
-    .socd_mode = SOCD_UP_PRIORITY,
+    .socd_mode = SOCD_NEUTRAL,
 };
 
 static const runtime_profile_output_config_t neogeo_te_runtime_output_config = {

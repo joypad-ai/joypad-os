@@ -187,9 +187,14 @@ static void gpio_apply_output(uint8_t player_index,
                            JP_BUTTON_DL | JP_BUTTON_DR;
   uint32_t final_buttons = (mapped->buttons & preserve_mask);
 
-  // Pass Coin (S1) and Start (S2) directly from raw input
-  if (buttons & JP_BUTTON_S1) final_buttons |= JP_BUTTON_S1;
-  if (buttons & JP_BUTTON_S2) final_buttons |= JP_BUTTON_S2;
+  // Pass Coin (S1) and Start (S2) directly from raw input.
+  // During the remap boot window, suppress both so that holding Start or Select
+  // to trigger remap mode doesn't accidentally send a game input.
+  // Once the window closes (boot_checked = true) they pass through normally.
+  if (remap_ctx[player_index].boot_checked) {
+      if (buttons & JP_BUTTON_S1) final_buttons |= JP_BUTTON_S1;
+      if (buttons & JP_BUTTON_S2) final_buttons |= JP_BUTTON_S2;
+  }
 
   if (remapped & (1 << NEOGEO_BTN_A))      final_buttons |= JP_BUTTON_B3;
   if (remapped & (1 << NEOGEO_BTN_B))      final_buttons |= JP_BUTTON_B4;
