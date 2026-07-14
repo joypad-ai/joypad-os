@@ -1,60 +1,162 @@
-// eyes_esp32.c - Animated eyes on the LilyGo T-Display S3 AMOLED.
+// eyes_esp32.c - Procedural face on the LilyGo T-Display S3 AMOLED.
 //
-// Provides the minimal display.h backend the shared eyes engine needs
-// (display_clear + display_pixel over a scaled 1-bit framebuffer), plus a
-// FreeRTOS task that ticks the animation and blits it to the AMOLED. The
-// eyes engine renders at EYES_SCALE x the base 128x64 canvas so the panel
-// shows smooth eyes instead of a nearest-neighbor upscale. Only built for
-// the LilyGo board (see main/CMakeLists.txt), which also sets EYES_SCALE.
+// Provides the display.h backend the face engine needs (display_clear +
+// display_pixel + display_set_color over an 8-bit color-class canvas in
+// PSRAM), plus a FreeRTOS task that ticks face_anim and blits it to the
+// AMOLED. The canvas is rendered at ~2x the panel resolution and the blit
+// box-downsamples 2x2, so edges come out anti-aliased and the accent class
+// (Taby's red mouth) blends properly. Only built for the LilyGo board (see
+// main/CMakeLists.txt), which sets EYES_SCALE.
 #ifdef BOARD_LILYGO_TDISPLAY_S3_AMOLED
 
 #include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
 #include "display.h"
-#include "eyes_anim.h"
+#include "face_anim.h"
 #include "rm67162_amoled.h"
 #include "platform/platform.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "esp_heap_caps.h"
+#include "esp_log.h"
 
-#ifndef EYES_SCALE
-#define EYES_SCALE 4
-#endif
-#define EYES_W (128 * EYES_SCALE)
-#define EYES_H (64 * EYES_SCALE)
+// Canvas matches the panel aspect (536:240) so nothing gets stretched by the
+// blit; ~1.43x supersample for anti-aliasing. 768x344 = 264KB in PSRAM.
+#define EYES_W 768
+#define EYES_H 344
 
-// Packed 1-bit framebuffer, row-major, LSB-first (matches amoled_blit_mono).
-static uint8_t s_fb[(EYES_W * EYES_H + 7) / 8];
+// 8-bit color-class canvas (0=black, 1=main, 2=accent), row-major, in PSRAM.
+static uint8_t* s_fb = NULL;
+static uint8_t s_color = FACE_COLOR_MAIN;
 
-// --- display.h backend (only clear + pixel are used by eyes_anim) ---
-void display_clear(void) { memset(s_fb, 0, sizeof(s_fb)); }
+// --- display.h backend ---
+void display_clear(void) { if (s_fb) memset(s_fb, 0, (size_t)EYES_W * EYES_H); }
+
+void display_set_color(uint8_t color_index) { s_color = color_index; }
 
 void display_pixel(int16_t x, int16_t y, bool on)
 {
-    if ((unsigned)x >= EYES_W || (unsigned)y >= EYES_H) return;
-    uint32_t idx = (uint32_t)y * EYES_W + x;
-    if (on) s_fb[idx >> 3] |= (1u << (idx & 7));
-    else    s_fb[idx >> 3] &= ~(1u << (idx & 7));
+    if (!s_fb || (unsigned)x >= EYES_W || (unsigned)y >= EYES_H) return;
+    s_fb[(size_t)x * EYES_H + y] = on ? s_color : 0;   // column-major (blit-friendly)
+}
+
+// Per-style main color (RGB565). Accent is Taby's coral-red mouth interior.
+#define ACCENT_RED 0xE288   // ~(226, 82, 68)
+
+static uint16_t style_color(face_style_id s)
+{
+    switch (s) {
+        case FACE_STYLE_TABY:  return 0xFFFF;   // white (real Taby)
+        case FACE_STYLE_ASTRO: return 0x2E7F;   // Astro blue
+        case FACE_STYLE_CLASSIC:
+        default:               return 0x07FF;   // cyan
+    }
+}
+
+// ---- remote control (CDC FACE.* commands, see cdc_commands.c) ----
+// While the companion drives the face, the self-demo pauses; it resumes
+// after a quiet period so an unplugged bridge doesn't leave a frozen face.
+static volatile uint32_t s_remote_until = 0;
+#define REMOTE_HOLD_MS 15000
+
+void face_remote_speak(int level)
+{
+    if (level < 0) level = 0;
+    if (level > 100) level = 100;
+    face_set_speaking((float)level / 100.0f);
+    s_remote_until = platform_time_ms() + REMOTE_HOLD_MS;
+}
+
+void face_remote_state(const char* state)
+{
+    if (strcmp(state, "think") == 0) {
+        face_set_emotion(FACE_EMO_SUSPICIOUS);   // narrowed, pondering
+        face_look(0.45f, -0.55f);                // glance up-and-away
+    } else {                                      // "idle" / "speak"
+        face_set_emotion(FACE_EMO_NEUTRAL);
+        face_look(0.0f, 0.0f);
+    }
+    s_remote_until = platform_time_ms() + REMOTE_HOLD_MS;
+}
+
+bool face_remote_emotion(const char* name)
+{
+    static const struct { const char* n; face_emotion e; } M[] = {
+        {"neutral", FACE_EMO_NEUTRAL},   {"happy", FACE_EMO_HAPPY},
+        {"sad", FACE_EMO_SAD},           {"angry", FACE_EMO_ANGRY},
+        {"surprised", FACE_EMO_SURPRISED}, {"sleepy", FACE_EMO_SLEEPY},
+        {"suspicious", FACE_EMO_SUSPICIOUS}, {"excited", FACE_EMO_EXCITED},
+        {"love", FACE_EMO_LOVE},
+    };
+    for (size_t i = 0; i < sizeof(M) / sizeof(M[0]); i++) {
+        if (strcmp(name, M[i].n) == 0) {
+            face_set_emotion(M[i].e);
+            s_remote_until = platform_time_ms() + REMOTE_HOLD_MS;
+            return true;
+        }
+    }
+    return false;
+}
+
+void face_remote_look(int x_pct, int y_pct)
+{
+    face_look((float)x_pct / 100.0f, (float)y_pct / 100.0f);
+    s_remote_until = platform_time_ms() + REMOTE_HOLD_MS;
 }
 
 static void eyes_task(void* arg)
 {
     (void)arg;
     amoled_init();
-    eyes_anim_init();
-    eyes_anim_event(EYES_EVENT_BOOT);
+    amoled_set_shift(-15);   // center the face on the physical glass (the
+                             // touch-circle strip offsets the active area)
+    extern bool pmu_init(void);
+    pmu_init();   // battery telemetry + small-LiPo-safe charge config
 
-    eyes_anim_render();
-    amoled_blit_mono(s_fb, EYES_W, EYES_H, 0x07FF);   // cyan eyes on black
+    s_fb = heap_caps_malloc((size_t)EYES_W * EYES_H, MALLOC_CAP_SPIRAM);
+    if (!s_fb) {
+        ESP_LOGE("eyes", "canvas alloc failed (%d bytes)", EYES_W * EYES_H);
+        vTaskDelete(NULL);
+        return;
+    }
+
+    face_init(EYES_W, EYES_H);
+    face_set_style(FACE_STYLE_TABY);
+
+    // Self-driving demo until wired to real events: cycle emotions to show the
+    // interrupt-anytime spring transitions, and rotate through the styles.
+    // Mostly neutral (idle wander + blinks make it feel alive), with a short
+    // emotion burst every few seconds — closer to how a companion behaves.
+    static const face_emotion bursts[] = {
+        FACE_EMO_HAPPY, FACE_EMO_SURPRISED, FACE_EMO_SUSPICIOUS,
+        FACE_EMO_EXCITED, FACE_EMO_SAD, FACE_EMO_SLEEPY, FACE_EMO_ANGRY,
+    };
+    uint32_t next_emo = 4000, next_style = 0;
+    int burst_i = 0, style = FACE_STYLE_TABY;
+    bool in_burst = false;
 
     for (;;) {
         uint32_t now = platform_time_ms();
-        if (eyes_anim_tick(now)) {
-            eyes_anim_render();
-            amoled_blit_mono(s_fb, EYES_W, EYES_H, 0x07FF);
+        if (now < s_remote_until) {
+            next_emo = now + 2000;   // demo paused: companion is driving
+        } else if (now >= next_emo) {
+            if (in_burst) {
+                face_set_emotion(FACE_EMO_NEUTRAL);
+                next_emo = now + 3800;
+            } else {
+                face_set_emotion(bursts[burst_i]);
+                burst_i = (burst_i + 1) % (int)(sizeof(bursts) / sizeof(bursts[0]));
+                next_emo = now + 2200;
+            }
+            in_burst = !in_burst;
         }
-        vTaskDelay(pdMS_TO_TICKS(20));
+        (void)style; (void)next_style;   // style rotation off while tuning Taby
+        face_tick(now);
+        face_render();
+        amoled_blit_idx8(s_fb, EYES_W, EYES_H,
+                         style_color(face_get_style()), ACCENT_RED);
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
 

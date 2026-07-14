@@ -278,11 +278,12 @@ set(SRCS
     "${TINYUSB_PATH}/src/portable/synopsys/dwc2/dwc2_common.c"
 )
 
-# Animated eyes on the LilyGo AMOLED (shared engine + ESP backend/task)
+# Procedural face on the LilyGo AMOLED (shared engine + ESP backend/task)
 if(CONFIG_BOARD STREQUAL "lilygo_tdisplay_s3_amoled")
     list(APPEND SRCS
-        "${SHARED_SRC}/core/services/display/eyes_anim.c"
+        "${SHARED_SRC}/core/services/display/face_anim.c"
         "eyes_esp32.c"
+        "pmu_esp32.c"
     )
 endif()
 
@@ -524,7 +525,7 @@ endif()
 if(CONFIG_BOARD STREQUAL "lilygo_tdisplay_s3_amoled")
     target_compile_definitions(${COMPONENT_LIB} PUBLIC
         BOARD_LILYGO_TDISPLAY_S3_AMOLED=1
-        EYES_SCALE=4)
+        EYES_SCALE=6)
 endif()
 
 # App-specific definitions

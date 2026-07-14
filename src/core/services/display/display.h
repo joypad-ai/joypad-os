@@ -53,6 +53,11 @@ void display_update(void);
 // OLED backend simply bounds-checks against its own dimensions.
 void display_pixel(int16_t x, int16_t y, bool on);
 
+// Select the color class subsequent display_pixel(on=true) writes use.
+// Color backends (AMOLED face canvas) map classes to real colors; mono
+// backends ignore this entirely. Class 1 = main, 2 = accent (e.g. red mouth).
+void display_set_color(uint8_t color_index);
+
 // Draw text at position (using built-in 6x8 font)
 void display_text(uint8_t x, uint8_t y, const char* text);
 

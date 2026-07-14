@@ -336,6 +336,98 @@ static void cmd_reboot(const char* json)
     pending_reboot_time = platform_time_ms();
 }
 
+#ifdef BOARD_LILYGO_TDISPLAY_S3_AMOLED
+// --- FACE.* — remote control of the AMOLED companion face (eyes_esp32.c).
+// FACE.SPEAK {"v":0-100}  speech envelope -> mouth (lip-sync)
+// FACE.STATE {"state":"idle"|"think"|"speak"}
+// FACE.EMO   {"emo":"happy"|...}
+// FACE.LOOK  {"x":-100..100,"y":-100..100}
+extern void face_remote_speak(int level);
+extern void face_remote_state(const char* state);
+extern bool face_remote_emotion(const char* name);
+extern void face_remote_look(int x_pct, int y_pct);
+
+static void cmd_face_speak(const char* json)
+{
+    int v = 0;
+    json_get_int(json, "v", &v);
+    face_remote_speak(v);
+    send_ok();
+}
+
+static void cmd_face_state(const char* json)
+{
+    int len = 0;
+    const char* st = json_get_string(json, "state", &len);
+    char buf[16] = {0};
+    if (st && len > 0 && len < (int)sizeof(buf)) memcpy(buf, st, (size_t)len);
+    face_remote_state(buf);
+    send_ok();
+}
+
+static void cmd_face_emo(const char* json)
+{
+    int len = 0;
+    const char* e = json_get_string(json, "emo", &len);
+    char buf[16] = {0};
+    if (e && len > 0 && len < (int)sizeof(buf)) memcpy(buf, e, (size_t)len);
+    if (face_remote_emotion(buf)) send_ok();
+    else send_error("unknown emotion");
+}
+
+static void cmd_face_look(const char* json)
+{
+    int x = 0, y = 0;
+    json_get_int(json, "x", &x);
+    json_get_int(json, "y", &y);
+    face_remote_look(x, y);
+    send_ok();
+}
+extern bool pmu_init(void);
+extern int pmu_batt_mv(void);
+extern int pmu_vbus_mv(void);
+extern int pmu_charge_state(void);
+extern int pmu_charge_ma(void);
+extern void amoled_brightness(uint8_t level);
+
+static void cmd_batt_get(const char* json)
+{
+    (void)json;
+    int mv = pmu_batt_mv();
+    int pct = (mv - 3300) * 100 / (4200 - 3300);
+    if (pct < 0) pct = 0;
+    if (pct > 100) pct = 100;
+    static const char* st[] = {"none", "pre", "charging", "done"};
+    snprintf(response_buf, sizeof(response_buf),
+             "{\"ok\":true,\"mv\":%d,\"pct\":%d,\"vbus_mv\":%d,"
+             "\"charge\":\"%s\",\"charge_ma\":%d}",
+             mv, pct, pmu_vbus_mv(), st[pmu_charge_state() & 3], pmu_charge_ma());
+    cdc_protocol_send_response(active_ctx, response_buf);
+}
+
+extern void amoled_set_shift(int panel_px);
+
+static void cmd_face_offset(const char* json)
+{
+    int x = 0;
+    json_get_int(json, "x", &x);
+    if (x < -100) x = -100;
+    if (x > 100) x = 100;
+    amoled_set_shift(x);
+    send_ok();
+}
+
+static void cmd_face_bright(const char* json)
+{
+    int v = 208;
+    json_get_int(json, "v", &v);
+    if (v < 0) v = 0;
+    if (v > 255) v = 255;
+    amoled_brightness((uint8_t)v);
+    send_ok();
+}
+#endif // BOARD_LILYGO_TDISPLAY_S3_AMOLED
+
 static void cmd_bootsel(const char* json)
 {
     (void)json;
@@ -3166,6 +3258,15 @@ static const cmd_entry_t commands[] = {
     {"PING", cmd_ping},
     {"REBOOT", cmd_reboot},
     {"BOOTSEL", cmd_bootsel},
+#ifdef BOARD_LILYGO_TDISPLAY_S3_AMOLED
+    {"FACE.SPEAK", cmd_face_speak},
+    {"FACE.STATE", cmd_face_state},
+    {"FACE.EMO", cmd_face_emo},
+    {"FACE.LOOK", cmd_face_look},
+    {"FACE.BRIGHT", cmd_face_bright},
+    {"FACE.OFFSET", cmd_face_offset},
+    {"BATT.GET", cmd_batt_get},
+#endif
     {"OTA", cmd_ota},
     {"MODE.GET", cmd_mode_get},
     {"MODE.SET", cmd_mode_set},

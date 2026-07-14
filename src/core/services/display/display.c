@@ -464,6 +464,10 @@ void display_set_contrast(uint8_t contrast) {
 // DRAWING PRIMITIVES
 // ============================================================================
 
+void display_set_color(uint8_t color_index) {
+    (void)color_index;   // mono OLED: no color classes
+}
+
 void display_pixel(int16_t x, int16_t y, bool on) {
     if (x < 0 || x >= DISPLAY_WIDTH || y < 0 || y >= DISPLAY_HEIGHT) return;
 
