@@ -43,11 +43,11 @@ static const face_pose EMO[FACE_EMO_COUNT] = {
     [FACE_EMO_HAPPY]      = {0.15f,0.15f, 0,  -0.05f,0.45f, 0,   0.05f,0.08f, 1.00f,  0.05f},
     [FACE_EMO_SAD]        = {0.72f,0.72f, 0,   0.18f,0.40f,-0.65f,-0.15f,0.05f,-0.65f,-0.10f},
     [FACE_EMO_ANGRY]      = {0.85f,0.85f, 0,  -0.05f,0.35f, 0.85f,-0.20f,0.12f,-0.40f, 0.00f},
-    [FACE_EMO_SURPRISED]  = {1.00f,1.00f, 0,  -0.05f,1.00f, 0,   0.90f,0.70f, 0.00f,  0.10f},
+    [FACE_EMO_SURPRISED]  = {1.00f,1.00f, 0,  -0.05f,1.00f, 0,   0.90f,0.30f, 0.00f,  0.10f},
     [FACE_EMO_SLEEPY]     = {0.24f,0.24f, 0,   0.12f,0.35f,-0.10f,-0.35f,0.10f,-0.10f,-0.20f},
     [FACE_EMO_SUSPICIOUS] = {0.42f,0.42f, 0.30f,0,  0.45f, 0.20f,-0.05f,0.05f,-0.15f, 0.00f},
-    [FACE_EMO_EXCITED]    = {1.00f,1.00f, 0,  -0.05f,0.60f, 0,   0.45f,0.55f, 1.00f,  0.15f},
-    [FACE_EMO_LOVE]       = {0.90f,0.90f, 0,   0,    0.60f, 0,   0.10f,0.35f, 1.00f,  0.10f},
+    [FACE_EMO_EXCITED]    = {0.15f,0.15f, 0,  -0.05f,0.60f, 0,   0.30f,0.75f, 1.00f,  0.15f},
+    [FACE_EMO_LOVE]       = {0.45f,0.45f, 0,   0.05f,0.60f, 0,   0.05f,0.00f, 0.60f,  0.05f},
 };
 
 // ============================================================================
@@ -286,6 +286,48 @@ static void style_classic(const face_pose* p, float bob) {
     }
 }
 
+// Blush: short slanted accent-color ticks beside an eye (Taby blush face).
+static void draw_blush_ticks(int cx, int cy, int len, int dir) {
+    display_set_color(FACE_COLOR_ACCENT);
+    int gap = len / 2 + 2;
+    for (int t = 0; t < 3; t++) {
+        int x0 = cx + dir * t * gap;
+        for (int k = 0; k < len; k++) {
+            int px = x0 + dir * (k / 2), py = cy + k;
+            if (px >= 0 && px < face_w && py >= 0 && py < face_h) {
+                display_pixel((int16_t)px, (int16_t)py, true);
+                if (px + 1 < face_w) display_pixel((int16_t)(px + 1), (int16_t)py, true);
+                if (px + 2 < face_w) display_pixel((int16_t)(px + 2), (int16_t)py, true);
+            }
+        }
+    }
+    display_set_color(FACE_COLOR_MAIN);
+}
+
+// Cat mouth (ω): two small ‿ bumps side by side.
+static void draw_omega(int cx, int cy, int w, int thick) {
+    int r = w / 2; if (r < 2) r = 2;
+    for (int sgn = -1; sgn <= 1; sgn += 2) {
+        int bx = cx + sgn * r;
+        int r2 = r * r;
+        for (int x = -r; x <= r; x++) {
+            int rise = ((r / 2 + 1) * (r2 - x * x)) / r2;
+            int yc = cy - r / 4 + rise;              // ‿ per lobe
+            for (int t = 0; t < thick; t++) {
+                int px = bx + x, py = yc + t;
+                if (px >= 0 && px < face_w && py >= 0 && py < face_h)
+                    display_pixel((int16_t)px, (int16_t)py, true);
+            }
+        }
+    }
+}
+
+// Small "o" mouth: ring outline.
+static void draw_o_mouth(int cx, int cy, int r, int thick) {
+    fill_ellipse(cx, cy, r, r, 0.0f, true);
+    fill_ellipse(cx, cy, r - thick, r - thick, 0.0f, false);
+}
+
 // Taby talking mouth: bean-shaped white outline (gentle top, round bottom)
 // with a white TEETH band across the top of the interior and a red TONGUE
 // rising from the bottom. open_t 0..1 scales teeth recede / tongue grow.
@@ -424,6 +466,20 @@ static void style_taby(const face_pose* p, float bob) {
     int mcx = cx0 + gx;
     int mcy = (int)(Hf * 0.784f + bob) + gy;
     float mo = p->mouth_open;
+    if (cur_emo == FACE_EMO_LOVE) {
+        // Taby blush face: ω mouth + pink blush ticks beside the eyes
+        draw_omega(mcx, mcy - (int)(Hf * 0.02f), (int)(Hf * 0.10f), thin);
+        int bl = (int)(Hf * 0.07f);
+        int bcy2 = ecy + (int)(ehh * 0.55f);
+        draw_blush_ticks(cx0 - eoff - (int)(ehw * 1.9f) + gx, bcy2, bl, +1);
+        draw_blush_ticks(cx0 + eoff + (int)(ehw * 1.9f) + gx, bcy2, bl, -1);
+        return;
+    }
+    if (cur_emo == FACE_EMO_SURPRISED && mo < 0.55f) {
+        // surprise onset: the little "o" mouth
+        draw_o_mouth(mcx, mcy, (int)(Hf * 0.045f) + 2, thin + 1);
+        return;
+    }
     if (mo < 0.12f) {
         float ceff = (p->mouth_curve >= 0.0f)
                          ? (0.45f + p->mouth_curve * 0.55f)
@@ -466,6 +522,19 @@ static void style_astro(const face_pose* p, float bob) {
         int depth = (int)(p->mouth_curve * hh * 1.2f);
         if (depth > 0) cut_smile_arc(cx, cy + hh, hw, depth);
     }
+}
+
+bool face_settled(void)
+{
+    if (blinking || speak_env > 0.02f) return false;
+    float d = 0;
+    d += fabsf(cur.eye_open_l - target.eye_open_l);
+    d += fabsf(cur.eye_open_r - target.eye_open_r);
+    d += fabsf(cur.gaze_x - target.gaze_x) + fabsf(cur.gaze_y - target.gaze_y);
+    d += fabsf(cur.mouth_open - target.mouth_open);
+    d += fabsf(cur.mouth_curve - target.mouth_curve);
+    d += fabsf(cur.brow_h - target.brow_h) + fabsf(cur.brow - target.brow);
+    return d < 0.02f;
 }
 
 void face_render(void) {

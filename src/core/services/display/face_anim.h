@@ -84,6 +84,10 @@ void face_blink(void);
 // Advance springs + overlays. Call every frame with a millisecond clock.
 void face_tick(uint32_t now_ms);
 
+// True when the face is at rest (springs settled, no blink, not speaking).
+// Backends can throttle rendering/blitting to save power while settled.
+bool face_settled(void);
+
 // Clear the framebuffer and draw the current pose in the current style.
 void face_render(void);
 

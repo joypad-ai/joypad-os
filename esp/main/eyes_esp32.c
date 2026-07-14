@@ -108,9 +108,15 @@ void face_remote_look(int x_pct, int y_pct)
 static void eyes_task(void* arg)
 {
     (void)arg;
+    // Face role: BLE controller input is unused on this board — suppress the
+    // perpetual scan (radio power + keeps 2.4GHz quiet near the controller).
+    extern void btstack_host_suppress_scan(bool suppress);
+    btstack_host_suppress_scan(true);
+
     amoled_init();
     amoled_set_shift(-15);   // center the face on the physical glass (the
                              // touch-circle strip offsets the active area)
+    amoled_brightness(0xC8); // ~78%: plenty on AMOLED, meaningfully less battery
     extern bool pmu_init(void);
     pmu_init();   // battery telemetry + small-LiPo-safe charge config
 
@@ -153,9 +159,14 @@ static void eyes_task(void* arg)
         }
         (void)style; (void)next_style;   // style rotation off while tuning Taby
         face_tick(now);
-        face_render();
-        amoled_blit_idx8(s_fb, EYES_W, EYES_H,
-                         style_color(face_get_style()), ACCENT_RED);
+        // Idle throttle: while the face is settled (only the breathing bob
+        // moves), render/blit at ~1/8 rate — the panel keeps its last frame.
+        static uint8_t idle_skip = 0;
+        if (!face_settled() || (++idle_skip & 7) == 0) {
+            face_render();
+            amoled_blit_idx8(s_fb, EYES_W, EYES_H,
+                             style_color(face_get_style()), ACCENT_RED);
+        }
         vTaskDelay(pdMS_TO_TICKS(10));
     }
 }

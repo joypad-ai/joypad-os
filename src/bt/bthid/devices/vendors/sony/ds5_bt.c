@@ -827,7 +827,11 @@ static bool ds5_voice_task(bthid_device_t* device, ds5_bt_data_t* ds5)
         // Send up to 3 frames per call to hold the 10.67ms average; the
         // controller's intake queue absorbs small bursts.
         for (int burst = 0; burst < 3; burst++) {
-            if ((int32_t)(now - ds5->voice_next_ms) < 0) break;
+            // Run up to ~2 frames AHEAD of schedule: keeps the controller's
+            // intake queue primed so 20-40ms BT link stalls stop being
+            // audible (at exact-schedule the DS5 plays from an empty queue
+            // and every RF hiccup is a click).
+            if ((int32_t)(now - ds5->voice_next_ms) < -22) break;
             if (comp_tail == comp_head) {
                 if (ds5->comp_end_pending) {
                     // Ring played out and the host already said "that's all"
