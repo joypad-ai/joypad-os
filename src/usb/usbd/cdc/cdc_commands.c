@@ -375,6 +375,18 @@ static void cmd_face_emo(const char* json)
     else send_error("unknown emotion");
 }
 
+extern bool face_remote_style(const char* name);
+
+static void cmd_face_style(const char* json)
+{
+    int len = 0;
+    const char* st = json_get_string(json, "style", &len);
+    char buf[16] = {0};
+    if (st && len > 0 && len < (int)sizeof(buf)) memcpy(buf, st, (size_t)len);
+    if (face_remote_style(buf)) send_ok();
+    else send_error("unknown style");
+}
+
 static void cmd_face_look(const char* json)
 {
     int x = 0, y = 0;
@@ -3265,6 +3277,7 @@ static const cmd_entry_t commands[] = {
     {"FACE.LOOK", cmd_face_look},
     {"FACE.BRIGHT", cmd_face_bright},
     {"FACE.OFFSET", cmd_face_offset},
+    {"FACE.STYLE", cmd_face_style},
     {"BATT.GET", cmd_batt_get},
 #endif
     {"OTA", cmd_ota},

@@ -132,10 +132,17 @@ void platform_reboot_bootloader(void)
 {
 #ifdef BOARD_LILYGO_TDISPLAY_S3_AMOLED
     // This board ships the stock bootloader (no TinyUF2). Force the ROM into
-    // USB/UART download mode so esptool can flash with no button combo.
-    // FORCE_DOWNLOAD_BOOT lives in the RTC domain and survives the SW reset;
-    // the ROM checks it on boot and stays in download mode.
+    // download mode so esptool can flash with no button combo. Two parts:
+    // FORCE_DOWNLOAD_BOOT makes the ROM stay in download, and the USB
+    // persist flags (PERSIST_ENA|BOOT_DFU) keep the OTG connection alive
+    // across the reset — without them the ROM's download mode never
+    // enumerates on the host (invisible-device state).
     printf("[platform] Rebooting into ROM download mode...\n");
+    // Persist flags MUST be 0 here: cleared, the ROM's download mode comes up
+    // on USB-Serial-JTAG (enumerates as usbmodemXXX — esptool flashes it).
+    // With BOOT_DFU/PERSIST_ENA set it stays on the OTG PHY, which never
+    // enumerates on this board. (Learned the hard way.)
+    chip_usb_set_persist_flags(0);
     REG_WRITE(RTC_CNTL_OPTION1_REG, RTC_CNTL_FORCE_DOWNLOAD_BOOT);
     esp_restart();
     while (1) { vTaskDelay(portMAX_DELAY); }

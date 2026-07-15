@@ -26,6 +26,10 @@ static bool blinking = false;
 static uint32_t blink_start_ms = 0, next_blink_ms = 1500;
 #define BLINK_MS 140
 
+// pupil micro-jitter (keeps eyes alive when idle; classic style uses it)
+static float pj_x = 0, pj_y = 0, pj_tx = 0, pj_ty = 0;
+static uint32_t next_pj_ms = 0;
+
 // idle life
 static float breathe_t = 0.0f;
 static uint32_t next_wander_ms = 3000;
@@ -128,7 +132,11 @@ void face_tick(uint32_t now_ms) {
     if (!blinking && now_ms >= next_blink_ms) { blinking = true; blink_start_ms = now_ms; }
     if (blinking && (now_ms - blink_start_ms) >= BLINK_MS) {
         blinking = false;
-        next_blink_ms = now_ms + 1500 + (uint32_t)(rndf() * 3500.0f);
+        if (rndf() < 0.35f) {
+            next_blink_ms = now_ms + 180;   // double-blink (idle signature)
+        } else {
+            next_blink_ms = now_ms + 1500 + (uint32_t)(rndf() * 3500.0f);
+        }
     }
 
     // Idle gaze wander — whenever nothing external is steering the gaze.
@@ -137,6 +145,15 @@ void face_tick(uint32_t now_ms) {
         target.gaze_y = (rndf() * 2.0f - 1.0f) * 0.30f;
         next_wander_ms = now_ms + 1600 + (uint32_t)(rndf() * 2200.0f);
     }
+
+    // pupil jitter: new random target every 250-1100ms, smoothed
+    if (now_ms >= next_pj_ms) {
+        pj_tx = (rndf() * 2.0f - 1.0f) * 2.0f;
+        pj_ty = (rndf() * 2.0f - 1.0f) * 2.0f;
+        next_pj_ms = now_ms + 250 + (uint32_t)(rndf() * 850.0f);
+    }
+    ease(&pj_x, pj_tx, 6.0f, dt);
+    ease(&pj_y, pj_ty, 6.0f, dt);
 
     breathe_t += dt;
     speak_env -= dt * 3.0f; if (speak_env < 0) speak_env = 0;
@@ -255,33 +272,101 @@ static void effective(face_pose* p, float* bob_out) {
 }
 
 static void style_classic(const face_pose* p, float bob) {
-    int ew = (int)(face_w * 0.11f);
-    int eh = (int)(face_h * 0.34f);
-    int cxl = (int)(face_w * 0.35f), cxr = (int)(face_w * 0.65f);
-    int cy = (int)(face_h * 0.5f + bob + p->gaze_y * face_h * 0.06f);
-    float shear = 0.16f;
-    int gx = (int)(p->gaze_x * ew * 0.7f);
-    struct { int cx; float open; float sh; bool inner_left; } E[2] = {
-        {cxl, p->eye_open_l, -shear, false}, {cxr, p->eye_open_r, shear, true}
-    };
+    // Faithful port of the original eyes_anim look: ellipse eyes on a
+    // pseudo-3D cylinder (width foreshortens on the side rotating away),
+    // boba pupils with inward bias, outward shear, smile-arc fold, brow cuts.
+    // Old geometry was authored on a 128x64 canvas; k converts to canvas px.
+    float k = (float)face_h / 64.0f;
+    float gx = p->gaze_x, gy = p->gaze_y;
+    float rot = gx * 0.55f;                       // CYL_ROT_RANGE
+    float ang_l = rot - 0.55f, ang_r = rot + 0.55f;  // CYL_EYE_THETA
+    float cylr = 36.0f * k;
+
+    float w_l = 36.0f * k * fabsf(cosf(ang_l));
+    float w_r = 36.0f * k * fabsf(cosf(ang_r));
+    if (w_l < 4 * k) w_l = 4 * k;
+    if (w_r < 4 * k) w_r = 4 * k;
+
+    int cx0 = face_w / 2;
+    float x_l = (float)(cx0 - 19.0f * k) + sinf(ang_l) * cylr - sinf(-0.55f) * cylr;
+    float x_r = (float)(cx0 + 19.0f * k) + sinf(ang_r) * cylr - sinf(0.55f) * cylr;
+    int ecy = (int)(face_h * 0.5f + bob + gy * 6.0f * k);
+
+    int pdx = (int)((gx * 5.0f + pj_x) * k), pdy = (int)((gy * 4.0f + pj_y) * k);
+
     for (int i = 0; i < 2; i++) {
-        int h = (int)(eh * E[i].open);
-        if (h < 2) h = 2;
-        int w = (int)(ew * (1.0f - 0.10f * p->brow_h * 0));  // width steady
-        fill_ellipse(E[i].cx, cy, w, h, E[i].sh, true);
-        // pupil (drawn OFF) — boba dot offset by gaze
-        int pr = (int)(w * (0.42f + 0.18f * p->pupil));
-        if (pr > 1 && E[i].open > 0.35f) {
-            int pdx = gx, pdy = (int)(p->gaze_y * h * 0.3f);
-            fill_ellipse(E[i].cx + pdx, cy + pdy, pr, pr, E[i].sh, false);
+        float open = i ? p->eye_open_r : p->eye_open_l;
+        // happy fold keeps the eye at ~60% with a deep smile-arc cut
+        float h_pct = open;
+        int curve = 0;
+        if (p->mouth_curve > 0.30f) {
+            curve = (int)(p->mouth_curve * 85.0f);
+            if (h_pct < 0.58f) h_pct = 0.58f * p->mouth_curve + h_pct * (1.0f - p->mouth_curve);
         }
-        // smile via bottom-arc cut
-        int depth = (int)(p->mouth_curve * h * 0.9f);
-        if (depth > 0) cut_smile_arc(E[i].cx, cy + h, w, depth);
-        // brow: sad/angry lowers inner-top (cut OFF a wedge)
-        if (p->brow > 0.05f) {
-            int bd = (int)(p->brow * h * 0.7f);
-            cut_smile_arc(E[i].cx, cy - h + bd, w, bd);  // top cut approximation
+        // Curve-blink (the old classic signature): a closing eye folds into
+        // the ⌒ smile-arc instead of squashing flat — keeps character shut.
+        if (open < 0.55f && p->mouth_curve <= 0.30f) {
+            float shut = 1.0f - (open / 0.55f);          // 0 open .. 1 shut
+            h_pct = 0.55f + (open / 0.55f) * (h_pct - 0.55f);
+            if (h_pct > 1.0f) h_pct = 1.0f;
+            curve = (int)(100.0f * shut);
+        }
+        int eh = (int)(48.0f * k * h_pct);
+        if (eh < 2) eh = 2;
+        int ew = (int)((i ? w_r : w_l) + 0.5f);
+        int cx = (int)((i ? x_r : x_l) + 0.5f);
+        float shear = i ? 0.18f : -0.18f;
+        int rx = ew / 2, ry = eh / 2;
+        if (rx < 2) rx = 2;
+        if (ry < 1) ry = 1;
+        fill_ellipse(cx, ecy, rx, ry, shear, true);
+
+        // boba pupil (drawn off) — inward bias, gaze tracking, clamped inside
+        int base_r = (ew < eh ? ew : eh) / 3;
+        if (base_r < (int)(2 * k)) base_r = (int)(2 * k);
+        if (base_r > (int)(10 * k)) base_r = (int)(10 * k);
+        int pr = (int)(base_r * (0.8f + 0.4f * p->pupil));
+        if (pr >= 1 && (open > 0.35f || curve < 40)) {
+            int margin = (int)k + 1;
+            int max_dx = rx - pr - margin, max_dy = ry - pr - margin;
+            if (max_dx < 0) max_dx = 0;
+            if (max_dy < 0) max_dy = 0;
+            int inward = (int)(3.0f * k) * (i ? -1 : 1);
+            int dx = pdx + inward, dy = pdy;
+            if (dx > max_dx) dx = max_dx;
+            if (dx < -max_dx) dx = -max_dx;
+            if (dy > max_dy) dy = max_dy;
+            if (dy < -max_dy) dy = -max_dy;
+            int xshift = (int)(-(float)dy * shear + (dy < 0 ? -0.5f : 0.5f));
+            // pupil in the accent class: backends map it to a darker shade
+            // of the eye color (reads as an iris, not a hole)
+            display_set_color(FACE_COLOR_ACCENT);
+            fill_ellipse(cx + dx + xshift, ecy + dy, pr, pr, 0.0f, true);
+            display_set_color(FACE_COLOR_MAIN);
+        }
+
+        // smile-arc fold from the bottom
+        if (curve > 0) {
+            int depth = (curve * eh) / 100;
+            cut_smile_arc(cx, ecy + ry, rx, depth);
+        }
+        // brow cuts: angry = triangular top cut toward center; sad = inner wedge
+        if (p->brow > 0.1f) {
+            int t = (int)(p->brow * 90.0f);
+            int max_depth = ((eh - 2) * (t > 100 ? 100 : t)) / 100;
+            bool inner_left = (i == 1);
+            for (int x = 0; x < ew && max_depth > 0; x++) {
+                int dist = inner_left ? (ew - 1 - x) : x;
+                int depth = (dist * max_depth) / (ew - 1 > 0 ? ew - 1 : 1);
+                for (int y = 0; y < depth; y++) {
+                    int py = ecy - ry + y;
+                    int yfc = py - ecy;
+                    int xs = (int)(-(float)yfc * shear + (yfc < 0 ? -0.5f : 0.5f));
+                    int px = cx - rx + x + xs;
+                    if (px >= 0 && px < face_w && py >= 0 && py < face_h)
+                        display_pixel((int16_t)px, (int16_t)py, false);
+                }
+            }
         }
     }
 }
@@ -504,22 +589,26 @@ static void style_taby(const face_pose* p, float bob) {
 
 
 static void style_astro(const face_pose* p, float bob) {
-    // Bright vertical-capsule eyes on the "visor". Very squash-responsive.
+    // Astro-Bot-style visor eyes: bright rounded eyes with a soft glow halo
+    // (accent color ring, softened by the AA downsample). Squash-responsive.
     int ew = (int)(face_w * 0.075f);
     int eh = (int)(face_h * 0.30f);
-    float sq = p->squash;                    // stretch tall / squash wide
-    int cxl = (int)(face_w * 0.37f), cxr = (int)(face_w * 0.63f);
-    int gx = (int)(p->gaze_x * face_w * 0.05f);
+    float sq = p->squash;
+    int cxl = (int)(face_w * 0.40f), cxr = (int)(face_w * 0.60f);
+    int gx = (int)(p->gaze_x * face_w * 0.045f);
     int cy = (int)(face_h * 0.5f + bob + p->gaze_y * face_h * 0.08f);
+    int glow = (int)(face_h * 0.035f) + 1;
     for (int i = 0; i < 2; i++) {
         int cx = (i ? cxr : cxl) + gx;
         float open = i ? p->eye_open_r : p->eye_open_l;
         int hw = (int)(ew * (1.0f - 0.25f * sq));
         int hh = (int)(eh * (1.0f + 0.25f * sq) * open);
-        if (hh < hw) hh = hw;               // never shorter than round
+        if (hh < hw / 2) hh = hw / 2;
+        display_set_color(FACE_COLOR_ACCENT);          // halo
+        fill_capsule(cx, cy, hw + glow, hh + glow, true);
+        display_set_color(FACE_COLOR_MAIN);            // bright core
         fill_capsule(cx, cy, hw, hh, true);
-        // happy → carve a ^ (upward arc) from the bottom
-        int depth = (int)(p->mouth_curve * hh * 1.2f);
+        int depth = (int)(p->mouth_curve * hh * 1.2f); // happy ^ fold
         if (depth > 0) cut_smile_arc(cx, cy + hh, hw, depth);
     }
 }

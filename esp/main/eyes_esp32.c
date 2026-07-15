@@ -41,16 +41,24 @@ void display_pixel(int16_t x, int16_t y, bool on)
     s_fb[(size_t)x * EYES_H + y] = on ? s_color : 0;   // column-major (blit-friendly)
 }
 
-// Per-style main color (RGB565). Accent is Taby's coral-red mouth interior.
-#define ACCENT_RED 0xE288   // ~(226, 82, 68)
-
+// Per-style main + accent colors (RGB565).
 static uint16_t style_color(face_style_id s)
 {
     switch (s) {
         case FACE_STYLE_TABY:  return 0xFFFF;   // white (real Taby)
-        case FACE_STYLE_ASTRO: return 0x2E7F;   // Astro blue
+        case FACE_STYLE_ASTRO: return 0x2E7F;   // Astro bright blue
         case FACE_STYLE_CLASSIC:
         default:               return 0x07FF;   // cyan
+    }
+}
+
+static uint16_t style_accent(face_style_id s)
+{
+    switch (s) {
+        case FACE_STYLE_TABY:  return 0xE288;   // coral-red mouth interior
+        case FACE_STYLE_ASTRO: return 0x0954;   // dim blue glow halo
+        case FACE_STYLE_CLASSIC:
+        default:               return 0x0471;   // dark cyan pupil (~55% of main — visible on AMOLED)
     }
 }
 
@@ -92,6 +100,22 @@ bool face_remote_emotion(const char* name)
     for (size_t i = 0; i < sizeof(M) / sizeof(M[0]); i++) {
         if (strcmp(name, M[i].n) == 0) {
             face_set_emotion(M[i].e);
+            s_remote_until = platform_time_ms() + REMOTE_HOLD_MS;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool face_remote_style(const char* name)
+{
+    static const struct { const char* n; face_style_id st; } M[] = {
+        {"classic", FACE_STYLE_CLASSIC}, {"taby", FACE_STYLE_TABY},
+        {"astro", FACE_STYLE_ASTRO},
+    };
+    for (size_t i = 0; i < sizeof(M) / sizeof(M[0]); i++) {
+        if (strcmp(name, M[i].n) == 0) {
+            face_set_style(M[i].st);
             s_remote_until = platform_time_ms() + REMOTE_HOLD_MS;
             return true;
         }
@@ -165,7 +189,8 @@ static void eyes_task(void* arg)
         if (!face_settled() || (++idle_skip & 7) == 0) {
             face_render();
             amoled_blit_idx8(s_fb, EYES_W, EYES_H,
-                             style_color(face_get_style()), ACCENT_RED);
+                             style_color(face_get_style()),
+                             style_accent(face_get_style()));
         }
         vTaskDelay(pdMS_TO_TICKS(10));
     }
