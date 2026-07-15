@@ -138,11 +138,16 @@ void platform_reboot_bootloader(void)
     // across the reset — without them the ROM's download mode never
     // enumerates on the host (invisible-device state).
     printf("[platform] Rebooting into ROM download mode...\n");
-    // Persist flags MUST be 0 here: cleared, the ROM's download mode comes up
-    // on USB-Serial-JTAG (enumerates as usbmodemXXX — esptool flashes it).
-    // With BOOT_DFU/PERSIST_ENA set it stays on the OTG PHY, which never
-    // enumerates on this board. (Learned the hard way.)
-    chip_usb_set_persist_flags(0);
+    // ROOT CAUSE of the enumeration lottery: TinyUSB routes the shared USB
+    // PHY to the OTG controller via RTC_CNTL_USB_CONF (RTC domain — survives
+    // soft resets). The ROM downloader uses USB-Serial-JTAG, which is left
+    // with no PHY, so it never enumerates. Hand the PHY back (both bits to
+    // their hardware default) before restarting; power-on/button resets did
+    // this implicitly, which is why THOSE always enumerated.
+    CLEAR_PERI_REG_MASK(RTC_CNTL_USB_CONF_REG,
+                        RTC_CNTL_SW_HW_USB_PHY_SEL | RTC_CNTL_SW_USB_PHY_SEL);
+    // Persist flags stay untouched (0). BOOT_DFU/PERSIST_ENA pins the OTG
+    // PHY and makes it worse — learned the hard way.
     REG_WRITE(RTC_CNTL_OPTION1_REG, RTC_CNTL_FORCE_DOWNLOAD_BOOT);
     esp_restart();
     while (1) { vTaskDelay(portMAX_DELAY); }

@@ -601,9 +601,9 @@ static void style_astro(const face_pose* p, float bob) {
 
     // eye field geometry: near-circular discs with a clear gap (per the
     // character reference), tight glow fringe
-    float eoff = Hf * 0.315f;                    // eye offset from center
-    float rx = Hf * 0.205f * (1.0f - 0.12f * p->squash);
-    float ry_base = Hf * 0.205f * (1.0f + 0.15f * p->squash);
+    float eoff = Hf * 0.40f;                     // eye offset from center
+    float rx = Hf * 0.265f * (1.0f - 0.12f * p->squash);
+    float ry_base = Hf * 0.265f * (1.0f + 0.15f * p->squash);
     float glow = 0.50f;                          // glow extent (fraction of shape)
     float excx[2] = { cx0 - eoff + gx, cx0 + eoff + gx };
     float ecy = Hf * 0.50f + gy;
