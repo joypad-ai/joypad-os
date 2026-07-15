@@ -46,7 +46,7 @@ static uint16_t style_color(face_style_id s)
 {
     switch (s) {
         case FACE_STYLE_TABY:  return 0xFFFF;   // white (real Taby)
-        case FACE_STYLE_ASTRO: return 0x2E7F;   // Astro bright blue
+        case FACE_STYLE_ASTRO: return 0x5EBF;   // Astro core: light cyan-blue
         case FACE_STYLE_CLASSIC:
         default:               return 0x07FF;   // cyan
     }
@@ -56,7 +56,7 @@ static uint16_t style_accent(face_style_id s)
 {
     switch (s) {
         case FACE_STYLE_TABY:  return 0xE288;   // coral-red mouth interior
-        case FACE_STYLE_ASTRO: return 0x0954;   // dim blue glow halo
+        case FACE_STYLE_ASTRO: return 0x11FC;   // Astro fringe: deep blue
         case FACE_STYLE_CLASSIC:
         default:               return 0x0471;   // dark cyan pupil (~55% of main — visible on AMOLED)
     }

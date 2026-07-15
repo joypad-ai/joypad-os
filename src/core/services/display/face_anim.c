@@ -589,28 +589,76 @@ static void style_taby(const face_pose* p, float bob) {
 
 
 static void style_astro(const face_pose* p, float bob) {
-    // Astro-Bot-style visor eyes: bright rounded eyes with a soft glow halo
-    // (accent color ring, softened by the AA downsample). Squash-responsive.
-    int ew = (int)(face_w * 0.075f);
-    int eh = (int)(face_h * 0.30f);
-    float sq = p->squash;
-    int cxl = (int)(face_w * 0.40f), cxr = (int)(face_w * 0.60f);
-    int gx = (int)(p->gaze_x * face_w * 0.045f);
-    int cy = (int)(face_h * 0.5f + bob + p->gaze_y * face_h * 0.08f);
-    int glow = (int)(face_h * 0.035f) + 1;
-    for (int i = 0; i < 2; i++) {
-        int cx = (i ? cxr : cxl) + gx;
-        float open = i ? p->eye_open_r : p->eye_open_l;
-        int hw = (int)(ew * (1.0f - 0.25f * sq));
-        int hh = (int)(eh * (1.0f + 0.25f * sq) * open);
-        if (hh < hw / 2) hh = hw / 2;
-        display_set_color(FACE_COLOR_ACCENT);          // halo
-        fill_capsule(cx, cy, hw + glow, hh + glow, true);
-        display_set_color(FACE_COLOR_MAIN);            // bright core
-        fill_capsule(cx, cy, hw, hh, true);
-        int depth = (int)(p->mouth_curve * hh * 1.2f); // happy ^ fold
-        if (depth > 0) cut_smile_arc(cx, cy + hh, hw, depth);
+    // Astro Bot visor: a FIXED lattice of round LEDs. The eyes are a soft
+    // intensity field (squircle core -> glow falloff); each LED samples the
+    // field at its own fixed position — the image moves across the dots, the
+    // dots never move. Bright core dots render in MAIN (light cyan), dim
+    // fringe dots in ACCENT (deep blue), with dot size scaling as brightness.
+    float Hf = (float)face_h;
+    int cx0 = face_w / 2;
+    float gx = p->gaze_x * Hf * 0.22f;
+    float gy = p->gaze_y * Hf * 0.10f + bob;
+
+    // eye field geometry: near-circular discs with a clear gap (per the
+    // character reference), tight glow fringe
+    float eoff = Hf * 0.315f;                    // eye offset from center
+    float rx = Hf * 0.205f * (1.0f - 0.12f * p->squash);
+    float ry_base = Hf * 0.205f * (1.0f + 0.15f * p->squash);
+    float glow = 0.50f;                          // glow extent (fraction of shape)
+    float excx[2] = { cx0 - eoff + gx, cx0 + eoff + gx };
+    float ecy = Hf * 0.50f + gy;
+
+    // happy fold: carve the bottom into an upward arc (per-eye)
+    float fold = (p->mouth_curve > 0.35f) ? p->mouth_curve : 0.0f;
+
+    int pitch = (int)(Hf / 43.0f); if (pitch < 4) pitch = 4;   // LED spacing
+    int dot_r = (pitch * 2) / 5; if (dot_r < 1) dot_r = 1;
+
+    // scan the fixed lattice (staggered rows), light dots by field intensity
+    for (int row = 0, y = pitch / 2; y < face_h; y += pitch, row++) {
+        int x0 = (row & 1) ? pitch : pitch / 2;   // stagger
+        for (int x = x0; x < face_w; x += pitch) {
+            float field = 0.0f;
+            for (int e = 0; e < 2; e++) {
+                float open = e ? p->eye_open_r : p->eye_open_l;
+                // happy keeps the disc big and carves it into an upper arc;
+                // blinks/sleepy squash the disc itself
+                float ry = ry_base * (fold > 0.0f ? (0.85f + 0.15f * open) : open);
+                if (ry < ry_base * 0.06f) ry = ry_base * 0.06f;
+                float dx = (x - excx[e]) / rx;
+                float dy = (y - ecy) / ry;
+                float d = sqrtf(dx * dx + dy * dy);   // circular disc
+                float f = (d <= 1.0f) ? 1.0f : 1.0f - (d - 1.0f) / glow;
+                if (f < 0.0f) f = 0.0f;
+                // happy: fade the lower-middle of the eye away (arc fold)
+                if (fold > 0.0f && dy > 0.0f) {
+                    float cut = fold * (1.0f - dx * dx * 0.8f);
+                    if (cut > 0.0f) f *= 1.0f - cut * (dy > 1.0f ? 1.0f : dy);
+                    if (f < 0.0f) f = 0.0f;
+                }
+                if (f > field) field = f;
+            }
+            if (field < 0.10f) continue;
+            int r;
+            if (field > 0.62f) {
+                display_set_color(FACE_COLOR_MAIN);          // bright core
+                r = dot_r;
+            } else {
+                // fringe: dot size falls off quadratically -> glow fades to
+                // barely-visible instead of a solid ring
+                float t = (field - 0.10f) / 0.52f;
+                t *= t;
+                r = (int)(dot_r * 0.9f * t + 0.3f);
+                if (r < 1) {
+                    if (t < 0.08f) continue;                 // faded out entirely
+                    r = 1;
+                }
+                display_set_color(FACE_COLOR_ACCENT);
+            }
+            fill_ellipse(x, y, r, r, 0.0f, true);
+        }
     }
+    display_set_color(FACE_COLOR_MAIN);
 }
 
 bool face_settled(void)
