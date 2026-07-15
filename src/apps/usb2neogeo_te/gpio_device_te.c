@@ -178,7 +178,14 @@ static void gpio_apply_output(uint8_t player_index,
   // IMPORTANT: remap runs against the RAW input buttons (before profile),
   // not mapped->buttons, so disabled inputs like L1/L2 still work as
   // remap sources. The 6 Neo Geo outputs are then driven directly.
-  uint8_t remapped = neogeo_remap_apply(&remap_active[player_index], buttons);
+  //
+  // Synthesize L2/R2 digital buttons from analog trigger values so XInput
+  // fight sticks with digital LT/RT can be used as remap inputs.
+  // Threshold of 128 matches the profile l2_threshold/r2_threshold.
+  uint32_t remap_buttons = buttons;
+  if (l2 >= 128) remap_buttons |= JP_BUTTON_L2;
+  if (r2 >= 128) remap_buttons |= JP_BUTTON_R2;
+  uint8_t remapped = neogeo_remap_apply(&remap_active[player_index], remap_buttons);
 
   // Start with D-pad from profile output (handles analog stick → dpad)
   // then add S1/S2 directly from raw input — bypassing profile_apply
@@ -378,9 +385,14 @@ void gpio_device_task()
   // Advance remap state machine every task loop
   if (playersCount > 0) {
       uint8_t p = 0;
+      // Synthesize L2/R2 digital buttons from analog values so XInput
+      // fight sticks with digital LT/RT work as remap collection inputs
+      uint32_t remap_buttons = last_buttons;
+      if (last_l2 >= 128) remap_buttons |= JP_BUTTON_L2;
+      if (last_r2 >= 128) remap_buttons |= JP_BUTTON_R2;
       bool in_remap = neogeo_remap_update(
           &remap_ctx[p],
-          last_buttons,
+          remap_buttons,
           &remap_active[p]
       );
 
