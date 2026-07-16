@@ -52,6 +52,7 @@ static const face_pose EMO[FACE_EMO_COUNT] = {
     [FACE_EMO_SUSPICIOUS] = {0.42f,0.42f, 0.30f,0,  0.45f, 0.20f,-0.05f,0.05f,-0.15f, 0.00f},
     [FACE_EMO_EXCITED]    = {0.15f,0.15f, 0,  -0.05f,0.60f, 0,   0.30f,0.75f, 1.00f,  0.15f},
     [FACE_EMO_LOVE]       = {0.45f,0.45f, 0,   0.05f,0.60f, 0,   0.05f,0.00f, 0.60f,  0.05f},
+    [FACE_EMO_WINK]       = {0.90f,0.60f, 0,   0,   0.45f, 0,   0.05f,0.06f, 0.30f,  0.00f},
 };
 
 // ============================================================================
@@ -602,7 +603,11 @@ typedef struct {
     float ry_e[2];        // per-eye vertical radius (blink squash)
     float inv_ry_e[2];
     float ry_base;
-    float fold;           // squint: flat cut across the lower disc
+    // Concave bottom carve (squint/wink — "basically a smile"): a cutter
+    // circle centered cut_m[e] below the eye center (normalized units) with
+    // radius cut_r[e] eats the disc's bottom into an upward arc, leaving
+    // horns at the sides. cut_r 0 = no carve.
+    float cut_m[2], cut_r[2];
     bool  hearts;         // LOVE: the shape is a heart
     float rlut[64];       // hearts: polar boundary radius per angle bin
 } astro_ctx;
@@ -626,13 +631,15 @@ static float astro_eye_d(const astro_ctx* c, float pxf, float pyf, int e) {
         return rb > 0.001f ? r / rb : 9e9f;
     }
     float d = sqrtf(nx * nx + ny * ny);
-    if (c->fold > 0.0f) {
-        // squint: flat cut across the disc's lower part — a dome with a
-        // full-width base (per the visor reference)
-        float ny_cut = 1.0f - c->fold * 0.80f;
-        if (ny > ny_cut) {
-            float dc = 1.0f + (ny - ny_cut);
-            if (dc > d) d = dc;
+    if (c->cut_r[e] > 0.0f) {
+        // concave bottom (smile arc): points inside the cutter are outside
+        // the shape by their depth past its boundary — the shadow follows
+        // the arc
+        float cdy = ny - c->cut_m[e];
+        float dc = sqrtf(nx * nx + cdy * cdy);
+        if (dc < c->cut_r[e]) {
+            float dcut = 1.0f + (c->cut_r[e] - dc);
+            if (dcut > d) d = dcut;
         }
     }
     return d;
@@ -650,8 +657,11 @@ static bool astro_px_in(const astro_ctx* c, float pxf, float pyf) {
             continue;
         }
         if (nx * nx + ny * ny > 1.0f) continue;
-        // squint: flat cut across the lower disc (dome with full-width base)
-        if (c->fold > 0.0f && ny > 1.0f - c->fold * 0.80f) continue;
+        // concave bottom (smile arc): carved where the cutter circle reaches
+        if (c->cut_r[e] > 0.0f) {
+            float cdy = ny - c->cut_m[e];
+            if (nx * nx + cdy * cdy < c->cut_r[e] * c->cut_r[e]) continue;
+        }
         return true;
     }
     return false;
@@ -695,9 +705,28 @@ static void style_astro(const face_pose* p, float bob) {
     c.excx[1] = cx0 + eoff + gx;
     c.ecy = Hf * 0.50f + gy;
 
-    // squint fold (flat cut) — disabled for hearts, which are whole shapes
+    // squint fold (concave smile carve) — disabled for hearts (whole shapes)
     c.hearts = (cur_emo == FACE_EMO_LOVE);
-    c.fold = (!c.hearts && p->mouth_curve > 0.35f) ? p->mouth_curve : 0.0f;
+    bool wink = (cur_emo == FACE_EMO_WINK);
+    float fold = (!c.hearts && !wink && p->mouth_curve > 0.35f)
+                     ? p->mouth_curve : 0.0f;
+    c.cut_r[0] = c.cut_r[1] = 0.0f;
+    c.cut_m[0] = c.cut_m[1] = 0.0f;
+    if (fold > 0.0f) {
+        // squint: both eyes carved by an upward arc whose apex rises with
+        // the fold — "basically a smile", not a flat base
+        float apex = 1.0f - 0.85f * fold;      // arc bottom at eye center line
+        for (int e = 0; e < 2; e++) {
+            c.cut_r[e] = 1.25f;
+            c.cut_m[e] = apex + 1.25f;
+        }
+    }
+    if (wink) {
+        // right eye: squashed crescent with a deep smile carve; left stays
+        // a full disc (open)
+        c.cut_r[1] = 1.15f;
+        c.cut_m[1] = 0.15f + 1.15f;
+    }
 
     if (c.hearts) {
         // polar boundary LUT for the heart (used for the shadow distance):
@@ -725,7 +754,7 @@ static void style_astro(const face_pose* p, float bob) {
         float open = (e ? p->eye_open_r : p->eye_open_l) * (1.0f / 0.90f);
         if (open > 1.0f) open = 1.0f;
         if (c.hearts) open = 1.0f;
-        c.ry_e[e] = c.ry_base * (c.fold > 0.0f ? (0.85f + 0.15f * open) : open);
+        c.ry_e[e] = c.ry_base * (fold > 0.0f ? (0.85f + 0.15f * open) : open);
         if (c.ry_e[e] < c.ry_base * 0.06f) c.ry_e[e] = c.ry_base * 0.06f;
         c.inv_ry_e[e] = 1.0f / c.ry_e[e];
     }

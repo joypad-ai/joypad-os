@@ -54,6 +54,7 @@ typedef enum {
     FACE_EMO_SUSPICIOUS,
     FACE_EMO_EXCITED,
     FACE_EMO_LOVE,
+    FACE_EMO_WINK,
     FACE_EMO_COUNT,
 } face_emotion;
 
