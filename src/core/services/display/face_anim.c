@@ -588,24 +588,40 @@ static void style_taby(const face_pose* p, float bob) {
 }
 
 
+// Is a canvas pixel inside the Astro lit shape (either eye disc, minus the
+// happy-fold carve)? The eye edge is a PURE circle that CLIPS the LEDs — edge
+// dots render as the geometric intersection, not as resized dots.
+static bool astro_px_in(float pxf, float pyf, const float excx[2], float ecy,
+                        float rx, const float ry_e[2], float fold) {
+    for (int e = 0; e < 2; e++) {
+        float nx = (pxf - excx[e]) / rx;
+        float ny = (pyf - ecy) / ry_e[e];
+        if (nx * nx + ny * ny > 1.0f) continue;
+        if (fold > 0.0f && ny > 0.0f) {
+            // happy: carve the lower-middle away along an upward arc
+            float cut = fold * (1.0f - nx * nx * 0.8f);
+            float dyc = ny > 1.0f ? 1.0f : ny;
+            if (cut * dyc > 0.45f) continue;
+        }
+        return true;
+    }
+    return false;
+}
+
 static void style_astro(const face_pose* p, float bob) {
-    // Astro Bot visor: a FIXED lattice of round LEDs. The eyes are a soft
-    // intensity field (squircle core -> glow falloff); each LED samples the
-    // field at its own fixed position — the image moves across the dots, the
-    // dots never move. Bright core dots render in MAIN (light cyan), dim
-    // fringe dots in ACCENT (deep blue), with dot size scaling as brightness.
+    // Astro Bot visor: a FIXED lattice of round LEDs; the image moves across
+    // the dots, the dots never move. The eyes are pure circles that CLIP the
+    // lattice: interior LEDs are full bright dots, edge LEDs light only the
+    // pixels inside the circle (crescents), and a faint navy glow spills a
+    // couple of pitches beyond the discs. Rest of the visor stays black.
     float Hf = (float)face_h;
     int cx0 = face_w / 2;
     float gx = p->gaze_x * Hf * 0.22f;
     float gy = p->gaze_y * Hf * 0.10f + bob;
 
-    // eye field geometry: near-circular discs with a clear gap (per the
-    // character reference), tight glow fringe
     float eoff = Hf * 0.40f;                     // eye offset from center
-    float rx = Hf * 0.23f * (1.0f - 0.12f * p->squash);
-    float ry_base = Hf * 0.23f * (1.0f + 0.15f * p->squash);
-    float glow = 0.15f;                          // glow extent (fraction of shape)
-                                                 // thin rim ring, per the visor
+    float rx = Hf * 0.27f * (1.0f - 0.12f * p->squash);
+    float ry_base = Hf * 0.27f * (1.0f + 0.15f * p->squash);
     float excx[2] = { cx0 - eoff + gx, cx0 + eoff + gx };
     float ecy = Hf * 0.50f + gy;
 
@@ -613,69 +629,73 @@ static void style_astro(const face_pose* p, float bob) {
     float fold = (p->mouth_curve > 0.35f) ? p->mouth_curve : 0.0f;
 
     // Lattice metrics measured off the official visor: ~19 dot rows over the
-    // screen height, lit dots nearly touching (fill ~0.84 of pitch), and the
-    // faint grid visible across the WHOLE visor, not just around the eyes.
+    // screen height, lit dots nearly touching (fill ~0.84 of pitch).
     int pitch = (int)(Hf / 19.0f); if (pitch < 4) pitch = 4;   // LED spacing
     int dot_r = (int)(pitch * 0.42f); if (dot_r < 1) dot_r = 1;
     int amb_r = (int)(pitch * 0.25f); if (amb_r < 1) amb_r = 1; // idle LED size
 
-    // scan the fixed lattice (square-aligned, per the official visor),
-    // lighting dots by field intensity
+    // per-eye vertical radius (blink/sleepy squash the disc; happy keeps it
+    // big and carves instead)
+    float ry_e[2];
+    for (int e = 0; e < 2; e++) {
+        float open = e ? p->eye_open_r : p->eye_open_l;
+        ry_e[e] = ry_base * (fold > 0.0f ? (0.85f + 0.15f * open) : open);
+        if (ry_e[e] < ry_base * 0.06f) ry_e[e] = ry_base * 0.06f;
+    }
+
     for (int y = pitch / 2; y < face_h; y += pitch) {
         for (int x = pitch / 2; x < face_w; x += pitch) {
-            float field = 0.0f;
+            // nearest-eye normalized distance for this LED's center
+            float dmin = 1e9f;
             for (int e = 0; e < 2; e++) {
-                float open = e ? p->eye_open_r : p->eye_open_l;
-                // happy keeps the disc big and carves it into an upper arc;
-                // blinks/sleepy squash the disc itself
-                float ry = ry_base * (fold > 0.0f ? (0.85f + 0.15f * open) : open);
-                if (ry < ry_base * 0.06f) ry = ry_base * 0.06f;
                 float dx = (x - excx[e]) / rx;
-                float dy = (y - ecy) / ry;
-                float d = sqrtf(dx * dx + dy * dy);   // circular disc
-                float f = (d <= 1.0f) ? 1.0f : 1.0f - (d - 1.0f) / glow;
-                if (f < 0.0f) f = 0.0f;
-                // happy: fade the lower-middle of the eye away (arc fold)
-                if (fold > 0.0f && dy > 0.0f) {
-                    float cut = fold * (1.0f - dx * dx * 0.8f);
-                    if (cut > 0.0f) f *= 1.0f - cut * (dy > 1.0f ? 1.0f : dy);
-                    if (f < 0.0f) f = 0.0f;
-                }
-                if (f > field) field = f;
+                float dy = (y - ecy) / ry_e[e];
+                float d = sqrtf(dx * dx + dy * dy);
+                if (d < dmin) dmin = d;
             }
-            int r;
-            if (field >= 0.999f) {
-                display_set_color(FACE_COLOR_MAIN);          // inside the disc
-                r = dot_r;
-            } else if (field >= 0.10f) {
-                // rim ring: bright dots shrinking down to the ambient grid
-                // size across ~1 dot, per the official visor
-                float t = (field - 0.10f) / 0.90f;
-                t *= t;
-                r = amb_r + (int)((dot_r * 0.65f - amb_r) * t);
+            float dr_n = (float)dot_r / (rx < ry_base ? rx : ry_base);
+
+            if (dmin <= 1.0f + dr_n) {
+                // LED touched by a disc — draw the pure-circle clip of it
                 display_set_color(FACE_COLOR_MAIN);
-            } else {
-                // idle LED: a faint GLOW spilling out of the eye discs — dot
-                // size falls off with distance from each disc (summed, so the
-                // gap between the eyes stays lit) and dies out ~2 pitches
-                // away. The rest of the visor stays black.
-                float g = 0.0f;
-                for (int e = 0; e < 2; e++) {
-                    float dx = (x - excx[e]) / rx;
-                    float dy = (y - ecy) / ry_base;
-                    float d = sqrtf(dx * dx + dy * dy);
-                    float f = 1.0f - (d - 1.0f) / 1.0f;
-                    if (f > 0.0f) g += f;
+                if (dmin <= 1.0f - dr_n * 1.2f && fold <= 0.01f) {
+                    fill_ellipse(x, y, dot_r, dot_r, 0.0f, true);  // fully inside
+                } else {
+                    int r2 = dot_r * dot_r;
+                    for (int py = y - dot_r; py <= y + dot_r; py++) {
+                        if (py < 0 || py >= face_h) continue;
+                        for (int px2 = x - dot_r; px2 <= x + dot_r; px2++) {
+                            if (px2 < 0 || px2 >= face_w) continue;
+                            int ddx = px2 - x, ddy = py - y;
+                            if (ddx * ddx + ddy * ddy > r2) continue;
+                            if (astro_px_in((float)px2, (float)py,
+                                            excx, ecy, rx, ry_e, fold))
+                                display_pixel((int16_t)px2, (int16_t)py, true);
+                        }
+                    }
                 }
-                if (g > 1.0f) g = 1.0f;
-                g *= g;                       // steeper fade -> fainter faster
-                r = (int)(amb_r * g + 0.5f);
-                if (r < 1) {
-                    if (g < 0.12f) continue;
-                    r = 1;
-                }
-                display_set_color(FACE_COLOR_ACCENT);
+                continue;
             }
+
+            // idle LED: a faint GLOW spilling out of the eye discs — dot size
+            // falls off with distance (summed, so the gap between the eyes
+            // keeps a whisper) and dies out ~2 pitches away.
+            float g = 0.0f;
+            for (int e = 0; e < 2; e++) {
+                float dx = (x - excx[e]) / rx;
+                float dy = (y - ecy) / ry_base;
+                float d = sqrtf(dx * dx + dy * dy);
+                float f = 1.0f - (d - 1.0f) / 1.0f;
+                if (f > 0.0f) g += f;
+            }
+            if (g > 1.0f) g = 1.0f;
+            g *= g;                           // steeper fade -> fainter faster
+            int r = (int)(amb_r * g + 0.5f);
+            if (r < 1) {
+                if (g < 0.12f) continue;
+                r = 1;
+            }
+            display_set_color(FACE_COLOR_ACCENT);
             fill_ellipse(x, y, r, r, 0.0f, true);
         }
     }
