@@ -632,7 +632,8 @@ static bool astro_px_in(float pxf, float pyf, const float excx[2], float ecy,
 
 // Shadow intensity at a canvas point: a soft drop-shadow hugging the true
 // shape's boundary, strongest at the edge and gone `range_px` (canvas px)
-// out. Summed over eyes so the gap between them keeps a whisper.
+// out. Per-eye (nearest wins, NOT summed): each eye carries its own halo —
+// summing brightened the gap between them into a stretched bridge.
 static float astro_glow(float pxf, float pyf, const float excx[2], float ecy,
                         float rx, const float ry_e[2], float fold,
                         float range_px) {
@@ -642,10 +643,9 @@ static float astro_glow(float pxf, float pyf, const float excx[2], float ecy,
         float dist = (d - 1.0f) * 0.5f * (rx + ry_e[e]);   // ~px past the edge
         if (dist < range_px) {
             float f = 1.0f - (dist < 0.0f ? 0.0f : dist) / range_px;
-            g += f;
+            if (f > g) g = f;
         }
     }
-    if (g > 1.0f) g = 1.0f;
     return g * g;
 }
 
