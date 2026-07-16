@@ -1603,7 +1603,10 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
             // BLE HID gadgets — each doomed connect attempt monopolizes the
             // radio ~10s and takes page scan down with it, blocking the DS5's
             // incoming reconnects (controller blinks then gives up).
-            if (is_generic_ble_hid && !is_known_controller) {
+            // Exception: JoypadOS peers (the untethered face) — the companion
+            // relays FACE.* to them over NUS, and they pair fast (no doom).
+            if (is_generic_ble_hid && !is_known_controller &&
+                strstr(name, "JoypadOS") == NULL) {
                 break;
             }
 #endif
