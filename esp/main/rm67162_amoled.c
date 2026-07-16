@@ -227,21 +227,24 @@ void amoled_blit_idx8(const uint8_t* fb, int w, int h,
         for (int px = 0; px < AMOLED_W; px++) ylut[px] = (uint16_t)((px * h) / AMOLED_W);
         lut_w = w; lut_h = h;
     }
-    // Color LUT: index = main_count*5 + accent_count (each 0..4 of 4 samples).
-    // Blends black -> main/accent proportionally, output byte-swapped RGB565.
-    static uint16_t clut[25];
+    // Color LUT: index = main_count*17 + accent_weight. Each of the 4 sampled
+    // canvas pixels contributes 4 quarters of main (class 1) or 4/3/2/1
+    // quarters of accent (classes 2/3/4/5 — full and dimmed shades, see
+    // FACE_COLOR_ACCENT_*), so accent_weight spans 0..16. Blends black ->
+    // main/accent proportionally, output byte-swapped RGB565.
+    static uint16_t clut[5 * 17];
     static uint16_t cm = 0, ca = 0;
     static bool clut_ready = false;
     if (!clut_ready || cm != main565 || ca != accent565) {
         int mr = (main565 >> 11) & 31, mg = (main565 >> 5) & 63, mb = main565 & 31;
         int ar = (accent565 >> 11) & 31, ag = (accent565 >> 5) & 63, ab = accent565 & 31;
         for (int cw = 0; cw <= 4; cw++) {
-            for (int cr = 0; cr <= 4 - cw; cr++) {
-                int r = (cw * mr + cr * ar) / 4;
-                int g = (cw * mg + cr * ag) / 4;
-                int b = (cw * mb + cr * ab) / 4;
+            for (int aw = 0; aw <= 16 - cw * 4; aw++) {
+                int r = (cw * 4 * mr + aw * ar) / 16;
+                int g = (cw * 4 * mg + aw * ag) / 16;
+                int b = (cw * 4 * mb + aw * ab) / 16;
                 uint16_t v = (uint16_t)((r << 11) | (g << 5) | b);
-                clut[cw * 5 + cr] = (uint16_t)((v >> 8) | (v << 8));
+                clut[cw * 17 + aw] = (uint16_t)((v >> 8) | (v << 8));
             }
         }
         cm = main565; ca = accent565; clut_ready = true;
@@ -277,9 +280,11 @@ void amoled_blit_idx8(const uint8_t* fb, int w, int h,
                 uint8_t v1 = c1[ey];
                 uint8_t v2 = c0[ey2];
                 uint8_t v3 = c1[ey2];
+                // class -> accent quarters (classes >5 count as 0)
+                static const uint8_t awq[8] = { 0, 0, 4, 3, 2, 1, 0, 0 };
                 int cw = (v0 == 1) + (v1 == 1) + (v2 == 1) + (v3 == 1);
-                int cr = (v0 == 2) + (v1 == 2) + (v2 == 2) + (v3 == 2);
-                out[px] = clut[cw * 5 + cr];
+                int aw = awq[v0 & 7] + awq[v1 & 7] + awq[v2 & 7] + awq[v3 & 7];
+                out[px] = clut[cw * 17 + aw];
             }
         }
         if (pending == 2) { xSemaphoreTake(s_done, portMAX_DELAY); pending--; }

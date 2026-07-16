@@ -613,11 +613,20 @@ static float astro_eye_d(float pxf, float pyf, int e, const float excx[2],
 
 // Is a canvas pixel inside the Astro lit shape? The edge is a PURE outline
 // that CLIPS the LEDs — edge dots render the geometric intersection.
+// Reciprocal radii passed in; no sqrt/div — this runs per pixel.
 static bool astro_px_in(float pxf, float pyf, const float excx[2], float ecy,
-                        float rx, const float ry_e[2], float fold) {
-    for (int e = 0; e < 2; e++)
-        if (astro_eye_d(pxf, pyf, e, excx, ecy, rx, ry_e, fold) <= 1.0f)
-            return true;
+                        float inv_rx, const float inv_ry_e[2], float fold) {
+    for (int e = 0; e < 2; e++) {
+        float nx = (pxf - excx[e]) * inv_rx;
+        float ny = (pyf - ecy) * inv_ry_e[e];
+        if (nx * nx + ny * ny > 1.0f) continue;
+        if (fold > 0.0f && ny > 0.0f) {
+            // carved out past the happy-arc boundary
+            float denom = fold * (1.0f - 0.8f * nx * nx);
+            if (denom > 0.01f && ny * denom > 0.45f) continue;
+        }
+        return true;
+    }
     return false;
 }
 
@@ -666,12 +675,16 @@ static void style_astro(const face_pose* p, float bob) {
     int dot_r = (int)(pitch * 0.42f); if (dot_r < 1) dot_r = 1;
 
     // per-eye vertical radius (blink/sleepy squash the disc; happy keeps it
-    // big and carves instead)
-    float ry_e[2];
+    // big and carves instead). Neutral eye_open (0.90) maps to a PERFECT
+    // circle — only real blinks/sleepy squash below that.
+    float ry_e[2], inv_ry_e[2];
+    float inv_rx = 1.0f / rx;
     for (int e = 0; e < 2; e++) {
-        float open = e ? p->eye_open_r : p->eye_open_l;
+        float open = (e ? p->eye_open_r : p->eye_open_l) * (1.0f / 0.90f);
+        if (open > 1.0f) open = 1.0f;
         ry_e[e] = ry_base * (fold > 0.0f ? (0.85f + 0.15f * open) : open);
         if (ry_e[e] < ry_base * 0.06f) ry_e[e] = ry_base * 0.06f;
+        inv_ry_e[e] = 1.0f / ry_e[e];
     }
 
     for (int y = pitch / 2; y < face_h; y += pitch) {
@@ -686,11 +699,10 @@ static void style_astro(const face_pose* p, float bob) {
             float dr_n = (float)dot_r / (rx < ry_base ? rx : ry_base);
 
             // The lattice is a CLIP FILTER over one continuous image: the
-            // bright eye shape plus its soft shadow. Every LED is the same
-            // size; each of its pixels shows whatever the underlying image
-            // has there — bright inside the outline, dithered faint navy in
-            // the shadow (the panel blit's 2x2 box downsample turns the
-            // dither into a true brightness fade), black past the shadow.
+            // bright eye shape plus its soft drop-shadow. Every LED is the
+            // same size; a physical LED shows ONE brightness, so shadow is
+            // sampled once per dot and drawn as a dimmed-accent shade —
+            // bright inside the outline, faint navy near it, black beyond.
             float shadow_px = 2.5f * pitch;
             if (dmin <= 1.0f - dr_n * 1.2f) {
                 display_set_color(FACE_COLOR_MAIN);            // fully inside
@@ -701,10 +713,24 @@ static void style_astro(const face_pose* p, float bob) {
             if ((dmin - 1.0f) * 0.5f * (rx + ry_base) > shadow_px + dot_r)
                 continue;
 
-            static const uint8_t bayer4[4][4] = {
-                { 0,  8,  2, 10}, {12,  4, 14,  6},
-                { 3, 11,  1,  9}, {15,  7, 13,  5},
-            };
+            // this LED's shadow shade (tops out ~half intensity, per the
+            // reference — dots hugging the shape read dimmer than lit ones)
+            float g = astro_glow((float)x, (float)y, excx, ecy, rx, ry_e,
+                                 fold, shadow_px) * 0.55f;
+            uint8_t shade = 0;
+            if (g > 0.40f)      shade = FACE_COLOR_ACCENT_50;
+            else if (g > 0.12f) shade = FACE_COLOR_ACCENT_25;
+
+            if (dmin >= 1.0f + dr_n) {
+                // fully outside the outline: a pure shadow LED
+                if (!shade) continue;
+                display_set_color(shade);
+                fill_ellipse(x, y, dot_r, dot_r, 0.0f, true);
+                continue;
+            }
+
+            // boundary LED: the outline clips it — bright crescent inside,
+            // this LED's shadow shade outside
             int r2 = dot_r * dot_r;
             for (int py = y - dot_r; py <= y + dot_r; py++) {
                 if (py < 0 || py >= face_h) continue;
@@ -713,20 +739,12 @@ static void style_astro(const face_pose* p, float bob) {
                     int ddx = px2 - x, ddy = py - y;
                     if (ddx * ddx + ddy * ddy > r2) continue;
                     if (astro_px_in((float)px2, (float)py,
-                                    excx, ecy, rx, ry_e, fold)) {
+                                    excx, ecy, inv_rx, inv_ry_e, fold)) {
                         display_set_color(FACE_COLOR_MAIN);
                         display_pixel((int16_t)px2, (int16_t)py, true);
-                    } else {
-                        float g = astro_glow((float)px2, (float)py,
-                                             excx, ecy, rx, ry_e, fold,
-                                             shadow_px);
-                        // the shadow tops out around half intensity — the
-                        // dots hugging the shape read dimmer than lit ones
-                        int lvl = (int)(g * 0.55f * 16.0f + 0.5f);
-                        if (bayer4[py & 3][px2 & 3] < lvl) {
-                            display_set_color(FACE_COLOR_ACCENT);
-                            display_pixel((int16_t)px2, (int16_t)py, true);
-                        }
+                    } else if (shade) {
+                        display_set_color(shade);
+                        display_pixel((int16_t)px2, (int16_t)py, true);
                     }
                 }
             }

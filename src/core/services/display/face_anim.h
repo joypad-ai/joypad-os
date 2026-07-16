@@ -36,8 +36,13 @@ typedef struct {
 
 // Color classes styles may draw with (backends map them to real colors;
 // mono backends render every class the same).
-#define FACE_COLOR_MAIN   1
-#define FACE_COLOR_ACCENT 2
+#define FACE_COLOR_MAIN      1
+#define FACE_COLOR_ACCENT    2
+// Dimmed accent shades (color backends blend toward black) — e.g. the Astro
+// visor's fading drop-shadow.
+#define FACE_COLOR_ACCENT_75 3
+#define FACE_COLOR_ACCENT_50 4
+#define FACE_COLOR_ACCENT_25 5
 
 typedef enum {
     FACE_EMO_NEUTRAL,
