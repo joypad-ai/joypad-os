@@ -388,6 +388,14 @@ static const uint8_t adv_data_standard[] = {
     ORG_BLUETOOTH_SERVICE_HUMAN_INTERFACE_DEVICE >> 8,
     // Appearance: Gamepad (0x03C4)
     0x03, BLUETOOTH_DATA_TYPE_APPEARANCE, 0xC4, 0x03,
+    // 128-bit Service UUIDs: Nordic UART (NUS). Advertising it lets host apps
+    // retrieve the connected peripheral by this UUID even while the OS owns
+    // the HID service (CoreBluetooth's retrieve filter matches ADVERTISED
+    // services) — the MouthPad-style companion-app pattern. Also enables
+    // WebBluetooth discovery. 11 + 18 = 29 bytes, fits the 31-byte cap.
+    0x11, BLUETOOTH_DATA_TYPE_COMPLETE_LIST_OF_128_BIT_SERVICE_CLASS_UUIDS,
+    0x9E, 0xCA, 0xDC, 0x24, 0x0E, 0xE5, 0xA9, 0xE0,
+    0x93, 0xF3, 0xA3, 0xB5, 0x01, 0x00, 0x40, 0x6E,
 };
 
 // Scan response carries the complete local name (21 bytes, fits in 31).

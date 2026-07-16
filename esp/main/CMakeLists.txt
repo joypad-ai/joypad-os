@@ -316,7 +316,10 @@ if(APP_NEEDS_BTSTACK)
         "${BTSTACK_PATH}/src/ble/att_db.c"
         "${BTSTACK_PATH}/src/ble/att_db_util.c"
         "${BTSTACK_PATH}/src/ble/att_server.c"
-        "${BTSTACK_PATH}/src/ble/le_device_db_memory.c"
+        # le_device_db_tlv ONLY — compiling le_device_db_memory.c alongside it
+        # silently wins the static-archive link and bonds live in RAM, so the
+        # device forgets every pairing at reboot (macOS keeps its side and the
+        # reconnect fails encryption). NVS-backed TLV persists bonds + SM IR/ER.
         "${BTSTACK_PATH}/src/ble/le_device_db_tlv.c"
 
         # --- BTstack 3rd-party ---
