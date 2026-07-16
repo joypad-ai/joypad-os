@@ -603,11 +603,12 @@ typedef struct {
     float ry_e[2];        // per-eye vertical radius (blink squash)
     float inv_ry_e[2];
     float ry_base;
-    // Concave bottom carve (squint/wink — "basically a smile"): a cutter
-    // circle centered cut_m[e] below the eye center (normalized units) with
-    // radius cut_r[e] eats the disc's bottom into an upward arc, leaving
-    // horns at the sides. cut_r 0 = no carve.
-    float cut_m[2], cut_r[2];
+    // Concave carve: a cutter circle centered (cut_cx, cut_cy)[e] in
+    // normalized eye units with radius cut_r[e] takes a bite out of the
+    // disc. Below-center = squint/wink smile arc; top-inner = angry brow
+    // bite (per the visor reference, the angry cut is an arc, not a line).
+    // cut_r 0 = no carve.
+    float cut_cx[2], cut_cy[2], cut_r[2];
     bool  hearts;         // LOVE: the shape is a heart
     float rlut[64];       // hearts: polar boundary radius per angle bin
 } astro_ctx;
@@ -632,11 +633,11 @@ static float astro_eye_d(const astro_ctx* c, float pxf, float pyf, int e) {
     }
     float d = sqrtf(nx * nx + ny * ny);
     if (c->cut_r[e] > 0.0f) {
-        // concave bottom (smile arc): points inside the cutter are outside
-        // the shape by their depth past its boundary — the shadow follows
-        // the arc
-        float cdy = ny - c->cut_m[e];
-        float dc = sqrtf(nx * nx + cdy * cdy);
+        // concave carve: points inside the cutter are outside the shape by
+        // their depth past its boundary — the shadow follows the arc
+        float cdx = nx - c->cut_cx[e];
+        float cdy = ny - c->cut_cy[e];
+        float dc = sqrtf(cdx * cdx + cdy * cdy);
         if (dc < c->cut_r[e]) {
             float dcut = 1.0f + (c->cut_r[e] - dc);
             if (dcut > d) d = dcut;
@@ -657,10 +658,11 @@ static bool astro_px_in(const astro_ctx* c, float pxf, float pyf) {
             continue;
         }
         if (nx * nx + ny * ny > 1.0f) continue;
-        // concave bottom (smile arc): carved where the cutter circle reaches
+        // concave carve: carved where the cutter circle reaches
         if (c->cut_r[e] > 0.0f) {
-            float cdy = ny - c->cut_m[e];
-            if (nx * nx + cdy * cdy < c->cut_r[e] * c->cut_r[e]) continue;
+            float cdx = nx - c->cut_cx[e];
+            float cdy = ny - c->cut_cy[e];
+            if (cdx * cdx + cdy * cdy < c->cut_r[e] * c->cut_r[e]) continue;
         }
         return true;
     }
@@ -711,21 +713,33 @@ static void style_astro(const face_pose* p, float bob) {
     float fold = (!c.hearts && !wink && p->mouth_curve > 0.35f)
                      ? p->mouth_curve : 0.0f;
     c.cut_r[0] = c.cut_r[1] = 0.0f;
-    c.cut_m[0] = c.cut_m[1] = 0.0f;
+    c.cut_cx[0] = c.cut_cx[1] = 0.0f;
+    c.cut_cy[0] = c.cut_cy[1] = 0.0f;
     if (fold > 0.0f) {
         // squint: both eyes carved by an upward arc whose apex rises with
         // the fold — "basically a smile", not a flat base
         float apex = 1.0f - 0.85f * fold;      // arc bottom at eye center line
         for (int e = 0; e < 2; e++) {
             c.cut_r[e] = 1.25f;
-            c.cut_m[e] = apex + 1.25f;
+            c.cut_cy[e] = apex + 1.25f;
         }
     }
     if (wink) {
         // right eye: squashed crescent with a deep smile carve; left stays
         // a full disc (open)
         c.cut_r[1] = 1.15f;
-        c.cut_m[1] = 0.15f + 1.15f;
+        c.cut_cy[1] = 0.15f + 1.15f;
+    }
+    if (!c.hearts && !wink && fold <= 0.0f && p->brow > 0.25f) {
+        // angry: an arc BITE out of each eye's top-inner side (springs in
+        // with the brow pose; deeper bite the angrier)
+        float bite = 0.55f + 0.55f * p->brow;
+        for (int e = 0; e < 2; e++) {
+            float s_in = e ? -1.0f : 1.0f;     // toward the face center
+            c.cut_cx[e] = s_in * 0.72f;
+            c.cut_cy[e] = -1.00f;
+            c.cut_r[e] = bite;
+        }
     }
 
     if (c.hearts) {
