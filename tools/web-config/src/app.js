@@ -12,6 +12,7 @@ import { RouterCard } from './components/router.js';
 import { HotkeysCard } from './components/hotkeys.js';
 import { BtHostCard } from './components/bt-host.js';
 import { AdvancedCard } from './components/advanced.js';
+import { FaceCard } from './components/face.js';
 
 /**
  * Joypad Config — App Shell
@@ -28,6 +29,7 @@ const PAGE_GROUPS = {
     'bluetooth':     'output',
     'native-output': 'output',
     'leds':          'output',
+    'face':          'output',
     'feedback':      'output',
     'audio':         'output',
     'gpio':          'input',
@@ -78,6 +80,7 @@ class JoypadConfigApp {
         this.profiles = new ProfilesCard(document.getElementById('cardProfiles'), this.protocol, log);
         this.inputTest = new InputTestCard(document.getElementById('cardInputTest'), this.protocol, log);
         this.advanced = new AdvancedCard(document.getElementById('cardAdvanced'), this.protocol, log);
+        this.face = new FaceCard(document.getElementById('cardFace'), this.protocol, log);
 
         // Render component HTML
         this.deviceInfo.render();
@@ -93,6 +96,7 @@ class JoypadConfigApp {
         this.profiles.render();
         this.inputTest.render();
         this.advanced.render();
+        this.face.render();
 
         // Connection events
         this.connectBtn.addEventListener('click', () => this.toggleConnection());
@@ -252,6 +256,12 @@ class JoypadConfigApp {
         const gpioLink = document.getElementById('navGpio');
         if (gpioLink) {
             gpioLink.style.display = this.hasPadConfig ? '' : 'none';
+        }
+
+        // Show Face nav link only when the device answers FACE.*
+        const faceLink = document.getElementById('navFace');
+        if (faceLink) {
+            faceLink.style.display = this.face.isAvailable() ? '' : 'none';
         }
 
         // Hide USB Host nav link if device doesn't support it
@@ -456,6 +466,7 @@ class JoypadConfigApp {
         await this.hotkeys.load();
         await this.usbHost.load();
         await this.btHost.load();
+        await this.face.load();
         // Check if pad config card is visible to determine nav visibility
         const padCard = document.querySelector('#cardPadConfig .card, #cardPadConfig #padConfigCard');
         this.hasPadConfig = padCard && padCard.style.display !== 'none';
