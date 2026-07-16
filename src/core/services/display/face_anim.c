@@ -597,15 +597,13 @@ static float astro_eye_d(float pxf, float pyf, int e, const float excx[2],
     float nx = (pxf - excx[e]) / rx;
     float ny = (pyf - ecy) / ry_e[e];
     float d = sqrtf(nx * nx + ny * ny);
-    if (fold > 0.0f && ny > 0.0f) {
-        // carve boundary: cut*min(ny,1) = 0.45 along an upward arc
-        float denom = fold * (1.0f - 0.8f * nx * nx);
-        if (denom > 0.01f) {
-            float ny_b = 0.45f / denom;
-            if (ny > ny_b) {
-                float dc = 1.0f + (ny - ny_b);
-                if (dc > d) d = dc;
-            }
+    if (fold > 0.0f) {
+        // squint: a flat cut across the disc's lower part — the eye becomes
+        // a dome with a full-width base (per the visor reference)
+        float ny_cut = 1.0f - fold * 0.80f;
+        if (ny > ny_cut) {
+            float dc = 1.0f + (ny - ny_cut);
+            if (dc > d) d = dc;
         }
     }
     return d;
@@ -620,11 +618,8 @@ static bool astro_px_in(float pxf, float pyf, const float excx[2], float ecy,
         float nx = (pxf - excx[e]) * inv_rx;
         float ny = (pyf - ecy) * inv_ry_e[e];
         if (nx * nx + ny * ny > 1.0f) continue;
-        if (fold > 0.0f && ny > 0.0f) {
-            // carved out past the happy-arc boundary
-            float denom = fold * (1.0f - 0.8f * nx * nx);
-            if (denom > 0.01f && ny * denom > 0.45f) continue;
-        }
+        // squint: flat cut across the lower disc (dome with full-width base)
+        if (fold > 0.0f && ny > 1.0f - fold * 0.80f) continue;
         return true;
     }
     return false;
