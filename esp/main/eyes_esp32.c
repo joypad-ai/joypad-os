@@ -98,6 +98,7 @@ bool face_remote_emotion(const char* name)
         {"surprised", FACE_EMO_SURPRISED}, {"sleepy", FACE_EMO_SLEEPY},
         {"suspicious", FACE_EMO_SUSPICIOUS}, {"excited", FACE_EMO_EXCITED},
         {"love", FACE_EMO_LOVE},         {"wink", FACE_EMO_WINK},
+        {"frustrated", FACE_EMO_FRUSTRATED},
     };
     for (size_t i = 0; i < sizeof(M) / sizeof(M[0]); i++) {
         if (strcmp(name, M[i].n) == 0) {

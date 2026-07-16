@@ -53,6 +53,7 @@ static const face_pose EMO[FACE_EMO_COUNT] = {
     [FACE_EMO_EXCITED]    = {0.15f,0.15f, 0,  -0.05f,0.60f, 0,   0.30f,0.75f, 1.00f,  0.15f},
     [FACE_EMO_LOVE]       = {0.45f,0.45f, 0,   0.05f,0.60f, 0,   0.05f,0.00f, 0.60f,  0.05f},
     [FACE_EMO_WINK]       = {0.90f,0.60f, 0,   0,   0.45f, 0,   0.05f,0.06f, 0.30f,  0.00f},
+    [FACE_EMO_FRUSTRATED] = {0.90f,0.90f, 0,   0,   0.45f, 0,  -0.10f,0.10f,-0.20f,  0.00f},
 };
 
 // ============================================================================
@@ -605,18 +606,58 @@ typedef struct {
     float ry_base;
     // Concave carve: a cutter circle centered (cut_cx, cut_cy)[e] in
     // normalized eye units with radius cut_r[e] takes a bite out of the
-    // disc. Below-center = squint/wink smile arc; top-inner = angry brow
-    // bite (per the visor reference, the angry cut is an arc, not a line).
-    // cut_r 0 = no carve.
+    // disc (squint/wink smile arc). cut_r 0 = no carve.
     float cut_cx[2], cut_cy[2], cut_r[2];
+    // Angry: the base shape becomes a rounded box (superellipse) and a
+    // straight top edge slashes down toward the face center:
+    // carve ny < sl_b + sl_k*nx. sl_k 0 = off.
+    bool  quad;
+    float sl_b[2], sl_k[2];
     bool  hearts;         // LOVE: the shape is a heart
+    bool  arrows;         // FRUSTRATED: the shape is a >< arrow
     float rlut[64];       // hearts: polar boundary radius per angle bin
+    // px per unit of (d-1): converts the normalized boundary distance to
+    // canvas px for the shadow. Thin shapes (arrows) scale by their stroke
+    // half-width so the shadow hugs them at the same physical reach.
+    float d2px[2];
 } astro_ctx;
 
 // Classic implicit heart, upright (v = up): (u^2+v^2-1)^3 <= u^2 * v^3.
 static inline bool heart_inside(float u, float v) {
     float a = u * u + v * v - 1.0f;
     return a * a * a <= u * u * v * v * v;
+}
+
+// Frustrated ">< " arrow: three thick strokes (shaft + two head strokes) in
+// normalized eye units, authored for the LEFT eye (pointing inward-right,
+// tilted slightly up); the right eye mirrors nx. Rendered as capsules of
+// half-width ARROW_HW.
+#define ARROW_HW 0.16f
+static const float ARROW_SEGS[3][4] = {
+    { -0.88f,  0.34f, 0.85f, -0.28f },   // shaft
+    {  0.85f, -0.28f, 0.16f, -0.56f },   // head, upper stroke
+    {  0.85f, -0.28f, 0.50f,  0.38f },   // head, lower stroke
+};
+
+// Squared distance from a point to a segment (all in normalized units).
+static inline float seg_d2(float px, float py,
+                           float ax, float ay, float bx, float by) {
+    float abx = bx - ax, aby = by - ay;
+    float t = ((px - ax) * abx + (py - ay) * aby) / (abx * abx + aby * aby);
+    if (t < 0.0f) t = 0.0f;
+    if (t > 1.0f) t = 1.0f;
+    float dx = px - (ax + t * abx), dy = py - (ay + t * aby);
+    return dx * dx + dy * dy;
+}
+
+static inline float arrow_d2(float nx, float ny) {
+    float best = 9e9f;
+    for (int i = 0; i < 3; i++) {
+        float d2 = seg_d2(nx, ny, ARROW_SEGS[i][0], ARROW_SEGS[i][1],
+                          ARROW_SEGS[i][2], ARROW_SEGS[i][3]);
+        if (d2 < best) best = d2;
+    }
+    return best;
 }
 
 // Normalized distance of a canvas pixel from eye e's shape boundary
@@ -631,7 +672,26 @@ static float astro_eye_d(const astro_ctx* c, float pxf, float pyf, int e) {
         float rb = c->rlut[bin];
         return rb > 0.001f ? r / rb : 9e9f;
     }
-    float d = sqrtf(nx * nx + ny * ny);
+    if (c->arrows) {
+        float mx = e ? -nx : nx;      // right eye mirrors the arrow
+        return sqrtf(arrow_d2(mx, ny)) * (1.0f / ARROW_HW);
+    }
+    float d;
+    if (c->quad) {
+        float d4 = nx * nx * nx * nx + ny * ny * ny * ny;
+        d = sqrtf(sqrtf(d4));
+    } else {
+        d = sqrtf(nx * nx + ny * ny);
+    }
+    if (c->sl_k[e] != 0.0f) {
+        // angry top edge: carved points read as outside by their height
+        // above the line, so the shadow follows the slant
+        float line = c->sl_b[e] + c->sl_k[e] * nx;
+        if (ny < line) {
+            float dcut = 1.0f + (line - ny);
+            if (dcut > d) d = dcut;
+        }
+    }
     if (c->cut_r[e] > 0.0f) {
         // concave carve: points inside the cutter are outside the shape by
         // their depth past its boundary — the shadow follows the arc
@@ -657,7 +717,19 @@ static bool astro_px_in(const astro_ctx* c, float pxf, float pyf) {
             if (heart_inside(nx * HEART_SCALE, -ny * HEART_SCALE)) return true;
             continue;
         }
-        if (nx * nx + ny * ny > 1.0f) continue;
+        if (c->arrows) {
+            float mx = e ? -nx : nx;
+            if (arrow_d2(mx, ny) <= ARROW_HW * ARROW_HW) return true;
+            continue;
+        }
+        if (c->quad) {
+            if (nx * nx * nx * nx + ny * ny * ny * ny > 1.0f) continue;
+        } else {
+            if (nx * nx + ny * ny > 1.0f) continue;
+        }
+        // angry top edge: carved above the slanted line
+        if (c->sl_k[e] != 0.0f &&
+            ny < c->sl_b[e] + c->sl_k[e] * nx) continue;
         // concave carve: carved where the cutter circle reaches
         if (c->cut_r[e] > 0.0f) {
             float cdx = nx - c->cut_cx[e];
@@ -678,7 +750,7 @@ static float astro_glow(const astro_ctx* c, float pxf, float pyf,
     float g = 0.0f;
     for (int e = 0; e < 2; e++) {
         float d = astro_eye_d(c, pxf, pyf, e);
-        float dist = (d - 1.0f) * 0.5f * (c->rx + c->ry_e[e]);  // ~px past edge
+        float dist = (d - 1.0f) * c->d2px[e];   // ~px past the edge
         if (dist < range_px) {
             float f = 1.0f - (dist < 0.0f ? 0.0f : dist) / range_px;
             if (f > g) g = f;
@@ -709,8 +781,9 @@ static void style_astro(const face_pose* p, float bob) {
 
     // squint fold (concave smile carve) — disabled for hearts (whole shapes)
     c.hearts = (cur_emo == FACE_EMO_LOVE);
+    c.arrows = (cur_emo == FACE_EMO_FRUSTRATED);
     bool wink = (cur_emo == FACE_EMO_WINK);
-    float fold = (!c.hearts && !wink && p->mouth_curve > 0.35f)
+    float fold = (!c.hearts && !c.arrows && !wink && p->mouth_curve > 0.35f)
                      ? p->mouth_curve : 0.0f;
     c.cut_r[0] = c.cut_r[1] = 0.0f;
     c.cut_cx[0] = c.cut_cx[1] = 0.0f;
@@ -730,15 +803,19 @@ static void style_astro(const face_pose* p, float bob) {
         c.cut_r[1] = 1.15f;
         c.cut_cy[1] = 0.15f + 1.15f;
     }
-    if (!c.hearts && !wink && fold <= 0.0f && p->brow > 0.25f) {
-        // angry: an arc BITE out of each eye's top-inner side (springs in
-        // with the brow pose; deeper bite the angrier)
-        float bite = 0.55f + 0.55f * p->brow;
+    c.quad = false;
+    c.sl_k[0] = c.sl_k[1] = 0.0f;
+    c.sl_b[0] = c.sl_b[1] = 0.0f;
+    if (!c.hearts && !c.arrows && !wink && fold <= 0.0f && p->brow > 0.25f) {
+        // angry: rounded-box eyes with a straight top edge slashing down
+        // toward the face center (per the visor reference); the slant
+        // springs in with the brow pose
+        c.quad = true;
+        float k = 0.47f * p->brow;
         for (int e = 0; e < 2; e++) {
             float s_in = e ? -1.0f : 1.0f;     // toward the face center
-            c.cut_cx[e] = s_in * 0.72f;
-            c.cut_cy[e] = -1.00f;
-            c.cut_r[e] = bite;
+            c.sl_b[e] = -0.55f;
+            c.sl_k[e] = s_in * k;
         }
     }
 
@@ -767,10 +844,12 @@ static void style_astro(const face_pose* p, float bob) {
     for (int e = 0; e < 2; e++) {
         float open = (e ? p->eye_open_r : p->eye_open_l) * (1.0f / 0.90f);
         if (open > 1.0f) open = 1.0f;
-        if (c.hearts) open = 1.0f;
+        if (c.hearts || c.arrows) open = 1.0f;
         c.ry_e[e] = c.ry_base * (fold > 0.0f ? (0.85f + 0.15f * open) : open);
         if (c.ry_e[e] < c.ry_base * 0.06f) c.ry_e[e] = c.ry_base * 0.06f;
         c.inv_ry_e[e] = 1.0f / c.ry_e[e];
+        // shadow px-per-(d-1): thin strokes scale by their half-width
+        c.d2px[e] = 0.5f * (c.rx + c.ry_e[e]) * (c.arrows ? ARROW_HW : 1.0f);
     }
 
     for (int y = pitch / 2; y < face_h; y += pitch) {
@@ -795,7 +874,8 @@ static void style_astro(const face_pose* p, float bob) {
                 continue;
             }
             // past the shadow: (dmin-1) in px beyond the edge, minus dot reach
-            if ((dmin - 1.0f) * 0.5f * (c.rx + c.ry_base) > shadow_px + dot_r)
+            float d2px_max = c.d2px[0] > c.d2px[1] ? c.d2px[0] : c.d2px[1];
+            if ((dmin - 1.0f) * d2px_max > shadow_px + dot_r)
                 continue;
 
             // this LED's shadow shade — dots hugging the shape read dimmer
