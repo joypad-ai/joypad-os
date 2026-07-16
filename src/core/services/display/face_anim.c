@@ -800,7 +800,7 @@ static void style_astro(const face_pose* p, float bob) {
 
             // this LED's shadow shade — dots hugging the shape read dimmer
             // than lit ones, then step down as the shadow fades out
-            float g = astro_glow(&c, (float)x, (float)y, shadow_px) * 0.75f;
+            float g = astro_glow(&c, (float)x, (float)y, shadow_px) * 0.62f;
             uint8_t shade = 0;
             if (g > 0.50f)      shade = FACE_COLOR_ACCENT_75;
             else if (g > 0.28f) shade = FACE_COLOR_ACCENT_50;
