@@ -655,19 +655,23 @@ static void style_astro(const face_pose* p, float bob) {
                 r = amb_r + (int)((dot_r * 0.65f - amb_r) * t);
                 display_set_color(FACE_COLOR_MAIN);
             } else {
-                // idle LED: the faint lattice is a rounded halo around the
-                // eye region only (per the reference) — measured ~2.2 dot
-                // pitches beyond the discs, fading at its border; the rest
-                // of the visor stays black.
-                float hx = (x - (cx0 + gx)) / (eoff + rx + 2.2f * pitch);
-                float hy = (y - ecy) / (ry_base + 2.2f * pitch);
-                float s = (hx * hx) * (hx * hx) + (hy * hy) * (hy * hy);
-                if (s > 1.0f) continue;
-                float fade = (1.0f - s) / 0.30f;
-                if (fade > 1.0f) fade = 1.0f;
-                r = (int)(amb_r * fade + 0.5f);
+                // idle LED: a faint GLOW spilling out of the eye discs — dot
+                // size falls off with distance from each disc (summed, so the
+                // gap between the eyes stays lit) and dies out ~2 pitches
+                // away. The rest of the visor stays black.
+                float g = 0.0f;
+                for (int e = 0; e < 2; e++) {
+                    float dx = (x - excx[e]) / rx;
+                    float dy = (y - ecy) / ry_base;
+                    float d = sqrtf(dx * dx + dy * dy);
+                    float f = 1.0f - (d - 1.0f) / 1.0f;
+                    if (f > 0.0f) g += f;
+                }
+                if (g > 1.0f) g = 1.0f;
+                g *= g;                       // steeper fade -> fainter faster
+                r = (int)(amb_r * g + 0.5f);
                 if (r < 1) {
-                    if (fade < 0.10f) continue;
+                    if (g < 0.12f) continue;
                     r = 1;
                 }
                 display_set_color(FACE_COLOR_ACCENT);

@@ -56,7 +56,9 @@ static uint16_t style_accent(face_style_id s)
 {
     switch (s) {
         case FACE_STYLE_TABY:  return 0xE288;   // coral-red mouth interior
-        case FACE_STYLE_ASTRO: return 0x11FC;   // Astro fringe: deep blue
+        case FACE_STYLE_ASTRO: return 0x0917;   // Astro glow: faint navy —
+                                                // the reference's spill-glow
+                                                // barely reads on the panel
         case FACE_STYLE_CLASSIC:
         default:               return 0x0471;   // dark cyan pupil (~55% of main — visible on AMOLED)
     }
