@@ -588,19 +588,48 @@ static void style_taby(const face_pose* p, float bob) {
 }
 
 
-// Fold-aware normalized distance of a canvas pixel from eye e's TRUE shape
-// (1.0 = on the boundary). Blink squash comes in via ry_e; the happy-fold
-// carve pushes carved points "outside" so everything derived from this —
-// the clip AND the glow — follows the actual shape, whatever it may be.
-static float astro_eye_d(float pxf, float pyf, int e, const float excx[2],
-                         float ecy, float rx, const float ry_e[2], float fold) {
-    float nx = (pxf - excx[e]) / rx;
-    float ny = (pyf - ecy) / ry_e[e];
+// Heart size relative to the eye box (bigger scale = smaller heart; the
+// implicit heart spans ~|1.15| in its own units).
+#define HEART_SCALE 1.15f
+
+// Astro shape context — one description of the eyes' TRUE current shape
+// (disc, squint dome, or heart) that BOTH the LED clip and the drop-shadow
+// derive from, so they can never disagree.
+typedef struct {
+    float excx[2];        // eye centers x
+    float ecy;            // eye center y
+    float rx, inv_rx;     // horizontal radius
+    float ry_e[2];        // per-eye vertical radius (blink squash)
+    float inv_ry_e[2];
+    float ry_base;
+    float fold;           // squint: flat cut across the lower disc
+    bool  hearts;         // LOVE: the shape is a heart
+    float rlut[64];       // hearts: polar boundary radius per angle bin
+} astro_ctx;
+
+// Classic implicit heart, upright (v = up): (u^2+v^2-1)^3 <= u^2 * v^3.
+static inline bool heart_inside(float u, float v) {
+    float a = u * u + v * v - 1.0f;
+    return a * a * a <= u * u * v * v * v;
+}
+
+// Normalized distance of a canvas pixel from eye e's shape boundary
+// (1.0 = on the boundary; >1 outside). Used per-DOT (sqrt/atan ok here).
+static float astro_eye_d(const astro_ctx* c, float pxf, float pyf, int e) {
+    float nx = (pxf - c->excx[e]) * c->inv_rx;
+    float ny = (pyf - c->ecy) * c->inv_ry_e[e];
+    if (c->hearts) {
+        float r = sqrtf(nx * nx + ny * ny);
+        int bin = (int)((atan2f(-ny, nx) + (float)M_PI) * (64.0f / (2.0f * (float)M_PI)));
+        if (bin < 0) bin = 0; if (bin > 63) bin = 63;
+        float rb = c->rlut[bin];
+        return rb > 0.001f ? r / rb : 9e9f;
+    }
     float d = sqrtf(nx * nx + ny * ny);
-    if (fold > 0.0f) {
-        // squint: a flat cut across the disc's lower part — the eye becomes
-        // a dome with a full-width base (per the visor reference)
-        float ny_cut = 1.0f - fold * 0.80f;
+    if (c->fold > 0.0f) {
+        // squint: flat cut across the disc's lower part — a dome with a
+        // full-width base (per the visor reference)
+        float ny_cut = 1.0f - c->fold * 0.80f;
         if (ny > ny_cut) {
             float dc = 1.0f + (ny - ny_cut);
             if (dc > d) d = dc;
@@ -609,17 +638,20 @@ static float astro_eye_d(float pxf, float pyf, int e, const float excx[2],
     return d;
 }
 
-// Is a canvas pixel inside the Astro lit shape? The edge is a PURE outline
-// that CLIPS the LEDs — edge dots render the geometric intersection.
-// Reciprocal radii passed in; no sqrt/div — this runs per pixel.
-static bool astro_px_in(float pxf, float pyf, const float excx[2], float ecy,
-                        float inv_rx, const float inv_ry_e[2], float fold) {
+// Is a canvas pixel inside the lit shape? The edge is a PURE outline that
+// CLIPS the LEDs — edge dots render the geometric intersection. Runs per
+// pixel: no sqrt/div/atan (hearts use the implicit polynomial directly).
+static bool astro_px_in(const astro_ctx* c, float pxf, float pyf) {
     for (int e = 0; e < 2; e++) {
-        float nx = (pxf - excx[e]) * inv_rx;
-        float ny = (pyf - ecy) * inv_ry_e[e];
+        float nx = (pxf - c->excx[e]) * c->inv_rx;
+        float ny = (pyf - c->ecy) * c->inv_ry_e[e];
+        if (c->hearts) {
+            if (heart_inside(nx * HEART_SCALE, -ny * HEART_SCALE)) return true;
+            continue;
+        }
         if (nx * nx + ny * ny > 1.0f) continue;
         // squint: flat cut across the lower disc (dome with full-width base)
-        if (fold > 0.0f && ny > 1.0f - fold * 0.80f) continue;
+        if (c->fold > 0.0f && ny > 1.0f - c->fold * 0.80f) continue;
         return true;
     }
     return false;
@@ -629,13 +661,12 @@ static bool astro_px_in(float pxf, float pyf, const float excx[2], float ecy,
 // shape's boundary, strongest at the edge and gone `range_px` (canvas px)
 // out. Per-eye (nearest wins, NOT summed): each eye carries its own halo —
 // summing brightened the gap between them into a stretched bridge.
-static float astro_glow(float pxf, float pyf, const float excx[2], float ecy,
-                        float rx, const float ry_e[2], float fold,
+static float astro_glow(const astro_ctx* c, float pxf, float pyf,
                         float range_px) {
     float g = 0.0f;
     for (int e = 0; e < 2; e++) {
-        float d = astro_eye_d(pxf, pyf, e, excx, ecy, rx, ry_e, fold);
-        float dist = (d - 1.0f) * 0.5f * (rx + ry_e[e]);   // ~px past the edge
+        float d = astro_eye_d(c, pxf, pyf, e);
+        float dist = (d - 1.0f) * 0.5f * (c->rx + c->ry_e[e]);  // ~px past edge
         if (dist < range_px) {
             float f = 1.0f - (dist < 0.0f ? 0.0f : dist) / range_px;
             if (f > g) g = f;
@@ -655,14 +686,32 @@ static void style_astro(const face_pose* p, float bob) {
     float gx = p->gaze_x * Hf * 0.22f;
     float gy = p->gaze_y * Hf * 0.10f + bob;
 
+    astro_ctx c;
     float eoff = Hf * 0.40f;                     // eye offset from center
-    float rx = Hf * 0.27f * (1.0f - 0.12f * p->squash);
-    float ry_base = Hf * 0.27f * (1.0f + 0.15f * p->squash);
-    float excx[2] = { cx0 - eoff + gx, cx0 + eoff + gx };
-    float ecy = Hf * 0.50f + gy;
+    c.rx = Hf * 0.27f * (1.0f - 0.12f * p->squash);
+    c.ry_base = Hf * 0.27f * (1.0f + 0.15f * p->squash);
+    c.inv_rx = 1.0f / c.rx;
+    c.excx[0] = cx0 - eoff + gx;
+    c.excx[1] = cx0 + eoff + gx;
+    c.ecy = Hf * 0.50f + gy;
 
-    // happy fold: carve the bottom into an upward arc (per-eye)
-    float fold = (p->mouth_curve > 0.35f) ? p->mouth_curve : 0.0f;
+    // squint fold (flat cut) — disabled for hearts, which are whole shapes
+    c.hearts = (cur_emo == FACE_EMO_LOVE);
+    c.fold = (!c.hearts && p->mouth_curve > 0.35f) ? p->mouth_curve : 0.0f;
+
+    if (c.hearts) {
+        // polar boundary LUT for the heart (used for the shadow distance):
+        // march each angle inward until the implicit says inside
+        for (int b = 0; b < 64; b++) {
+            float a = -3.1415927f + (b + 0.5f) * (2.0f * 3.1415927f / 64.0f);
+            float ca = cosf(a), sa = sinf(a);
+            float r = 1.5f;
+            while (r > 0.02f &&
+                   !heart_inside(r * ca * HEART_SCALE, r * sa * HEART_SCALE))
+                r -= 0.02f;
+            c.rlut[b] = r;
+        }
+    }
 
     // Lattice metrics measured off the official visor: ~19 dot rows over the
     // screen height, lit dots nearly touching (fill ~0.84 of pitch).
@@ -670,51 +719,49 @@ static void style_astro(const face_pose* p, float bob) {
     int dot_r = (int)(pitch * 0.42f); if (dot_r < 1) dot_r = 1;
 
     // per-eye vertical radius (blink/sleepy squash the disc; happy keeps it
-    // big and carves instead). Neutral eye_open (0.90) maps to a PERFECT
-    // circle — only real blinks/sleepy squash below that.
-    float ry_e[2], inv_ry_e[2];
-    float inv_rx = 1.0f / rx;
+    // big and carves instead; hearts render whole). Neutral eye_open (0.90)
+    // maps to a PERFECT circle — only real blinks/sleepy squash below that.
     for (int e = 0; e < 2; e++) {
         float open = (e ? p->eye_open_r : p->eye_open_l) * (1.0f / 0.90f);
         if (open > 1.0f) open = 1.0f;
-        ry_e[e] = ry_base * (fold > 0.0f ? (0.85f + 0.15f * open) : open);
-        if (ry_e[e] < ry_base * 0.06f) ry_e[e] = ry_base * 0.06f;
-        inv_ry_e[e] = 1.0f / ry_e[e];
+        if (c.hearts) open = 1.0f;
+        c.ry_e[e] = c.ry_base * (c.fold > 0.0f ? (0.85f + 0.15f * open) : open);
+        if (c.ry_e[e] < c.ry_base * 0.06f) c.ry_e[e] = c.ry_base * 0.06f;
+        c.inv_ry_e[e] = 1.0f / c.ry_e[e];
     }
 
     for (int y = pitch / 2; y < face_h; y += pitch) {
         for (int x = pitch / 2; x < face_w; x += pitch) {
-            // nearest-eye distance for this LED's center (fold/blink aware)
+            // nearest-eye distance for this LED's center (shape-aware)
             float dmin = 1e9f;
             for (int e = 0; e < 2; e++) {
-                float d = astro_eye_d((float)x, (float)y, e,
-                                      excx, ecy, rx, ry_e, fold);
+                float d = astro_eye_d(&c, (float)x, (float)y, e);
                 if (d < dmin) dmin = d;
             }
-            float dr_n = (float)dot_r / (rx < ry_base ? rx : ry_base);
+            float dr_n = (float)dot_r / (c.rx < c.ry_base ? c.rx : c.ry_base);
 
             // The lattice is a CLIP FILTER over one continuous image: the
             // bright eye shape plus its soft drop-shadow. Every LED is the
             // same size; a physical LED shows ONE brightness, so shadow is
             // sampled once per dot and drawn as a dimmed-accent shade —
             // bright inside the outline, faint navy near it, black beyond.
-            float shadow_px = 4.5f * pitch;
+            float shadow_px = 6.0f * pitch;
             if (dmin <= 1.0f - dr_n * 1.2f) {
                 display_set_color(FACE_COLOR_MAIN);            // fully inside
                 fill_ellipse(x, y, dot_r, dot_r, 0.0f, true);
                 continue;
             }
             // past the shadow: (dmin-1) in px beyond the edge, minus dot reach
-            if ((dmin - 1.0f) * 0.5f * (rx + ry_base) > shadow_px + dot_r)
+            if ((dmin - 1.0f) * 0.5f * (c.rx + c.ry_base) > shadow_px + dot_r)
                 continue;
 
-            // this LED's shadow shade (tops out ~half intensity, per the
-            // reference — dots hugging the shape read dimmer than lit ones)
-            float g = astro_glow((float)x, (float)y, excx, ecy, rx, ry_e,
-                                 fold, shadow_px) * 0.55f;
+            // this LED's shadow shade — dots hugging the shape read dimmer
+            // than lit ones, then step down as the shadow fades out
+            float g = astro_glow(&c, (float)x, (float)y, shadow_px) * 0.75f;
             uint8_t shade = 0;
-            if (g > 0.40f)      shade = FACE_COLOR_ACCENT_50;
-            else if (g > 0.12f) shade = FACE_COLOR_ACCENT_25;
+            if (g > 0.50f)      shade = FACE_COLOR_ACCENT_75;
+            else if (g > 0.28f) shade = FACE_COLOR_ACCENT_50;
+            else if (g > 0.08f) shade = FACE_COLOR_ACCENT_25;
 
             if (dmin >= 1.0f + dr_n) {
                 // fully outside the outline: a pure shadow LED
@@ -733,8 +780,7 @@ static void style_astro(const face_pose* p, float bob) {
                     if (px2 < 0 || px2 >= face_w) continue;
                     int ddx = px2 - x, ddy = py - y;
                     if (ddx * ddx + ddy * ddy > r2) continue;
-                    if (astro_px_in((float)px2, (float)py,
-                                    excx, ecy, inv_rx, inv_ry_e, fold)) {
+                    if (astro_px_in(&c, (float)px2, (float)py)) {
                         display_set_color(FACE_COLOR_MAIN);
                         display_pixel((int16_t)px2, (int16_t)py, true);
                     } else if (shade) {
