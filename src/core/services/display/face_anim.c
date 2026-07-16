@@ -588,24 +588,52 @@ static void style_taby(const face_pose* p, float bob) {
 }
 
 
-// Is a canvas pixel inside the Astro lit shape (either eye disc, minus the
-// happy-fold carve)? The eye edge is a PURE circle that CLIPS the LEDs — edge
-// dots render as the geometric intersection, not as resized dots.
+// Fold-aware normalized distance of a canvas pixel from eye e's TRUE shape
+// (1.0 = on the boundary). Blink squash comes in via ry_e; the happy-fold
+// carve pushes carved points "outside" so everything derived from this —
+// the clip AND the glow — follows the actual shape, whatever it may be.
+static float astro_eye_d(float pxf, float pyf, int e, const float excx[2],
+                         float ecy, float rx, const float ry_e[2], float fold) {
+    float nx = (pxf - excx[e]) / rx;
+    float ny = (pyf - ecy) / ry_e[e];
+    float d = sqrtf(nx * nx + ny * ny);
+    if (fold > 0.0f && ny > 0.0f) {
+        // carve boundary: cut*min(ny,1) = 0.45 along an upward arc
+        float denom = fold * (1.0f - 0.8f * nx * nx);
+        if (denom > 0.01f) {
+            float ny_b = 0.45f / denom;
+            if (ny > ny_b) {
+                float dc = 1.0f + (ny - ny_b);
+                if (dc > d) d = dc;
+            }
+        }
+    }
+    return d;
+}
+
+// Is a canvas pixel inside the Astro lit shape? The edge is a PURE outline
+// that CLIPS the LEDs — edge dots render the geometric intersection.
 static bool astro_px_in(float pxf, float pyf, const float excx[2], float ecy,
                         float rx, const float ry_e[2], float fold) {
-    for (int e = 0; e < 2; e++) {
-        float nx = (pxf - excx[e]) / rx;
-        float ny = (pyf - ecy) / ry_e[e];
-        if (nx * nx + ny * ny > 1.0f) continue;
-        if (fold > 0.0f && ny > 0.0f) {
-            // happy: carve the lower-middle away along an upward arc
-            float cut = fold * (1.0f - nx * nx * 0.8f);
-            float dyc = ny > 1.0f ? 1.0f : ny;
-            if (cut * dyc > 0.45f) continue;
-        }
-        return true;
-    }
+    for (int e = 0; e < 2; e++)
+        if (astro_eye_d(pxf, pyf, e, excx, ecy, rx, ry_e, fold) <= 1.0f)
+            return true;
     return false;
+}
+
+// Glow intensity at a canvas point: light spilling from the true shape's
+// boundary (summed over eyes so the gap keeps a whisper), squared falloff,
+// gone ~2 pitches out.
+static float astro_glow(float pxf, float pyf, const float excx[2], float ecy,
+                        float rx, const float ry_e[2], float fold) {
+    float g = 0.0f;
+    for (int e = 0; e < 2; e++) {
+        float f = 2.0f - astro_eye_d(pxf, pyf, e, excx, ecy, rx, ry_e, fold);
+        if (f > 1.0f) f = 1.0f;
+        if (f > 0.0f) g += f;
+    }
+    if (g > 1.0f) g = 1.0f;
+    return g * g;
 }
 
 static void style_astro(const face_pose* p, float bob) {
@@ -645,20 +673,21 @@ static void style_astro(const face_pose* p, float bob) {
 
     for (int y = pitch / 2; y < face_h; y += pitch) {
         for (int x = pitch / 2; x < face_w; x += pitch) {
-            // nearest-eye normalized distance for this LED's center
+            // nearest-eye distance for this LED's center (fold/blink aware)
             float dmin = 1e9f;
             for (int e = 0; e < 2; e++) {
-                float dx = (x - excx[e]) / rx;
-                float dy = (y - ecy) / ry_e[e];
-                float d = sqrtf(dx * dx + dy * dy);
+                float d = astro_eye_d((float)x, (float)y, e,
+                                      excx, ecy, rx, ry_e, fold);
                 if (d < dmin) dmin = d;
             }
             float dr_n = (float)dot_r / (rx < ry_base ? rx : ry_base);
 
             if (dmin <= 1.0f + dr_n) {
-                // LED touched by a disc — draw the pure-circle clip of it
+                // LED touched by the shape — the pure outline clips it: only
+                // the pixels geometrically inside light up (flat-cut
+                // crescents); the LED's outside stays dark.
                 display_set_color(FACE_COLOR_MAIN);
-                if (dmin <= 1.0f - dr_n * 1.2f && fold <= 0.01f) {
+                if (dmin <= 1.0f - dr_n * 1.2f) {
                     fill_ellipse(x, y, dot_r, dot_r, 0.0f, true);  // fully inside
                 } else {
                     int r2 = dot_r * dot_r;
@@ -677,19 +706,10 @@ static void style_astro(const face_pose* p, float bob) {
                 continue;
             }
 
-            // idle LED: a faint GLOW spilling out of the eye discs — dot size
-            // falls off with distance (summed, so the gap between the eyes
-            // keeps a whisper) and dies out ~2 pitches away.
-            float g = 0.0f;
-            for (int e = 0; e < 2; e++) {
-                float dx = (x - excx[e]) / rx;
-                float dy = (y - ecy) / ry_base;
-                float d = sqrtf(dx * dx + dy * dy);
-                float f = 1.0f - (d - 1.0f) / 1.0f;
-                if (f > 0.0f) g += f;
-            }
-            if (g > 1.0f) g = 1.0f;
-            g *= g;                           // steeper fade -> fainter faster
+            // idle LED: the glow of the shape sampled at this LED — size
+            // fades with the same field, dies out ~2 pitches away; the rest
+            // of the visor stays black.
+            float g = astro_glow((float)x, (float)y, excx, ecy, rx, ry_e, fold);
             int r = (int)(amb_r * g + 0.5f);
             if (r < 1) {
                 if (g < 0.12f) continue;
