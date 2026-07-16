@@ -116,18 +116,24 @@ bool btstack_wiimote_send_raw(uint8_t conn_index, const uint8_t* data, uint16_t 
 bool btstack_wiimote_send_control(uint8_t conn_index, const uint8_t* data, uint16_t len);
 
 // ============================================================================
-// MOUTHPAD NUS CLIENT (Augmental MouthPad relay)
+// NUS CLIENT (Nordic UART Service peers: Augmental MouthPad, JoypadOS faces)
 // ============================================================================
 
 // Register a callback for device->host NUS bytes (fires in BTstack context).
 void btstack_host_set_mouthpad_nus_rx_cb(void (*cb)(const uint8_t* data, uint16_t len));
 
-// Write host->device NUS bytes. Returns false if no MouthPad NUS is ready.
-// Must be called from BTstack/run-loop context (e.g. the bridge task).
+// Write host->device NUS bytes. Returns false if no NUS peer is ready.
+// Safe from the main loop (marshaled onto the BTstack run loop).
 bool btstack_host_mouthpad_nus_send(const uint8_t* data, uint16_t len);
 
-// True once NUS service discovery has completed for a connected MouthPad.
+// True once NUS service discovery has completed for a connected peer.
 bool btstack_host_mouthpad_nus_ready(void);
+
+// Generic aliases — the NUS client serves any recognized peer, not just the
+// MouthPad. New callers (e.g. the FACE.* relay to a JoypadOS face controller)
+// should use these names.
+bool btstack_host_nus_send(const uint8_t* data, uint16_t len);
+bool btstack_host_nus_ready(void);
 
 // Connected MouthPad device info, for the dongle-level relay responses
 // (device_info_response / ble_connection_status_response).

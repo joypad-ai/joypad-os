@@ -2834,12 +2834,14 @@ static void sm_packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *pa
 }
 
 // ============================================================================
-// MOUTHPAD NUS (Nordic UART Service) CLIENT
+// NUS (Nordic UART Service) CLIENT
 // ============================================================================
-// Self-contained GATT client for the Augmental MouthPad's NUS stream. Acts
-// ONLY on MouthPad connections (gated by mp_nus_mark_pending, which the
-// connection-ready path calls only when the device name contains "MouthPad"),
-// so it has no effect on any other controller. Discovery is dynamic by
+// Self-contained GATT client for a peer's NUS stream. Acts ONLY on recognized
+// NUS peers (gated by mp_nus_mark_pending, which the connection-ready path
+// calls for device names containing "MouthPad" or "JoypadOS", and the DIS
+// path for their PnP IDs), so it has no effect on any other controller.
+// Peers: Augmental MouthPad (CDC relay via mp_bridge) and JoypadOS BLE
+// controllers (FACE.* command relay from cdc_commands). Discovery is dynamic by
 // 128-bit UUID (no hardcoded handles) and is deferred ~1.5 s after connect so
 // it runs after the HIDS client has finished its own GATT discovery (the
 // gatt_client allows one query at a time per connection).
@@ -2899,6 +2901,18 @@ void btstack_host_set_mouthpad_nus_rx_cb(void (*cb)(const uint8_t*, uint16_t))
 bool btstack_host_mouthpad_nus_ready(void)
 {
     return mp_nus.state == MP_NUS_READY;
+}
+
+// Generic aliases: the client serves any recognized NUS peer (MouthPad or
+// JoypadOS face controller), so new callers get peer-neutral names.
+bool btstack_host_nus_ready(void)
+{
+    return btstack_host_mouthpad_nus_ready();
+}
+
+bool btstack_host_nus_send(const uint8_t* data, uint16_t len)
+{
+    return btstack_host_mouthpad_nus_send(data, len);
 }
 
 // Fill `out` with the connected MouthPad's device info (for the dongle-level
@@ -4116,12 +4130,14 @@ static void dis_client_handler(uint8_t packet_type, uint16_t channel, uint8_t *p
                 printf("[BTSTACK_HOST] DIS: updating device info for conn_index=%d\n", conn->conn_index);
                 bthid_update_device_info(conn->conn_index, conn->name, vid, pid);
             }
-            // Recognize the MouthPad by its Augmental DIS PnP ID (0x1915:0xEEEE)
-            // and arm the NUS relay — names can be reset to dev values that lack
-            // "MouthPad" (the name gate at the 0x1C handler then misses it, leaving
-            // the relay stuck "scanning"). mp_nus_mark_pending is a no-op if already
-            // armed by the name gate.
-            if (vid == 0x1915 && pid == 0xEEEE) {
+            // Recognize NUS peers by DIS PnP ID and arm the NUS client — names
+            // can be reset to dev values that miss the name gate at the 0x1C
+            // handler (which leaves the relay stuck "scanning").
+            // mp_nus_mark_pending is a no-op if already armed by the name gate.
+            //   0x1915:0xEEEE — Augmental MouthPad
+            //   0x2E8A:0x10C6 — JoypadOS BLE controller (face relay)
+            if ((vid == 0x1915 && pid == 0xEEEE) ||
+                (vid == 0x2E8A && pid == 0x10C6)) {
                 mp_nus_mark_pending(handle);
             }
             break;
@@ -4260,7 +4276,9 @@ static void hids_client_handler(uint8_t packet_type, uint16_t channel, uint8_t *
                 // which previously left the NUS relay stuck unarmed -> the app
                 // shows "scanning" despite a paired MouthPad).
                 if (nconn && (strstr(nconn->name, "MouthPad") != NULL ||
-                              strstr(hid_state.last_connected_name, "MouthPad") != NULL)) {
+                              strstr(hid_state.last_connected_name, "MouthPad") != NULL ||
+                              strstr(nconn->name, "JoypadOS") != NULL ||
+                              strstr(hid_state.last_connected_name, "JoypadOS") != NULL)) {
                     mp_nus_mark_pending(nhandle);
                 }
             }

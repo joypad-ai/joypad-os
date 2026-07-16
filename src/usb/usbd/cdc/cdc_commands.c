@@ -438,6 +438,35 @@ static void cmd_face_bright(const char* json)
     amoled_brightness((uint8_t)v);
     send_ok();
 }
+#elif defined(ENABLE_BTSTACK)
+// --- FACE.* on a dongle build: relay to an untethered JoypadOS face.
+// No local display here — a paired JoypadOS BLE controller (e.g. the AMOLED
+// eyes board) carries the face, and its NUS RX feeds the same framed CDC
+// parser as USB. So forwarding = re-frame the command JSON verbatim and write
+// it to the peer's NUS. The host (e.g. Dusty's bridge) talks to one CDC port
+// and the face follows, wired or wireless.
+static void cmd_face_forward(const char* json)
+{
+    static uint8_t fwd_seq;
+    uint16_t len = (uint16_t)strlen(json);
+    uint8_t pkt[5 + 200 + 2];
+    if (len > 200) {
+        send_error("face cmd too long");
+        return;
+    }
+    pkt[0] = CDC_SYNC_BYTE;
+    pkt[1] = len & 0xFF;
+    pkt[2] = (len >> 8) & 0xFF;
+    pkt[3] = CDC_MSG_CMD;
+    pkt[4] = fwd_seq;
+    memcpy(&pkt[5], json, len);
+    uint16_t crc = cdc_crc16(&pkt[3], 2 + len);   // type + seq + payload
+    pkt[5 + len] = crc & 0xFF;
+    pkt[6 + len] = (crc >> 8) & 0xFF;
+    fwd_seq++;
+    if (btstack_host_nus_send(pkt, (uint16_t)(5 + len + 2))) send_ok();
+    else send_error("no face connected");
+}
 #endif // BOARD_LILYGO_TDISPLAY_S3_AMOLED
 
 static void cmd_bootsel(const char* json)
@@ -3279,6 +3308,15 @@ static const cmd_entry_t commands[] = {
     {"FACE.OFFSET", cmd_face_offset},
     {"FACE.STYLE", cmd_face_style},
     {"BATT.GET", cmd_batt_get},
+#elif defined(ENABLE_BTSTACK)
+    // Relay every FACE.* command to a paired JoypadOS face over BLE NUS.
+    {"FACE.SPEAK", cmd_face_forward},
+    {"FACE.STATE", cmd_face_forward},
+    {"FACE.EMO", cmd_face_forward},
+    {"FACE.LOOK", cmd_face_forward},
+    {"FACE.BRIGHT", cmd_face_forward},
+    {"FACE.OFFSET", cmd_face_forward},
+    {"FACE.STYLE", cmd_face_forward},
 #endif
     {"OTA", cmd_ota},
     {"MODE.GET", cmd_mode_get},
