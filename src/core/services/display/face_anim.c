@@ -703,7 +703,7 @@ static void style_astro(const face_pose* p, float bob) {
             // same size; a physical LED shows ONE brightness, so shadow is
             // sampled once per dot and drawn as a dimmed-accent shade —
             // bright inside the outline, faint navy near it, black beyond.
-            float shadow_px = 2.5f * pitch;
+            float shadow_px = 4.5f * pitch;
             if (dmin <= 1.0f - dr_n * 1.2f) {
                 display_set_color(FACE_COLOR_MAIN);            // fully inside
                 fill_ellipse(x, y, dot_r, dot_r, 0.0f, true);
