@@ -655,8 +655,21 @@ static void style_astro(const face_pose* p, float bob) {
                 r = amb_r + (int)((dot_r * 0.65f - amb_r) * t);
                 display_set_color(FACE_COLOR_MAIN);
             } else {
-                // idle LED: the visor's faint lattice covers the whole panel
-                r = amb_r;
+                // idle LED: the faint lattice is a rounded halo around the
+                // eye region only (per the reference) — measured ~2.2 dot
+                // pitches beyond the discs, fading at its border; the rest
+                // of the visor stays black.
+                float hx = (x - (cx0 + gx)) / (eoff + rx + 2.2f * pitch);
+                float hy = (y - ecy) / (ry_base + 2.2f * pitch);
+                float s = (hx * hx) * (hx * hx) + (hy * hy) * (hy * hy);
+                if (s > 1.0f) continue;
+                float fade = (1.0f - s) / 0.30f;
+                if (fade > 1.0f) fade = 1.0f;
+                r = (int)(amb_r * fade + 0.5f);
+                if (r < 1) {
+                    if (fade < 0.10f) continue;
+                    r = 1;
+                }
                 display_set_color(FACE_COLOR_ACCENT);
             }
             fill_ellipse(x, y, r, r, 0.0f, true);
