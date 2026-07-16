@@ -174,7 +174,16 @@ void platform_clear_usb_persist(void)
 
 bool platform_usb_powered(void)
 {
-    return true;
+#ifdef BOARD_LILYGO_TDISPLAY_S3_AMOLED
+    // The charger PMU measures VBUS directly — real 5V reads ~4.9-5.2V,
+    // battery-only reads the 2.6V register floor (or 0 before pmu_init).
+    // This is what lets BLE advertising resume on USB unplug: tud_mounted()
+    // reads stale-true after a detach, but VBUS doesn't lie.
+    extern int pmu_vbus_mv(void);
+    return pmu_vbus_mv() > 3600;
+#else
+    return true;   // no VBUS sensing on this board — assume powered
+#endif
 }
 
 bool platform_deep_sleep(uint8_t wake_gpio, bool wake_active_high)
@@ -190,10 +199,26 @@ uint32_t platform_last_reset_reason(void)
 
 int platform_battery_millivolts(void)
 {
+#ifdef BOARD_LILYGO_TDISPLAY_S3_AMOLED
+    extern int pmu_batt_mv(void);
+    int mv = pmu_batt_mv();
+    return mv > 0 ? mv : -1;
+#else
     return -1;
+#endif
 }
 
 int platform_battery_charging(void)
 {
+#ifdef BOARD_LILYGO_TDISPLAY_S3_AMOLED
+    // PMU charge status: 0=not charging, 1=pre, 2=fast, 3=done.
+    extern int pmu_charge_state(void);
+    switch (pmu_charge_state()) {
+        case 1:
+        case 2:  return 1;
+        default: return 0;
+    }
+#else
     return -1;
+#endif
 }
