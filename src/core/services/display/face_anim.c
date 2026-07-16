@@ -602,22 +602,27 @@ static void style_astro(const face_pose* p, float bob) {
     // eye field geometry: near-circular discs with a clear gap (per the
     // character reference), tight glow fringe
     float eoff = Hf * 0.40f;                     // eye offset from center
-    float rx = Hf * 0.265f * (1.0f - 0.12f * p->squash);
-    float ry_base = Hf * 0.265f * (1.0f + 0.15f * p->squash);
-    float glow = 0.50f;                          // glow extent (fraction of shape)
+    float rx = Hf * 0.23f * (1.0f - 0.12f * p->squash);
+    float ry_base = Hf * 0.23f * (1.0f + 0.15f * p->squash);
+    float glow = 0.15f;                          // glow extent (fraction of shape)
+                                                 // thin rim ring, per the visor
     float excx[2] = { cx0 - eoff + gx, cx0 + eoff + gx };
     float ecy = Hf * 0.50f + gy;
 
     // happy fold: carve the bottom into an upward arc (per-eye)
     float fold = (p->mouth_curve > 0.35f) ? p->mouth_curve : 0.0f;
 
-    int pitch = (int)(Hf / 43.0f); if (pitch < 4) pitch = 4;   // LED spacing
-    int dot_r = (pitch * 2) / 5; if (dot_r < 1) dot_r = 1;
+    // Lattice metrics measured off the official visor: ~19 dot rows over the
+    // screen height, lit dots nearly touching (fill ~0.84 of pitch), and the
+    // faint grid visible across the WHOLE visor, not just around the eyes.
+    int pitch = (int)(Hf / 19.0f); if (pitch < 4) pitch = 4;   // LED spacing
+    int dot_r = (int)(pitch * 0.42f); if (dot_r < 1) dot_r = 1;
+    int amb_r = (int)(pitch * 0.25f); if (amb_r < 1) amb_r = 1; // idle LED size
 
-    // scan the fixed lattice (staggered rows), light dots by field intensity
-    for (int row = 0, y = pitch / 2; y < face_h; y += pitch, row++) {
-        int x0 = (row & 1) ? pitch : pitch / 2;   // stagger
-        for (int x = x0; x < face_w; x += pitch) {
+    // scan the fixed lattice (square-aligned, per the official visor),
+    // lighting dots by field intensity
+    for (int y = pitch / 2; y < face_h; y += pitch) {
+        for (int x = pitch / 2; x < face_w; x += pitch) {
             float field = 0.0f;
             for (int e = 0; e < 2; e++) {
                 float open = e ? p->eye_open_r : p->eye_open_l;
@@ -638,21 +643,20 @@ static void style_astro(const face_pose* p, float bob) {
                 }
                 if (f > field) field = f;
             }
-            if (field < 0.10f) continue;
             int r;
-            if (field > 0.62f) {
-                display_set_color(FACE_COLOR_MAIN);          // bright core
+            if (field >= 0.999f) {
+                display_set_color(FACE_COLOR_MAIN);          // inside the disc
                 r = dot_r;
-            } else {
-                // fringe: dot size falls off quadratically -> glow fades to
-                // barely-visible instead of a solid ring
-                float t = (field - 0.10f) / 0.52f;
+            } else if (field >= 0.10f) {
+                // rim ring: bright dots shrinking down to the ambient grid
+                // size across ~1 dot, per the official visor
+                float t = (field - 0.10f) / 0.90f;
                 t *= t;
-                r = (int)(dot_r * 0.9f * t + 0.3f);
-                if (r < 1) {
-                    if (t < 0.08f) continue;                 // faded out entirely
-                    r = 1;
-                }
+                r = amb_r + (int)((dot_r * 0.65f - amb_r) * t);
+                display_set_color(FACE_COLOR_MAIN);
+            } else {
+                // idle LED: the visor's faint lattice covers the whole panel
+                r = amb_r;
                 display_set_color(FACE_COLOR_ACCENT);
             }
             fill_ellipse(x, y, r, r, 0.0f, true);
