@@ -621,16 +621,20 @@ static bool astro_px_in(float pxf, float pyf, const float excx[2], float ecy,
     return false;
 }
 
-// Glow intensity at a canvas point: light spilling from the true shape's
-// boundary (summed over eyes so the gap keeps a whisper), squared falloff,
-// gone ~2 pitches out.
+// Shadow intensity at a canvas point: a soft drop-shadow hugging the true
+// shape's boundary, strongest at the edge and gone `range_px` (canvas px)
+// out. Summed over eyes so the gap between them keeps a whisper.
 static float astro_glow(float pxf, float pyf, const float excx[2], float ecy,
-                        float rx, const float ry_e[2], float fold) {
+                        float rx, const float ry_e[2], float fold,
+                        float range_px) {
     float g = 0.0f;
     for (int e = 0; e < 2; e++) {
-        float f = 2.0f - astro_eye_d(pxf, pyf, e, excx, ecy, rx, ry_e, fold);
-        if (f > 1.0f) f = 1.0f;
-        if (f > 0.0f) g += f;
+        float d = astro_eye_d(pxf, pyf, e, excx, ecy, rx, ry_e, fold);
+        float dist = (d - 1.0f) * 0.5f * (rx + ry_e[e]);   // ~px past the edge
+        if (dist < range_px) {
+            float f = 1.0f - (dist < 0.0f ? 0.0f : dist) / range_px;
+            g += f;
+        }
     }
     if (g > 1.0f) g = 1.0f;
     return g * g;
@@ -660,7 +664,6 @@ static void style_astro(const face_pose* p, float bob) {
     // screen height, lit dots nearly touching (fill ~0.84 of pitch).
     int pitch = (int)(Hf / 19.0f); if (pitch < 4) pitch = 4;   // LED spacing
     int dot_r = (int)(pitch * 0.42f); if (dot_r < 1) dot_r = 1;
-    int amb_r = (int)(pitch * 0.25f); if (amb_r < 1) amb_r = 1; // idle LED size
 
     // per-eye vertical radius (blink/sleepy squash the disc; happy keeps it
     // big and carves instead)
@@ -682,49 +685,49 @@ static void style_astro(const face_pose* p, float bob) {
             }
             float dr_n = (float)dot_r / (rx < ry_base ? rx : ry_base);
 
-            if (dmin <= 1.0f + dr_n) {
-                // LED touched by the shape — the pure outline clips it: only
-                // the pixels geometrically inside light up (flat-cut
-                // crescents); the LED's outside stays dark.
-                display_set_color(FACE_COLOR_MAIN);
-                if (dmin <= 1.0f - dr_n * 1.2f) {
-                    fill_ellipse(x, y, dot_r, dot_r, 0.0f, true);  // fully inside
-                } else {
-                    int r2 = dot_r * dot_r;
-                    for (int py = y - dot_r; py <= y + dot_r; py++) {
-                        if (py < 0 || py >= face_h) continue;
-                        for (int px2 = x - dot_r; px2 <= x + dot_r; px2++) {
-                            if (px2 < 0 || px2 >= face_w) continue;
-                            int ddx = px2 - x, ddy = py - y;
-                            if (ddx * ddx + ddy * ddy > r2) continue;
-                            if (astro_px_in((float)px2, (float)py,
-                                            excx, ecy, rx, ry_e, fold))
-                                display_pixel((int16_t)px2, (int16_t)py, true);
-                        }
-                    }
-                }
+            // The lattice is a CLIP FILTER over one continuous image: the
+            // bright eye shape plus its soft shadow. Every LED is the same
+            // size; each of its pixels shows whatever the underlying image
+            // has there — bright inside the outline, dithered faint navy in
+            // the shadow (the panel blit's 2x2 box downsample turns the
+            // dither into a true brightness fade), black past the shadow.
+            float shadow_px = 2.5f * pitch;
+            if (dmin <= 1.0f - dr_n * 1.2f) {
+                display_set_color(FACE_COLOR_MAIN);            // fully inside
+                fill_ellipse(x, y, dot_r, dot_r, 0.0f, true);
                 continue;
             }
+            // past the shadow: (dmin-1) in px beyond the edge, minus dot reach
+            if ((dmin - 1.0f) * 0.5f * (rx + ry_base) > shadow_px + dot_r)
+                continue;
 
-            // idle LED: the glow of the shape sampled at this LED. The LED
-            // mask is FIXED — glow dots keep one radius and fade in
-            // BRIGHTNESS, not size. With only one accent color class,
-            // brightness comes from an ordered dither: the panel blit's 2x2
-            // box downsample averages the stipple into a true fade.
-            float g = astro_glow((float)x, (float)y, excx, ecy, rx, ry_e, fold);
-            if (g < 0.05f) continue;
-            static const uint8_t bayer2[2][2] = { {0, 2}, {3, 1} };
-            int lvl = (int)(g * 4.0f + 0.5f);
-            int r2 = amb_r * amb_r;
-            display_set_color(FACE_COLOR_ACCENT);
-            for (int py = y - amb_r; py <= y + amb_r; py++) {
+            static const uint8_t bayer4[4][4] = {
+                { 0,  8,  2, 10}, {12,  4, 14,  6},
+                { 3, 11,  1,  9}, {15,  7, 13,  5},
+            };
+            int r2 = dot_r * dot_r;
+            for (int py = y - dot_r; py <= y + dot_r; py++) {
                 if (py < 0 || py >= face_h) continue;
-                for (int px2 = x - amb_r; px2 <= x + amb_r; px2++) {
+                for (int px2 = x - dot_r; px2 <= x + dot_r; px2++) {
                     if (px2 < 0 || px2 >= face_w) continue;
                     int ddx = px2 - x, ddy = py - y;
                     if (ddx * ddx + ddy * ddy > r2) continue;
-                    if (bayer2[py & 1][px2 & 1] < lvl)
+                    if (astro_px_in((float)px2, (float)py,
+                                    excx, ecy, rx, ry_e, fold)) {
+                        display_set_color(FACE_COLOR_MAIN);
                         display_pixel((int16_t)px2, (int16_t)py, true);
+                    } else {
+                        float g = astro_glow((float)px2, (float)py,
+                                             excx, ecy, rx, ry_e, fold,
+                                             shadow_px);
+                        // the shadow tops out around half intensity — the
+                        // dots hugging the shape read dimmer than lit ones
+                        int lvl = (int)(g * 0.55f * 16.0f + 0.5f);
+                        if (bayer4[py & 3][px2 & 3] < lvl) {
+                            display_set_color(FACE_COLOR_ACCENT);
+                            display_pixel((int16_t)px2, (int16_t)py, true);
+                        }
+                    }
                 }
             }
         }
