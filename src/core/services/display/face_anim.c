@@ -706,17 +706,27 @@ static void style_astro(const face_pose* p, float bob) {
                 continue;
             }
 
-            // idle LED: the glow of the shape sampled at this LED — size
-            // fades with the same field, dies out ~2 pitches away; the rest
-            // of the visor stays black.
+            // idle LED: the glow of the shape sampled at this LED. The LED
+            // mask is FIXED — glow dots keep one radius and fade in
+            // BRIGHTNESS, not size. With only one accent color class,
+            // brightness comes from an ordered dither: the panel blit's 2x2
+            // box downsample averages the stipple into a true fade.
             float g = astro_glow((float)x, (float)y, excx, ecy, rx, ry_e, fold);
-            int r = (int)(amb_r * g + 0.5f);
-            if (r < 1) {
-                if (g < 0.12f) continue;
-                r = 1;
-            }
+            if (g < 0.05f) continue;
+            static const uint8_t bayer2[2][2] = { {0, 2}, {3, 1} };
+            int lvl = (int)(g * 4.0f + 0.5f);
+            int r2 = amb_r * amb_r;
             display_set_color(FACE_COLOR_ACCENT);
-            fill_ellipse(x, y, r, r, 0.0f, true);
+            for (int py = y - amb_r; py <= y + amb_r; py++) {
+                if (py < 0 || py >= face_h) continue;
+                for (int px2 = x - amb_r; px2 <= x + amb_r; px2++) {
+                    if (px2 < 0 || px2 >= face_w) continue;
+                    int ddx = px2 - x, ddy = py - y;
+                    if (ddx * ddx + ddy * ddy > r2) continue;
+                    if (bayer2[py & 1][px2 & 1] < lvl)
+                        display_pixel((int16_t)px2, (int16_t)py, true);
+                }
+            }
         }
     }
     display_set_color(FACE_COLOR_MAIN);
