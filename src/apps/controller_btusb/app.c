@@ -703,7 +703,9 @@ void app_init(void)
             .pin_scl = OLED_I2C_SCL_PIN,
             .addr = OLED_I2C_ADDR,
         };
-        display_init_i2c(&oled_cfg);
+#ifndef BOARD_LILYGO_TDISPLAY_S3_AMOLED
+        display_init_i2c(&oled_cfg);   // (AMOLED face board: no OLED, bus is the PMU's)
+#endif
     }
     if (display_is_initialized()) {
         eyes_anim_init();
@@ -740,7 +742,9 @@ void app_init(void)
             .pin_scl = 0,
             .addr = 0x3C,
         };
-        display_init_i2c(&oled_cfg);
+#ifndef BOARD_LILYGO_TDISPLAY_S3_AMOLED
+        display_init_i2c(&oled_cfg);   // (AMOLED face board: no OLED, bus is the PMU's)
+#endif
     }
     if (display_is_initialized()) {
         eyes_anim_init();
