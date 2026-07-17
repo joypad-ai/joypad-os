@@ -30,12 +30,13 @@ static uint32_t blink_start_ms = 0, next_blink_ms = 1500;
 static float pj_x = 0, pj_y = 0, pj_tx = 0, pj_ty = 0;
 static uint32_t next_pj_ms = 0;
 
-// Shape morphing (astro): hearts/wink/arrows can't blend geometrically with
-// discs, so emotion transitions shrink the currently rendered shape to a
-// point, swap, and grow the new one — smooth from any state to any other.
-// render_emo is what the style actually draws; cur_emo is the target.
-static face_emotion render_emo = FACE_EMO_NEUTRAL;
-static float shape_scale = 1.0f;
+// Shape morphing (astro): emotion transitions MORPH — the style blends the
+// outgoing and incoming shapes' distance fields, so a circle deforms into a
+// heart (etc.) from whatever state it is in. morph_from/morph_to are the two
+// shape emotions; morph_w eases 0 -> 1.
+static face_emotion morph_from = FACE_EMO_NEUTRAL;
+static face_emotion morph_to = FACE_EMO_NEUTRAL;
+static float morph_w = 1.0f;
 
 // idle life
 static float breathe_t = 0.0f;
@@ -94,8 +95,8 @@ static int shape_class(face_emotion e) {
 
 void face_init(int canvas_w, int canvas_h) {
     face_w = canvas_w; face_h = canvas_h;
-    render_emo = FACE_EMO_NEUTRAL;
-    shape_scale = 1.0f;
+    morph_from = morph_to = FACE_EMO_NEUTRAL;
+    morph_w = 1.0f;
     cur = target = EMO[FACE_EMO_NEUTRAL];
     memset(&vel, 0, sizeof(vel));
     cur_emo = FACE_EMO_NEUTRAL;
@@ -175,14 +176,16 @@ void face_tick(uint32_t now_ms) {
     ease(&pj_x, pj_tx, 6.0f, dt);
     ease(&pj_y, pj_ty, 6.0f, dt);
 
-    // Shape morph: shrink out, swap, grow in (see render_emo above).
-    if (shape_class(cur_emo) != shape_class(render_emo)) {
-        ease(&shape_scale, 0.04f, 12.0f, dt);
-        if (shape_scale < 0.10f) render_emo = cur_emo;
-    } else {
-        render_emo = cur_emo;   // pose-only changes track immediately
-        ease(&shape_scale, 1.0f, 9.0f, dt);
+    // Shape morph: on an emotion change the astro style blends distance
+    // fields from the previous shape to the new one; same-shape-class
+    // changes morph through the pose spring alone.
+    if (cur_emo != morph_to) {
+        morph_from = morph_to;         // start from what we were showing
+        morph_to = cur_emo;
+        morph_w = (shape_class(morph_from) != shape_class(morph_to))
+                      ? 0.0f : 1.0f;
     }
+    ease(&morph_w, 1.0f, 8.0f, dt);
 
     breathe_t += dt;
     speak_env -= dt * 3.0f; if (speak_env < 0) speak_env = 0;
@@ -765,97 +768,68 @@ static bool astro_px_in(const astro_ctx* c, float pxf, float pyf) {
     return false;
 }
 
-// Shadow intensity at a canvas point: a soft drop-shadow hugging the true
-// shape's boundary, strongest at the edge and gone `range_px` (canvas px)
-// out. Per-eye (nearest wins, NOT summed): each eye carries its own halo —
-// summing brightened the gap between them into a stretched bridge.
-static float astro_glow(const astro_ctx* c, float pxf, float pyf,
-                        float range_px) {
-    float g = 0.0f;
-    for (int e = 0; e < 2; e++) {
-        float d = astro_eye_d(c, pxf, pyf, e);
-        float dist = (d - 1.0f) * c->d2px[e];   // ~px past the edge
-        if (dist < range_px) {
-            float f = 1.0f - (dist < 0.0f ? 0.0f : dist) / range_px;
-            if (f > g) g = f;
-        }
-    }
-    // gentle concave falloff: pulls the gradient's midpoint in toward the
-    // shape a touch (pure linear read as too evenly spread); the blit's
-    // gamma correction keeps the tail visible
-    return powf(g, 1.3f);
+// Distance-field morph: blend the from/to shapes' normalized distances so
+// one shape deforms into the other (SDF interpolation).
+static float astro_d_blend(const astro_ctx* a, const astro_ctx* b, float w,
+                           float pxf, float pyf, int e) {
+    if (w >= 0.995f) return astro_eye_d(b, pxf, pyf, e);
+    float da = astro_eye_d(a, pxf, pyf, e);
+    float db = astro_eye_d(b, pxf, pyf, e);
+    return da + (db - da) * w;
 }
 
-static void style_astro(const face_pose* p, float bob) {
-    // Astro Bot visor: a FIXED lattice of round LEDs; the image moves across
-    // the dots, the dots never move. The eyes are pure circles that CLIP the
-    // lattice: interior LEDs are full bright dots, edge LEDs light only the
-    // pixels inside the circle (crescents), and a faint navy glow spills a
-    // couple of pitches beyond the discs. Rest of the visor stays black.
-    float Hf = (float)face_h;
-    int cx0 = face_w / 2;
-    float gx = p->gaze_x * Hf * 0.22f;
-    float gy = p->gaze_y * Hf * 0.10f + bob;
-
-    astro_ctx c;
+// Build the astro shape context for one emotion at the current pose.
+static void astro_build(astro_ctx* c, const face_pose* p, face_emotion emo,
+                        float Hf, int cx0, float gx, float gy) {
     float eoff = Hf * 0.40f;                     // eye offset from center
-    c.rx = Hf * 0.27f * (1.0f - 0.12f * p->squash);
-    c.ry_base = Hf * 0.27f * (1.0f + 0.15f * p->squash);
-    c.inv_rx = 1.0f / c.rx;
-    c.excx[0] = cx0 - eoff + gx;
-    c.excx[1] = cx0 + eoff + gx;
-    c.ecy = Hf * 0.50f + gy;
+    c->rx = Hf * 0.27f * (1.0f - 0.12f * p->squash);
+    c->ry_base = Hf * 0.27f * (1.0f + 0.15f * p->squash);
+    c->inv_rx = 1.0f / c->rx;
+    c->excx[0] = cx0 - eoff + gx;
+    c->excx[1] = cx0 + eoff + gx;
+    c->ecy = Hf * 0.50f + gy;
 
-    // Special shapes draw the RENDERED emotion (shape morph swaps it at the
-    // shrunken midpoint), and the whole eye geometry scales with the morph.
-    c.rx *= shape_scale;
-    c.ry_base *= shape_scale;
-    c.inv_rx = 1.0f / c.rx;
-
-    // squint fold (concave smile carve) — disabled for hearts (whole shapes)
-    c.hearts = (render_emo == FACE_EMO_LOVE);
-    c.arrows = (render_emo == FACE_EMO_FRUSTRATED);
-    bool wink = (render_emo == FACE_EMO_WINK);
-    float fold = (!c.hearts && !c.arrows && !wink && p->mouth_curve > 0.35f)
+    // squint fold (concave smile carve) — disabled for whole shapes
+    c->hearts = (emo == FACE_EMO_LOVE);
+    c->arrows = (emo == FACE_EMO_FRUSTRATED);
+    bool wink = (emo == FACE_EMO_WINK);
+    float fold = (!c->hearts && !c->arrows && !wink && p->mouth_curve > 0.35f)
                      ? p->mouth_curve : 0.0f;
-    c.cut_r[0] = c.cut_r[1] = 0.0f;
-    c.cut_cx[0] = c.cut_cx[1] = 0.0f;
-    c.cut_cy[0] = c.cut_cy[1] = 0.0f;
+    c->cut_r[0] = c->cut_r[1] = 0.0f;
+    c->cut_cx[0] = c->cut_cx[1] = 0.0f;
+    c->cut_cy[0] = c->cut_cy[1] = 0.0f;
     if (fold > 0.0f) {
-        // squint: both eyes carved by an upward arc whose apex rises with
-        // the fold — "basically a smile", not a flat base
-        float apex = 1.0f - 0.85f * fold;      // arc bottom at eye center line
+        // squint: both eyes carved by an upward smile arc that rises with
+        // the fold
+        float apex = 1.0f - 0.85f * fold;
         for (int e = 0; e < 2; e++) {
-            c.cut_r[e] = 1.25f;
-            c.cut_cy[e] = apex + 1.25f;
+            c->cut_r[e] = 1.25f;
+            c->cut_cy[e] = apex + 1.25f;
         }
     }
     if (wink) {
-        // right eye: squashed crescent with a deep smile carve; left stays
-        // a full disc (open)
-        c.cut_r[1] = 1.15f;
-        c.cut_cy[1] = 0.15f + 1.15f;
+        // right eye: squashed crescent (deep smile carve); left stays open
+        c->cut_r[1] = 1.15f;
+        c->cut_cy[1] = 0.15f + 1.15f;
     }
-    c.quad = false;
-    c.sl_k[0] = c.sl_k[1] = 0.0f;
-    c.sl_b[0] = c.sl_b[1] = 0.0f;
-    if (!c.hearts && !c.arrows && !wink && fold <= 0.0f &&
+    c->quad = false;
+    c->sl_k[0] = c->sl_k[1] = 0.0f;
+    c->sl_b[0] = c->sl_b[1] = 0.0f;
+    if (!c->hearts && !c->arrows && !wink && fold <= 0.0f &&
         fabsf(p->brow) > 0.25f) {
-        // brow slash, signed by the pose: angry (brow > 0) cuts down toward
-        // the face center on rounded-BOX eyes; sad (brow < 0) droops down
-        // toward the outside on round teardrop eyes (per the references).
-        c.quad = (p->brow > 0.0f);
+        // brow slash, signed by the pose: angry cuts down toward the face
+        // center on rounded-box eyes; sad droops outward on round teardrops
+        c->quad = (p->brow > 0.0f);
         float k = 0.47f * p->brow;
         for (int e = 0; e < 2; e++) {
-            float s_in = e ? -1.0f : 1.0f;     // toward the face center
-            c.sl_b[e] = -0.55f;
-            c.sl_k[e] = s_in * k;
+            float s_in = e ? -1.0f : 1.0f;
+            c->sl_b[e] = -0.55f;
+            c->sl_k[e] = s_in * k;
         }
     }
 
-    if (c.hearts) {
-        // polar boundary LUT for the heart (used for the shadow distance):
-        // march each angle inward until the implicit says inside
+    if (c->hearts) {
+        // polar boundary LUT for the heart (drives the shadow distance)
         for (int b = 0; b < 64; b++) {
             float a = -3.1415927f + (b + 0.5f) * (2.0f * 3.1415927f / 64.0f);
             float ca = cosf(a), sa = sinf(a);
@@ -863,8 +837,46 @@ static void style_astro(const face_pose* p, float bob) {
             while (r > 0.02f &&
                    !heart_inside(r * ca * HEART_SCALE, r * sa * HEART_SCALE))
                 r -= 0.02f;
-            c.rlut[b] = r;
+            c->rlut[b] = r;
         }
+    }
+
+    // per-eye vertical radius (blink/sleepy squash the disc; happy keeps it
+    // big and carves; whole shapes render full). Neutral eye_open (0.90)
+    // maps to a PERFECT circle.
+    for (int e = 0; e < 2; e++) {
+        float open = (e ? p->eye_open_r : p->eye_open_l) * (1.0f / 0.90f);
+        if (open > 1.0f) open = 1.0f;
+        if (c->hearts || c->arrows) open = 1.0f;
+        c->ry_e[e] = c->ry_base * (fold > 0.0f ? (0.85f + 0.15f * open) : open);
+        if (c->ry_e[e] < c->ry_base * 0.06f) c->ry_e[e] = c->ry_base * 0.06f;
+        c->inv_ry_e[e] = 1.0f / c->ry_e[e];
+        // shadow px-per-(d-1): thin strokes scale by their half-width
+        c->d2px[e] = 0.5f * (c->rx + c->ry_e[e]) * (c->arrows ? ARROW_HW : 1.0f);
+    }
+}
+
+static void style_astro(const face_pose* p, float bob) {
+    // Astro Bot visor: a FIXED lattice of round LEDs; the image moves across
+    // the dots, the dots never move. The eyes are pure shapes that CLIP the
+    // lattice, with a faint navy drop-shadow. Emotion changes morph: the
+    // outgoing and incoming shapes' distance fields blend, so the visible
+    // shape deforms continuously from any state to any other.
+    float Hf = (float)face_h;
+    int cx0 = face_w / 2;
+    float gx = p->gaze_x * Hf * 0.22f;
+    float gy = p->gaze_y * Hf * 0.10f + bob;
+
+    astro_ctx cto;
+    astro_build(&cto, p, morph_to, Hf, cx0, gx, gy);
+    static astro_ctx cfrom;                     // large (rlut) — keep off stack
+    const astro_ctx* cf = &cto;
+    float w = morph_w;
+    if (w < 0.995f) {
+        astro_build(&cfrom, p, morph_from, Hf, cx0, gx, gy);
+        cf = &cfrom;
+    } else {
+        w = 1.0f;
     }
 
     // Lattice metrics measured off the official visor: ~19 dot rows over the
@@ -872,35 +884,25 @@ static void style_astro(const face_pose* p, float bob) {
     int pitch = (int)(Hf / 19.0f); if (pitch < 4) pitch = 4;   // LED spacing
     int dot_r = (int)(pitch * 0.42f); if (dot_r < 1) dot_r = 1;
 
-    // per-eye vertical radius (blink/sleepy squash the disc; happy keeps it
-    // big and carves instead; hearts render whole). Neutral eye_open (0.90)
-    // maps to a PERFECT circle — only real blinks/sleepy squash below that.
-    for (int e = 0; e < 2; e++) {
-        float open = (e ? p->eye_open_r : p->eye_open_l) * (1.0f / 0.90f);
-        if (open > 1.0f) open = 1.0f;
-        if (c.hearts || c.arrows) open = 1.0f;
-        c.ry_e[e] = c.ry_base * (fold > 0.0f ? (0.85f + 0.15f * open) : open);
-        if (c.ry_e[e] < c.ry_base * 0.06f) c.ry_e[e] = c.ry_base * 0.06f;
-        c.inv_ry_e[e] = 1.0f / c.ry_e[e];
-        // shadow px-per-(d-1): thin strokes scale by their half-width
-        c.d2px[e] = 0.5f * (c.rx + c.ry_e[e]) * (c.arrows ? ARROW_HW : 1.0f);
-    }
+    // blended shadow px scale
+    float d2b[2];
+    for (int e = 0; e < 2; e++)
+        d2b[e] = cf->d2px[e] + (cto.d2px[e] - cf->d2px[e]) * w;
 
     for (int y = pitch / 2; y < face_h; y += pitch) {
         for (int x = pitch / 2; x < face_w; x += pitch) {
-            // nearest-eye distance for this LED's center (shape-aware)
+            // nearest-eye blended distance for this LED's center
             float dmin = 1e9f;
             for (int e = 0; e < 2; e++) {
-                float d = astro_eye_d(&c, (float)x, (float)y, e);
+                float d = astro_d_blend(cf, &cto, w, (float)x, (float)y, e);
                 if (d < dmin) dmin = d;
             }
-            float dr_n = (float)dot_r / (c.rx < c.ry_base ? c.rx : c.ry_base);
+            float dr_n = (float)dot_r / (cto.rx < cto.ry_base ? cto.rx
+                                                              : cto.ry_base);
 
             // The lattice is a CLIP FILTER over one continuous image: the
-            // bright eye shape plus its soft drop-shadow. Every LED is the
-            // same size; a physical LED shows ONE brightness, so shadow is
-            // sampled once per dot and drawn as a dimmed-accent shade —
-            // bright inside the outline, faint navy near it, black beyond.
+            // bright eye shape plus its soft drop-shadow. A physical LED
+            // shows ONE brightness, so shadow is sampled once per dot.
             float shadow_px = 3.5f * pitch;
             if (dmin <= 1.0f - dr_n * 1.2f) {
                 display_set_color(FACE_COLOR_MAIN);            // fully inside
@@ -908,14 +910,22 @@ static void style_astro(const face_pose* p, float bob) {
                 continue;
             }
             // past the shadow: (dmin-1) in px beyond the edge, minus dot reach
-            float d2px_max = c.d2px[0] > c.d2px[1] ? c.d2px[0] : c.d2px[1];
+            float d2px_max = d2b[0] > d2b[1] ? d2b[0] : d2b[1];
             if ((dmin - 1.0f) * d2px_max > shadow_px + dot_r)
                 continue;
 
-            // this LED's shadow shade — a continuous gradient: each LED gets
-            // its exact glow brightness on the 16-step accent ramp, fading
-            // from the shadow color to nothing
-            float g = astro_glow(&c, (float)x, (float)y, shadow_px) * 0.62f;
+            // this LED's shadow shade — a continuous gradient on the accent
+            // ramp, from the blended shape's boundary outward
+            float g = 0.0f;
+            for (int e = 0; e < 2; e++) {
+                float d = astro_d_blend(cf, &cto, w, (float)x, (float)y, e);
+                float dist = (d - 1.0f) * d2b[e];
+                if (dist < shadow_px) {
+                    float f = 1.0f - (dist < 0.0f ? 0.0f : dist) / shadow_px;
+                    if (f > g) g = f;
+                }
+            }
+            g = powf(g, 1.3f) * 0.62f;
             int lvl = (int)(g * FACE_COLOR_ACCENT_LEVELS + 0.5f);
             uint8_t shade = lvl >= 1 ? FACE_COLOR_ACCENT_LVL(lvl) : 0;
 
@@ -928,7 +938,8 @@ static void style_astro(const face_pose* p, float bob) {
             }
 
             // boundary LED: the outline clips it — bright crescent inside,
-            // this LED's shadow shade outside
+            // this LED's shadow shade outside. Mid-morph the inside test is
+            // the blended field; at rest it is the exact cheap test.
             int r2 = dot_r * dot_r;
             for (int py = y - dot_r; py <= y + dot_r; py++) {
                 if (py < 0 || py >= face_h) continue;
@@ -936,7 +947,16 @@ static void style_astro(const face_pose* p, float bob) {
                     if (px2 < 0 || px2 >= face_w) continue;
                     int ddx = px2 - x, ddy = py - y;
                     if (ddx * ddx + ddy * ddy > r2) continue;
-                    if (astro_px_in(&c, (float)px2, (float)py)) {
+                    bool in;
+                    if (w >= 1.0f) {
+                        in = astro_px_in(&cto, (float)px2, (float)py);
+                    } else {
+                        in = false;
+                        for (int e = 0; e < 2 && !in; e++)
+                            in = astro_d_blend(cf, &cto, w, (float)px2,
+                                               (float)py, e) <= 1.0f;
+                    }
+                    if (in) {
                         display_set_color(FACE_COLOR_MAIN);
                         display_pixel((int16_t)px2, (int16_t)py, true);
                     } else if (shade) {
@@ -952,7 +972,7 @@ static void style_astro(const face_pose* p, float bob) {
 
 bool face_settled(void)
 {
-    if (blinking || speak_env > 0.02f) return false;
+    if (blinking || speak_env > 0.02f || morph_w < 0.995f) return false;
     float d = 0;
     d += fabsf(cur.eye_open_l - target.eye_open_l);
     d += fabsf(cur.eye_open_r - target.eye_open_r);
