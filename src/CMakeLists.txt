@@ -3030,7 +3030,7 @@ pico_enable_stdio_usb(joypad_ami_retrofrog 0)
 
 # ============================================================================
 # USB2AMI (USB -> Amiga/Atari DE9, DFRobot Beetle RP2350)
-# DE9: UP=2 DOWN=13 LEFT=3 RIGHT=14 CLK=6 DATA=7 JOYMODE=8
+# DE9: UP=0 DOWN=1 LEFT=4 RIGHT=5 CLK=8 DATA=9 JOYMODE=16
 # LED: GPIO25 (onboard blue LED)
 # ============================================================================
 add_executable(joypad_ami_beetle_rp2350)
@@ -3049,7 +3049,7 @@ target_compile_definitions(joypad_ami_beetle_rp2350 PRIVATE
     AMIGA_PIN_CLK=8
     AMIGA_PIN_DATA=9
     AMIGA_PIN_JOYMODE=16
-    PICO_DEFAULT_SYS_CLK_HZ=48000000
+
 )
 target_sources(joypad_ami_beetle_rp2350 PUBLIC ${COMMON_SOURCES}
     ${CMAKE_CURRENT_SOURCE_DIR}/native/device/amiga/amiga_device.c

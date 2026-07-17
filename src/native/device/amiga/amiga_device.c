@@ -135,6 +135,8 @@ static volatile bool cd32_detected       = false;
 
 // Amiga vs Atari ST auto-detection via JOYMODE pulses
 static volatile bool cd32_transfer_active = false;
+static volatile uint64_t cd32_entry_time_us = 0;  // timestamp of CD32 mode entry
+#define CD32_CLK_TIMEOUT_US  5000  // revert to joystick if no CLK within 5ms
 
 // C1351 proportional mouse state (C64 platform only)
 #define C1351_OFFSET        200
@@ -328,8 +330,8 @@ static inline void __not_in_flash_func(pin_press)(uint pin) {
 }
 
 static inline void __not_in_flash_func(pin_release)(uint pin) {
-    gpio_put(pin, 1);
-    gpio_set_dir(pin, GPIO_OUT);
+    gpio_set_dir(pin, GPIO_IN);
+    gpio_disable_pulls(pin);  // let host machine pull-up bring line HIGH naturally
 }
 
 // Drive pin HIGH as output — used for RMB in Amiga mouse mode.
@@ -429,16 +431,16 @@ static void __not_in_flash_func(amiga_gpio_irq)(uint gpio, uint32_t events) {
 
             } else if (amiga_state.mode == AMIGA_MODE_JOYSTICK &&
                 current_platform == AMIGA_PLATFORM_AMIGA &&
-                !mouse_active && !jump_profile) {
-                // CD32 mode entry
+                gamepad_seen && !mouse_active && !jump_profile) {
+                // Enter CD32 mode — if no CLK edge arrives within timeout, revert to joystick
                 amiga_state.mode = AMIGA_MODE_CD32;
                 cd32_transfer_active = true;
-                // cd32_detected set on first CLK edge (confirms CD32 not C64 SID poll)
                 gpio_set_dir(AMIGA_PIN_CLK, GPIO_IN);
                 buttons_isr = buttons_live >> 1;
                 gpio_set_dir(AMIGA_PIN_DATA, GPIO_OUT);
                 gpio_put(AMIGA_PIN_DATA, (buttons_live & 0x01) ? 1 : 0);
                 gpio_set_irq_enabled(AMIGA_PIN_CLK, GPIO_IRQ_EDGE_RISE, true);
+                cd32_entry_time_us = time_us_64();
             }
         } else if (events & GPIO_IRQ_EDGE_RISE) {
             cd32_transfer_active = false;
@@ -452,7 +454,8 @@ static void __not_in_flash_func(amiga_gpio_irq)(uint gpio, uint32_t events) {
             }
         }
     } else if (gpio == AMIGA_PIN_CLK) {
-        cd32_detected = true;  // confirmed CD32 console (not C64 SID poll)
+        cd32_detected = true;  // confirmed CD32 console
+        cd32_entry_time_us = 0;  // cancel timeout
         if (buttons_isr & 0x01) gpio_put(AMIGA_PIN_DATA, 1);
         else                    gpio_put(AMIGA_PIN_DATA, 0);
         buttons_isr >>= 1;
@@ -686,6 +689,7 @@ static void __not_in_flash_func(amiga_tap_callback)(output_target_t output,
                     turbo_blink_count = 0;
                     // Start timer when first turbo button enabled, cancel when all disabled
                     if (turbo_mask != 0 && !turbo_timer_running) {
+                        turbo_state = true;  // start in pressed state — first tick will release
                         add_repeating_timer_us(-(1000000 / TURBO_HZ / 2), turbo_timer_cb, NULL, &turbo_timer);
                         turbo_timer_running = true;
                     } else if (turbo_mask == 0 && turbo_timer_running) {
@@ -728,24 +732,33 @@ static void __not_in_flash_func(amiga_tap_callback)(output_target_t output,
 
         // Build CD32 byte — turbo buttons handled by timer callback
         uint32_t effective_buttons = buttons;
+        static uint32_t prev_physical_buttons = 0;
         if (turbo_mask != 0) {
             uint32_t turbo_held = turbo_mask & physical_buttons;
+            uint32_t turbo_just_pressed = turbo_held & ~prev_physical_buttons;
             if (turbo_state) effective_buttons |=  turbo_held;
             else             effective_buttons &= ~turbo_held;
+            // Always include buttons on the press edge so first tap always registers
+            effective_buttons |= turbo_just_pressed;
         }
+        prev_physical_buttons = physical_buttons;
         buttons_live = build_cd32_byte(effective_buttons);
 
         if (amiga_state.mode == AMIGA_MODE_JOYSTICK) {
-            // Fire1 — skip if turbo active (timer handles it)
+            // Fire1 — if turbo active, timer handles repeats but we fire on press edge
             if (!(turbo_mask & JP_BUTTON_B1)) {
                 if (buttons & JP_BUTTON_B1) pin_press(AMIGA_PIN_CLK);
                 else                        pin_release(AMIGA_PIN_CLK);
+            } else if (effective_buttons & JP_BUTTON_B1) {
+                pin_press(AMIGA_PIN_CLK);  // press edge — fire immediately
             }
             // Fire2 — Amiga only, skip if turbo active or jump profile active
             if (current_platform == AMIGA_PLATFORM_AMIGA && !jump_profile) {
                 if (!(turbo_mask & JP_BUTTON_B2)) {
                     if (buttons & JP_BUTTON_B2) pin_press(AMIGA_PIN_DATA);
                     else                        pin_release(AMIGA_PIN_DATA);
+                } else if (effective_buttons & JP_BUTTON_B2) {
+                    pin_press(AMIGA_PIN_DATA);  // press edge — fire immediately
                 }
             }
         }
@@ -844,6 +857,20 @@ void amiga_device_task(void) {
                     printf("[amiga] Platform: %d\n", current_platform);
                 }
             }
+        }
+    }
+
+    // CD32 timeout — if no CLK edge arrives within timeout, revert to joystick mode
+    // Prevents JOYMODE pulses from non-CD32 machines locking up fire button
+    if (amiga_state.mode == AMIGA_MODE_CD32 && !cd32_detected && cd32_entry_time_us != 0) {
+        if ((time_us_64() - cd32_entry_time_us) >= CD32_CLK_TIMEOUT_US) {
+            amiga_state.mode = AMIGA_MODE_JOYSTICK;
+            cd32_transfer_active = false;
+            cd32_entry_time_us = 0;
+            gpio_set_irq_enabled(AMIGA_PIN_CLK, GPIO_IRQ_EDGE_RISE, false);
+            gpio_set_dir(AMIGA_PIN_CLK, GPIO_OUT);
+            pin_release(AMIGA_PIN_CLK);
+            pin_release(AMIGA_PIN_DATA);
         }
     }
 
@@ -959,12 +986,12 @@ void amiga_device_task(void) {
 void amiga_device_init(void) {
     // All DE9 signal pins start as outputs driven LOW (FET off = line released)
     // BSS138 circuit: GPIO HIGH = FET ON = line asserted, GPIO LOW = FET OFF = released
-    gpio_init(AMIGA_PIN_UP);    gpio_put(AMIGA_PIN_UP,    1); gpio_set_dir(AMIGA_PIN_UP,    GPIO_OUT);
-    gpio_init(AMIGA_PIN_DOWN);  gpio_put(AMIGA_PIN_DOWN,  1); gpio_set_dir(AMIGA_PIN_DOWN,  GPIO_OUT);
-    gpio_init(AMIGA_PIN_LEFT);  gpio_put(AMIGA_PIN_LEFT,  1); gpio_set_dir(AMIGA_PIN_LEFT,  GPIO_OUT);
-    gpio_init(AMIGA_PIN_RIGHT); gpio_put(AMIGA_PIN_RIGHT, 1); gpio_set_dir(AMIGA_PIN_RIGHT, GPIO_OUT);
-    gpio_init(AMIGA_PIN_CLK);   gpio_put(AMIGA_PIN_CLK,   1); gpio_set_dir(AMIGA_PIN_CLK,   GPIO_OUT);
-    gpio_init(AMIGA_PIN_DATA);  gpio_put(AMIGA_PIN_DATA,  1); gpio_set_dir(AMIGA_PIN_DATA,  GPIO_OUT);
+    gpio_init(AMIGA_PIN_UP);    gpio_set_dir(AMIGA_PIN_UP,    GPIO_IN); gpio_disable_pulls(AMIGA_PIN_UP);
+    gpio_init(AMIGA_PIN_DOWN);  gpio_set_dir(AMIGA_PIN_DOWN,  GPIO_IN); gpio_disable_pulls(AMIGA_PIN_DOWN);
+    gpio_init(AMIGA_PIN_LEFT);  gpio_set_dir(AMIGA_PIN_LEFT,  GPIO_IN); gpio_disable_pulls(AMIGA_PIN_LEFT);
+    gpio_init(AMIGA_PIN_RIGHT); gpio_set_dir(AMIGA_PIN_RIGHT, GPIO_IN); gpio_disable_pulls(AMIGA_PIN_RIGHT);
+    gpio_init(AMIGA_PIN_CLK);   gpio_set_dir(AMIGA_PIN_CLK,   GPIO_IN); gpio_disable_pulls(AMIGA_PIN_CLK);
+    gpio_init(AMIGA_PIN_DATA);  gpio_set_dir(AMIGA_PIN_DATA,  GPIO_IN); gpio_disable_pulls(AMIGA_PIN_DATA);
 
     // JOYMODE — input with pull-up, interrupt on both edges
     gpio_init(AMIGA_PIN_JOYMODE);

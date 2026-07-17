@@ -1,5 +1,12 @@
 # USB4AMI User Guide
 
+
+<p align="center">
+  <img src="../images/usb4ami_front.png" alt="USB4AMI front" width="45%">
+  <img src="../images/usb4ami_back.png" alt="USB4AMI back" width="45%">
+</p>
+
+
 ## What is USB4AMI?
 
 USB4AMI is a small adapter that lets you use modern USB controllers and mice with classic computers including the Commodore Amiga, Commodore 64, and Atari computers. It plugs directly into your computer's joystick/mouse port and translates input from any compatible USB device into the signals your retro computer understands.
@@ -15,6 +22,21 @@ USB4AMI supports three modes, selected via the BOOTSEL button. The table below s
 | **Amiga** | Amber | Commodore Amiga (all models including CD32 console) |
 | **C64** | Blue | Commodore 64 (including Ultimate64), Commodore 128, MEGA65 |
 | **Atari** | Green | Atari ST (all), Atari Falcon, Atari 8-bit computers (all) |
+
+
+> **Note:** The ZX Spectrum with Kempston joystick interface is also supported. You can use any of the 3 modes for it as the ZX supports just a single joystick button.
+
+---
+
+## Unsupported Platforms
+
+Atari 7800 console - This is due to hardware differences and how the 7800 reads its controllers.
+ 
+ZX Spectrum Next - The Next follows a SEGA style pinout and 5v power is on a different pin. A separate adapter will be designed for it.
+
+Japanese Computers (MSX/X68000/FM Towns) - They also have a different pinout and there will be a separate adapter produced for them.
+
+
 
 ---
 
@@ -54,13 +76,13 @@ USB4AMI needs to know which computer it's connected to. You select your platform
 
 **How to do it:**
 1. Power on your computer with USB4AMI connected.
-2. Tap the BOOTSEL button to cycle through modes:
+2. Tap the BOOTSEL button (during the first 8 seconds) to cycle through modes:
    - First tap → C64 (blue)
    - Second tap → Atari (green)
    - Third tap → back to Amiga (amber)
 3. Stop tapping when your platform's color appears.
 
-Your choice is automatically saved and remembered next time you power on.
+Your choice is automatically saved and remembered next time you power on. The BOOTSEL window is only open during the first 8 seconds of power on. After that it stays locked to that platform until you power cycle the device. 
 
 > **Tip:** If you don't tap the button at power on, USB4AMI stays on your last saved platform.
 
@@ -138,7 +160,7 @@ The LED returns to your platform color and your new setting is saved automatical
 
 ## Updating Firmware
 
-1. Download the latest `.uf2` for USB4AMI from [Releases](https://github.com/thgill/joypad-os/releases)
+1. Download the latest `.uf2` for USB4AMI from [Releases](https://github.com/thgill/RetroFrog-USB-Adapters/releases)
 2. **Disconnect USB4AMI from your retro computer first**
 3. Hold the BOOTSEL button and connect the USB-A cable to your computer
 4. Drag the `.uf2` file onto the `RP2350` drive that appears
@@ -146,11 +168,14 @@ The LED returns to your platform color and your new setting is saved automatical
 
 > **Note 1:** USB4AMI automatically resets its settings to safe defaults after a firmware update. Your platform selection and DPI settings will need to be reconfigured.
 
-> **Note 2:** You MUST use a USB-A male to male cable to plug in USB4AMI for firmware updates. A USB-A to USB-C will NOT work. This isn't because of any fault of the USB4AMI design, it's due to the fact that USB-A to C cables lack the 5.1k CC resistors on the USB-C side that would tell your computer that it's attached to a device and need to send 5 volts to it. If you need to update the firmware an all you have on your modern computer is USB-C ports (hello Apple!), you can use a female USB-A to male USB-C adapter as they have the correct resistors and are designed for this exact purpose. 
+> **Note 2:** You MUST use a USB-A male to male cable to plug in USB4AMI for firmware updates. A USB-A to USB-C will NOT work. This isn't because of any fault of the USB4AMI design, it's due to the fact that USB-A to C cables lack the 5.1k CC resistors on the USB-C side that would tell your computer that it's attached to a device and need to send 5 volts to it. If you need to update the firmware and all you have on your modern computer is USB-C ports (hello Apple!), you can use a female USB-A to male USB-C adapter as they have the correct resistors and are designed for this exact purpose. 
 
 ---
 
 ## Troubleshooting
+
+**Pressing the button doesn't change the LED color**
+As soon as the adapter receives power, an 8 second timer starts counting down and during that 8 seconds you can push the BOOTSEL button to freely change platforms. After that 8 seconds is up, it locks it to that platform setting. This is to prevent accidentally changing it (bumping the button) and also having the BOOTSEL running all the time causes issues with CD32 controls and C64 1351 mouse emulation. To change the platform setting it again you need to power cycle the system (off and back on). 
 
 **The adapter doesn't seem to be doing anything.**
 Check the LED color to confirm which platform is active. If needed, tap BOOTSEL to cycle to your desired platform.
@@ -170,8 +195,7 @@ Enter DPI adjustment mode (hold MMB 2 seconds), adjust until the speed feels rig
 **A CD32 game isn't recognizing all buttons after switching control profiles.**
 Exit the game and relaunch it. CD32 games detect the controller type at startup — relaunching allows USB4AMI to respond correctly to the CD32 detection handshake.
 
-**Why can't I change platforms with the BOOTSEL button after playing a CD32 game title on the Amiga?**
-This is by design as the BOOTSEL feature is disabled after starting a CD32 controls aware game. This is because having the BOOTSEL code running during CD32 controls may cause spurious button presses. Although there would be no need to do so, you would need to power cycle the adapter/computer to re-enable the BOOTSEL change function. 
+
 
 ---
 
@@ -180,7 +204,7 @@ This is by design as the BOOTSEL feature is disabled after starting a CD32 contr
 We are actively working on the following features for a future firmware update:
 
 - **Scroll wheel support** — Amiga and C64 scroll wheel support is under investigation. This requires coordination with Amiga and C64 driver software and is a non-trivial implementation. We will announce when this is available.
-- **Atari 7800 support** — The Atari 7800 uses a unique controller port protocol. We are investigating compatibility.
+
 
 ---
 
