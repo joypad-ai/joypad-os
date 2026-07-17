@@ -371,16 +371,28 @@ void gpio_device_task()
               leds_set_color(0, 0, 32); // dim blue = waiting for controller
               printf("[te] Player %d disconnected: remap reset\n", i);
           } else if (players[i].dev_addr != -1 && playersCount > last_players_count) {
-              // Controller connected — open fresh boot window, go green
+              // Controller connected — open fresh boot window, go purple
               neogeo_remap_ctx_init(&remap_ctx[i]);
               remap_active[i] = neogeo_remap_default;
               remap_was_active[i] = false;
-              leds_set_color(0, 180, 0);
+              leds_set_color(128, 0, 128); // purple = remap window open
               printf("[te] Player %d connected: remap window open\n", i);
           }
       }
   }
   last_players_count = playersCount;
+
+  // Track boot window closing — transition from purple to green
+  static bool was_boot_checked = false;
+  if (playersCount > 0) {
+      bool now_checked = remap_ctx[0].boot_checked;
+      if (now_checked && !was_boot_checked && !remap_was_active[0]) {
+          leds_set_color(0, 180, 0); // green = window closed, normal play
+      }
+      was_boot_checked = now_checked;
+  } else {
+      was_boot_checked = false;
+  }
 
   // Advance remap state machine every task loop
   if (playersCount > 0) {
