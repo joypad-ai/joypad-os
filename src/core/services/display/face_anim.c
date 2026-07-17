@@ -30,6 +30,13 @@ static uint32_t blink_start_ms = 0, next_blink_ms = 1500;
 static float pj_x = 0, pj_y = 0, pj_tx = 0, pj_ty = 0;
 static uint32_t next_pj_ms = 0;
 
+// Shape morphing (astro): hearts/wink/arrows can't blend geometrically with
+// discs, so emotion transitions shrink the currently rendered shape to a
+// point, swap, and grow the new one — smooth from any state to any other.
+// render_emo is what the style actually draws; cur_emo is the target.
+static face_emotion render_emo = FACE_EMO_NEUTRAL;
+static float shape_scale = 1.0f;
+
 // idle life
 static float breathe_t = 0.0f;
 static uint32_t next_wander_ms = 3000;
@@ -76,8 +83,19 @@ static inline void ease(float* x, float tgt, float rate, float dt) {
 // PUBLIC: control
 // ============================================================================
 
+static int shape_class(face_emotion e) {
+    switch (e) {
+        case FACE_EMO_LOVE:       return 1;   // hearts
+        case FACE_EMO_WINK:       return 2;   // disc + crescent
+        case FACE_EMO_FRUSTRATED: return 3;   // >< arrows
+        default:                  return 0;   // disc family (pose morphs)
+    }
+}
+
 void face_init(int canvas_w, int canvas_h) {
     face_w = canvas_w; face_h = canvas_h;
+    render_emo = FACE_EMO_NEUTRAL;
+    shape_scale = 1.0f;
     cur = target = EMO[FACE_EMO_NEUTRAL];
     memset(&vel, 0, sizeof(vel));
     cur_emo = FACE_EMO_NEUTRAL;
@@ -156,6 +174,15 @@ void face_tick(uint32_t now_ms) {
     }
     ease(&pj_x, pj_tx, 6.0f, dt);
     ease(&pj_y, pj_ty, 6.0f, dt);
+
+    // Shape morph: shrink out, swap, grow in (see render_emo above).
+    if (shape_class(cur_emo) != shape_class(render_emo)) {
+        ease(&shape_scale, 0.04f, 12.0f, dt);
+        if (shape_scale < 0.10f) render_emo = cur_emo;
+    } else {
+        render_emo = cur_emo;   // pose-only changes track immediately
+        ease(&shape_scale, 1.0f, 9.0f, dt);
+    }
 
     breathe_t += dt;
     speak_env -= dt * 3.0f; if (speak_env < 0) speak_env = 0;
@@ -753,10 +780,10 @@ static float astro_glow(const astro_ctx* c, float pxf, float pyf,
             if (f > g) g = f;
         }
     }
-    // linear falloff: the accent color is already very dark, and squaring
-    // crushed the tail below what the panel can show — the gradient read as
-    // one ring then black
-    return g;
+    // gentle concave falloff: pulls the gradient's midpoint in toward the
+    // shape a touch (pure linear read as too evenly spread); the blit's
+    // gamma correction keeps the tail visible
+    return powf(g, 1.3f);
 }
 
 static void style_astro(const face_pose* p, float bob) {
@@ -779,10 +806,16 @@ static void style_astro(const face_pose* p, float bob) {
     c.excx[1] = cx0 + eoff + gx;
     c.ecy = Hf * 0.50f + gy;
 
+    // Special shapes draw the RENDERED emotion (shape morph swaps it at the
+    // shrunken midpoint), and the whole eye geometry scales with the morph.
+    c.rx *= shape_scale;
+    c.ry_base *= shape_scale;
+    c.inv_rx = 1.0f / c.rx;
+
     // squint fold (concave smile carve) — disabled for hearts (whole shapes)
-    c.hearts = (cur_emo == FACE_EMO_LOVE);
-    c.arrows = (cur_emo == FACE_EMO_FRUSTRATED);
-    bool wink = (cur_emo == FACE_EMO_WINK);
+    c.hearts = (render_emo == FACE_EMO_LOVE);
+    c.arrows = (render_emo == FACE_EMO_FRUSTRATED);
+    bool wink = (render_emo == FACE_EMO_WINK);
     float fold = (!c.hearts && !c.arrows && !wink && p->mouth_curve > 0.35f)
                      ? p->mouth_curve : 0.0f;
     c.cut_r[0] = c.cut_r[1] = 0.0f;
@@ -868,7 +901,7 @@ static void style_astro(const face_pose* p, float bob) {
             // same size; a physical LED shows ONE brightness, so shadow is
             // sampled once per dot and drawn as a dimmed-accent shade —
             // bright inside the outline, faint navy near it, black beyond.
-            float shadow_px = 6.0f * pitch;
+            float shadow_px = 3.5f * pitch;
             if (dmin <= 1.0f - dr_n * 1.2f) {
                 display_set_color(FACE_COLOR_MAIN);            // fully inside
                 fill_ellipse(x, y, dot_r, dot_r, 0.0f, true);
