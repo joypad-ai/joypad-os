@@ -634,9 +634,9 @@ static inline bool heart_inside(float u, float v) {
 // half-width ARROW_HW.
 #define ARROW_HW 0.16f
 static const float ARROW_SEGS[3][4] = {
-    { -0.88f,  0.34f, 0.85f, -0.28f },   // shaft
-    {  0.85f, -0.28f, 0.16f, -0.56f },   // head, upper stroke
-    {  0.85f, -0.28f, 0.50f,  0.38f },   // head, lower stroke
+    { -0.88f,  0.00f, 0.85f,  0.00f },   // shaft (horizontal, pointing inward)
+    {  0.85f,  0.00f, 0.30f, -0.55f },   // head, upper stroke
+    {  0.85f,  0.00f, 0.30f,  0.55f },   // head, lower stroke
 };
 
 // Squared distance from a point to a segment (all in normalized units).
