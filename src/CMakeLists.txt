@@ -290,7 +290,6 @@ set(USB_DEVICE_SOURCES
     # PS4 auth flash storage — always compiled so PS4AUTH CDC commands are available
     ${CMAKE_CURRENT_SOURCE_DIR}/core/services/storage/ps4_auth_flash.c
     # PS4 event log — flash-persistent debug log for auth troubleshooting
-    ${CMAKE_CURRENT_SOURCE_DIR}/core/services/storage/ps4_event_log.c
 )
 
 # PS4 local auth sources (RSA signing via mbedTLS, optional)

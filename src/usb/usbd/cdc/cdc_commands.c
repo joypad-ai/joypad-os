@@ -42,7 +42,6 @@
 
 // PS4 auth flash storage (always compiled with USB device sources)
 #include "core/services/storage/ps4_auth_flash.h"
-#include "core/services/storage/ps4_event_log.h"
 // PS4 local RSA signing (requires pico_mbedtls — enabled by ENABLE_PS4_LOCAL_AUTH)
 #ifdef ENABLE_PS4_LOCAL_AUTH
 #include "usb/usbd/modes/ps4_local_auth.h"
@@ -79,10 +78,6 @@ static volatile uint16_t log_tail = 0;  // Read position (streaming)
 static volatile uint16_t dump_pos = 0;
 static volatile uint16_t dump_end = 0;
 static volatile bool     dump_active = false;
-
-// PS4LOG.DUMP buffer: holds full flash log text for synchronous sending
-#define PS4LOG_DUMP_BUF_SIZE 4096
-static char ps4log_dump_buf[PS4LOG_DUMP_BUF_SIZE];
 
 static void log_stdio_out_chars(const char *buf, int len)
 {
@@ -1861,87 +1856,6 @@ static void cmd_log_clear(const char* json)
     send_ok();
 }
 
-// PS4LOG.DUMP — read flash-persistent auth event log and return it inline in
-// the OK response as {"ok":true,"log":"..."}. No events, no streaming — works
-// exactly like PING. Log text is JSON-escaped and capped at ~900 bytes so the
-// whole response fits in the 1024-byte CDC TX FIFO in one shot.
-static void cmd_ps4log_dump(const char *json)
-{
-    (void)json;
-
-    int log_len = ps4_event_log_dump(ps4log_dump_buf, sizeof(ps4log_dump_buf));
-
-    // Build response into ps4log_dump_buf itself (reuse it — it's 4096 bytes,
-    // more than enough).  We build into a local static to avoid aliasing.
-    static char resp[1024];
-    int pos = 0;
-    pos += snprintf(resp + pos, sizeof(resp) - pos, "{\"ok\":true,\"log\":\"");
-
-    // JSON-escape log text; stop when response would get within 4 bytes of limit
-    for (int i = 0; i < log_len && pos < (int)sizeof(resp) - 20; i++) {
-        unsigned char c = (unsigned char)ps4log_dump_buf[i];
-        if      (c == '\\') { resp[pos++] = '\\'; resp[pos++] = '\\'; }
-        else if (c == '"')  { resp[pos++] = '\\'; resp[pos++] = '"';  }
-        else if (c == '\n') { resp[pos++] = '\\'; resp[pos++] = 'n';  }
-        else if (c == '\r') { resp[pos++] = '\\'; resp[pos++] = 'r';  }
-        else if (c >= 0x20) { resp[pos++] = c; }
-    }
-    resp[pos++] = '"';
-    resp[pos++] = '}';
-    resp[pos]   = '\0';
-
-    cdc_protocol_send_response(active_ctx, resp);
-}
-
-// PS4LOG.CLEAR — erase flash-persistent auth event log (preserves auth key data)
-static void cmd_ps4log_clear(const char *json)
-{
-    (void)json;
-    ps4_event_log_clear();
-    send_ok();
-}
-
-// PS4LOG.ENABLE.GET — check if PS4 auth event logging is enabled
-static void cmd_ps4log_enable_get(const char *json)
-{
-    (void)json;
-#ifdef ENABLE_PS4_LOCAL_AUTH
-    bool enabled = ps4_local_auth_get_log_enabled();
-    snprintf(response_buf, sizeof(response_buf),
-             "{\"enabled\":%s}", enabled ? "true" : "false");
-    send_json(response_buf);
-#else
-    send_error("PS4 local auth not available");
-#endif
-}
-
-// PS4LOG.ENABLE.SET — enable or disable PS4 auth event logging
-static void cmd_ps4log_enable_set(const char *json)
-{
-#ifdef ENABLE_PS4_LOCAL_AUTH
-    bool enabled;
-    if (!json_get_bool(json, "enabled", &enabled)) {
-        send_error("missing enabled");
-        return;
-    }
-
-    ps4_local_auth_set_log_enabled(enabled);
-
-    flash_t flash_data;
-    if (flash_load(&flash_data)) {
-        flash_data.ps4_auth_log = enabled ? 1 : 0;
-        flash_save(&flash_data);
-    }
-
-    snprintf(response_buf, sizeof(response_buf),
-             "{\"enabled\":%s}", enabled ? "true" : "false");
-    send_json(response_buf);
-#else
-    (void)json;
-    send_error("PS4 local auth not available");
-#endif
-}
-
 // ============================================================================
 // PS4 LOCAL AUTH COMMANDS
 // ============================================================================
@@ -3686,10 +3600,6 @@ static const cmd_entry_t commands[] = {
 #endif
     {"LOG.DUMP",       cmd_log_dump},
     {"LOG.CLEAR",      cmd_log_clear},
-    {"PS4LOG.DUMP",        cmd_ps4log_dump},
-    {"PS4LOG.CLEAR",       cmd_ps4log_clear},
-    {"PS4LOG.ENABLE.GET",  cmd_ps4log_enable_get},
-    {"PS4LOG.ENABLE.SET",  cmd_ps4log_enable_set},
     {"PS4AUTH.SET",    cmd_ps4auth_set},
     {"PS4AUTH.STATUS", cmd_ps4auth_status},
     {"PS4AUTH.CLEAR",  cmd_ps4auth_clear},

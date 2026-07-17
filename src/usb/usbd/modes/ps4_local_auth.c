@@ -18,8 +18,6 @@
 
 #include "ps4_local_auth.h"
 #include "core/services/storage/ps4_auth_flash.h"
-#include "core/services/storage/ps4_event_log.h"
-#include "core/services/storage/flash.h"
 
 #include "platform/platform.h"
 #include "mbedtls/rsa.h"
@@ -45,12 +43,11 @@
 // LOGGING
 // ============================================================================
 
-static bool s_log_enabled = false;
-
-// Conditional log — only writes to flash event log when enabled via settings
+// Real-time diagnostic log over CDC/UART. No flash persistence — this project
+// monitors logs live, not from a stored event log.
 static inline void ps4_log(const char *msg)
 {
-    if (s_log_enabled) ps4_log(msg);
+    printf("[ps4_auth] %s\n", msg);
 }
 
 // ============================================================================
@@ -277,14 +274,6 @@ void core1_idle_hook(void)
 
 bool ps4_local_auth_init(void)
 {
-    // Load log setting from flash (before any log calls)
-    {
-        flash_t flash_data;
-        if (flash_load(&flash_data)) {
-            s_log_enabled = (flash_data.ps4_auth_log == 1);
-        }
-    }
-
     // ---- Reset-source diagnostics ----
     // Log what caused the last reset to understand crash type.
     {
@@ -340,10 +329,6 @@ bool ps4_local_auth_init(void)
         }
         SIGN_SCRATCH = 0;
     }
-
-    // Overclock to 250 MHz — halves RSA signing time (~1.7 s vs ~3.4 s at 125 MHz),
-    // giving margin within the PS4's auth challenge window.
-    set_sys_clock_khz(250000, true);
 
     // Free any previous RSA context from a prior init cycle.
     mbedtls_rsa_free(&s_rsa);
@@ -677,14 +662,4 @@ void ps4_local_auth_reset(void)
     memset(s_nonce,       0, sizeof(s_nonce));
     memset(s_sign_nonce,  0, sizeof(s_sign_nonce));
     memset(s_response,    0, sizeof(s_response));
-}
-
-void ps4_local_auth_set_log_enabled(bool enabled)
-{
-    s_log_enabled = enabled;
-}
-
-bool ps4_local_auth_get_log_enabled(void)
-{
-    return s_log_enabled;
 }

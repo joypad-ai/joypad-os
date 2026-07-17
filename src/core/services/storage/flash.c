@@ -213,7 +213,6 @@ void flash_init(void)
         runtime_settings.active_profile_index = 0;  // Default profile
         runtime_settings.custom_profile_count = 0;
         runtime_settings.schema_version = FLASH_SCHEMA_VERSION;
-        runtime_settings.ps4_auth_log = 1; // Default to log enabled for troubleshooting
     }
     runtime_settings_loaded = true;
 }

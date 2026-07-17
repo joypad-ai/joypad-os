@@ -88,15 +88,6 @@ uint16_t ps4_local_auth_get_next_page(uint8_t *buffer, uint16_t maxlen);
 // Reset auth state (called when console sends report 0xF3).
 void ps4_local_auth_reset(void);
 
-// ============================================================================
-// Logging control
-// ============================================================================
-
-// Enable or disable PS4 auth event logging to flash.
-// When disabled (default), no flash writes occur for auth diagnostics.
-void ps4_local_auth_set_log_enabled(bool enabled);
-bool ps4_local_auth_get_log_enabled(void);
-
 #ifdef __cplusplus
 }
 #endif

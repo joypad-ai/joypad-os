@@ -51,7 +51,6 @@
 #endif
 #ifdef ENABLE_PS4_LOCAL_AUTH
 #include "usb/usbd/modes/ps4_local_auth.h"
-#include "core/services/storage/ps4_event_log.h"
 #endif
 #include "tusb.h"
 #include "device/usbd_pvt.h"
@@ -564,8 +563,6 @@ void usbd_init(void)
     // Initialize and load settings from flash
     flash_init();
 #ifdef ENABLE_PS4_LOCAL_AUTH
-    // Initialize flash event log (scan for next empty slot)
-    ps4_event_log_init();
     // Load PS4 auth key material from flash (requires flash_init to have run first)
     ps4_local_auth_init();
 #endif
