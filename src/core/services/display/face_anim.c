@@ -45,7 +45,7 @@ static const face_pose EMO[FACE_EMO_COUNT] = {
     // eyeL eyeR  gx   gy   pup  brow browH mOpen mCurve squash
     [FACE_EMO_NEUTRAL]    = {0.90f,0.90f, 0,   0,   0.45f, 0,   0,    0.06f, 0.15f,  0.00f},
     [FACE_EMO_HAPPY]      = {0.15f,0.15f, 0,  -0.05f,0.45f, 0,   0.05f,0.08f, 1.00f,  0.05f},
-    [FACE_EMO_SAD]        = {0.72f,0.72f, 0,   0.18f,0.40f,-0.65f,-0.15f,0.05f,-0.65f,-0.10f},
+    [FACE_EMO_SAD]        = {0.88f,0.88f, 0,   0.18f,0.40f,-0.65f,-0.15f,0.05f,-0.65f,-0.10f},
     [FACE_EMO_ANGRY]      = {0.85f,0.85f, 0,  -0.05f,0.35f, 0.85f,-0.20f,0.12f,-0.40f, 0.00f},
     [FACE_EMO_SURPRISED]  = {1.00f,1.00f, 0,  -0.05f,1.00f, 0,   0.90f,0.30f, 0.00f,  0.10f},
     [FACE_EMO_SLEEPY]     = {0.24f,0.24f, 0,   0.12f,0.35f,-0.10f,-0.35f,0.10f,-0.10f,-0.20f},
@@ -806,11 +806,12 @@ static void style_astro(const face_pose* p, float bob) {
     c.quad = false;
     c.sl_k[0] = c.sl_k[1] = 0.0f;
     c.sl_b[0] = c.sl_b[1] = 0.0f;
-    if (!c.hearts && !c.arrows && !wink && fold <= 0.0f && p->brow > 0.25f) {
-        // angry: rounded-box eyes with a straight top edge slashing down
-        // toward the face center (per the visor reference); the slant
-        // springs in with the brow pose
-        c.quad = true;
+    if (!c.hearts && !c.arrows && !wink && fold <= 0.0f &&
+        fabsf(p->brow) > 0.25f) {
+        // brow slash, signed by the pose: angry (brow > 0) cuts down toward
+        // the face center on rounded-BOX eyes; sad (brow < 0) droops down
+        // toward the outside on round teardrop eyes (per the references).
+        c.quad = (p->brow > 0.0f);
         float k = 0.47f * p->brow;
         for (int e = 0; e < 2; e++) {
             float s_in = e ? -1.0f : 1.0f;     // toward the face center
