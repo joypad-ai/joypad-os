@@ -473,6 +473,12 @@ static bool sinput_mode_send_report(uint8_t player_index,
         sinput_report.plug_status = 0;   // unknown -> SDL/Steam shows no battery
     }
 
+    // Gamepads with a keyboard surface (e.g. the Jaguar keypad) carry HID key
+    // state in kb_modifier/kb_keys — emit it on the composite keyboard
+    // interface. No-op for ordinary pads (kb state stays all-zero, and
+    // sinput_send_kbd_consumer only reports on change).
+    sinput_send_kbd_consumer(event);
+
     // Send report on gamepad interface (skip report_id byte since TinyUSB handles it)
     return tud_hid_n_report(ITF_NUM_HID_GAMEPAD, SINPUT_REPORT_ID_INPUT,
                             ((uint8_t*)&sinput_report) + 1,
