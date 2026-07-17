@@ -241,11 +241,12 @@ void amoled_blit_idx8(const uint8_t* fb, int w, int h,
         int ar = (accent565 >> 11) & 31, ag = (accent565 >> 5) & 63, ab = accent565 & 31;
         for (int cw = 0; cw <= 4; cw++) {
             for (int aw = 0; aw <= 64 - cw * 16; aw++) {
-                // Accent fades with inverse-gamma: the panel's luminance is
-                // ~code^2.2, so a linear code ramp renders as one visible
-                // ring then black. powf(f, 1/2.2) makes the PERCEIVED fade
-                // linear.
-                float fg = powf((float)aw / 64.0f, 0.4545f);
+                // Accent fades with partial inverse-gamma: the panel's
+                // luminance is ~code^2.2, so a code-linear ramp reads as one
+                // ring then black — but FULL correction (f^0.45) floodlights
+                // the whole halo. f^0.72 is the tasteful middle: a visible
+                // multi-ring fade that still dies away.
+                float fg = powf((float)aw / 64.0f, 0.72f);
                 int r = (cw * 16 * mr) / 64 + (int)(fg * ar + 0.5f);
                 int g = (cw * 16 * mg) / 64 + (int)(fg * ag + 0.5f);
                 int b = (cw * 16 * mb) / 64 + (int)(fg * ab + 0.5f);
