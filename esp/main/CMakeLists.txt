@@ -391,6 +391,9 @@ if(APP_NEEDS_BTSTACK)
             "${BTSTACK_PATH}/src/btstack_hid_parser.c"
             # BTstack Classic link key DB (needed by btstack_port_esp32.c)
             "${BTSTACK_PATH}/src/classic/btstack_link_key_db_tlv.c"
+            # Stub btstack_host_nus_send: cdc_commands.c's FACE.* NUS relay
+            # references it, but the real impl (btstack_host.c) is central-only.
+            "btstack_host_nus_stub.c"
         )
     endif()
 endif()
