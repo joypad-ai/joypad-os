@@ -15,8 +15,8 @@
 
 #include "usbd.h"
 #include "usbd_mode.h"
-#if defined(CONFIG_JOYBUS_BRIDGE)
-#include "hardware/clocks.h"  // set_sys_clock_khz — see joybus clock note in usbd_init
+#if defined(CONFIG_JOYBUS_BRIDGE) || defined(JOYPAD_USB_FAST_CLOCK)
+#include "hardware/clocks.h"  // set_sys_clock_khz — see clock policy in usbd_init
 #endif
 #include "descriptors/hid_descriptors.h"
 #include "descriptors/sinput_descriptors.h"
@@ -554,6 +554,16 @@ void usbd_init(void)
     // and GBA replies never decode (rx=000000 timeouts).
     bool clk_ok = set_sys_clock_khz(130000, true);
     printf("[usbd] sys_clock=130MHz set: %s\n", clk_ok ? "OK" : "FAIL");
+#elif defined(JOYPAD_USB_FAST_CLOCK)
+    // USB-output controller-emulation apps run at 200 MHz — the fastest
+    // build-supported clock, same value GP2040-CE uses — so PS4 local-auth
+    // RSA signing completes inside the console's ~challenge window (~1.7 s vs
+    // ~3.4 s at 125 MHz). Set here, once, before the USB stack starts: this is
+    // a board-level clock policy, not a per-driver runtime hack. Console-output
+    // and native-input apps never call usbd_init(), so they keep their own
+    // tuned clocks. Scoped in CMake (JOYPAD_USB_FAST_CLOCK) to wired RP2 apps.
+    bool clk_ok = set_sys_clock_khz(200000, true);
+    printf("[usbd] sys_clock=200MHz set: %s\n", clk_ok ? "OK" : "FAIL");
 #endif
     printf("[usbd] Initializing USB device output\n");
 

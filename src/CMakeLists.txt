@@ -3069,3 +3069,38 @@ foreach(_t IN LISTS _joypad_all_targets)
         endif()
     endif()
 endforeach()
+
+# ----------------------------------------------------------------------------
+# USB-output fast clock (200 MHz) — GP2040-CE-style board clock policy.
+#
+# PS4 local-auth RSA signing must land inside the console's challenge window;
+# at the stock 125 MHz a sign takes ~3.4 s, risking the timeout. GP2040-CE
+# raises the whole board to the fastest build-supported clock (200 MHz), which
+# brings signing to ~1.7 s. We do the same — but as a build-time / early-boot
+# board policy (set once in usbd_init() before the USB stack starts, NOT a
+# per-driver runtime hack), and only for the wired controller-emulation
+# USB-output apps.
+#
+# Deliberately EXCLUDED (each keeps its own tuned clock):
+#   - native-input apps (snes2usb/n642usb/gc2usb/lodgenet2usb/…): timing-
+#     critical PIO input is tuned around their clock.
+#   - CYW43 wireless variants (usb_pico_w/pico2_w/bt2usb): BT + SPI-PIO timing
+#     needs separate validation before raising the clock.
+#   - ESP32-S3 / nRF52840: different clock domain, handled by their own ports.
+set(_joypad_usb_fast_clock_targets
+    joypad_usb_feather_rp2040
+    joypad_usb_feather_rp2040_max3421
+    joypad_usb_feather_rp2040_usb_host
+    joypad_usb_feather_rp2040_usb_host_max3421
+    joypad_usb_ogxm_pico
+    joypad_usb_pico
+    joypad_usb_rp2040zero
+    joypad_usb_rp2350usba
+    joypad_usb2usb_remapper_v7_a
+    joypad_usb2usb_remapper_v7_b
+)
+foreach(_t IN LISTS _joypad_usb_fast_clock_targets)
+    if(TARGET ${_t})
+        target_compile_definitions(${_t} PRIVATE JOYPAD_USB_FAST_CLOCK=1)
+    endif()
+endforeach()
