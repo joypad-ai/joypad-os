@@ -103,8 +103,12 @@ typedef struct {
     // reserved[] so the 256-byte layout is unchanged; old flashes read 0=off.
     uint8_t shoulder_swap;
 
-    // Reserved for future global settings (8 bytes)
-    uint8_t reserved[8];
+    // PS4 auth event log (0=disabled, 1=enabled). Carved from reserved[] so the
+    // 256-byte layout is unchanged; old flashes read 0=disabled.
+    uint8_t ps4_auth_log;
+
+    // Reserved for future global settings (7 bytes)
+    uint8_t reserved[7];
 
     // Custom profiles (4 x 56 = 224 bytes)
     custom_profile_t profiles[CUSTOM_PROFILE_MAX_COUNT];

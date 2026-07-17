@@ -40,6 +40,14 @@
 #include "bt/ble_output/ble_output.h"
 #endif
 
+// PS4 auth flash storage (always compiled with USB device sources)
+#include "core/services/storage/ps4_auth_flash.h"
+#include "core/services/storage/ps4_event_log.h"
+// PS4 local RSA signing (requires pico_mbedtls — enabled by ENABLE_PS4_LOCAL_AUTH)
+#ifdef ENABLE_PS4_LOCAL_AUTH
+#include "usb/usbd/modes/ps4_local_auth.h"
+#endif
+
 // ============================================================================
 // STATE
 // ============================================================================
@@ -62,20 +70,27 @@ static uint32_t pending_reboot_time = 0;
 // LOG CAPTURE (ring buffer + stdio driver)
 // ============================================================================
 
-#define LOG_BUF_SIZE 1024
+#define LOG_BUF_SIZE 4096
 static char log_ring[LOG_BUF_SIZE];
 static volatile uint16_t log_head = 0;  // Write position
-static volatile uint16_t log_tail = 0;  // Read position
+static volatile uint16_t log_tail = 0;  // Read position (streaming)
+
+// LOG.DUMP state: separate read position so dump doesn't interfere with streaming
+static volatile uint16_t dump_pos = 0;
+static volatile uint16_t dump_end = 0;
+static volatile bool     dump_active = false;
+
+// PS4LOG.DUMP buffer: holds full flash log text for synchronous sending
+#define PS4LOG_DUMP_BUF_SIZE 4096
+static char ps4log_dump_buf[PS4LOG_DUMP_BUF_SIZE];
 
 static void log_stdio_out_chars(const char *buf, int len)
 {
-    // Skip ring buffer writes when not streaming — zero overhead on normal path
-    if (!stream_ctx || !stream_ctx->log_streaming) return;
-
+    // Always capture — ring buffer is active from startup regardless of streaming state
     for (int i = 0; i < len; i++) {
         uint16_t next = (log_head + 1) % LOG_BUF_SIZE;
         if (next == log_tail) {
-            // Buffer full - drop oldest byte
+            // Buffer full - advance tail (drop oldest byte) to make room
             log_tail = (log_tail + 1) % LOG_BUF_SIZE;
         }
         log_ring[log_head] = buf[i];
@@ -1820,6 +1835,276 @@ static void cmd_debug_stream(const char* json)
 }
 
 // ============================================================================
+// LOG COMMANDS
+// ============================================================================
+
+// LOG.DUMP — snapshot ring buffer and stream it as log events, then send response
+static void cmd_log_dump(const char* json)
+{
+    (void)json;
+    // Snapshot: drain from current tail to current head
+    dump_pos    = log_tail;
+    dump_end    = log_head;
+    dump_active = true;
+    // Make sure we have a stream context to send events on
+    if (!stream_ctx) stream_ctx = active_ctx;
+    send_ok();
+}
+
+// LOG.CLEAR — discard all buffered log data
+static void cmd_log_clear(const char* json)
+{
+    (void)json;
+    dump_active = false;
+    log_tail = log_head;   // discard all pending streaming data
+    dump_pos = dump_end = log_head;
+    send_ok();
+}
+
+// PS4LOG.DUMP — read flash-persistent auth event log and return it inline in
+// the OK response as {"ok":true,"log":"..."}. No events, no streaming — works
+// exactly like PING. Log text is JSON-escaped and capped at ~900 bytes so the
+// whole response fits in the 1024-byte CDC TX FIFO in one shot.
+static void cmd_ps4log_dump(const char *json)
+{
+    (void)json;
+
+    int log_len = ps4_event_log_dump(ps4log_dump_buf, sizeof(ps4log_dump_buf));
+
+    // Build response into ps4log_dump_buf itself (reuse it — it's 4096 bytes,
+    // more than enough).  We build into a local static to avoid aliasing.
+    static char resp[1024];
+    int pos = 0;
+    pos += snprintf(resp + pos, sizeof(resp) - pos, "{\"ok\":true,\"log\":\"");
+
+    // JSON-escape log text; stop when response would get within 4 bytes of limit
+    for (int i = 0; i < log_len && pos < (int)sizeof(resp) - 20; i++) {
+        unsigned char c = (unsigned char)ps4log_dump_buf[i];
+        if      (c == '\\') { resp[pos++] = '\\'; resp[pos++] = '\\'; }
+        else if (c == '"')  { resp[pos++] = '\\'; resp[pos++] = '"';  }
+        else if (c == '\n') { resp[pos++] = '\\'; resp[pos++] = 'n';  }
+        else if (c == '\r') { resp[pos++] = '\\'; resp[pos++] = 'r';  }
+        else if (c >= 0x20) { resp[pos++] = c; }
+    }
+    resp[pos++] = '"';
+    resp[pos++] = '}';
+    resp[pos]   = '\0';
+
+    cdc_protocol_send_response(active_ctx, resp);
+}
+
+// PS4LOG.CLEAR — erase flash-persistent auth event log (preserves auth key data)
+static void cmd_ps4log_clear(const char *json)
+{
+    (void)json;
+    ps4_event_log_clear();
+    send_ok();
+}
+
+// PS4LOG.ENABLE.GET — check if PS4 auth event logging is enabled
+static void cmd_ps4log_enable_get(const char *json)
+{
+    (void)json;
+#ifdef ENABLE_PS4_LOCAL_AUTH
+    bool enabled = ps4_local_auth_get_log_enabled();
+    snprintf(response_buf, sizeof(response_buf),
+             "{\"enabled\":%s}", enabled ? "true" : "false");
+    send_json(response_buf);
+#else
+    send_error("PS4 local auth not available");
+#endif
+}
+
+// PS4LOG.ENABLE.SET — enable or disable PS4 auth event logging
+static void cmd_ps4log_enable_set(const char *json)
+{
+#ifdef ENABLE_PS4_LOCAL_AUTH
+    bool enabled;
+    if (!json_get_bool(json, "enabled", &enabled)) {
+        send_error("missing enabled");
+        return;
+    }
+
+    ps4_local_auth_set_log_enabled(enabled);
+
+    flash_t flash_data;
+    if (flash_load(&flash_data)) {
+        flash_data.ps4_auth_log = enabled ? 1 : 0;
+        flash_save(&flash_data);
+    }
+
+    snprintf(response_buf, sizeof(response_buf),
+             "{\"enabled\":%s}", enabled ? "true" : "false");
+    send_json(response_buf);
+#else
+    (void)json;
+    send_error("PS4 local auth not available");
+#endif
+}
+
+// ============================================================================
+// PS4 LOCAL AUTH COMMANDS
+// ============================================================================
+
+// Base64 decode table (-1 = invalid, -2 = padding '=')
+static const int8_t b64_table[256] = {
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,62,-1,-1,-1,63,
+    52,53,54,55,56,57,58,59,60,61,-1,-1,-1,-2,-1,-1,
+    -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10,11,12,13,14,
+    15,16,17,18,19,20,21,22,23,24,25,-1,-1,-1,-1,-1,
+    -1,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,
+    41,42,43,44,45,46,47,48,49,50,51,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+};
+
+// Decode base64 string (in_len chars) into out (max out_max bytes).
+// Returns number of bytes written, or -1 on error.
+static int b64_decode(const char *in, int in_len, uint8_t *out, int out_max)
+{
+    int out_len = 0;
+    uint32_t buf = 0;
+    int bits = 0;
+
+    for (int i = 0; i < in_len; i++) {
+        int8_t val = b64_table[(uint8_t)in[i]];
+        if (val == -1) continue;  // Skip whitespace and invalid chars
+        if (val == -2) break;     // Padding — end of data
+
+        buf = (buf << 6) | (uint32_t)val;
+        bits += 6;
+
+        if (bits >= 8) {
+            if (out_len >= out_max) return -1;  // Output overflow
+            bits -= 8;
+            out[out_len++] = (uint8_t)((buf >> bits) & 0xFF);
+        }
+    }
+    return out_len;
+}
+
+// PS4AUTH.SET — receives all key material and saves to flash
+// {"cmd":"PS4AUTH.SET","args":{"N":"<b64>","E":"<b64>","P":"<b64>","Q":"<b64>",
+//   "serial":"<b64>","signature":"<b64>"}}
+static void cmd_ps4auth_set(const char *json)
+{
+    static ps4_auth_data_t auth;
+    memset(&auth, 0, sizeof(auth));
+
+    const char *val;
+    int val_len;
+    int decoded_len;
+
+    // N — RSA modulus (256 bytes)
+    val = json_get_string(json, "N", &val_len);
+    if (!val) { send_error("missing N"); return; }
+    decoded_len = b64_decode(val, val_len, auth.rsa_n, sizeof(auth.rsa_n));
+    if (decoded_len != 256) { send_error("N must be 256 bytes"); return; }
+
+    // E — RSA public exponent (4 bytes)
+    val = json_get_string(json, "E", &val_len);
+    if (!val) { send_error("missing E"); return; }
+    decoded_len = b64_decode(val, val_len, auth.rsa_e, sizeof(auth.rsa_e));
+    if (decoded_len < 1 || decoded_len > 4) { send_error("E must be 1-4 bytes"); return; }
+    // Right-align E in 4-byte field if shorter than 4 bytes
+    if (decoded_len < 4) {
+        uint8_t tmp[4] = {0};
+        memcpy(tmp + (4 - decoded_len), auth.rsa_e, decoded_len);
+        memcpy(auth.rsa_e, tmp, 4);
+    }
+
+    // P — RSA prime (128 bytes)
+    val = json_get_string(json, "P", &val_len);
+    if (!val) { send_error("missing P"); return; }
+    decoded_len = b64_decode(val, val_len, auth.rsa_p, sizeof(auth.rsa_p));
+    if (decoded_len != 128) { send_error("P must be 128 bytes"); return; }
+
+    // Q — RSA prime (128 bytes)
+    val = json_get_string(json, "Q", &val_len);
+    if (!val) { send_error("missing Q"); return; }
+    decoded_len = b64_decode(val, val_len, auth.rsa_q, sizeof(auth.rsa_q));
+    if (decoded_len != 128) { send_error("Q must be 128 bytes"); return; }
+
+    // serial — 16 bytes
+    val = json_get_string(json, "serial", &val_len);
+    if (!val) { send_error("missing serial"); return; }
+    decoded_len = b64_decode(val, val_len, auth.serial, sizeof(auth.serial));
+    if (decoded_len != 16) { send_error("serial must be 16 bytes"); return; }
+
+    // signature — 256 bytes (sig.bin)
+    val = json_get_string(json, "signature", &val_len);
+    if (!val) { send_error("missing signature"); return; }
+    decoded_len = b64_decode(val, val_len, auth.sig, sizeof(auth.sig));
+    if (decoded_len != 256) { send_error("signature must be 256 bytes"); return; }
+
+    // Save to flash
+    ps4_auth_flash_save(&auth);
+
+#ifdef ENABLE_PS4_LOCAL_AUTH
+    // Reload local auth module so it takes effect immediately
+    ps4_local_auth_reload();
+    printf("[CDC] PS4AUTH.SET: saved, local auth=%s\n",
+           ps4_local_auth_is_available() ? "ready" : "failed");
+#else
+    printf("[CDC] PS4AUTH.SET: saved (RSA signing not available in this build)\n");
+#endif
+
+    send_ok();
+}
+
+// PS4AUTH.STATUS — returns whether auth data is installed
+static void cmd_ps4auth_status(const char *json)
+{
+    (void)json;
+
+    // Load once — reuse for both installed check and serial
+    ps4_auth_data_t auth;
+    bool installed = ps4_auth_flash_load(&auth);
+#ifdef ENABLE_PS4_LOCAL_AUTH
+    bool active = ps4_local_auth_is_available();
+    if (!installed) installed = active;
+#else
+    bool active = false;
+#endif
+
+    if (installed) {
+        char serial_hex[33] = {0};
+        for (int i = 0; i < 16; i++) {
+            snprintf(serial_hex + i * 2, 3, "%02X", auth.serial[i]);
+        }
+        snprintf(response_buf, sizeof(response_buf),
+                 "{\"installed\":true,\"active\":%s,\"serial\":\"%s\"}",
+                 active ? "true" : "false",
+                 serial_hex);
+    } else {
+        snprintf(response_buf, sizeof(response_buf),
+                 "{\"installed\":false,\"active\":false}");
+    }
+    send_json(response_buf);
+}
+
+// PS4AUTH.CLEAR — removes auth data from flash
+static void cmd_ps4auth_clear(const char *json)
+{
+    (void)json;
+    ps4_auth_flash_erase();
+#ifdef ENABLE_PS4_LOCAL_AUTH
+    // Reinit local auth (will fail, disabling local auth)
+    ps4_local_auth_reload();
+#endif
+    printf("[CDC] PS4AUTH.CLEAR: auth data erased\n");
+    send_ok();
+}
+
+// ============================================================================
 // SETTINGS COMMANDS
 // ============================================================================
 
@@ -3399,6 +3684,15 @@ static const cmd_entry_t commands[] = {
     {"SD.INFO", cmd_sd_info},
     {"SD.LIST", cmd_sd_list},
 #endif
+    {"LOG.DUMP",       cmd_log_dump},
+    {"LOG.CLEAR",      cmd_log_clear},
+    {"PS4LOG.DUMP",        cmd_ps4log_dump},
+    {"PS4LOG.CLEAR",       cmd_ps4log_clear},
+    {"PS4LOG.ENABLE.GET",  cmd_ps4log_enable_get},
+    {"PS4LOG.ENABLE.SET",  cmd_ps4log_enable_set},
+    {"PS4AUTH.SET",    cmd_ps4auth_set},
+    {"PS4AUTH.STATUS", cmd_ps4auth_status},
+    {"PS4AUTH.CLEAR",  cmd_ps4auth_clear},
     {NULL, NULL}
 };
 
@@ -3663,3 +3957,4 @@ void cdc_commands_send_disconnect_event(uint8_t port)
              "{\"type\":\"disconnect\",\"port\":%d}", port);
     cdc_protocol_send_event(stream_ctx, response_buf);
 }
+

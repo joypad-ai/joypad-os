@@ -4,8 +4,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2024 Robert Dale Smith
 //
 // PlayStation 4 (DualShock 4) USB controller emulation.
-// Uses Razer Panthera VID/PID for compatibility.
-// Includes auth feature reports (0xF0-0xF3) for future passthrough support.
+// Uses Hori Fighting Commander VID/PID for gamepad compatibility.
+// Includes auth feature reports (0xF0-0xF3) for local auth and passthrough support.
 
 #ifndef PS4_DESCRIPTORS_H
 #define PS4_DESCRIPTORS_H
@@ -17,12 +17,12 @@
 // USB IDENTIFIERS
 // ============================================================================
 
-// Using Razer Panthera - known PS4-compatible fightstick
-#define PS4_VID             0x1532  // Razer
-#define PS4_PID             0x0401  // Panthera
+// Using Hori Fighting Commander for better Gamepad compatibility
+#define PS4_VID             0x0F0D  // Hori
+#define PS4_PID             0x0086  // Fighting Commander
 #define PS4_BCD             0x0100  // v1.00
-#define PS4_MANUFACTURER    "Razer"
-#define PS4_PRODUCT         "Panthera"
+#define PS4_MANUFACTURER    "HORI CO., LTD."
+#define PS4_PRODUCT         "Fighting Commander"
 
 #define PS4_ENDPOINT_SIZE   64
 
@@ -38,7 +38,7 @@
 #define PS4_HAT_DOWN_LEFT   0x05
 #define PS4_HAT_LEFT        0x06
 #define PS4_HAT_UP_LEFT     0x07
-#define PS4_HAT_NOTHING     0x0F  // Null state - PS4 requires 0x0F, not 0x08
+#define PS4_HAT_NOTHING     0x08  // Null state - Brook and many DS4 use 0x08 instead of 0x0F
 
 // ============================================================================
 // BUTTON MASKS
@@ -131,13 +131,16 @@ typedef struct __attribute__((packed)) {
     // Bytes 10-11: Timestamp
     uint16_t timestamp;
 
-    // Byte 12: Padding
-    uint8_t padding;
+    // Bytes 12-32: Sensor data (gyro/accel/status)
+    uint8_t mystery[21];
 
-    // Bytes 13-34: Sensor data (gyro/accel/status)
-    uint8_t mystery[22];
+    // Byte 33: Touchpad active status
+    uint8_t touchpad_active;
 
-    // Bytes 35-42: Touchpad data
+    // Byte 34: Touchpad increment/counter
+    uint8_t touchpad_increment;
+
+    // Bytes 35-42: Touchpad data (2 fingers)
     ps4_touchpad_data_t touchpad;
 
     // Bytes 43-63: Padding to 64 bytes
@@ -180,10 +183,18 @@ static inline void ps4_init_report(ps4_in_report_t* report) {
     report->ly = PS4_JOYSTICK_MID;
     report->rx = PS4_JOYSTICK_MID;
     report->ry = PS4_JOYSTICK_MID;
-    report->dpad = PS4_HAT_NOTHING;  // 0x0F for neutral
-    // Touchpad fingers unpressed
+    report->dpad = PS4_HAT_NOTHING;  // Now 0x08 for neutral
+    report->touchpad_active = 0;
+    report->touchpad_increment = 0;
+    // Touchpad fingers unpressed and centered (X=960, Y=471)
     report->touchpad.p1.unpressed = 1;
+    report->touchpad.p1.data[0] = 0xC0; // X LSB
+    report->touchpad.p1.data[1] = 0x73; // X MSB / Y LSB
+    report->touchpad.p1.data[2] = 0x1D; // Y MSB
     report->touchpad.p2.unpressed = 1;
+    report->touchpad.p2.data[0] = 0xC0;
+    report->touchpad.p2.data[1] = 0x73;
+    report->touchpad.p2.data[2] = 0x1D;
 }
 
 // ============================================================================
@@ -203,7 +214,7 @@ static const tusb_desc_device_t ps4_device_descriptor = {
     .bcdDevice          = PS4_BCD,
     .iManufacturer      = 0x01,
     .iProduct           = 0x02,
-    .iSerialNumber      = 0x00,
+    .iSerialNumber      = 0x00,  // Disable Serial Number
     .bNumConfigurations = 0x01
 };
 
@@ -260,10 +271,10 @@ static const uint8_t ps4_report_descriptor[] = {
     0x95, 0x01,        //   Report Count (1)
     0x81, 0x02,        //   Input (Data,Var,Abs)
 
-    // Triggers (Rx, Ry)
+    // Triggers (Z, Rz) - Standard PS4
     0x05, 0x01,        //   Usage Page (Generic Desktop Ctrls)
-    0x09, 0x33,        //   Usage (Rx)
-    0x09, 0x34,        //   Usage (Ry)
+    0x09, 0x32,        //   Usage (Z)
+    0x09, 0x35,        //   Usage (Rz)
     0x15, 0x00,        //   Logical Minimum (0)
     0x26, 0xFF, 0x00,  //   Logical Maximum (255)
     0x75, 0x08,        //   Report Size (8)
@@ -294,6 +305,10 @@ static const uint8_t ps4_report_descriptor[] = {
     0x06, 0xF0, 0xFF,  // Usage Page (Vendor Defined 0xFFF0)
     0x09, 0x40,        // Usage (0x40)
     0xA1, 0x01,        // Collection (Application)
+    // Global items reset after End Collection above; re-declare them here
+    0x15, 0x00,        //   Logical Minimum (0)
+    0x26, 0xFF, 0x00,  //   Logical Maximum (255)
+    0x75, 0x08,        //   Report Size (8)
 
     // Report ID 0xF0: Set Auth Payload (nonce from console)
     0x85, 0xF0,        //   Report ID (240)

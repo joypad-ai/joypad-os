@@ -100,6 +100,7 @@ Use any USB or Bluetooth controller on retro consoles:
 
 | Console | Apps | Highlights | Build | Docs |
 |---------|------|-----------|-------|------|
+| **PlayStation 4** | usb2usb | Local RSA auth, passthrough, rumble | [DIY](docs/hardware/diy.md) | [Guide](docs/architecture/ps4_auth.md) |
 | **PCEngine / TurboGrafx-16** | usb2pce | Multitap (5 players), mouse, 2/3/6-button | [DIY](docs/hardware/diy.md) | [Guide](docs/apps/usb2pce.md) |
 | **GameCube / Wii** | usb2gc, bt2gc | Profiles, rumble, keyboard mode | [Build](docs/hardware/builds/usb2gc.md) | [Guide](docs/apps/usb2gc.md) |
 | **Sega Dreamcast** | usb2dc | Rumble, analog triggers, 4 players | [DIY](docs/hardware/diy.md) | [Guide](docs/apps/usb2dc.md) |

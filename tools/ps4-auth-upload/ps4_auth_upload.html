@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Joypad OS — PS4 Auth Upload</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #0f0f0f;
+    color: #e0e0e0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 32px 16px;
+  }
+  h1 { font-size: 1.5rem; margin-bottom: 4px; color: #fff; }
+  .subtitle { color: #888; font-size: 0.85rem; margin-bottom: 32px; }
+  .card {
+    background: #1a1a1a;
+    border: 1px solid #2a2a2a;
+    border-radius: 12px;
+    padding: 24px;
+    width: 100%;
+    max-width: 600px;
+    margin-bottom: 16px;
+  }
+  .card h2 { font-size: 1rem; color: #ccc; margin-bottom: 16px; }
+  .row { display: flex; gap: 12px; align-items: center; margin-bottom: 14px; }
+  .row label { flex: 0 0 100px; font-size: 0.82rem; color: #999; }
+  .row input[type="file"] {
+    flex: 1;
+    font-size: 0.82rem;
+    color: #ccc;
+    background: #111;
+    border: 1px solid #333;
+    border-radius: 6px;
+    padding: 6px 8px;
+  }
+  .row input[type="file"]::-webkit-file-upload-button {
+    background: #2a2a2a;
+    color: #ccc;
+    border: none;
+    border-radius: 4px;
+    padding: 4px 10px;
+    cursor: pointer;
+    font-size: 0.78rem;
+  }
+  .badge {
+    font-size: 0.72rem;
+    padding: 2px 8px;
+    border-radius: 10px;
+    white-space: nowrap;
+    min-width: 60px;
+    text-align: center;
+  }
+  .badge.ok    { background: #1a3a1a; color: #4caf50; border: 1px solid #2a4a2a; }
+  .badge.err   { background: #3a1a1a; color: #f44336; border: 1px solid #4a2a2a; }
+  .badge.idle  { background: #2a2a2a; color: #666;    border: 1px solid #333; }
+  .btn-row { display: flex; gap: 10px; margin-top: 8px; flex-wrap: wrap; }
+  button {
+    flex: 1;
+    padding: 10px 16px;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.88rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-connect  { background: #1565c0; color: #fff; }
+  .btn-upload   { background: #1b5e20; color: #fff; }
+  .btn-clear    { background: #3a1a1a; color: #f44336; border: 1px solid #4a2a2a; }
+  .btn-status   { background: #1a2a3a; color: #64b5f6; border: 1px solid #2a3a4a; }
+  .btn-log      { background: #1a1a3a; color: #ce93d8; border: 1px solid #2a2a4a; }
+  .btn-logclear { background: #2a2a1a; color: #ffcc02; border: 1px solid #3a3a2a; }
+  .btn-live-on  { background: #1a3a2a; color: #80cbc4; border: 1px solid #2a4a3a; }
+  .btn-live-off { background: #3a1a2a; color: #f48fb1; border: 1px solid #4a2a3a; }
+  .log {
+    background: #111;
+    border: 1px solid #222;
+    border-radius: 8px;
+    padding: 12px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.78rem;
+    color: #aaa;
+    height: 160px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  .log .ok  { color: #4caf50; }
+  .log .err { color: #f44336; }
+  .log .inf { color: #64b5f6; }
+  .device-log {
+    background: #0a0a0a;
+    border: 1px solid #333;
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.75rem;
+    color: #b0b0b0;
+    height: 420px;
+    overflow-y: auto;
+    white-space: pre;
+    word-break: break-all;
+    resize: vertical;
+    user-select: text;
+    cursor: text;
+  }
+  .device-log-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+  .device-log-header h2 { margin-bottom: 0; }
+  .live-dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: #444;
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+  .live-dot.active { background: #4caf50; animation: blink 1s infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  .status-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.82rem;
+    margin-bottom: 16px;
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #444; }
+  .dot.connected { background: #4caf50; }
+  .info-box {
+    background: #0d1f35;
+    border: 1px solid #1a3a5a;
+    border-radius: 8px;
+    padding: 12px 16px;
+    font-size: 0.78rem;
+    color: #90caf9;
+    line-height: 1.6;
+    margin-bottom: 16px;
+    width: 100%;
+    max-width: 600px;
+  }
+  .info-box strong { color: #e3f2fd; }
+  .copy-hint { font-size: 0.72rem; color: #666; margin-top: 6px; }
+</style>
+</head>
+<body>
+
+<h1>PS4 Auth Upload</h1>
+<p class="subtitle">Joypad OS — Install local RSA authentication key material</p>
+
+<div class="info-box">
+  <strong>What this does:</strong> Stores your DS4 authentication key material directly in the
+  device's flash. Once uploaded, Joypad OS can authenticate with a PS4 console without
+  a real DS4 dongle connected.<br><br>
+  <strong>Files needed:</strong><br>
+  &bull; <code>key.prm</code> — RSA-2048 private key (PEM format)<br>
+  &bull; <code>serial.txt</code> — 32 hex characters (device serial)<br>
+  &bull; <code>sig.bin</code> — 256 bytes (Sony-issued device signature)<br><br>
+  <strong>Browser requirement:</strong> Chrome or Edge (Web Serial API).
+  Connect your device via USB then click Connect.
+</div>
+
+<div class="card">
+  <h2>Connection</h2>
+  <div class="status-bar">
+    <div class="dot" id="dot"></div>
+    <span id="status-text">Disconnected</span>
+  </div>
+  <div class="btn-row">
+    <button class="btn-connect" id="btn-connect" onclick="toggleConnect()">Connect</button>
+    <button class="btn-status" id="btn-check" onclick="checkStatus()" disabled>Check Status</button>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Auth Settings</h2>
+  <div class="row" style="margin-bottom:0;">
+    <label for="check-authlog" style="flex:1;cursor:pointer;display:flex;align-items:center;gap:8px;color:#ccc;">
+      <input type="checkbox" id="check-authlog" onchange="setAuthLog(this.checked)" disabled>
+      Enable PS4 authentication event log
+    </label>
+  </div>
+  <p class="copy-hint">Saves auth handshake events to flash for debugging. Default: Off.</p>
+</div>
+
+<div class="card">
+  <h2>Key Files</h2>
+  <div class="row">
+    <label>key.prm</label>
+    <input type="file" id="file-key" accept=".prm,.pem,.key,.txt" onchange="onFileChange('key')">
+    <span class="badge idle" id="badge-key">—</span>
+  </div>
+  <div class="row">
+    <label>serial.txt</label>
+    <input type="file" id="file-serial" accept=".txt" onchange="onFileChange('serial')">
+    <span class="badge idle" id="badge-serial">—</span>
+  </div>
+  <div class="row">
+    <label>sig.bin</label>
+    <input type="file" id="file-sig" accept=".bin" onchange="onFileChange('sig')">
+    <span class="badge idle" id="badge-sig">—</span>
+  </div>
+  <div class="btn-row">
+    <button class="btn-upload" id="btn-upload" onclick="doUpload()" disabled>Upload to Device</button>
+    <button class="btn-clear"  id="btn-clear"  onclick="doClear()"  disabled>Clear Auth Data</button>
+  </div>
+</div>
+
+<div class="card">
+  <div class="device-log-header">
+    <h2>
+      <span class="live-dot" id="live-dot"></span>
+      Device Log
+    </h2>
+    <span style="font-size:0.75rem;color:#666;" id="log-bytes"></span>
+  </div>
+  <div class="btn-row" style="margin-bottom:10px;">
+    <button class="btn-live-on"  id="btn-live"     onclick="toggleLive()"    disabled>Start Live Log</button>
+    <button class="btn-log"      id="btn-getlog"   onclick="getLog()"        disabled>Get Flash Log</button>
+    <button class="btn-logclear" id="btn-clearlog" onclick="clearLog()"      disabled>Clear Log</button>
+  </div>
+  <div class="device-log" id="device-log"></div>
+  <p class="copy-hint">Click inside the log box and press Ctrl+A then Ctrl+C to copy all.</p>
+</div>
+
+<div class="card">
+  <h2>Tool Log</h2>
+  <div class="log" id="log"></div>
+</div>
+
+<!-- No external crypto library needed — uses browser WebCrypto API -->
+
+<script>
+'use strict';
+
+// ============================================================================
+// CDC Protocol
+// ============================================================================
+
+const CDC_SYNC = 0xAA;
+const MSG_CMD = 0x01;
+const MSG_RSP = 0x02;
+const MSG_EVT = 0x03;
+
+let seqNum = 0;
+let port = null;
+let writer = null;
+let reader = null;
+let readLoopActive = false;
+let pendingResolve = null;
+let pendingReject = null;
+let pendingTimeout = null;
+
+function crc16(data) {
+    let crc = 0xFFFF;
+    for (const byte of data) {
+        crc ^= byte << 8;
+        for (let i = 0; i < 8; i++) {
+            if (crc & 0x8000) crc = ((crc << 1) ^ 0x1021) & 0xFFFF;
+            else crc = (crc << 1) & 0xFFFF;
+        }
+    }
+    return crc;
+}
+
+function buildPacket(type, seq, payload) {
+    const payloadBytes = typeof payload === 'string'
+        ? new TextEncoder().encode(payload)
+        : payload;
+    const packet = new Uint8Array(5 + payloadBytes.length + 2);
+    packet[0] = CDC_SYNC;
+    packet[1] = payloadBytes.length & 0xFF;
+    packet[2] = (payloadBytes.length >> 8) & 0xFF;
+    packet[3] = type;
+    packet[4] = seq;
+    packet.set(payloadBytes, 5);
+    const crcData = new Uint8Array(2 + payloadBytes.length);
+    crcData[0] = type; crcData[1] = seq;
+    crcData.set(payloadBytes, 2);
+    const crcVal = crc16(crcData);
+    packet[5 + payloadBytes.length] = crcVal & 0xFF;
+    packet[5 + payloadBytes.length + 1] = (crcVal >> 8) & 0xFF;
+    return packet;
+}
+
+// Receive buffer state machine
+let rxBuf = [];
+let rxState = 'SYNC';
+let rxLength = 0;
+let rxType = 0;
+let rxSeq = 0;
+
+function processIncoming(byte) {
+    switch (rxState) {
+        case 'SYNC':
+            if (byte === CDC_SYNC) { rxState = 'LEN_LO'; rxBuf = []; }
+            break;
+        case 'LEN_LO': rxLength = byte; rxState = 'LEN_HI'; break;
+        case 'LEN_HI': rxLength |= byte << 8; rxState = 'TYPE'; break;
+        case 'TYPE':   rxType = byte; rxState = 'SEQ'; break;
+        case 'SEQ':    rxSeq = byte; rxState = rxLength > 0 ? 'DATA' : 'CRC_LO'; break;
+        case 'DATA':
+            rxBuf.push(byte);
+            if (rxBuf.length >= rxLength) rxState = 'CRC_LO';
+            break;
+        case 'CRC_LO': rxState = 'CRC_HI'; break;
+        case 'CRC_HI':
+            rxState = 'SYNC';
+            const payload = new Uint8Array(rxBuf);
+            const text = new TextDecoder().decode(payload);
+            if (rxType === MSG_RSP) {
+                if (pendingResolve) {
+                    clearTimeout(pendingTimeout);
+                    const resolve = pendingResolve;
+                    pendingResolve = null;
+                    pendingReject = null;
+                    resolve(text);
+                }
+            } else if (rxType === MSG_EVT) {
+                handleEvent(text);
+            }
+            break;
+    }
+}
+
+// ============================================================================
+// Event handler (MSG_EVT from device)
+// ============================================================================
+
+function handleEvent(text) {
+    try {
+        const evt = JSON.parse(text);
+        if (evt.type === 'log') {
+            // Live streaming log event
+            appendDeviceLog(evt.msg || '');
+        }
+    } catch (_) {
+        // Non-JSON event, ignore
+    }
+}
+
+function appendDeviceLog(msg) {
+    const el = document.getElementById('device-log');
+    const atBottom = el.scrollHeight - el.scrollTop <= el.clientHeight + 50;
+    el.textContent += msg;
+    if (atBottom) el.scrollTop = el.scrollHeight;
+    document.getElementById('log-bytes').textContent = el.textContent.length + ' bytes';
+}
+
+async function startReadLoop() {
+    readLoopActive = true;
+    try {
+        reader = port.readable.getReader();
+        while (readLoopActive) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            for (const byte of value) processIncoming(byte);
+        }
+    } catch (e) {
+        if (readLoopActive) log('err', 'Read error: ' + e.message);
+    } finally {
+        try { reader.releaseLock(); } catch (_) {}
+    }
+}
+
+async function sendCmd(json, timeoutMs = 8000) {
+    const seq = (seqNum++) & 0xFF;
+    const packet = buildPacket(MSG_CMD, seq, json);
+    return new Promise((resolve, reject) => {
+        pendingResolve = resolve;
+        pendingReject = reject;
+        pendingTimeout = setTimeout(() => {
+            pendingResolve = null;
+            pendingReject = null;
+            reject(new Error('Timeout waiting for response'));
+        }, timeoutMs);
+        writer.write(packet);
+    });
+}
+
+// ============================================================================
+// UI helpers
+// ============================================================================
+
+function log(cls, msg) {
+    const el = document.getElementById('log');
+    const line = document.createElement('span');
+    line.className = cls || '';
+    line.textContent = (cls ? '[' + cls.toUpperCase() + '] ' : '') + msg + '\n';
+    el.appendChild(line);
+    el.scrollTop = el.scrollHeight;
+}
+
+function setBadge(id, status, text) {
+    const el = document.getElementById('badge-' + id);
+    el.className = 'badge ' + status;
+    el.textContent = text;
+}
+
+function setConnected(connected) {
+    document.getElementById('dot').className = 'dot' + (connected ? ' connected' : '');
+    document.getElementById('status-text').textContent = connected ? 'Connected' : 'Disconnected';
+    document.getElementById('btn-connect').textContent = connected ? 'Disconnect' : 'Connect';
+    document.getElementById('btn-check').disabled = !connected;
+    document.getElementById('btn-upload').disabled = !connected;
+    document.getElementById('btn-clear').disabled = !connected;
+    document.getElementById('btn-live').disabled = !connected;
+    document.getElementById('btn-getlog').disabled = !connected;
+    document.getElementById('btn-clearlog').disabled = !connected;
+    document.getElementById('check-authlog').disabled = !connected;
+}
+
+// ============================================================================
+// Auth Settings
+// ============================================================================
+
+async function loadAuthLogSettings() {
+    if (!port) return;
+    try {
+        const rspText = await sendCmd('{"cmd":"PS4LOG.ENABLE.GET"}');
+        const rsp = JSON.parse(rspText);
+        document.getElementById('check-authlog').checked = !!rsp.enabled;
+    } catch (e) {
+        log('err', 'Failed to load auth log setting: ' + e.message);
+    }
+}
+
+async function setAuthLog(enabled) {
+    if (!port) return;
+    try {
+        await sendCmd(JSON.stringify({ cmd: 'PS4LOG.ENABLE.SET', enabled }));
+        log('ok', 'PS4 auth log ' + (enabled ? 'ENABLED' : 'DISABLED'));
+    } catch (e) {
+        log('err', 'Failed to set auth log: ' + e.message);
+        // Revert UI on failure
+        document.getElementById('check-authlog').checked = !enabled;
+    }
+}
+
+// ============================================================================
+// Connection
+// ============================================================================
+
+let liveStreaming = false;
+
+async function toggleConnect() {
+    if (port) {
+        await doDisconnect();
+    } else {
+        await doConnect();
+    }
+}
+
+async function doConnect() {
+    if (!('serial' in navigator)) {
+        log('err', 'Web Serial not supported. Use Chrome or Edge.');
+        return;
+    }
+    try {
+        port = await navigator.serial.requestPort({ filters: [] });
+        await port.open({ baudRate: 115200 });
+        writer = port.writable.getWriter();
+        log('inf', 'Port opened');
+
+        startReadLoop();
+
+        // Send PING to verify connection
+        const rsp = await sendCmd('{"cmd":"PING"}');
+        log('ok', 'Device responded: ' + rsp);
+        setConnected(true);
+        updateLiveButton();
+        await loadAuthLogSettings();
+    } catch (e) {
+        log('err', 'Connect failed: ' + e.message);
+        port = null;
+    }
+}
+
+async function doDisconnect() {
+    if (liveStreaming) {
+        try { await sendCmd('{"cmd":"DEBUG.STREAM","enable":false}', 2000); } catch (_) {}
+        liveStreaming = false;
+    }
+    readLoopActive = false;
+    try { if (reader) { await reader.cancel(); } } catch (_) {}
+    try { if (writer) { writer.releaseLock(); } } catch (_) {}
+    try { if (port) { await port.close(); } } catch (_) {}
+    port = null; writer = null; reader = null;
+    setConnected(false);
+    updateLiveButton();
+    log('inf', 'Disconnected');
+}
+
+// ============================================================================
+// Device Log controls
+// ============================================================================
+
+function updateLiveButton() {
+    const btn = document.getElementById('btn-live');
+    if (!port) { btn.textContent = 'Start Live Log'; btn.className = 'btn-live-on'; return; }
+    if (liveStreaming) {
+        btn.textContent = 'Stop Live Log';
+        btn.className = 'btn-live-off';
+        document.getElementById('live-dot').className = 'live-dot active';
+    } else {
+        btn.textContent = 'Start Live Log';
+        btn.className = 'btn-live-on';
+        document.getElementById('live-dot').className = 'live-dot';
+    }
+}
+
+async function toggleLive() {
+    if (!port) return;
+    if (liveStreaming) {
+        try {
+            await sendCmd('{"cmd":"DEBUG.STREAM","enable":false}');
+            log('inf', 'Live log stopped');
+        } catch (e) {
+            log('err', 'Stop stream failed: ' + e.message);
+        }
+        liveStreaming = false;
+    } else {
+        try {
+            await sendCmd('{"cmd":"DEBUG.STREAM","enable":true}');
+            log('inf', 'Live log started — device printf output will appear in Device Log');
+        } catch (e) {
+            log('err', 'Start stream failed: ' + e.message);
+            return;
+        }
+        liveStreaming = true;
+    }
+    updateLiveButton();
+}
+
+async function getLog() {
+    if (!port) return;
+    const btn = document.getElementById('btn-getlog');
+    btn.disabled = true;
+    log('inf', 'Fetching flash event log...');
+    document.getElementById('device-log').textContent = '(loading...)\n';
+    try {
+        const rspText = await sendCmd('{"cmd":"PS4LOG.DUMP"}', 10000);
+        const rsp = JSON.parse(rspText);
+        if (!rsp.ok) throw new Error(rsp.error || 'dump failed');
+        const logText = (rsp.log || '').replace(/\\n/g, '\n').replace(/\\r/g, '');
+        const el = document.getElementById('device-log');
+        el.textContent = logText || '(log empty — no auth events captured)\n';
+        el.scrollTop = el.scrollHeight;
+        document.getElementById('log-bytes').textContent = logText.length + ' bytes';
+        log('ok', 'Flash log fetched — ' + logText.length + ' bytes');
+    } catch (e) {
+        log('err', 'Get log failed: ' + e.message);
+        document.getElementById('device-log').textContent = '';
+    } finally {
+        if (port) btn.disabled = false;
+    }
+}
+
+async function clearLog() {
+    if (!port) return;
+    try {
+        await sendCmd('{"cmd":"PS4LOG.CLEAR"}');
+        document.getElementById('device-log').textContent = '';
+        document.getElementById('log-bytes').textContent = '';
+        log('inf', 'Flash event log cleared');
+    } catch (e) {
+        log('err', 'Clear log failed: ' + e.message);
+    }
+}
+
+// ============================================================================
+// File validation
+// ============================================================================
+
+let parsedN = null, parsedE = null, parsedP = null, parsedQ = null;
+let parsedSerial = null;
+let parsedSig = null;
+
+async function onFileChange(which) {
+    const input = document.getElementById('file-' + which);
+    if (!input.files.length) { setBadge(which, 'idle', '—'); return; }
+    const file = input.files[0];
+
+    try {
+        if (which === 'key') {
+            await validateKey(file);
+        } else if (which === 'serial') {
+            await validateSerial(file);
+        } else if (which === 'sig') {
+            await validateSig(file);
+        }
+    } catch (e) {
+        setBadge(which, 'err', 'Error');
+        log('err', which + ': ' + e.message);
+    }
+}
+
+// Wrap a PKCS#1 DER private key inside a PKCS#8 DER envelope so that
+// WebCrypto's importKey('pkcs8', ...) can accept it.
+function pkcs1ToPkcs8(pkcs1Der) {
+    // AlgorithmIdentifier: SEQUENCE { OID rsaEncryption, NULL }
+    const algId = new Uint8Array([
+        0x30, 0x0D,
+        0x06, 0x09, 0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x01,
+        0x05, 0x00
+    ]);
+    const version = new Uint8Array([0x02, 0x01, 0x00]);
+
+    function encLen(n) {
+        if (n < 0x80)   return new Uint8Array([n]);
+        if (n < 0x100)  return new Uint8Array([0x81, n]);
+        return new Uint8Array([0x82, (n >> 8) & 0xFF, n & 0xFF]);
+    }
+
+    const osTagLen = encLen(pkcs1Der.length);
+    const os = new Uint8Array(1 + osTagLen.length + pkcs1Der.length);
+    os[0] = 0x04;
+    os.set(osTagLen, 1);
+    os.set(pkcs1Der, 1 + osTagLen.length);
+
+    const innerLen = version.length + algId.length + os.length;
+    const outerTagLen = encLen(innerLen);
+    const out = new Uint8Array(1 + outerTagLen.length + innerLen);
+    out[0] = 0x30;
+    out.set(outerTagLen, 1);
+    let off = 1 + outerTagLen.length;
+    out.set(version, off); off += version.length;
+    out.set(algId,   off); off += algId.length;
+    out.set(os,      off);
+    return out;
+}
+
+// Decode a base64url string to a Uint8Array, right-aligned to `length` bytes.
+function b64urlToBytes(b64url, length) {
+    const b64 = b64url.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = b64 + '=='.slice((b64.length % 4) || 4);
+    const raw = atob(padded);
+    const bytes = new Uint8Array(length);
+    const off = length - raw.length;
+    for (let i = 0; i < raw.length; i++) bytes[off + i] = raw.charCodeAt(i);
+    return bytes;
+}
+
+async function validateKey(file) {
+    setBadge('key', 'idle', '…');
+    const text = await file.text();
+
+    const isPkcs1 = text.includes('-----BEGIN RSA PRIVATE KEY-----');
+    const isPkcs8 = text.includes('-----BEGIN PRIVATE KEY-----');
+    if (!isPkcs1 && !isPkcs8) {
+        throw new Error('Not a valid RSA private key PEM file (need BEGIN RSA PRIVATE KEY or BEGIN PRIVATE KEY)');
+    }
+
+    // PEM → DER bytes
+    const b64 = text.replace(/-----[^-]+-----/g, '').replace(/\s/g, '');
+    const der = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+
+    // Wrap PKCS#1 in PKCS#8 if needed
+    const pkcs8Der = isPkcs1 ? pkcs1ToPkcs8(der) : der;
+
+    // Import via WebCrypto — this validates the DER structure
+    let cryptoKey;
+    try {
+        cryptoKey = await crypto.subtle.importKey(
+            'pkcs8', pkcs8Der,
+            { name: 'RSA-PSS', hash: 'SHA-256' },
+            true, ['sign']
+        );
+    } catch (e) {
+        throw new Error('WebCrypto could not import key: ' + e.message +
+            '. Ensure the file is a valid RSA-2048 private key.');
+    }
+
+    // Export as JWK to get all components with correct big-endian encoding
+    const jwk = await crypto.subtle.exportKey('jwk', cryptoKey);
+
+    if (!jwk.n || !jwk.p || !jwk.q) {
+        throw new Error('Key is missing required components (n/p/q). Is it a full private key?');
+    }
+
+    // Decode JWK components to fixed-width big-endian byte arrays
+    parsedN = b64urlToBytes(jwk.n, 256);
+    parsedE = b64urlToBytes(jwk.e, 4);
+    parsedP = b64urlToBytes(jwk.p, 128);
+    parsedQ = b64urlToBytes(jwk.q, 128);
+
+    // Sanity-check: key size
+    const nBig = BigInt('0x' + Array.from(parsedN).map(b => b.toString(16).padStart(2,'0')).join(''));
+    if (nBig.toString(2).length < 2048) {
+        throw new Error('Key must be RSA-2048 (got ' + nBig.toString(2).length + ' bits)');
+    }
+
+    // Verify P × Q = N (confirms mbedTLS will accept the key)
+    const pBig = BigInt('0x' + Array.from(parsedP).map(b => b.toString(16).padStart(2,'0')).join(''));
+    const qBig = BigInt('0x' + Array.from(parsedQ).map(b => b.toString(16).padStart(2,'0')).join(''));
+    if (pBig * qBig !== nBig) {
+        throw new Error('Key verification failed: P×Q ≠ N. The file may be corrupt.');
+    }
+
+    // Log first 4 bytes of each component so they can be compared with firmware serial output
+    const hex4 = arr => Array.from(arr.slice(0, 4)).map(b => b.toString(16).padStart(2,'0')).join('');
+    log('ok', 'key.prm: RSA-2048 key parsed via WebCrypto and verified (P×Q=N ✓)');
+    log('inf', 'N[0..3]: ' + hex4(parsedN) + '  P[0..3]: ' + hex4(parsedP) + '  Q[0..3]: ' + hex4(parsedQ));
+    setBadge('key', 'ok', 'OK');
+}
+
+async function validateSerial(file) {
+    setBadge('serial', 'idle', '…');
+    const text = (await file.text()).trim();
+    let hex = text.replace(/\s/g, '');
+    if (!/^[0-9a-fA-F]{1,32}$/.test(hex)) {
+        throw new Error('serial.txt must contain hex characters only (up to 32). Got: "' + text + '"');
+    }
+    if (hex.length % 2 !== 0) {
+        throw new Error('serial.txt must have an even number of hex characters. Got: ' + hex.length);
+    }
+    if (hex.length < 32) {
+        const padded = hex.padStart(32, '0');
+        log('inf', 'serial.txt: padded ' + hex.length + ' → 32 hex chars, right-aligned (' + hex.toUpperCase() + ' → ' + padded.toUpperCase() + ')');
+        hex = padded;
+    }
+    parsedSerial = new Uint8Array(16);
+    for (let i = 0; i < 16; i++) {
+        parsedSerial[i] = parseInt(hex.slice(i*2, i*2+2), 16);
+    }
+    log('ok', 'serial.txt: ' + hex.toUpperCase());
+    setBadge('serial', 'ok', 'OK');
+}
+
+async function validateSig(file) {
+    setBadge('sig', 'idle', '…');
+    const buf = await file.arrayBuffer();
+    if (buf.byteLength !== 256) {
+        throw new Error('sig.bin must be exactly 256 bytes. Got: ' + buf.byteLength);
+    }
+    parsedSig = new Uint8Array(buf);
+    log('ok', 'sig.bin: 256 bytes');
+    setBadge('sig', 'ok', 'OK');
+}
+
+// ============================================================================
+// Upload
+// ============================================================================
+
+function bytesToBase64(bytes) {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+    let result = '';
+    let i = 0;
+    while (i < bytes.length) {
+        const b0 = bytes[i++];
+        const b1 = i < bytes.length ? bytes[i++] : -1;
+        const b2 = i < bytes.length ? bytes[i++] : -1;
+        result += chars[b0 >> 2];
+        result += chars[((b0 & 3) << 4) | (b1 >= 0 ? b1 >> 4 : 0)];
+        result += b1 >= 0 ? chars[((b1 & 0xF) << 2) | (b2 >= 0 ? b2 >> 6 : 0)] : '=';
+        result += b2 >= 0 ? chars[b2 & 0x3F] : '=';
+    }
+    return result;
+}
+
+async function doUpload() {
+    if (!port) { log('err', 'Not connected'); return; }
+    if (!parsedN || !parsedE || !parsedP || !parsedQ) {
+        log('err', 'Please select and validate key.prm first');
+        return;
+    }
+    if (!parsedSerial) { log('err', 'Please select and validate serial.txt first'); return; }
+    if (!parsedSig)    { log('err', 'Please select and validate sig.bin first');    return; }
+
+    log('inf', 'Building PS4AUTH.SET payload...');
+
+    const N = bytesToBase64(parsedN);
+    const E = bytesToBase64(parsedE);
+    const P = bytesToBase64(parsedP);
+    const Q = bytesToBase64(parsedQ);
+    const serial = bytesToBase64(parsedSerial);
+    const signature = bytesToBase64(parsedSig);
+
+    log('inf', 'Payload sizes: N=' + N.length + ' E=' + E.length +
+        ' P=' + P.length + ' Q=' + Q.length +
+        ' serial=' + serial.length + ' sig=' + signature.length + ' chars');
+
+    const payload = JSON.stringify({
+        cmd: 'PS4AUTH.SET',
+        args: { N, E, P, Q, serial, signature }
+    });
+
+    log('inf', 'Sending... (' + payload.length + ' bytes)');
+
+    try {
+        const rsp = JSON.parse(await sendCmd(payload, 15000));
+        if (rsp.ok) {
+            log('ok', 'Upload successful! Auth data saved to device flash.');
+            checkStatus();
+        } else {
+            const errMsg = rsp.error || 'unknown';
+            log('err', 'Device returned error: ' + errMsg);
+            if (errMsg === 'unknown command') {
+                log('err', 'The connected firmware does not support PS4AUTH commands.');
+                log('err', 'Flash the latest joypad-os firmware and try again.');
+            }
+        }
+    } catch (e) {
+        log('err', 'Upload failed: ' + e.message);
+    }
+}
+
+// ============================================================================
+// Status check
+// ============================================================================
+
+async function checkStatus() {
+    if (!port) { log('err', 'Not connected'); return; }
+    log('inf', 'Checking auth status...');
+    try {
+        const rsp = JSON.parse(await sendCmd('{"cmd":"PS4AUTH.STATUS"}'));
+        if (rsp.installed) {
+            log('ok', 'Auth data INSTALLED | active=' + rsp.active + ' | serial=' + (rsp.serial || 'n/a'));
+        } else {
+            log('inf', 'No auth data installed on device');
+        }
+    } catch (e) {
+        log('err', 'Status check failed: ' + e.message);
+        if (e.message && e.message.includes('unknown command')) {
+            log('err', 'Firmware does not support PS4AUTH — flash the latest joypad-os build.');
+        }
+    }
+}
+
+// ============================================================================
+// Clear auth data
+// ============================================================================
+
+async function doClear() {
+    if (!port) { log('err', 'Not connected'); return; }
+    if (!confirm('Remove PS4 authentication data from device flash?\nThe device will fall back to DS4 passthrough or no-auth mode.')) return;
+
+    log('inf', 'Clearing auth data...');
+    try {
+        const rsp = JSON.parse(await sendCmd('{"cmd":"PS4AUTH.CLEAR"}'));
+        if (rsp.ok) {
+            log('ok', 'Auth data cleared from device.');
+        } else {
+            const errMsg = rsp.error || 'unknown';
+            log('err', 'Clear failed: ' + errMsg);
+            if (errMsg === 'unknown command') {
+                log('err', 'Firmware does not support PS4AUTH — flash the latest joypad-os build.');
+            }
+        }
+    } catch (e) {
+        log('err', 'Clear failed: ' + e.message);
+    }
+}
+</script>
+</body>
+</html>
