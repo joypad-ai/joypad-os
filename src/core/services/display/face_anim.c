@@ -753,7 +753,10 @@ static float astro_glow(const astro_ctx* c, float pxf, float pyf,
             if (f > g) g = f;
         }
     }
-    return g * g;
+    // linear falloff: the accent color is already very dark, and squaring
+    // crushed the tail below what the panel can show — the gradient read as
+    // one ring then black
+    return g;
 }
 
 static void style_astro(const face_pose* p, float bob) {
