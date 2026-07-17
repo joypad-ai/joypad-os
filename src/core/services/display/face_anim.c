@@ -684,24 +684,21 @@ static float astro_eye_d(const astro_ctx* c, float pxf, float pyf, int e) {
         d = sqrtf(nx * nx + ny * ny);
     }
     if (c->sl_k[e] != 0.0f) {
-        // angry top edge: carved points read as outside by their height
-        // above the line, so the shadow follows the slant
+        // brow slash: signed distance to the line — >1 above (carved, the
+        // shadow follows the slant), approaching 1 from below (so LEDs the
+        // line passes through classify as boundary and get the sharp
+        // per-pixel clip instead of the full-dot fast path)
         float line = c->sl_b[e] + c->sl_k[e] * nx;
-        if (ny < line) {
-            float dcut = 1.0f + (line - ny);
-            if (dcut > d) d = dcut;
-        }
+        float dcut = 1.0f + (line - ny);
+        if (dcut > d) d = dcut;
     }
     if (c->cut_r[e] > 0.0f) {
-        // concave carve: points inside the cutter are outside the shape by
-        // their depth past its boundary — the shadow follows the arc
+        // concave carve: same signed treatment about the cutter's boundary
         float cdx = nx - c->cut_cx[e];
         float cdy = ny - c->cut_cy[e];
         float dc = sqrtf(cdx * cdx + cdy * cdy);
-        if (dc < c->cut_r[e]) {
-            float dcut = 1.0f + (c->cut_r[e] - dc);
-            if (dcut > d) d = dcut;
-        }
+        float dcut = 1.0f + (c->cut_r[e] - dc);
+        if (dcut > d) d = dcut;
     }
     return d;
 }
