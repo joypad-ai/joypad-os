@@ -27,7 +27,6 @@ const PAGE_GROUPS = {
     'profiles':      'core',
     'hotkeys':       'core',
     'usb':           'output',
-    'ps4-auth':      'output',
     'bluetooth':     'output',
     'native-output': 'output',
     'leds':          'output',
@@ -296,10 +295,11 @@ class JoypadConfigApp {
             nativeLink.style.display = this.nativeOutput.isAvailable() ? '' : 'none';
         }
 
-        // Hide PS4 Auth nav link on firmware without PS4AUTH support (ESP/nRF, older)
-        const ps4Link = document.getElementById('navPs4Auth');
-        if (ps4Link) {
-            ps4Link.style.display = this.ps4Auth.isAvailable() ? '' : 'none';
+        // Hide the PS4 Auth section (on the USB Device page) when the firmware
+        // doesn't answer PS4AUTH.STATUS (ESP/nRF, older builds).
+        const ps4Card = document.getElementById('cardPs4Auth');
+        if (ps4Card) {
+            ps4Card.style.display = this.ps4Auth.isAvailable() ? '' : 'none';
         }
 
         // Hide Bluetooth host nav link if device has no BT host features

@@ -62,11 +62,6 @@ export class Ps4AuthCard {
                         <button id="ps4InstallBtn" disabled>Install Keys</button>
                         <button id="ps4ClearBtn" class="secondary">Clear</button>
                     </div>
-
-                    <div class="toggle-row" style="margin-top:12px;">
-                        <label><input type="checkbox" id="ps4LogEnable"> Persist auth events to flash</label>
-                        <button id="ps4LogDumpBtn" class="btn-sm secondary">Dump log</button>
-                    </div>
                 </div>
             </div>`;
 
@@ -75,8 +70,6 @@ export class Ps4AuthCard {
         this.el.querySelector('#ps4SigFile').addEventListener('change', (e) => this.onFile('sig', e.target.files[0]));
         this.el.querySelector('#ps4InstallBtn').addEventListener('click', () => this.install());
         this.el.querySelector('#ps4ClearBtn').addEventListener('click', () => this.clearKeys());
-        this.el.querySelector('#ps4LogEnable').addEventListener('change', (e) => this.setLogEnabled(e.target.checked));
-        this.el.querySelector('#ps4LogDumpBtn').addEventListener('click', () => this.dumpLog());
     }
 
     isAvailable() {
@@ -94,12 +87,6 @@ export class Ps4AuthCard {
             this.available = false;
             return;
         }
-        // Log-enable state is best-effort (older builds may lack it).
-        try {
-            const r = await this.protocol.sendCommand('PS4LOG.ENABLE.GET');
-            const box = this.el.querySelector('#ps4LogEnable');
-            if (box) box.checked = !!r.enabled;
-        } catch (e) { /* ignore */ }
     }
 
     renderStatus(status) {
@@ -243,24 +230,6 @@ export class Ps4AuthCard {
         try {
             this.renderStatus(await this.protocol.sendCommand('PS4AUTH.STATUS'));
         } catch (e) { /* ignore */ }
-    }
-
-    async setLogEnabled(enabled) {
-        try {
-            await this.protocol.sendCommand('PS4LOG.ENABLE.SET', { enabled });
-            this.log(`PS4 auth log ${enabled ? 'enabled' : 'disabled'}`);
-        } catch (e) {
-            this.log(`PS4LOG.ENABLE.SET failed: ${e.message}`, 'error');
-        }
-    }
-
-    async dumpLog() {
-        try {
-            const r = await this.protocol.sendCommand('PS4LOG.DUMP');
-            this.log('PS4 auth log:\n' + (typeof r === 'string' ? r : JSON.stringify(r, null, 2)));
-        } catch (e) {
-            this.log(`PS4LOG.DUMP failed: ${e.message}`, 'error');
-        }
     }
 }
 
