@@ -139,7 +139,8 @@ export class FaceCard {
         // throttle drags to ~20Hz — plenty for the pose spring
         if (this._lookTimer) return;
         this._lookTimer = setTimeout(() => { this._lookTimer = null; }, 50);
-        this._cmd('FACE.LOOK', { x: Math.round(x * 100), y: Math.round(y * 100) });
+        // pad is viewer-space; the panel's canvas X runs the other way
+        this._cmd('FACE.LOOK', { x: Math.round(-x * 100), y: Math.round(y * 100) });
     }
 
     /** Send a talky-looking envelope for ~3s to preview lip-sync. */
