@@ -876,13 +876,12 @@ static void style_astro(const face_pose* p, float bob) {
             if ((dmin - 1.0f) * d2px_max > shadow_px + dot_r)
                 continue;
 
-            // this LED's shadow shade — dots hugging the shape read dimmer
-            // than lit ones, then step down as the shadow fades out
+            // this LED's shadow shade — a continuous gradient: each LED gets
+            // its exact glow brightness on the 16-step accent ramp, fading
+            // from the shadow color to nothing
             float g = astro_glow(&c, (float)x, (float)y, shadow_px) * 0.62f;
-            uint8_t shade = 0;
-            if (g > 0.50f)      shade = FACE_COLOR_ACCENT_75;
-            else if (g > 0.28f) shade = FACE_COLOR_ACCENT_50;
-            else if (g > 0.08f) shade = FACE_COLOR_ACCENT_25;
+            int lvl = (int)(g * FACE_COLOR_ACCENT_LEVELS + 0.5f);
+            uint8_t shade = lvl >= 1 ? FACE_COLOR_ACCENT_LVL(lvl) : 0;
 
             if (dmin >= 1.0f + dr_n) {
                 // fully outside the outline: a pure shadow LED

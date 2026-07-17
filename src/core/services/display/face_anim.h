@@ -38,11 +38,12 @@ typedef struct {
 // mono backends render every class the same).
 #define FACE_COLOR_MAIN      1
 #define FACE_COLOR_ACCENT    2
-// Dimmed accent shades (color backends blend toward black) — e.g. the Astro
-// visor's fading drop-shadow.
-#define FACE_COLOR_ACCENT_75 3
-#define FACE_COLOR_ACCENT_50 4
-#define FACE_COLOR_ACCENT_25 5
+// Dimmed accent ramp (color backends blend toward black) — e.g. the Astro
+// visor's drop-shadow gradient. Class 2 is full accent; classes 3..17 step
+// down in 1/16ths to nearly transparent. FACE_COLOR_ACCENT_LVL(16) == full,
+// FACE_COLOR_ACCENT_LVL(1) == faintest.
+#define FACE_COLOR_ACCENT_LEVELS 16
+#define FACE_COLOR_ACCENT_LVL(l) ((uint8_t)(2 + FACE_COLOR_ACCENT_LEVELS - (l)))
 
 typedef enum {
     FACE_EMO_NEUTRAL,
