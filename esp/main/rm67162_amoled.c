@@ -8,6 +8,7 @@
 #ifdef BOARD_LILYGO_TDISPLAY_S3_AMOLED
 
 #include <string.h>
+#include <math.h>
 #include "driver/spi_master.h"
 #include "driver/gpio.h"
 #include "esp_lcd_panel_io.h"
@@ -240,9 +241,17 @@ void amoled_blit_idx8(const uint8_t* fb, int w, int h,
         int ar = (accent565 >> 11) & 31, ag = (accent565 >> 5) & 63, ab = accent565 & 31;
         for (int cw = 0; cw <= 4; cw++) {
             for (int aw = 0; aw <= 64 - cw * 16; aw++) {
-                int r = (cw * 16 * mr + aw * ar) / 64;
-                int g = (cw * 16 * mg + aw * ag) / 64;
-                int b = (cw * 16 * mb + aw * ab) / 64;
+                // Accent fades with inverse-gamma: the panel's luminance is
+                // ~code^2.2, so a linear code ramp renders as one visible
+                // ring then black. powf(f, 1/2.2) makes the PERCEIVED fade
+                // linear.
+                float fg = powf((float)aw / 64.0f, 0.4545f);
+                int r = (cw * 16 * mr) / 64 + (int)(fg * ar + 0.5f);
+                int g = (cw * 16 * mg) / 64 + (int)(fg * ag + 0.5f);
+                int b = (cw * 16 * mb) / 64 + (int)(fg * ab + 0.5f);
+                if (r > 31) r = 31;
+                if (g > 63) g = 63;
+                if (b > 31) b = 31;
                 uint16_t v = (uint16_t)((r << 11) | (g << 5) | b);
                 clut[cw * 65 + aw] = (uint16_t)((v >> 8) | (v << 8));
             }
