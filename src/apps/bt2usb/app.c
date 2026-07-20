@@ -14,6 +14,7 @@
 #include "usb/usbd/usbd.h"
 #include "bt/transport/bt_transport.h"
 #include "bt/btstack/btstack_host.h"
+#include "bt/bthid/bthid_registry.h"
 #include "core/services/leds/leds.h"
 
 #include "tusb.h"
@@ -415,8 +416,13 @@ void app_init(void)
     // Must use bt_init() to set global transport pointer and register drivers
     printf("[app:bt2usb] Initializing Bluetooth...\n");
 #ifdef BTSTACK_USE_ESP32
+    // Call bthid_registry_init BEFORE bt_init so the weak stub inside
+    // bt_transport.c is bypassed — ESP-IDF's --gc-sections would otherwise
+    // discard the strong symbol from bthid_registry.c.
+    bthid_registry_init();
     bt_init(&bt_transport_esp32);
 #elif defined(BTSTACK_USE_NRF)
+    bthid_registry_init();
     bt_init(&bt_transport_nrf);
 #else
     bt_init(&bt_transport_cyw43);
