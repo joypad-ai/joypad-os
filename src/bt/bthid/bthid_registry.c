@@ -15,6 +15,7 @@
 #include "devices/vendors/nintendo/wiimote_bt.h"
 // xbox_bt.h and xbox_ble.h no longer registered — generic driver handles all Xbox
 #include "devices/vendors/google/stadia_bt.h"
+#include "devices/vendors/valve/steam_controller_2_ble.h"
 #include "devices/vendors/augmental/mouthpad_ble.h"
 #include "devices/generic/sinput_ble.h"
 
@@ -42,6 +43,10 @@ void bthid_registry_init(void)
 
     // Google controllers
     stadia_bt_register();
+
+    // Valve Steam Controller 2 over BLE (Valve proprietary GATT service).
+    // Matches by synthetic VID/PID 28DE:1303 or "Steam" name.
+    steam_controller_2_ble_register();
 
     // Augmental MouthPad (BLE mouse/keyboard/consumer — matches by name)
     mouthpad_ble_register();

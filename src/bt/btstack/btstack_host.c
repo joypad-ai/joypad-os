@@ -548,6 +548,10 @@ static void register_switch2_hid_listener(hci_con_handle_t con_handle);
 static void mp_nus_mark_pending(hci_con_handle_t handle);
 static void mp_nus_disconnected(hci_con_handle_t handle);
 static void mp_nus_periodic(void);
+// Valve Steam Controller 2 custom GATT client hooks (defined below)
+static void register_valve_hid_listener(hci_con_handle_t con_handle);
+static void valve_disconnected(hci_con_handle_t handle);
+static void valve_periodic(void);
 
 // Deferred post-HID setup sequencer. After HID report notifications are
 // enabled (0x1C), the hids_client needs a moment to return to CONNECTED before
@@ -1143,6 +1147,9 @@ void btstack_host_process(void)
 
     // Kick off / advance MouthPad NUS discovery once HID has settled
     mp_nus_periodic();
+
+    // Advance Valve (Steam Controller 2) feature-report keepalive
+    valve_periodic();
 
     // Handle Switch 2 rumble/LED feedback passthrough
     switch2_handle_feedback();
@@ -2132,6 +2139,20 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                         strncpy(conn->name, hid_state.pending_name, sizeof(conn->name) - 1);
                         conn->name[sizeof(conn->name) - 1] = '\0';
                         conn->profile = hid_state.pending_profile;
+                        // On a bonded reconnect (especially after an adapter reboot),
+                        // the connection is initiated by a direct gap_connect() that
+                        // never set pending_profile from an advertisement. Recover the
+                        // profile from the stored device name so custom-GATT devices
+                        // (Steam Controller 2 -> BT_BLE_VALVE) take their dedicated path
+                        // instead of falling through to generic HOGP — which leaves them
+                        // "connected" but with no input. HOGP devices (Xbox, etc.) are
+                        // unaffected: the generic path is what they use either way.
+                        if ((!conn->profile || conn->profile == &BT_PROFILE_DEFAULT) &&
+                            conn->name[0]) {
+                            conn->profile = bt_device_lookup_by_name(conn->name);
+                            printf("[BTSTACK_HOST] Recovered profile from name '%s': %s\n",
+                                   conn->name, conn->profile->name);
+                        }
                         conn->vid = hid_state.pending_vid;
                         conn->pid = hid_state.pending_pid;
 
@@ -2487,6 +2508,9 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                 // Clean up Switch 2 state (ACK listener, init state machine)
                 switch2_cleanup_on_disconnect();
 
+                // Tear down Valve (Steam Controller 2) GATT client if this was it
+                valve_disconnected(handle);
+
                 // BLE disconnect — manage BLE state and reconnection
                 hid_state.state = BLE_STATE_IDLE;
 
@@ -2765,6 +2789,10 @@ static void sm_packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *pa
                         printf("[BTSTACK_HOST] %s detected - using fast-path notification enable\n",
                                conn->profile->name);
                         register_switch2_hid_listener(handle);
+                    } else if (conn->profile && conn->profile->ble == BT_BLE_VALVE) {
+                        printf("[BTSTACK_HOST] %s detected - starting Valve GATT discovery\n",
+                               conn->profile->name);
+                        register_valve_hid_listener(handle);
                     } else {
                         printf("[BTSTACK_HOST] BLE controller - starting GATT discovery\n");
                         start_hids_client(conn);
@@ -2813,6 +2841,10 @@ static void sm_packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *pa
                         printf("[BTSTACK_HOST] %s detected - using fast-path notification enable\n",
                                conn->profile->name);
                         register_switch2_hid_listener(handle);
+                    } else if (conn->profile && conn->profile->ble == BT_BLE_VALVE) {
+                        printf("[BTSTACK_HOST] %s detected - starting Valve GATT discovery\n",
+                               conn->profile->name);
+                        register_valve_hid_listener(handle);
                     } else {
                         printf("[BTSTACK_HOST] BLE controller - starting GATT discovery\n");
                         start_hids_client(conn);
@@ -3192,6 +3224,256 @@ bool btstack_host_mouthpad_clear_bond(void)
         btstack_run_loop_execute_on_main_thread(&mp_clearbond_cb);
     }
     return true;
+}
+
+// ============================================================================
+// VALVE STEAM CONTROLLER 2 ("Triton") CUSTOM GATT CLIENT
+// ============================================================================
+// The SC2 in Bluetooth mode does NOT use HID-over-GATT. It exposes Valve's
+// proprietary GATT service (same 100F6C32-… service as the 2015 controller)
+// with different characteristics:
+//   input char 100F6C7A → report id 0x45   (TritonMTUNoQuat)
+//   input char 100F6C7C → report id 0x47   (TritonMTUNoQuat32TS / "Ibex")
+//   report/feature char 100F6C34           (feature-report writes)
+// Only ONE of the two input characteristics is present on a given unit; we
+// subscribe to whichever we find. Notifications carry the report body WITHOUT
+// the report-id byte (it is implied by the characteristic), so we prepend it
+// and hand a normal 46-byte HID report to the bthid layer via bt_on_hid_report.
+//
+// This is a discovery-by-UUID128 client (like the MouthPad NUS client) that
+// routes into a bthid_driver_t (like the Switch 2 fast path). All GATT ops run
+// on the BTstack thread. Ref: SDL src/joystick/hidapi/SDL_hidapi_steam_triton.c
+// and android HIDDeviceBLESteamController.java.
+
+// 128-bit UUIDs in textual/big-endian order (as BTstack uuid128 expects).
+static const uint8_t valve_service_uuid128[16] = {
+    0x10,0x0F,0x6C,0x32,0x17,0x35,0x43,0x13,0xB4,0x02,0x38,0x56,0x71,0x31,0xE5,0xF3};
+static const uint8_t valve_input_45_uuid128[16] = {  // notify, report id 0x45
+    0x10,0x0F,0x6C,0x7A,0x17,0x35,0x43,0x13,0xB4,0x02,0x38,0x56,0x71,0x31,0xE5,0xF3};
+static const uint8_t valve_input_47_uuid128[16] = {  // notify, report id 0x47
+    0x10,0x0F,0x6C,0x7C,0x17,0x35,0x43,0x13,0xB4,0x02,0x38,0x56,0x71,0x31,0xE5,0xF3};
+static const uint8_t valve_report_uuid128[16] = {    // write (feature reports)
+    0x10,0x0F,0x6C,0x34,0x17,0x35,0x43,0x13,0xB4,0x02,0x38,0x56,0x71,0x31,0xE5,0xF3};
+
+// Feature-report payloads (report-id byte already stripped, as sent on air).
+// {0x87 = ID_SET_SETTINGS_VALUES, 0x03 = sizeof(ControllerSetting), setting, u16 value}
+// Non-const: gatt_client_write_value_of_characteristic() takes a non-const ptr.
+static uint8_t valve_setting_lizard_off[5] = { 0x87, 0x03, 0x09, 0x00, 0x00 };
+// IMU on: SEND_RAW_ACCEL(0x08) | SEND_RAW_GYRO(0x10) = 0x18
+static uint8_t valve_setting_imu_on[5]     = { 0x87, 0x03, 0x30, 0x18, 0x00 };
+
+#define VALVE_KEEPALIVE_MS 3000   // controller re-enables lizard mode on a watchdog
+
+typedef enum {
+    VALVE_IDLE = 0,
+    VALVE_DISC_SERVICE,
+    VALVE_DISC_CHARS,
+    VALVE_ENABLE_CCC,
+    VALVE_READY,
+} valve_state_t;
+
+static struct {
+    valve_state_t state;
+    hci_con_handle_t handle;
+    uint8_t conn_index;
+    gatt_client_service_t service;
+    gatt_client_characteristic_t input_char;   // subscribed notify characteristic
+    uint8_t report_id;                          // 0x45 or 0x47 (implied by input_char)
+    uint16_t report_value_handle;               // feature-report write target (100F6C34)
+    gatt_client_notification_t notify;
+    uint32_t last_keepalive_ms;
+    bool imu_enabled;
+} valve = { .state = VALVE_IDLE, .handle = HCI_CON_HANDLE_INVALID };
+
+static void valve_reset(void)
+{
+    if (valve.state == VALVE_READY) {
+        gatt_client_stop_listening_for_characteristic_value_updates(&valve.notify);
+    }
+    valve.state = VALVE_IDLE;
+    valve.handle = HCI_CON_HANDLE_INVALID;
+    valve.report_id = 0;
+    valve.report_value_handle = 0;
+    valve.imu_enabled = false;
+}
+
+static void valve_disconnected(hci_con_handle_t handle)
+{
+    if (valve.handle == handle) {
+        printf("[SC2_BLE] disconnected — Valve GATT client reset\n");
+        valve_reset();
+    }
+}
+
+// Device -> host input notifications on the Valve input characteristic.
+static void valve_notify_handler(uint8_t packet_type, uint16_t channel, uint8_t* packet, uint16_t size)
+{
+    UNUSED(channel); UNUSED(size);
+    if (packet_type != HCI_EVENT_PACKET) return;
+    if (hci_event_packet_get_type(packet) != GATT_EVENT_NOTIFICATION) return;
+    uint16_t vh = gatt_event_notification_get_value_handle(packet);
+    if (vh != valve.input_char.value_handle) return;
+
+    uint16_t len = gatt_event_notification_get_value_length(packet);
+    const uint8_t* val = gatt_event_notification_get_value(packet);
+
+    // Prepend the implied report id, then defer to the main loop (route via
+    // bt_on_hid_report) to keep the BTstack callback stack shallow.
+    if (len < 18 || len + 1 > (uint16_t)sizeof(pending_ble_report)) return;
+    pending_ble_report[0] = valve.report_id;
+    memcpy(pending_ble_report + 1, val, len);
+    pending_ble_report_len = len + 1;
+    pending_ble_conn_index = valve.conn_index;
+    ble_report_pending = true;
+}
+
+// Feature-report write completion (with-response). Log only.
+static void valve_feature_write_cb(uint8_t packet_type, uint16_t channel, uint8_t* packet, uint16_t size)
+{
+    UNUSED(channel); UNUSED(size);
+    if (packet_type != HCI_EVENT_PACKET) return;
+    if (hci_event_packet_get_type(packet) != GATT_EVENT_QUERY_COMPLETE) return;
+    uint8_t status = gatt_event_query_complete_get_att_status(packet);
+    if (status != ATT_ERROR_SUCCESS) {
+        printf("[SC2_BLE] feature write failed status=0x%02X\n", status);
+    }
+}
+
+// GATT discovery state machine for the Valve service.
+static void valve_gatt_handler(uint8_t packet_type, uint16_t channel, uint8_t* packet, uint16_t size)
+{
+    UNUSED(channel); UNUSED(size);
+    if (packet_type != HCI_EVENT_PACKET) return;
+    uint8_t event = hci_event_packet_get_type(packet);
+
+    switch (event) {
+        case GATT_EVENT_SERVICE_QUERY_RESULT:
+            gatt_event_service_query_result_get_service(packet, &valve.service);
+            break;
+
+        case GATT_EVENT_CHARACTERISTIC_QUERY_RESULT: {
+            gatt_client_characteristic_t ch;
+            gatt_event_characteristic_query_result_get_characteristic(packet, &ch);
+            if (memcmp(ch.uuid128, valve_input_45_uuid128, 16) == 0) {
+                valve.input_char = ch;
+                valve.report_id = 0x45;
+            } else if (memcmp(ch.uuid128, valve_input_47_uuid128, 16) == 0) {
+                valve.input_char = ch;
+                valve.report_id = 0x47;
+            } else if (memcmp(ch.uuid128, valve_report_uuid128, 16) == 0) {
+                valve.report_value_handle = ch.value_handle;
+            }
+            break;
+        }
+
+        case GATT_EVENT_QUERY_COMPLETE: {
+            uint8_t status = gatt_event_query_complete_get_att_status(packet);
+            if (status != ATT_ERROR_SUCCESS) {
+                printf("[SC2_BLE] GATT query failed (state=%d status=0x%02X)\n", valve.state, status);
+                valve_reset();
+                break;
+            }
+            if (valve.state == VALVE_DISC_SERVICE) {
+                if (valve.service.start_group_handle == 0) {
+                    printf("[SC2_BLE] No Valve service on device\n");
+                    valve_reset();
+                    break;
+                }
+                valve.state = VALVE_DISC_CHARS;
+                gatt_client_discover_characteristics_for_service(
+                    valve_gatt_handler, valve.handle, &valve.service);
+            } else if (valve.state == VALVE_DISC_CHARS) {
+                if (valve.report_id == 0 || valve.input_char.value_handle == 0) {
+                    printf("[SC2_BLE] No Valve input characteristic found\n");
+                    valve_reset();
+                    break;
+                }
+                printf("[SC2_BLE] input char 0x%02X (handle 0x%04X), report char handle 0x%04X\n",
+                       valve.report_id, valve.input_char.value_handle, valve.report_value_handle);
+                valve.state = VALVE_ENABLE_CCC;
+                gatt_client_write_client_characteristic_configuration(
+                    valve_gatt_handler, valve.handle, &valve.input_char,
+                    GATT_CLIENT_CHARACTERISTICS_CONFIGURATION_NOTIFICATION);
+            } else if (valve.state == VALVE_ENABLE_CCC) {
+                gatt_client_listen_for_characteristic_value_updates(
+                    &valve.notify, valve_notify_handler, valve.handle, &valve.input_char);
+                valve.state = VALVE_READY;
+                valve.last_keepalive_ms = btstack_run_loop_get_time_ms();
+                printf("[SC2_BLE] ready (report id 0x%02X)\n", valve.report_id);
+
+                // Register the device with the bthid layer so the SC2 driver is
+                // selected and reports route to it. VID/PID are synthetic (not
+                // advertised over the air) so driver match() has something stable.
+                ble_connection_t* conn = find_connection_by_handle(valve.handle);
+                if (conn) {
+                    conn->vid = 0x28DE;
+                    conn->pid = 0x1303;
+                    bthid_update_device_info(valve.conn_index, conn->name, conn->vid, conn->pid);
+                    btstack_host_stop_scan();
+                    scan_timeout_end = 0;
+                    bt_on_hid_ready(valve.conn_index);
+                }
+            }
+            break;
+        }
+    }
+}
+
+static void register_valve_hid_listener(hci_con_handle_t con_handle)
+{
+    printf("[SC2_BLE] Registering Valve GATT client for handle 0x%04X\n", con_handle);
+
+    ble_connection_t* conn = find_connection_by_handle(con_handle);
+    if (!conn) {
+        printf("[SC2_BLE] ERROR: No connection for handle 0x%04X\n", con_handle);
+        return;
+    }
+
+    int ble_index = -1;
+    for (int i = 0; i < MAX_BLE_CONNECTIONS; i++) {
+        if (&hid_state.connections[i] == conn) { ble_index = i; break; }
+    }
+    if (ble_index < 0) return;
+
+    conn->conn_index = BLE_CONN_INDEX_OFFSET + ble_index;
+    conn->hid_ready = true;
+
+    // Start discovery immediately — unlike the HOGP path there is no competing
+    // hids_client discovery on this connection.
+    valve_reset();
+    valve.handle = con_handle;
+    valve.conn_index = conn->conn_index;
+    valve.state = VALVE_DISC_SERVICE;
+    valve.service.start_group_handle = 0;
+    gatt_client_discover_primary_services_by_uuid128(
+        valve_gatt_handler, con_handle, valve_service_uuid128);
+}
+
+// Periodic: keep gamepad mode alive. The controller re-enables "lizard mode"
+// (keyboard/mouse emulation) on a ~3 s watchdog, so we resend the lizard-off
+// feature report at that cadence. IMU is enabled once. All on the BTstack
+// thread, one GATT op at a time.
+static void valve_periodic(void)
+{
+    if (valve.state != VALVE_READY) return;
+    if (valve.report_value_handle == 0) return;          // no feature char — input still works
+    if (gatt_client_is_ready(valve.handle) == 0) return; // another GATT op in flight
+
+    if (!valve.imu_enabled) {
+        valve.imu_enabled = true;
+        gatt_client_write_value_of_characteristic(
+            valve_feature_write_cb, valve.handle, valve.report_value_handle,
+            sizeof(valve_setting_imu_on), valve_setting_imu_on);
+        return;
+    }
+
+    uint32_t now = btstack_run_loop_get_time_ms();
+    if ((now - valve.last_keepalive_ms) >= VALVE_KEEPALIVE_MS) {
+        valve.last_keepalive_ms = now;
+        gatt_client_write_value_of_characteristic(
+            valve_feature_write_cb, valve.handle, valve.report_value_handle,
+            sizeof(valve_setting_lizard_off), valve_setting_lizard_off);
+    }
 }
 
 // ============================================================================
