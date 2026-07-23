@@ -74,6 +74,8 @@ static const char* jp_button_names(uint32_t mask) {
         "JP_BUTTON_DU", "JP_BUTTON_DD", "JP_BUTTON_DL", "JP_BUTTON_DR",  // 12-15
         "JP_BUTTON_A1", "JP_BUTTON_A2", "JP_BUTTON_A3", "JP_BUTTON_A4",  // 16-19
         "JP_BUTTON_L4", "JP_BUTTON_R4",                                  // 20-21
+        "JP_BUTTON_F1", "JP_BUTTON_F2",                                  // 22-23
+        "JP_BUTTON_L5", "JP_BUTTON_R5",                                  // 24-25
     };
     if (mask == 0) return "JP_BUTTON_UNKNOWN";
     int idx = __builtin_ctz(mask);

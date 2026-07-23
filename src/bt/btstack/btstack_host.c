@@ -2136,6 +2136,20 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                         strncpy(conn->name, hid_state.pending_name, sizeof(conn->name) - 1);
                         conn->name[sizeof(conn->name) - 1] = '\0';
                         conn->profile = hid_state.pending_profile;
+                        // On a bonded reconnect (especially after an adapter reboot),
+                        // the connection is initiated by a direct gap_connect() that
+                        // never set pending_profile from an advertisement. Recover the
+                        // profile from the stored device name so custom-GATT devices
+                        // (Steam Controller 2 -> BT_BLE_VALVE) take their dedicated path
+                        // instead of falling through to generic HOGP — which leaves them
+                        // "connected" but with no input. HOGP devices (Xbox, etc.) are
+                        // unaffected: the generic path is what they use either way.
+                        if ((!conn->profile || conn->profile == &BT_PROFILE_DEFAULT) &&
+                            conn->name[0]) {
+                            conn->profile = bt_device_lookup_by_name(conn->name);
+                            printf("[BTSTACK_HOST] Recovered profile from name '%s': %s\n",
+                                   conn->name, conn->profile->name);
+                        }
                         conn->vid = hid_state.pending_vid;
                         conn->pid = hid_state.pending_pid;
 

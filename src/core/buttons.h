@@ -77,12 +77,17 @@
 #define JP_BUTTON_A4 (1 << 19)  // -         -         -          -
 
 // Paddles (extended)
-#define JP_BUTTON_L4 (1 << 20)  // P1        -         -          -
-#define JP_BUTTON_R4 (1 << 21)  // P2        -         -          -
+#define JP_BUTTON_L4 (1 << 20)  // P1        -         -          -  (upper-left / paddle 1)
+#define JP_BUTTON_R4 (1 << 21)  // P2        -         -          -  (upper-right / paddle 1)
 
 // Function keys (internal only — never output to host, only used in hotkey combos)
 #define JP_BUTTON_F1 (1 << 22)
 #define JP_BUTTON_F2 (1 << 23)
+
+// Second paddle pair (extended) — controllers with four back paddles
+// (e.g. Steam Controller 2, Xbox Elite). Map to SInput L/R paddle 2.
+#define JP_BUTTON_L5 (1 << 24)  // lower-left  / paddle 2
+#define JP_BUTTON_R5 (1 << 25)  // lower-right / paddle 2
 
 // Mask of all function keys (suppressed from output)
 #define JP_BUTTON_FN_MASK (JP_BUTTON_F1 | JP_BUTTON_F2)

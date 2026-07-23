@@ -166,8 +166,10 @@ static void sc2_ble_process_report(bthid_device_t* device, const uint8_t* data, 
     if (raw & (1u << SC2_LTRIGGER_CLICK)) buttons |= JP_BUTTON_L2;
     if (raw & (1u << SC2_RTRIGGER_CLICK)) buttons |= JP_BUTTON_R2;
     // Center cluster
-    if (raw & (1u << SC2_VIEW)) buttons |= JP_BUTTON_S1;  // Select/Back
-    if (raw & (1u << SC2_MENU)) buttons |= JP_BUTTON_S2;  // Start
+    // Menu (☰) = Back/Select, View (⧉) = Start — matches SDL's SC2 mapping
+    // (Menu->BACK, View->START).
+    if (raw & (1u << SC2_MENU)) buttons |= JP_BUTTON_S1;  // Select/Back
+    if (raw & (1u << SC2_VIEW)) buttons |= JP_BUTTON_S2;  // Start
     if (raw & (1u << SC2_STEAM)) buttons |= JP_BUTTON_A1; // Guide/Home
     if (raw & (1u << SC2_QAM)) buttons |= JP_BUTTON_A2;   // Quick-access menu
     // Stick clicks
@@ -178,13 +180,12 @@ static void sc2_ble_process_report(bthid_device_t* device, const uint8_t* data, 
     if (raw & (1u << SC2_DPAD_DOWN))  buttons |= JP_BUTTON_DD;
     if (raw & (1u << SC2_DPAD_LEFT))  buttons |= JP_BUTTON_DL;
     if (raw & (1u << SC2_DPAD_RIGHT)) buttons |= JP_BUTTON_DR;
-    // Grip paddles. JP has only two dedicated paddle bits (L4/R4) — map the
-    // upper paddles there and route the lower paddles to the spare aux bits so
-    // all four remain distinguishable for remapping profiles.
+    // Grip paddles → SInput's four paddle slots: upper pair to paddle 1
+    // (L4/R4), lower pair to paddle 2 (L5/R5).
     if (raw & (1u << SC2_L4)) buttons |= JP_BUTTON_L4;
     if (raw & (1u << SC2_R4)) buttons |= JP_BUTTON_R4;
-    if (raw & (1u << SC2_L5)) buttons |= JP_BUTTON_A3;
-    if (raw & (1u << SC2_R5)) buttons |= JP_BUTTON_A4;
+    if (raw & (1u << SC2_L5)) buttons |= JP_BUTTON_L5;
+    if (raw & (1u << SC2_R5)) buttons |= JP_BUTTON_R5;
 
     // Sticks — Valve sends +Y = up, invert to HID convention (0 = up).
     uint8_t lx = stick_to_u8(rd_s16(data, SC2_OFF_LX));

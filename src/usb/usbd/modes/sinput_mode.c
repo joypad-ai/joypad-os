@@ -130,9 +130,12 @@ static uint32_t convert_buttons(uint32_t buttons)
     if (buttons & JP_BUTTON_A3) sinput_buttons |= SINPUT_MASK_MISC4;  // Mute/Assistant
     if (buttons & JP_BUTTON_A4) sinput_buttons |= SINPUT_MASK_MISC5;  // Misc 5
 
-    // Extended buttons (paddles) - map L4/R4 if available
+    // Extended buttons (paddles). Upper pair -> paddle 1, lower pair -> paddle 2
+    // (controllers with four back paddles, e.g. Steam Controller 2).
     if (buttons & JP_BUTTON_L4) sinput_buttons |= SINPUT_MASK_L_PADDLE1;
     if (buttons & JP_BUTTON_R4) sinput_buttons |= SINPUT_MASK_R_PADDLE1;
+    if (buttons & JP_BUTTON_L5) sinput_buttons |= SINPUT_MASK_L_PADDLE2;
+    if (buttons & JP_BUTTON_R5) sinput_buttons |= SINPUT_MASK_R_PADDLE2;
 
     return sinput_buttons;
 }
