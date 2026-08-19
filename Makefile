@@ -70,6 +70,7 @@ CONSOLE_pce := joypad_pce
 CONSOLE_ngc := joypad_ngc
 CONSOLE_ngc_rp2040zero := joypad_ngc_rp2040zero
 CONSOLE_nuon := joypad_nuon
+CONSOLE_nuon_rp2040zero := joypad_nuon_rp2040zero
 CONSOLE_nuonserial := joypad_nuonserial
 CONSOLE_loopy := joypad_loopy
 CONSOLE_dc := joypad_dc
@@ -151,6 +152,7 @@ APP_usb2pce_kb2040 := kb2040 pce usb2pce_kb2040 USB/BT PCEngine
 APP_usb2gc_kb2040 := kb2040 ngc usb2gc_kb2040 USB/BT GameCube
 APP_usb2gc_rp2040zero := rp2040zero ngc_rp2040zero usb2gc_rp2040zero USB/BT GameCube
 APP_usb2nuon_kb2040 := kb2040 nuon usb2nuon_kb2040 USB/BT Nuon
+APP_usb2nuon_rp2040zero := rp2040zero nuon_rp2040zero usb2nuon_rp2040zero USB/BT Nuon
 APP_nuonserial_kb2040 := kb2040 nuonserial nuonserial_kb2040 Nuon CDC-Serial
 APP_usb2loopy_kb2040 := kb2040 loopy usb2loopy_kb2040 USB/BT Loopy
 APP_usb2dc_kb2040 := kb2040 dc usb2dc_kb2040 USB/BT Dreamcast
@@ -257,6 +259,7 @@ APPS += usb2pce_kb2040
 APPS += usb2gc_kb2040
 APPS += usb2gc_rp2040zero
 APPS += usb2nuon_kb2040
+APPS += usb2nuon_rp2040zero
 APPS += usb2n64_kb2040
 APPS += usb2dc_kb2040
 APPS += usb2dc_rp2040zero
@@ -364,6 +367,7 @@ help:
 	@echo "  make usb2gc_kb2040      - USB/BT -> GameCube (KB2040)"
 	@echo "  make usb2gc_rp2040zero  - USB/BT -> GameCube (RP2040-Zero)"
 	@echo "  make usb2nuon_kb2040    - USB/BT -> Nuon (KB2040)"
+	@echo "  make usb2nuon_rp2040zero - USB/BT -> Nuon (RP2040-Zero)"
 	@echo "  make usb2n64_kb2040     - USB/BT -> N64 (KB2040)"
 	@echo "  make usb2loopy_kb2040   - USB/BT -> Loopy (KB2040)"
 	@echo "  make usb2dc_kb2040      - USB/BT -> Dreamcast (KB2040)"
@@ -603,6 +607,10 @@ usb2gc_rp2040zero:
 .PHONY: usb2nuon_kb2040
 usb2nuon_kb2040:
 	$(call build_app,usb2nuon_kb2040)
+
+.PHONY: usb2nuon_rp2040zero
+usb2nuon_rp2040zero:
+	$(call build_app,usb2nuon_rp2040zero)
 
 .PHONY: nuonserial_kb2040
 nuonserial_kb2040:
@@ -1460,6 +1468,10 @@ flash-usb2neogeo_retrofrog:
 .PHONY: flash-usb2nuon_kb2040
 flash-usb2nuon_kb2040:
 	@$(MAKE) --no-print-directory _flash_app APP_NAME=usb2nuon_kb2040
+
+.PHONY: flash-usb2nuon_rp2040zero
+flash-usb2nuon_rp2040zero:
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=usb2nuon_rp2040zero
 
 .PHONY: flash-nuonserial_kb2040
 flash-nuonserial_kb2040:

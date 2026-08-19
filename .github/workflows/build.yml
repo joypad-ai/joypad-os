@@ -29,6 +29,7 @@ jobs:
           - usb2gc_kb2040
           - usb2gc_rp2040zero
           - usb2nuon_kb2040
+          - usb2nuon_rp2040zero
           - usb2dc_kb2040
           - usb2dc_rp2040zero
           - usb2neogeo_kb2040

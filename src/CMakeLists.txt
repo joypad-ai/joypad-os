@@ -679,6 +679,43 @@ joypad_add_btstack(joypad_nuon)
 pico_generate_pio_header(joypad_nuon ${CMAKE_CURRENT_LIST_DIR}/native/device/nuon/polyface_read.pio)
 pico_generate_pio_header(joypad_nuon ${CMAKE_CURRENT_LIST_DIR}/native/device/nuon/polyface_send.pio)
 
+# --- Nuon (RP2040 Zero) ---
+# Same architecture as joypad_nuon above: native USB host on RHPORT0 (no
+# CONFIG_USB / DISABLE_USB_HOST means tusb_config.h takes the host-only branch),
+# so there is no PIO-USB block to place and Nuon data/clock stay on GP2/GP3.
+# Board deltas only:
+#   WS2812_PIN=16              - the Zero's onboard NeoPixel (the KB2040 build
+#                                sets CONFIG_NO_NEOPIXEL and has no status LED).
+#   CONFIG_NEOPIXEL_USE_PIO1=1 - REQUIRED, not cosmetic. nuon_device.c loads both
+#                                polyface programs into PIO0 (31/32 instructions)
+#                                and then claims all four PIO0 state machines.
+#                                The default NeoPixel path takes PIO0 via
+#                                pio_claim_unused_sm(..., required=true), which
+#                                PANICS at boot when none are free. PIO1 SM3 is
+#                                safe here: no CYW43 on a plain Zero and Nuon has
+#                                no maple, so nothing else claims PIO1.
+#   USE_BOOTSEL_BUTTON=1       - the Zero has no GPIO user button.
+add_executable(joypad_nuon_rp2040zero)
+target_compile_definitions(joypad_nuon_rp2040zero PRIVATE
+    CONFIG_NUON=1
+    WS2812_PIN=16
+    CONFIG_NEOPIXEL_USE_PIO1=1
+    USE_BOOTSEL_BUTTON=1
+)
+target_sources(joypad_nuon_rp2040zero PUBLIC ${COMMON_SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/device/nuon/nuon_device.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2nuon/app.c
+)
+target_include_directories(joypad_nuon_rp2040zero PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2nuon
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/device/nuon
+)
+target_link_libraries(joypad_nuon_rp2040zero PRIVATE ${COMMON_LIBRARIES} pico_bit_ops)
+joypad_target_common(joypad_nuon_rp2040zero)
+joypad_add_btstack(joypad_nuon_rp2040zero)
+pico_generate_pio_header(joypad_nuon_rp2040zero ${CMAKE_CURRENT_LIST_DIR}/native/device/nuon/polyface_read.pio)
+pico_generate_pio_header(joypad_nuon_rp2040zero ${CMAKE_CURRENT_LIST_DIR}/native/device/nuon/polyface_send.pio)
+
 # --- N64 ---
 add_executable(joypad_n64)
 target_compile_definitions(joypad_n64 PRIVATE CONFIG_N64=1)
