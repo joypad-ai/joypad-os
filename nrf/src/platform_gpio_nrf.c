@@ -20,10 +20,25 @@ static const struct device* gpio1_dev = NULL;
 // P0.00/P0.01 are the LFXO 32.768 kHz crystal pins (XL1/XL2) on every
 // nRF52840 board that uses the external low-freq crystal — driving them as
 // GPIO breaks LFCLK and wedges BLE/RTC.
-static bool platform_gpio_pin_usable(uint8_t pin) {
+bool platform_gpio_pin_usable(uint8_t pin) {
     if (pin > 47) return false;          // beyond P1.15
     if (pin == 0 || pin == 1) return false;  // LFXO crystal (XL1/XL2)
     return true;
+}
+
+uint8_t platform_gpio_pin_count(void) {
+    return 48;  // P0.00-P0.31 + P1.00-P1.15
+}
+
+uint8_t platform_adc_channel_count(void) {
+    return 4;  // pad_read_adc() centres anything above channel 3
+}
+
+int8_t platform_adc_channel_gpio(uint8_t channel) {
+    // SAADC inputs (AIN0-AIN7) are bound to pins through devicetree per board,
+    // not by a fixed GPIO offset, so there is no GPIO number to report.
+    (void)channel;
+    return -1;
 }
 
 static const struct device* get_gpio_dev(uint8_t pin) {

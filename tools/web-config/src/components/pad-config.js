@@ -1,7 +1,11 @@
 /** Buttons & Pins Configuration — Tabbed Sub-Sections */
 import { DirtyTracker } from './dirty-tracker.js';
 
-const PAD_BUTTON_NAMES = [
+// Fallbacks only. The board reports its own pin set, ADC channels and button
+// names through PAD.CONFIG.PINS; these are what the UI falls back to when that
+// command isn't answered. The first 22 entries must stay in PAD_BTN_* order —
+// PAD.CONFIG.SET reads "buttons" as a positional array.
+const PAD_BUTTON_NAMES_FALLBACK = [
     'D-Up', 'D-Down', 'D-Left', 'D-Right',
     'B1', 'B2', 'B3', 'B4',
     'L1', 'R1', 'L2', 'R2',
@@ -10,17 +14,47 @@ const PAD_BUTTON_NAMES = [
     'F1', 'F2'
 ];
 
-const ADC_OPTIONS = `
-    <option value="-1">Disabled</option>
-    <option value="0">ADC 0 (GPIO 26)</option>
-    <option value="1">ADC 1 (GPIO 27)</option>
-    <option value="2">ADC 2 (GPIO 28)</option>
-    <option value="3">ADC 3 (GPIO 29)</option>`;
+// F1/F2 live in their own flash fields rather than the buttons array, so the
+// firmware's button_names list stops at 22 and the UI appends these two.
+const PAD_FUNCTION_NAMES = ['F1', 'F2'];
 
-function adcRow(label, id) {
+// Must match PAD_BTN_COUNT in pad_config_flash.h. PAD.CONFIG.SET reads
+// "buttons" positionally, so the two sides have to agree on this length.
+const PAD_BTN_COUNT = 22;
+
+// GPIO ids offered when the board doesn't report its own: the RP2040 range,
+// which covers every target shipping pad input today.
+const PAD_GPIO_FALLBACK = Array.from({ length: 30 }, (_, i) => i);
+const PAD_ADC_FALLBACK = [0, 1, 2, 3];
+const PAD_ADC_GPIO_FALLBACK = [26, 27, 28, 29];
+
+// Firmware sends wire names (dpad_up, b1, l4); these are the display labels.
+// Anything unmapped falls through to the raw name uppercased, so a button
+// added to the firmware table still renders instead of vanishing.
+const PAD_BUTTON_LABELS = {
+    dpad_up: 'D-Up', dpad_down: 'D-Down', dpad_left: 'D-Left', dpad_right: 'D-Right',
+};
+
+function padButtonLabel(name) {
+    return PAD_BUTTON_LABELS[name] || String(name).toUpperCase();
+}
+
+function adcOptions(channels, adcGpio) {
+    let html = '<option value="-1">Disabled</option>';
+    for (const ch of channels) {
+        const gpio = adcGpio ? adcGpio[ch] : undefined;
+        // adc_gpio is -1 where analog inputs aren't GPIO-numbered (nRF SAADC,
+        // ESP32 ADC1) — show the bare channel rather than an invented pin.
+        const hint = (typeof gpio === 'number' && gpio >= 0) ? ` (GPIO ${gpio})` : '';
+        html += `<option value="${ch}">ADC ${ch}${hint}</option>`;
+    }
+    return html;
+}
+
+function adcRow(label, id, channels, adcGpio) {
     return `<div class="pad-pin-row">
         <span>${label}</span>
-        <select id="${id}" class="pad-adc-select">${ADC_OPTIONS}</select>
+        <select id="${id}" class="pad-adc-select">${adcOptions(channels, adcGpio)}</select>
         <label class="pad-invert"><input type="checkbox" id="${id}Invert"> Invert</label>
     </div>`;
 }
@@ -30,6 +64,61 @@ export class PadConfigCard {
         this.protocol = protocol;
         this.log = log;
         this.el = container;
+        // Replaced by the board's own values in load() via PAD.CONFIG.PINS.
+        this.buttonNames = PAD_BUTTON_NAMES_FALLBACK;
+        this.gpioList = PAD_GPIO_FALLBACK;
+        this.adcChannels = PAD_ADC_FALLBACK;
+        this.adcGpio = PAD_ADC_GPIO_FALLBACK;
+    }
+
+    // Ask the board what pins it has. Falls back to the RP2040 defaults if the
+    // command isn't supported, so older firmware keeps working.
+    async loadPinInfo() {
+        try {
+            const pins = await this.protocol.getPadPins();
+            if (!pins || !pins.ok) return;
+
+            if (Array.isArray(pins.gpio) && pins.gpio.length) {
+                this.gpioList = pins.gpio;
+            }
+            if (Array.isArray(pins.button_names)) {
+                // "buttons" is a POSITIONAL array — slot i is PAD_BTN_*(i). A
+                // list of any other length means firmware and tool disagree
+                // about that mapping, and adopting it would write every button
+                // to a shifted slot with no error. Keep the known-good labels
+                // and say so instead.
+                if (pins.button_names.length === PAD_BTN_COUNT) {
+                    // F1/F2 are separate flash fields, not part of the array,
+                    // so they always occupy the last two UI slots.
+                    this.buttonNames = pins.button_names.map(padButtonLabel).concat(PAD_FUNCTION_NAMES);
+                } else {
+                    this.log(`Firmware reports ${pins.button_names.length} buttons, expected ${PAD_BTN_COUNT} — using built-in labels. Update the config tool.`, 'error');
+                }
+            }
+            if (Array.isArray(pins.adc) && pins.adc.length) {
+                this.adcChannels = pins.adc;
+                this.adcGpio = Array.isArray(pins.adc_gpio) ? pins.adc_gpio : null;
+            }
+        } catch (e) {
+            this.log(`Pin capabilities unavailable, using defaults: ${e.message}`);
+        }
+    }
+
+    // ADC selects are built from the board's channel list, so they have to be
+    // regenerated once loadPinInfo() has run — before load() assigns values.
+    rebuildAdcSelects() {
+        const sticks = this.el.querySelector('#padAdcSticks');
+        const triggers = this.el.querySelector('#padAdcTriggers');
+        if (!sticks || !triggers) return;
+        const ch = this.adcChannels, gp = this.adcGpio;
+        sticks.innerHTML =
+            adcRow('Left X', 'padAdcLX', ch, gp) +
+            adcRow('Left Y', 'padAdcLY', ch, gp) +
+            adcRow('Right X', 'padAdcRX', ch, gp) +
+            adcRow('Right Y', 'padAdcRY', ch, gp);
+        triggers.innerHTML =
+            adcRow('Left Trigger', 'padAdcLT', ch, gp) +
+            adcRow('Right Trigger', 'padAdcRT', ch, gp);
     }
 
     render() {
@@ -96,11 +185,11 @@ export class PadConfigCard {
                 <!-- Analog Tab -->
                 <div class="sub-tab-content" id="tabAnalog" data-tab="analog">
                     <h3 style="margin-bottom: 8px;">Sticks (ADC)</h3>
-                    <div class="pad-pin-grid">
-                        ${adcRow('Left X', 'padAdcLX')}
-                        ${adcRow('Left Y', 'padAdcLY')}
-                        ${adcRow('Right X', 'padAdcRX')}
-                        ${adcRow('Right Y', 'padAdcRY')}
+                    <div class="pad-pin-grid" id="padAdcSticks">
+                        ${adcRow('Left X', 'padAdcLX', this.adcChannels, this.adcGpio)}
+                        ${adcRow('Left Y', 'padAdcLY', this.adcChannels, this.adcGpio)}
+                        ${adcRow('Right X', 'padAdcRX', this.adcChannels, this.adcGpio)}
+                        ${adcRow('Right Y', 'padAdcRY', this.adcChannels, this.adcGpio)}
                     </div>
                     <div class="pad-form-row" style="margin-top: 12px;">
                         <span class="label">Deadzone</span>
@@ -110,9 +199,9 @@ export class PadConfigCard {
                         </div>
                     </div>
                     <h3 style="margin-top: 16px; margin-bottom: 8px;">Triggers (ADC)</h3>
-                    <div class="pad-pin-grid">
-                        ${adcRow('Left Trigger', 'padAdcLT')}
-                        ${adcRow('Right Trigger', 'padAdcRT')}
+                    <div class="pad-pin-grid" id="padAdcTriggers">
+                        ${adcRow('Left Trigger', 'padAdcLT', this.adcChannels, this.adcGpio)}
+                        ${adcRow('Right Trigger', 'padAdcRT', this.adcChannels, this.adcGpio)}
                     </div>
                 </div>
 
@@ -226,7 +315,18 @@ export class PadConfigCard {
     buildPinSelect(id, value, includeI2C) {
         let html = `<select id="${id}" class="pad-pin-select">`;
         html += `<option value="-1"${value < 0 ? ' selected' : ''}>Disabled</option>`;
-        for (let i = 0; i <= 47; i++) html += `<option value="${i}"${value === i ? ' selected' : ''}>GPIO ${i}</option>`;
+        // Only the pins the board reports. This used to be a flat 0-47, which
+        // offered 18 nonexistent pins on every RP2040 target and the nRF's two
+        // LFXO crystal pins — all of them accepted, saved and silently dead.
+        for (const i of this.gpioList) {
+            html += `<option value="${i}"${value === i ? ' selected' : ''}>GPIO ${i}</option>`;
+        }
+        // A pin saved by other means (or by older firmware) may not be in the
+        // reported set — keep it selectable so opening the tool doesn't
+        // silently rewrite it to Disabled on the next save.
+        if (value >= 0 && !this.gpioList.includes(value) && value < 100) {
+            html += `<option value="${value}" selected>GPIO ${value} (not on this board)</option>`;
+        }
         if (includeI2C) {
             for (let i = 100; i <= 115; i++) html += `<option value="${i}"${value === i ? ' selected' : ''}>I2C0 P${i - 100}</option>`;
             for (let i = 200; i <= 215; i++) html += `<option value="${i}"${value === i ? ' selected' : ''}>I2C1 P${i - 200}</option>`;
@@ -240,11 +340,11 @@ export class PadConfigCard {
         const container = this.el.querySelector('#padButtonPins');
         if (!container) return;
         const values = [];
-        for (let i = 0; i < PAD_BUTTON_NAMES.length; i++) {
+        for (let i = 0; i < this.buttonNames.length; i++) {
             const sel = this.el.querySelector('#padBtn' + i);
             values.push(sel ? parseInt(sel.value) : -1);
         }
-        container.innerHTML = PAD_BUTTON_NAMES.map((name, i) =>
+        container.innerHTML = this.buttonNames.map((name, i) =>
             `<div class="pad-pin-row"><span>${name}</span>${this.buildPinSelect('padBtn' + i, values[i], includeI2C)}</div>`
         ).join('');
         container.addEventListener('change', () => this.checkConflicts());
@@ -262,6 +362,11 @@ export class PadConfigCard {
             }
 
             card.style.display = '';
+
+            // Ask the board for its pin set before building any select, so the
+            // menus below are populated from firmware rather than assumptions.
+            await this.loadPinInfo();
+            this.rebuildAdcSelects();
 
             this.el.querySelector('#padActiveHigh').value = String(config.active_high || false);
 
@@ -283,7 +388,7 @@ export class PadConfigCard {
             buttons[22] = config.f1_pin !== undefined ? config.f1_pin : -1;
             buttons[23] = config.f2_pin !== undefined ? config.f2_pin : -1;
             const includeI2C = this.hasI2C();
-            container.innerHTML = PAD_BUTTON_NAMES.map((name, i) =>
+            container.innerHTML = this.buttonNames.map((name, i) =>
                 `<div class="pad-pin-row"><span>${name}</span>${this.buildPinSelect('padBtn' + i, buttons[i] !== undefined ? buttons[i] : -1, includeI2C)}</div>`
             ).join('');
 
@@ -351,20 +456,20 @@ export class PadConfigCard {
         const pinCounts = {};
         const conflicts = [];
 
-        for (let i = 0; i < PAD_BUTTON_NAMES.length; i++) {
+        for (let i = 0; i < this.buttonNames.length; i++) {
             const sel = this.el.querySelector('#padBtn' + i);
             if (!sel) continue;
             const pin = parseInt(sel.value);
             if (pin < 0) continue;
             if (!pinCounts[pin]) pinCounts[pin] = [];
-            pinCounts[pin].push(PAD_BUTTON_NAMES[i]);
+            pinCounts[pin].push(this.buttonNames[i]);
             sel.classList.remove('conflict');
         }
 
         for (const [pin, names] of Object.entries(pinCounts)) {
             if (names.length > 1) {
                 conflicts.push(`Pin ${pin} used by: ${names.join(', ')}`);
-                for (let i = 0; i < PAD_BUTTON_NAMES.length; i++) {
+                for (let i = 0; i < this.buttonNames.length; i++) {
                     const sel = this.el.querySelector('#padBtn' + i);
                     if (sel && parseInt(sel.value) === parseInt(pin)) sel.classList.add('conflict');
                 }
@@ -374,9 +479,16 @@ export class PadConfigCard {
         const adcIds = ['padAdcLX', 'padAdcLY', 'padAdcRX', 'padAdcRY'];
         const adcLabels = ['Left X', 'Left Y', 'Right X', 'Right Y'];
         for (let a = 0; a < 4; a++) {
-            const ch = parseInt(this.el.querySelector('#' + adcIds[a]).value);
+            const el = this.el.querySelector('#' + adcIds[a]);
+            if (!el) continue;
+            const ch = parseInt(el.value);
             if (ch < 0) continue;
-            const gpio = 26 + ch;
+            // Only meaningful where the analog input is a GPIO that could also
+            // be claimed as a digital button. On nRF/ESP32 adc_gpio is -1 and
+            // there is no overlap to warn about — the old `26 + ch` invented
+            // one, flagging a phantom conflict on GPIO 26-29.
+            const gpio = this.adcGpio ? this.adcGpio[ch] : undefined;
+            if (typeof gpio !== 'number' || gpio < 0) continue;
             if (pinCounts[gpio]) {
                 conflicts.push(`GPIO ${gpio} used as both ADC (${adcLabels[a]}) and digital (${pinCounts[gpio].join(', ')})`);
             }

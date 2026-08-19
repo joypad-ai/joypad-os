@@ -22,11 +22,13 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 
 // Optional pad config support (controller apps)
 #ifdef CONFIG_PAD_INPUT
 #include "pad/pad_input.h"
 #include "pad/pad_config_flash.h"
+#include "platform/platform_gpio.h"
 #endif
 
 // Optional BT support
@@ -3563,42 +3565,75 @@ static void cmd_pad_config_reset(const char* json)
     pending_reboot_time = platform_time_ms();
 }
 
+// Append to response_buf, clamping so a truncated write can't push `pos` past
+// the end. snprintf returns the length it *would* have written, so the common
+// `pos += snprintf(buf + pos, sizeof(buf) - pos, ...)` chain makes the next
+// size argument underflow to a huge size_t once the buffer fills. The pin
+// response is ~600 bytes against CDC_MAX_PAYLOAD, so this cannot fire today —
+// but it is now sized by the board's pin count rather than a fixed 30.
+static int pins_append(int pos, const char* fmt, ...)
+{
+    if (pos < 0 || (size_t)pos >= sizeof(response_buf)) return (int)sizeof(response_buf);
+
+    va_list ap;
+    va_start(ap, fmt);
+    int n = vsnprintf(response_buf + pos, sizeof(response_buf) - pos, fmt, ap);
+    va_end(ap);
+
+    if (n < 0) return pos;                       // encoding error, leave pos put
+    pos += n;
+    if ((size_t)pos > sizeof(response_buf)) pos = (int)sizeof(response_buf);
+    return pos;
+}
+
 static void cmd_pad_config_pins(const char* json)
 {
     (void)json;
 
-    // Report available GPIO pins for this board
-    // RP2040 has GPIO 0-29, ADC on channels 0-3 (GPIO 26-29)
+    // Report the pins this board actually has. Every value here used to be
+    // hardcoded to an RP2040 (GPIO 0-29, ADC on 26-29), which is wrong on both
+    // of the other platforms that compile this command: the nRF52840 numbers
+    // P0/P1 as 0-47 and cannot use 0/1 (LFXO crystal), and the ESP32's
+    // numbering space has gaps. The config tool builds its pin menus from this
+    // response, so a hardcoded range there means offering pins that silently
+    // do nothing when written.
     int pos = 0;
-    pos += snprintf(response_buf + pos, sizeof(response_buf) - pos,
-                    "{\"ok\":true,\"gpio\":[");
+    pos = pins_append(pos, "{\"ok\":true,\"gpio\":[");
 
-    // GPIO 0-29 (all available on RP2040)
-    for (int i = 0; i <= 29; i++) {
-        if (i > 0) pos += snprintf(response_buf + pos, sizeof(response_buf) - pos, ",");
-        pos += snprintf(response_buf + pos, sizeof(response_buf) - pos, "%d", i);
+    bool first = true;
+    uint8_t pin_count = platform_gpio_pin_count();
+    for (uint8_t i = 0; i < pin_count; i++) {
+        if (!platform_gpio_pin_usable(i)) continue;
+        pos = pins_append(pos, first ? "%u" : ",%u", (unsigned)i);
+        first = false;
     }
-    pos += snprintf(response_buf + pos, sizeof(response_buf) - pos, "]");
+    pos = pins_append(pos, "]");
 
-    // ADC channels
-    pos += snprintf(response_buf + pos, sizeof(response_buf) - pos,
-                    ",\"adc\":[0,1,2,3]");
+    // ADC channels, plus the GPIO backing each one where the platform numbers
+    // its analog inputs as GPIOs (-1 elsewhere, so the UI drops the hint).
+    pos = pins_append(pos, ",\"adc\":[");
+    uint8_t adc_count = platform_adc_channel_count();
+    for (uint8_t i = 0; i < adc_count; i++) {
+        pos = pins_append(pos, i ? ",%u" : "%u", (unsigned)i);
+    }
+    pos = pins_append(pos, "],\"adc_gpio\":[");
+    for (uint8_t i = 0; i < adc_count; i++) {
+        pos = pins_append(pos, i ? ",%d" : "%d", (int)platform_adc_channel_gpio(i));
+    }
+    pos = pins_append(pos, "]");
 
     // I2C expander pin ranges
-    pos += snprintf(response_buf + pos, sizeof(response_buf) - pos,
-                    ",\"i2c_exp_0\":[100,115],\"i2c_exp_1\":[200,215]");
+    pos = pins_append(pos, ",\"i2c_exp_0\":[100,115],\"i2c_exp_1\":[200,215]");
 
-    // Button names for UI labels
-    pos += snprintf(response_buf + pos, sizeof(response_buf) - pos,
-                    ",\"button_names\":[");
+    // Button names for UI labels — the authoritative order, matching the
+    // positional "buttons" array that PAD.CONFIG.SET reads.
+    pos = pins_append(pos, ",\"button_names\":[");
     for (int i = 0; i < PAD_BTN_COUNT; i++) {
-        if (i > 0) pos += snprintf(response_buf + pos, sizeof(response_buf) - pos, ",");
-        pos += snprintf(response_buf + pos, sizeof(response_buf) - pos,
-                        "\"%s\"", pad_button_names[i]);
+        pos = pins_append(pos, i ? ",\"%s\"" : "\"%s\"", pad_button_names[i]);
     }
-    pos += snprintf(response_buf + pos, sizeof(response_buf) - pos, "]");
+    pos = pins_append(pos, "]");
 
-    pos += snprintf(response_buf + pos, sizeof(response_buf) - pos, "}");
+    pos = pins_append(pos, "}");
     send_json(response_buf);
 }
 
