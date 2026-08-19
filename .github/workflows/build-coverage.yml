@@ -1,0 +1,35 @@
+name: Build Coverage
+
+# Assert every app build target is in a CI matrix or explicitly excluded.
+# The release publishes `releases/*` — whatever build.yml's matrices produced —
+# so matrix membership is release membership, and a target in no matrix ships
+# no UF2 no matter what the Makefile or the CHANGELOG says.
+#
+# This lives in its own workflow rather than as a job in build.yml for one
+# reason: build.yml runs only on `push: [main]` and `workflow_dispatch`, so a
+# job there cannot see a pull request. Coverage drift is *introduced* in PRs —
+# somebody adds a `build_app` target and not the matrix entry — and a guard
+# that only runs post-merge reports the problem after it has already landed.
+#
+# Splitting it also keeps the cost decision separate: this is pure stdlib
+# Python reading two text files, no toolchain and no container, so running it
+# on every PR costs seconds. Putting `pull_request` on build.yml itself would
+# additionally fire a 69-target firmware matrix per push, which is a different
+# question and deliberately not decided here.
+#
+# It reports; it gates nothing else. A bookkeeping omission must not hold up a
+# build or a release.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  check-build-coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check every app target is shipped or explicitly excluded
+        run: python3 tools/check_build_coverage.py
