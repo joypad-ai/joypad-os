@@ -3,6 +3,14 @@ name: Build & Release
 on:
   push:
     branches: [main]
+  # Every build job runs `needs: check-version` and checks out its `sha` output,
+  # so check-version runs on this event too. That is safe and deliberate: its
+  # bump/commit steps are guarded on `workflow_dispatch`, and `should_release`
+  # is hard-false off any non-dispatch event. On a pull request `github.sha` is
+  # the *merge* commit, so the matrix compiles the PR merged into main — which
+  # is the question a PR build is asked.
+  pull_request:
+    branches: [main]
   workflow_dispatch:
     inputs:
       bump_version:
@@ -16,11 +24,22 @@ on:
           - minor
           - major
 
+# One in-flight run per pull request — a new push supersedes the previous build.
+# Non-PR runs are keyed on `run_id`, so every push to main and every release
+# dispatch gets its own group: never queued behind another run, never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   # Build RP2040/RP2350 apps in parallel using matrix (Docker + pico-sdk)
   build-rpi:
     needs: check-version
     runs-on: ubuntu-latest
+    # Compiling needs nothing but read access. Stated explicitly because this
+    # job is now reachable from a pull request, including one from a fork.
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -130,13 +149,19 @@ jobs:
           name: firmware-${{ matrix.app }}
           path: releases/*.uf2
           if-no-files-found: error
-          retention-days: 1
+          # On main these are intermediates that `collect` consumes and deletes
+          # within the run. On a pull request `collect` does not run, so this
+          # artifact *is* the deliverable — the UF2 a reviewer flashes to give a
+          # PR its hardware pass. Keep it long enough to be reviewed.
+          retention-days: ${{ github.event_name == 'pull_request' && 14 || 1 }}
 
   # Build ESP32 targets (separate job — needs ESP-IDF toolchain)
   build-esp:
     name: build-esp (${{ matrix.app }})
     needs: check-version
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -196,13 +221,19 @@ jobs:
           name: firmware-${{ matrix.app }}
           path: releases/*.uf2
           if-no-files-found: error
-          retention-days: 1
+          # On main these are intermediates that `collect` consumes and deletes
+          # within the run. On a pull request `collect` does not run, so this
+          # artifact *is* the deliverable — the UF2 a reviewer flashes to give a
+          # PR its hardware pass. Keep it long enough to be reviewed.
+          retention-days: ${{ github.event_name == 'pull_request' && 14 || 1 }}
 
   # Build nRF52840 targets (separate job — needs nRF Connect SDK)
   build-nrf:
     name: build-nrf (${{ matrix.app }})
     needs: check-version
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -300,11 +331,20 @@ jobs:
           name: firmware-${{ matrix.app }}
           path: releases/*.uf2
           if-no-files-found: error
-          retention-days: 1
+          # On main these are intermediates that `collect` consumes and deletes
+          # within the run. On a pull request `collect` does not run, so this
+          # artifact *is* the deliverable — the UF2 a reviewer flashes to give a
+          # PR its hardware pass. Keep it long enough to be reviewed.
+          retention-days: ${{ github.event_name == 'pull_request' && 14 || 1 }}
 
   # Collect all artifacts and create combined release package
   collect:
     needs: [check-version, build-rpi, build-esp, build-nrf]
+    # Release packaging: it renames artifacts into the shape `create-release`
+    # publishes, then deletes the per-target ones. A pull request wants neither.
+    # Skipping it also leaves the per-target `firmware-*` artifacts in place,
+    # which is what makes a single board's UF2 downloadable from the PR.
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - name: Download all firmware artifacts
