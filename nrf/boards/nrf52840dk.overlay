@@ -1,0 +1,51 @@
+/* Joypad usb2usb — nRF52840-DK devicetree overlay
+ *
+ * The DK's default DTS (via nrf52840_partition.dtsi) lays out flash for an
+ * MCUboot child image: boot_partition at 0x0, then slot0/slot1 app slots.
+ * The DK has no bootloader here — it flashes straight over the onboard
+ * J-Link — so replace that with a single code_partition at 0x0 spanning the
+ * whole flash, keeping the same NVS storage_partition tail used by
+ * flash_nrf.c / btstack_tlv_nrf.c.
+ *
+ * Console is already zephyr,console = &uart0 in the stock DK devicetree,
+ * routed to the J-Link's onboard VCOM — no console overlay needed.
+ *
+ * display_i2c_nrf.c (shared across all boards, built regardless of app type)
+ * references &i2c1 by devicetree label. The DK's stock dts defines i2c1's
+ * pinctrl but leaves it disabled (commented `status = "okay"`) because it
+ * conflicts with spi1 — enable it here so the node ordinal resolves; no
+ * display is attached for usb2usb.
+ */
+
+&i2c1 {
+	status = "okay";
+};
+
+/delete-node/ &boot_partition;
+/delete-node/ &slot0_partition;
+/delete-node/ &slot1_partition;
+/delete-node/ &storage_partition;
+
+&flash0 {
+	partitions {
+		compatible = "fixed-partitions";
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		code_partition: partition@0 {
+			label = "code_partition";
+			reg = <0x00000000 0x000f8000>;
+		};
+
+		storage_partition: partition@f8000 {
+			label = "storage";
+			reg = <0x000f8000 0x00008000>;
+		};
+	};
+};
+
+/ {
+	chosen {
+		zephyr,code-partition = &code_partition;
+	};
+};

@@ -137,6 +137,9 @@ if(APP_TYPE STREQUAL "usb2usb")
         # --- MAX3421E host (nRF Zephyr port) ---
         "src/max3421_host_nrf.c"
 
+        # --- UART host (nRF Zephyr port of native/host/uart/uart_host.c) ---
+        "src/uart_host_nrf.c"
+
         # --- USB Host layer ---
         "${SHARED_SRC}/usb/usbh/usbh.c"
         "${SHARED_SRC}/usb/usbh/hid/hid.c"
@@ -191,6 +194,7 @@ if(APP_TYPE STREQUAL "usb2usb")
         "${SHARED_SRC}/apps/usb2usb"
         "${SHARED_SRC}/usb/usbh"
         "${SHARED_SRC}/lib/tusb_xinput"
+        "${SHARED_SRC}/native/host/uart"
     )
 
     target_compile_definitions(app PRIVATE
@@ -202,6 +206,14 @@ if(APP_TYPE STREQUAL "usb2usb")
         DISABLE_DISPLAY_SPI=1
         OLED_I2C_DISPLAY=1
         CFG_TUSB_CONFIG_FILE="tusb_config_nrf.h"
+        # MCP-driven synthetic input over the console UART (uart0) -- same
+        # UART that carries stdio logs, mirroring the RP2040 build where
+        # joypad-mcp shares one UART for both.
+        CONFIG_UART_HOST=1
+        UART_HOST_PERIPHERAL=uart0
+        CONFIG_UART_HOST_TX_PIN=0
+        CONFIG_UART_HOST_RX_PIN=0
+        CONFIG_UART_HOST_BAUD=115200
     )
 
 elseif(APP_TYPE STREQUAL "btusb2usb")
