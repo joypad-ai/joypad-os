@@ -1,0 +1,288 @@
+name: Build WCH (CH32V307)
+
+# Compile the `wch/` port on every push and pull request.
+#
+# WHY THIS EXISTS
+# ---------------
+# The CH32V307 port landed on `main` on 2026-06-04 (d6c4d2ef) and linked fine.
+# On 2026-07-11 (3063ba01) a merge in an unrelated subsystem added three
+# unguarded `ps4_auth_flash_*` calls to the shared `cdc_commands.c`, which broke
+# the link on every platform that has no pico-sdk flash backend. The identical
+# breakage was stubbed for `esp/` and `nrf/` 8h50m later the same morning
+# (9a9de6a6). `wch/` was skipped and stayed broken for 32 days.
+#
+# The only variable was CI. The two platforms with a build job were fixed in
+# nine hours; the one without was not fixed at all, because nothing compiled it
+# and so nothing went red. No code review would have caught it either — the port
+# was correct when merged, its README truthfully said so, and the breaking commit
+# is in another subsystem entirely. A compile job is the only thing that closes
+# this class of gap.
+#
+# WHY IT IS NOT A JOB IN build.yml
+# --------------------------------
+# build.yml's release step publishes `releases/*`, i.e. whatever its matrices
+# produced, so matrix membership *is* release membership (see #212). This port
+# ships no firmware today and whether it should is a product call, not a CI one —
+# `.github/ci-excluded-apps.txt` records it as deliberately unshipped. What the
+# evidence above asks for is a compile, not a release entry, so this is its own
+# workflow: it reports, and it gates nothing. It is in no `needs:` chain and
+# cannot hold up a build or a release.
+#
+# The `pull_request` trigger is the load-bearing half — breakage of this kind is
+# introduced in a PR that never touches `wch/`, and a post-merge-only check
+# reports it after it has already landed.
+#
+# NOTES FOR LATER
+# ---------------
+# * The toolchain is pinned to WCH gcc 8.2.0; newer GCC miscompiles the WCH USB
+#   timing code. It is an x86-64 xpack tarball, which is why this cannot be run
+#   on an Apple Silicon dev machine without Rosetta, and why CI is the natural
+#   place for it — GitHub's ubuntu runners are x86-64 and run it natively.
+# * The build is deliberately serial. `-j` is very likely fine, but this is the
+#   first time this port has ever been compiled by CI and a confusing red from a
+#   racy build would be worse than a slower green. Add `-j` once it has a
+#   baseline.
+# * No assertions about particular symbols live here on purpose. The link *is*
+#   the check: an unresolved reference from the shared tree fails the build. A
+#   hardcoded symbol list would rot into exactly the kind of stale manifest this
+#   repo already has too many of.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: build-wch-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  WCH_GCC_VER: 8.2.0-3.1
+  BOARD: ch32v307v_r1_1v0
+
+jobs:
+  build-wch:
+    name: build-wch (usb2usb, ch32v307v_r1_1v0)
+    runs-on: ubuntu-latest
+    steps:
+      # Deliberately NOT `submodules: recursive`. Everything this build needs is
+      # supposed to come from `make init-wch`, so checking out submodules here
+      # would hide a hole in that target instead of catching it — and the first
+      # run of this job caught exactly one (it initialised tinyusb but not
+      # tusb_xinput or libxsm3, so a fresh clone died on `xinput_host.h`). The
+      # bare checkout is what makes this a test of the documented setup path and
+      # not just of the compiler.
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Only the toolchain is cached. The WCH SDK lands inside the tinyusb
+      # submodule working tree, so caching it would fight with submodule init;
+      # it is a depth-1 fetch and cheap. The toolchain is a ~200MB download.
+      #
+      # Split restore/save rather than the combined `actions/cache@v4`, because
+      # the combined action's save runs as a post step and post steps are
+      # SKIPPED when the job fails. This job's whole purpose is to fail on
+      # broken shared code, so under the combined action it would re-download
+      # 200MB on every red run and never once populate the cache — which is how
+      # a transient 503 from the xpack release CDN turned into a hard block on
+      # iterating at all. Saving on `always()` means the toolchain is cached the
+      # first time it downloads, red run or not.
+      - name: Restore WCH toolchain
+        id: wch-toolchain-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: wch/toolchain
+          key: wch-gcc-${{ env.WCH_GCC_VER }}-linux-x64
+
+      # PICO_TOOLCHAIN_PATH is set to satisfy a *parse-time* guard, not because
+      # anything here uses it. The top-level Makefile aborts with
+      # `$(error No ARM toolchain found...)` when it can neither locate
+      # /Applications/ArmGNUToolchain nor find arm-none-eabi-gcc on PATH — and a
+      # bare ubuntu runner has neither, because build.yml's RP2040 jobs run
+      # `make` inside the Docker image rather than on the host. That guard fires
+      # while the Makefile is being read, so it kills `make init-wch` before it
+      # does anything WCH-related. `PICO_TOOLCHAIN_PATH` is read nowhere in the
+      # wch build path (verified across wch/, the TinyUSB make system and
+      # src/platform/ch32/), so any non-empty value is inert here; make's
+      # `ifndef` treats an empty value as undefined, hence a real directory.
+      #
+      # The underlying defect is that an ARM-specific guard is unconditional for
+      # goals that need no ARM toolchain (`init-wch`, `init-esp`, `init-nrf`,
+      # `help`). Fixing it belongs in the Makefile, not here — flagged separately
+      # so it is not smuggled into an unrelated PR.
+      - name: Install WCH toolchain + SDK
+        run: make init-wch
+        env:
+          PICO_TOOLCHAIN_PATH: /usr
+
+      # Save immediately after install, not at the end of the job, so the
+      # toolchain is cached even when the build below fails — which is the
+      # expected outcome whenever this job is doing its job.
+      #
+      # Guarded on the compiler actually being executable so a failed or partial
+      # download is never written to the cache. The key is fixed, so a poisoned
+      # entry would be worse than no entry: nothing would evict it and every
+      # later run would restore a broken toolchain.
+      - name: Check toolchain present
+        id: wch-toolchain-check
+        if: always()
+        run: |
+          if [ -x "wch/toolchain/xPacks/riscv-none-embed-gcc/$WCH_GCC_VER/bin/riscv-none-embed-gcc" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Save WCH toolchain
+        if: always()
+          && steps.wch-toolchain-cache.outputs.cache-hit != 'true'
+          && steps.wch-toolchain-check.outputs.present == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: wch/toolchain
+          key: wch-gcc-${{ env.WCH_GCC_VER }}-linux-x64
+
+      - name: Build usb2usb for CH32V307
+        run: |
+          cd wch
+          make BOARD="$BOARD"
+
+      # When the link overflows SRAM, ld reports one number and names nothing:
+      # "region `RAM' overflowed", "RAM: 64 KB / 64 KB / 100.00%". That turns a
+      # specific, fixable overflow into a shrug, and on a 64 KB part this is the
+      # failure this job will hit most often. So say what is in the 64 KB.
+      #
+      # The source is the linker map, which gcc_common.mk already requests with
+      # -Wl,-Map. ld writes it as it lays sections out, so it exists even though
+      # the link then failed, and it reflects the FINAL layout: post-LTO,
+      # post---gc-sections, with the addresses actually assigned.
+      #
+      # An earlier version of this step ranked `nm --print-size` output over the
+      # .o files instead, and produced nothing at all. This build is LTO, so the
+      # objects hold GIMPLE bytecode rather than allocated sections and there is
+      # nothing for nm to measure -- allocation does not exist until the link.
+      # The map is the only place these numbers live.
+      #
+      # The map is also uploaded whole. The ranking below is a convenience and
+      # its parsing can rot; the artifact is exact and needs no parser.
+      #
+      # Runs only on failure and cannot fail the job: this is diagnostics
+      # attached to an existing red, not a second check that can go red on its
+      # own. If the failure came before the link there is no map and it says so.
+      #
+      # .data is counted alongside .bss and COMMON because it occupies SRAM at
+      # runtime too. Stack (4 KB) and heap sit on top of all of it, so read the
+      # total as a ranking, not as a budget.
+      - name: Rank static RAM consumers (failure only)
+        if: failure()
+        run: |
+          MAP="wch/_build/$BOARD/wch.elf.map"
+          if [ ! -f "$MAP" ]; then
+            echo "no linker map at $MAP — failure came before the link"
+            exit 0
+          fi
+          # Entries look like "  .bss.foo   0x20000abc   0x400  path/obj.o",
+          # and ld wraps long section names onto their own line with the
+          # address/size/object on the next one. Both forms handled.
+          # Plain POSIX awk with a hand-rolled hex converter: mawk (the ubuntu
+          # default) has no strtonum, and depending on gawk being installed is
+          # an avoidable dependency. Verified against both wrapped and inline
+          # map entry forms.
+          awk '
+            function hex2dec(s,   i, c, v, d) {
+              sub(/^0[xX]/, "", s)
+              v = 0
+              for (i = 1; i <= length(s); i++) {
+                c = tolower(substr(s, i, 1))
+                d = index("0123456789abcdef", c) - 1
+                if (d < 0) return 0
+                v = v * 16 + d
+              }
+              return v
+            }
+            function emit(sz, nm, ob) {
+              sub(/^.*\//, "", ob)
+              if (sz > 0) printf "%d\t%s\t%s\n", sz, nm, ob
+            }
+            /^ (\.(bss|data)|COMMON)/ {
+              if (NF == 1) { pend = $1; next }
+              if (NF >= 4 && $2 ~ /^0x/ && $3 ~ /^0x/) { emit(hex2dec($3), $1, $4); pend = "" }
+              next
+            }
+            /^ +0x/ {
+              if (pend != "" && NF >= 3 && $1 ~ /^0x/ && $2 ~ /^0x/) { emit(hex2dec($2), pend, $3) }
+              pend = ""
+              next
+            }
+          ' "$MAP" > /tmp/ram.tsv 2>/dev/null || true
+          if [ ! -s /tmp/ram.tsv ]; then
+            echo "map found but nothing parsed — see the uploaded wch-linker-map artifact"
+            exit 0
+          fi
+          {
+            echo "## CH32V307 static RAM ranking"
+            echo
+            echo "From the linker map of the failed link (final layout, post-LTO)."
+            echo "Stack (4 KB) and heap sit on top of these."
+            echo
+            TOTAL=$(awk -F'\t' '{s+=$1} END {print s}' /tmp/ram.tsv)
+            echo "**Total .bss + .data + COMMON: $TOTAL bytes** against 65536 bytes of SRAM."
+            echo
+            echo "### Largest allocations"
+            echo
+            echo '| bytes | section | object |'
+            echo '|---:|---|---|'
+            sort -t"$(printf '\t')" -k1,1nr /tmp/ram.tsv | head -40 \
+              | awk -F'\t' '{printf "| %s | `%s` | %s |\n", $1, $2, $3}'
+            echo
+            echo "### Largest objects"
+            echo
+            echo '| bytes | object |'
+            echo '|---:|---|'
+            awk -F'\t' '{s[$3]+=$1} END {for (o in s) printf "%d\t%s\n", s[o], o}' /tmp/ram.tsv \
+              | sort -k1,1nr | head -25 \
+              | awk -F'\t' '{printf "| %s | %s |\n", $1, $2}'
+          } > /tmp/ranking.md
+          # Both destinations on purpose. The job summary is the readable one,
+          # but it is not exposed by the REST API, so a summary-only report is
+          # unreachable to anything reading this job programmatically (`gh run
+          # view --log`, a bot, a future size-trend check). The log is the
+          # durable copy.
+          cat /tmp/ranking.md
+          cat /tmp/ranking.md >> "$GITHUB_STEP_SUMMARY" || true
+
+      # The exact artifact behind the ranking above, with no parser between it
+      # and the reader.
+      - name: Upload linker map (failure only)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wch-linker-map-${{ github.sha }}
+          path: wch/_build/${{ env.BOARD }}/wch.elf.map
+          if-no-files-found: ignore
+          retention-days: 14
+
+      # `make all` already runs `size`. This step exists for the assertion, not
+      # the number: it pins the artifact path the upload step depends on, so a
+      # future build-system change that relocates the ELF fails here with a
+      # readable error instead of surfacing as an empty artifact.
+      - name: Assert ELF exists, report size
+        run: |
+          ELF="wch/_build/$BOARD/wch.elf"
+          test -f "$ELF" || { echo "::error::no ELF at $ELF"; exit 1; }
+          "wch/toolchain/xPacks/riscv-none-embed-gcc/$WCH_GCC_VER/bin/riscv-none-embed-size" "$ELF"
+
+      - name: Upload firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: wch-ch32v307-${{ github.sha }}
+          path: |
+            wch/_build/${{ env.BOARD }}/wch.elf
+            wch/_build/${{ env.BOARD }}/wch.bin
+            wch/_build/${{ env.BOARD }}/wch.hex
+          if-no-files-found: error
+          retention-days: 14

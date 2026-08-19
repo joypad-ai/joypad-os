@@ -64,9 +64,17 @@ bool flash_load(flash_t* settings)
     return false;
 }
 
+// Diagnostic: committed writes since boot (see flash.h). A climbing count while
+// idle means something persists settings in a hot path. Mirrors flash_nrf.c and
+// flash_esp32.c; counted in flash_save() because that is this backend's single
+// writer — flash_save_now()/flash_save_force() both delegate to it.
+volatile uint32_t g_flash_write_count = 0;
+uint32_t flash_get_write_count(void) { return g_flash_write_count; }
+
 void flash_save(const flash_t* settings)
 {
     if (!settings) return;
+    g_flash_write_count++;
     memcpy(&runtime_settings, settings, sizeof(flash_t));
     runtime_settings.magic = SETTINGS_MAGIC;
     runtime_settings.schema_version = FLASH_SCHEMA_VERSION;

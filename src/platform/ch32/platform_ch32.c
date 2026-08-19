@@ -90,6 +90,41 @@ void platform_reboot_bootloader(void) {
   platform_reboot();
 }
 
+void platform_reboot_ota(void) {
+  // No BLE radio and no OTA bootloader on this part. platform.h specifies that
+  // platforms without one fall back to the normal bootloader path, which is
+  // what platform_rp2040.c does (reset_usb_boot).
+  platform_reboot_bootloader();
+}
+
+// ============================================================================
+// DIAGNOSTICS
+//
+// These four are queried by the shared CDC config channel (cdc_commands.c,
+// INFO). platform.h defines an explicit "not available here" value for each,
+// which is what the RP2040 backend returns as well — so these are honest
+// answers to the contract, not placeholders.
+// ============================================================================
+
+uint32_t platform_last_reset_reason(void) {
+  // 0 = unknown, per platform.h. The CH32V307 does latch reset flags in
+  // RCC->RSTSCKR, but nothing here has been able to verify their encoding on
+  // real silicon, and a wrong reason is worse than no reason for a field that
+  // exists to diagnose unexplained reboots.
+  return 0;
+}
+
+int platform_battery_millivolts(void) {
+  // -1 = no battery-sense circuit, per platform.h. The ch32v307v_r1_1v0 board
+  // is USB/bench powered with no divider to an ADC input.
+  return -1;
+}
+
+int platform_battery_charging(void) {
+  // -1 = no charge-status line on this board, per platform.h.
+  return -1;
+}
+
 // Note: tusb_time_millis_api()/tusb_time_delay_ms_api() (used by the ch32 USB
 // drivers) are provided by the TinyUSB board layer (hw/bsp/board.c). A future
 // standalone ch32/ build without that board layer must supply them itself.

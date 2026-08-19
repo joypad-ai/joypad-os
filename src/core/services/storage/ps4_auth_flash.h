@@ -53,10 +53,13 @@ bool ps4_auth_flash_load(ps4_auth_data_t *out);
 // Write auth data to the dedicated flash sector.
 // Erases the sector first, then programs 4 pages (1024 bytes).
 // Blocks for ~5ms total (erase + program). Safe to call from main loop.
-void ps4_auth_flash_save(const ps4_auth_data_t *data);
+// Returns false if the erase or the program could not be carried out; callers
+// must not report success without consulting this (see #228).
+bool ps4_auth_flash_save(const ps4_auth_data_t *data);
 
 // Erase the PS4 auth flash sector, removing all stored key material.
-void ps4_auth_flash_erase(void);
+// Returns false if the erase could not be carried out.
+bool ps4_auth_flash_erase(void);
 
 // Validate magic and CRC of an already-loaded auth data structure.
 bool ps4_auth_flash_is_valid(const ps4_auth_data_t *data);

@@ -2234,14 +2234,27 @@ static void cmd_ps4auth_set(const char *json)
     decoded_len = b64_decode(val, val_len, auth.sig, sizeof(auth.sig));
     if (decoded_len != 256) { send_error("signature must be 256 bytes"); return; }
 
-    // Save to flash
-    ps4_auth_flash_save(&auth);
+    // Save to flash — read-back verified, so a false here means the sector does
+    // not hold a usable record no matter what the write path reported.
+    if (!ps4_auth_flash_save(&auth)) {
+        printf("[CDC] PS4AUTH.SET: flash write failed\n");
+        send_error("flash write failed — key not stored");
+        return;
+    }
 
 #ifdef ENABLE_PS4_LOCAL_AUTH
-    // Reload local auth module so it takes effect immediately
+    // Reload local auth module so it takes effect immediately. This re-reads the
+    // sector and re-imports N/E/P/Q through mbedTLS, so it is the strongest
+    // available check that the stored key is actually usable — report it rather
+    // than only printing it to a serial console the user cannot reach in PS4
+    // output mode (see #228).
     ps4_local_auth_reload();
-    printf("[CDC] PS4AUTH.SET: saved, local auth=%s\n",
-           ps4_local_auth_is_available() ? "ready" : "failed");
+    if (!ps4_local_auth_is_available()) {
+        printf("[CDC] PS4AUTH.SET: stored, but key failed to load\n");
+        send_error("key stored but failed to load — check N/E/P/Q and signature");
+        return;
+    }
+    printf("[CDC] PS4AUTH.SET: saved, local auth=ready\n");
 #else
     printf("[CDC] PS4AUTH.SET: saved (RSA signing not available in this build)\n");
 #endif
@@ -2284,11 +2297,16 @@ static void cmd_ps4auth_status(const char *json)
 static void cmd_ps4auth_clear(const char *json)
 {
     (void)json;
-    ps4_auth_flash_erase();
+    bool erased = ps4_auth_flash_erase();
 #ifdef ENABLE_PS4_LOCAL_AUTH
     // Reinit local auth (will fail, disabling local auth)
     ps4_local_auth_reload();
 #endif
+    if (!erased) {
+        printf("[CDC] PS4AUTH.CLEAR: erase failed\n");
+        send_error("flash erase failed — key may still be stored");
+        return;
+    }
     printf("[CDC] PS4AUTH.CLEAR: auth data erased\n");
     send_ok();
 }

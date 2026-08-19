@@ -509,9 +509,15 @@ init-nrf:
 .PHONY: init-wch
 WCH_GCC_VER := 8.2.0-3.1
 WCH_GCC_BIN := wch/toolchain/xPacks/riscv-none-embed-gcc/$(WCH_GCC_VER)/bin
+# Init all three submodules the wch/ build actually links, not just tinyusb:
+# wch/Makefile pulls xinput_host.c from src/lib/tusb_xinput and the Xbox 360 auth
+# sources from src/lib/libxsm3, and puts both on INC. Initialising only tinyusb
+# left `make init-wch && cd wch && make` failing on a fresh clone with
+# `fatal error: xinput_host.h`. It looked fine to everyone who had built an
+# RP2040 target first, because that inits every submodule.
 init-wch:
 	@echo "$(YELLOW)Setting up WCH CH32V307 toolchain + SDK...$(NC)"
-	@git submodule update --init src/lib/tinyusb
+	@git submodule update --init src/lib/tinyusb src/lib/tusb_xinput src/lib/libxsm3
 	@echo "$(YELLOW)Fetching WCH SDK (openwch/ch32v307)...$(NC)"
 	@sdk="src/lib/tinyusb/hw/mcu/wch/ch32v307"; \
 	if [ -f "$$sdk/EVT/EXAM/SRC/Peripheral/inc/ch32v30x.h" ]; then \
@@ -538,11 +544,22 @@ init-wch:
 		url="https://github.com/xpack-dev-tools/riscv-none-embed-gcc-xpack/releases/download/v$(WCH_GCC_VER)/xpack-riscv-none-embed-gcc-$(WCH_GCC_VER)-$$plat.tgz"; \
 		echo "$(YELLOW)  Downloading gcc8 toolchain ($$plat, ~200MB)...$(NC)"; \
 		mkdir -p wch/toolchain; \
-		curl -fL --retry 3 -o wch/toolchain/gcc8.tgz "$$url"; \
-		echo "$(YELLOW)  Extracting...$(NC)"; \
+		curl -fL --retry 3 -o wch/toolchain/gcc8.tgz "$$url" && \
+		echo "$(YELLOW)  Extracting...$(NC)" && \
 		tar xzf wch/toolchain/gcc8.tgz -C wch/toolchain; \
 		rm -f wch/toolchain/gcc8.tgz; \
 	fi
+# Verify the toolchain is actually there rather than trusting the block above.
+# Every command in it ran unchecked, so a failed download fell through to a tar
+# error and this target still printed "✓ WCH setup complete!" and exited 0 —
+# observed for real when the release CDN returned 503 three times in a row. What
+# the user saw next was a confusing "riscv-none-embed-gcc: No such file or
+# directory" from the build, one layer away from the actual failure.
+	@test -x "$(WCH_GCC_BIN)/riscv-none-embed-gcc" || { \
+		echo "$(YELLOW)  Toolchain not present at $(WCH_GCC_BIN) after setup —$(NC)"; \
+		echo "$(YELLOW)  the download or extraction above failed. Re-run 'make init-wch'.$(NC)"; \
+		exit 1; \
+	}
 	@if [ "$$(uname -s)" = "Darwin" ] && [ "$$(uname -m)" = "arm64" ]; then \
 		arch -x86_64 /usr/bin/true >/dev/null 2>&1 || \
 		printf "$(YELLOW)  Note: Apple Silicon runs the x64 toolchain via Rosetta —\n        if builds fail, run 'softwareupdate --install-rosetta'.$(NC)\n"; \
