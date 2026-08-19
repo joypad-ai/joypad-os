@@ -184,6 +184,7 @@ set(BTHID_DEVICE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/bt/bthid/devices/vendors/nintendo/wiimote_bt.c
     ${CMAKE_CURRENT_SOURCE_DIR}/bt/bthid/devices/vendors/microsoft/xbox_bt.c
     ${CMAKE_CURRENT_SOURCE_DIR}/bt/bthid/devices/vendors/microsoft/xbox_ble.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/bt/bthid/devices/generic/sinput_ble.c
     ${CMAKE_CURRENT_SOURCE_DIR}/bt/bthid/devices/vendors/google/stadia_bt.c
     ${CMAKE_CURRENT_SOURCE_DIR}/bt/bthid/devices/vendors/valve/steam_controller_2_ble.c
     ${CMAKE_CURRENT_SOURCE_DIR}/bt/bthid/devices/vendors/valve/steam_controller_ble.c
@@ -408,6 +409,20 @@ set(SD_SOURCES
 )
 
 set(COMMON_SOURCES ${CORE_SOURCES} ${USB_HOST_SOURCES})
+
+# TE-specific source list: replaces router.c and hid.c with TE versions
+# that add router_register_device() for immediate controller detection.
+# Kept separate to avoid modifying shared core files.
+set(TE_SOURCES ${COMMON_SOURCES})
+list(REMOVE_ITEM TE_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/router/router.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/hid/hid.c
+)
+list(APPEND TE_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2neogeo_te/router_te.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2neogeo_te/hid_te.c
+)
+
 
 # Common libraries for USB host apps
 set(COMMON_LIBRARIES pico_stdlib pico_multicore hardware_pio pico_rand tinyusb_host tinyusb_board xinput_host)
@@ -845,6 +860,96 @@ target_include_directories(joypad_neogeo_retrofrog PUBLIC
 target_link_libraries(joypad_neogeo_retrofrog PRIVATE ${COMMON_LIBRARIES})
 joypad_target_common(joypad_neogeo_retrofrog)
 joypad_add_btstack(joypad_neogeo_retrofrog)
+
+# --- NEOGEO TE ---
+# Stripped-down build: single default profile, consecutive remap only,
+# remap auto-clears on disconnect, no alt remap, no auto fire.
+add_executable(joypad_neogeo_te)
+target_compile_definitions(joypad_neogeo_te PRIVATE CONFIG_NEOGEO=1)
+target_sources(joypad_neogeo_te PUBLIC ${TE_SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2neogeo_te/gpio_device_te.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2neogeo_te/app.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2neogeo_te/remap.c
+)
+target_include_directories(joypad_neogeo_te PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2neogeo_te
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/device/gpio
+    ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/xinput
+)
+target_link_libraries(joypad_neogeo_te PRIVATE ${COMMON_LIBRARIES})
+joypad_target_common(joypad_neogeo_te)
+joypad_add_btstack(joypad_neogeo_te)
+
+# NEOGEO TE — Pico
+add_executable(joypad_neogeo_te_pico)
+target_compile_definitions(joypad_neogeo_te_pico PRIVATE
+    CONFIG_NEOGEO=1
+    WS2812_PIN=25
+    USE_BOOTSEL_BUTTON=1
+    RPI_PICO_BUILD=1
+)
+target_sources(joypad_neogeo_te_pico PUBLIC ${TE_SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2neogeo_te/gpio_device_te.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2neogeo_te/app.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2neogeo_te/remap.c
+)
+target_include_directories(joypad_neogeo_te_pico PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2neogeo_te
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/device/gpio
+    ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/xinput
+)
+target_link_libraries(joypad_neogeo_te_pico PRIVATE ${COMMON_LIBRARIES})
+joypad_target_common(joypad_neogeo_te_pico)
+joypad_add_btstack(joypad_neogeo_te_pico)
+
+# NEOGEO TE — RP2040-Zero
+add_executable(joypad_neogeo_te_rp2040zero)
+target_compile_definitions(joypad_neogeo_te_rp2040zero PRIVATE
+    CONFIG_NEOGEO=1
+    PICO_RP2040_ZERO_BUILD=1
+)
+target_sources(joypad_neogeo_te_rp2040zero PUBLIC ${TE_SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2neogeo_te/gpio_device_te.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2neogeo_te/app.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2neogeo_te/remap.c
+)
+target_include_directories(joypad_neogeo_te_rp2040zero PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2neogeo_te
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/device/gpio
+    ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/xinput
+)
+target_link_libraries(joypad_neogeo_te_rp2040zero PRIVATE ${COMMON_LIBRARIES})
+joypad_target_common(joypad_neogeo_te_rp2040zero)
+joypad_add_btstack(joypad_neogeo_te_rp2040zero)
+
+# --- NEOGEO TE 2-Player (Raspberry Pi Pico) ---
+# Two player tournament edition: Native USB = P1, PIO USB (GP16/17) = P2
+# Each port is fixed to its player slot -- no shifting on disconnect.
+# Uses the same usb2neogeo_te source folder with CONFIG_NEOGEO_TE_2P=1.
+add_executable(joypad_neogeo_te_pico2p)
+target_compile_definitions(joypad_neogeo_te_pico2p PRIVATE
+    CONFIG_NEOGEO=1
+    CONFIG_NEOGEO_TE_2P=1
+    WS2812_PIN=25
+    USE_BOOTSEL_BUTTON=1
+    RPI_PICO_BUILD=1
+    PICO_DEFAULT_PIO_USB_DP_PIN=16
+    BOARD_TUH_RHPORT=1
+)
+target_sources(joypad_neogeo_te_pico2p PUBLIC ${TE_SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2neogeo_te/gpio_device_te.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2neogeo_te/app.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2neogeo_te/remap.c
+)
+target_include_directories(joypad_neogeo_te_pico2p PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2neogeo_te
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/device/gpio
+    ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/xinput
+)
+target_link_libraries(joypad_neogeo_te_pico2p PRIVATE ${COMMON_LIBRARIES} tinyusb_pico_pio_usb)
+joypad_target_common(joypad_neogeo_te_pico2p)
+joypad_add_btstack(joypad_neogeo_te_pico2p)
+pico_enable_stdio_uart(joypad_neogeo_te_pico2p 1)
 
 # --- N64 to Dreamcast ---
 add_executable(joypad_n642dc)
