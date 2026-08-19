@@ -467,7 +467,8 @@ void router_init(const router_config_t* config) {
     // themselves. Gated on router_saved so untouched flash is left at defaults.
     flash_t flash_data;
     if (flash_load(&flash_data) && flash_data.router_saved) {
-        if (flash_data.dpad_mode <= 3) router_set_dpad_mode(flash_data.dpad_mode);
+        if (flash_data.dpad_mode <= FLASH_DPAD_MODE_MAX)
+            router_set_dpad_mode(flash_data.dpad_mode);
         router_set_shoulder_swap(flash_data.shoulder_swap != 0);
     }
 
@@ -1430,7 +1431,12 @@ void router_submit_input(const input_event_t* event) {
                 break;
             case 4:  // Cycle D-Pad mode
                 if (!router_combos[c].fired) {
-                    uint8_t new_mode = (global_dpad_mode + 1) % 3;
+                    // Modulo the real mode count, not a literal 3. This action
+                    // predates mode 3 (LSTICK<->RSTICK) and kept cycling 0-1-2
+                    // after the 4th mode landed, so it could never reach 3 —
+                    // and from 3 it wrapped to 1, skipping NORMAL entirely.
+                    uint8_t new_mode =
+                        (global_dpad_mode + 1) % (FLASH_DPAD_MODE_MAX + 1);
                     router_set_dpad_mode(new_mode);
                     flash_set_dpad_mode(new_mode);   // persist across reboot
                     router_combos[c].fired = true;
@@ -1939,9 +1945,10 @@ void router_device_disconnected(uint8_t dev_addr, int8_t instance) {
 
 
 void router_set_dpad_mode(uint8_t mode) {
-    if (mode <= 3) {
+    if (mode <= FLASH_DPAD_MODE_MAX) {
         global_dpad_mode = mode;
-        static const char* names[] = {
+        // One name per valid mode — keep in step with FLASH_DPAD_MODE_MAX.
+        static const char* names[FLASH_DPAD_MODE_MAX + 1] = {
             "NORMAL", "D-PAD<->LSTICK", "D-PAD<->RSTICK", "LSTICK<->RSTICK"
         };
         printf(LOG_TAG "D-pad mode: %s\n", names[mode]);
