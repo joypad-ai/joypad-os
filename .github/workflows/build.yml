@@ -177,6 +177,7 @@ jobs:
           docker run --rm \
             -v ${{ github.workspace }}:/workspace \
             -w /workspace/esp \
+            -e GIT_COMMIT=${{ steps.commit.outputs.hash }} \
             espressif/idf:v6.0-beta2 \
             bash -c "SDKCONFIG_DEFAULTS='$SDKCFG' idf.py -DCONFIG_APP=${{ matrix.config_app }} -DCONFIG_BOARD=${{ matrix.board }} build"
 
@@ -279,6 +280,8 @@ jobs:
 
       - name: Build ${{ matrix.app }}
         working-directory: nrf
+        env:
+          GIT_COMMIT: ${{ steps.commit.outputs.hash }}
         run: |
           west build -b ${{ matrix.board }} . --pristine=always -- \
             -DAPP_TYPE=${{ matrix.app_type }} \

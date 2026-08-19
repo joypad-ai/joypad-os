@@ -59,14 +59,22 @@ else()
     set(JOYPAD_BCD_DEVICE 256)  # 0x0100 fallback
 endif()
 
-# Get git commit hash
-execute_process(
-    COMMAND git rev-parse --short HEAD
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-    OUTPUT_VARIABLE GIT_COMMIT
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-    ERROR_QUIET
-)
+# Get git commit hash. Prefer what the build environment hands us: release builds run
+# inside a container over a bind-mounted checkout, where `git rev-parse` cannot read the
+# repo, so the "unknown" fallback below won on every published release. build.yml already
+# computes the short hash and exports it (`-e GIT_COMMIT=...`) — Make honours it for the
+# artifact name, CMake never looked at it, so it never reached the firmware.
+if(DEFINED ENV{GIT_COMMIT} AND NOT "$ENV{GIT_COMMIT}" STREQUAL "")
+    set(GIT_COMMIT "$ENV{GIT_COMMIT}")
+else()
+    execute_process(
+        COMMAND git rev-parse --short HEAD
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        OUTPUT_VARIABLE GIT_COMMIT
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+endif()
 if(NOT GIT_COMMIT)
     set(GIT_COMMIT "unknown")
 endif()
