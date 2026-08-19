@@ -2253,6 +2253,42 @@ target_link_libraries(joypad_controller_btusb_alpakka PRIVATE
 )
 joypad_target_common(joypad_controller_btusb_alpakka)
 
+# --- Controller BTUSB: Waveshare RP2040-Zero (hand-wired pad, no donor shell) ---
+# The generic hand-wired build for a board with no radio.
+#
+# Deliberately defines NO PAD_CONFIG_* — so app.c leaves `pad_cfg` NULL on a
+# board with empty flash and the pin map comes entirely from
+# pad_config_load_runtime(), i.e. PAD.CONFIG.SET over CDC from
+# config.joypad.ai. Same behaviour as controller_btusb_pico_w, minus the CYW43
+# the RP2040-Zero does not have. Every other SENSOR_PAD target either hardcodes
+# a donor shell's map (abb/fisherprice/alpakka) or needs a Pico W.
+#
+# Consequence worth knowing: with nothing written to flash yet, no GPIO button
+# does anything. That is the existing design for the generic targets, not new
+# here — configure the pins in the browser once and it persists.
+add_executable(joypad_controller_btusb_rp2040zero)
+target_compile_definitions(joypad_controller_btusb_rp2040zero PRIVATE
+    CONFIG_CONTROLLER_BTUSB=1 CONFIG_USB=1 CONFIG_PAD_INPUT=1
+    DISABLE_USB_HOST=1 REQUIRE_BLE_OUTPUT=0
+    SENSOR_PAD=1
+    USE_BOOTSEL_BUTTON=1 BOARD_NAME="rp2040zero" WS2812_PIN=16
+)
+target_sources(joypad_controller_btusb_rp2040zero PUBLIC
+    ${CORE_SOURCES} ${USB_DEVICE_SOURCES} ${CONTROLLER_SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/stubs_peripheral.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/controller_btusb/app.c
+)
+target_include_directories(joypad_controller_btusb_rp2040zero PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/controller_btusb
+    ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd
+    ${CMAKE_CURRENT_SOURCE_DIR}/pad
+)
+target_link_libraries(joypad_controller_btusb_rp2040zero PRIVATE
+    pico_stdlib pico_multicore pico_rand hardware_pio hardware_i2c hardware_adc
+    hardware_pwm hardware_spi tinyusb_device tinyusb_board
+)
+joypad_target_common(joypad_controller_btusb_rp2040zero)
+
 # --- SNES to USB ---
 add_executable(joypad_snes2usb)
 target_compile_definitions(joypad_snes2usb PRIVATE CONFIG_SNES2USB=1 CONFIG_USB=1 DISABLE_USB_HOST=1)

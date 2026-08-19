@@ -143,6 +143,7 @@ CONSOLE_controller_btusb_feather_rp2040_usb_host := joypad_controller_btusb_feat
 CONSOLE_controller_btusb_fisherprice_v1 := joypad_controller_btusb_fisherprice_v1
 CONSOLE_controller_btusb_fisherprice_v2 := joypad_controller_btusb_fisherprice_v2
 CONSOLE_controller_btusb_alpakka := joypad_controller_btusb_alpakka
+CONSOLE_controller_btusb_rp2040zero := joypad_controller_btusb_rp2040zero
 
 
 # App definitions: APP_name = board target output_name input output
@@ -246,6 +247,7 @@ APP_controller_btusb_pico2_w := pico2_w controller_btusb controller_btusb_pico2_
 APP_controller_btusb_rp2040_abb := pico controller_btusb_rp2040_abb controller_btusb_rp2040_abb ABB USB
 APP_controller_btusb_feather_rp2040 := feather controller_btusb_feather_rp2040 controller_btusb_feather_rp2040 JoyWing USB
 APP_controller_btusb_feather_rp2040_usb_host := feather_usbhost controller_btusb_feather_rp2040_usb_host controller_btusb_feather_rp2040_usb_host JoyWing USB
+APP_controller_btusb_rp2040zero := rp2040zero controller_btusb_rp2040zero controller_btusb_rp2040zero GPIO USB
 
 
 # All apps (note: controller_macropad not included - build explicitly with 'make controller_macropad')
@@ -427,6 +429,7 @@ help:
 	@echo "  make controller_macropad - 12 keys -> USB HID (MacroPad RP2040)"
 	@echo "  make controller_btusb_pico_w - GPIO+JoyWing -> BLE+USB HID (Pico W)"
 	@echo "  make controller_btusb_rp2040_abb - GPIO+USB Host -> USB HID (ABB Passthrough)"
+	@echo "  make controller_btusb_rp2040zero - hand-wired GPIO pad -> USB HID (RP2040-Zero, pins set in browser)"
 
 	@echo "  make nes2usb_kb2040     - NES -> USB HID (KB2040)"
 	@echo "  make nes2usb_pico_w     - NES -> USB HID (Pico W)"
@@ -1275,6 +1278,10 @@ controller_btusb_feather_rp2040:
 controller_btusb_feather_rp2040_usb_host:
 	$(call build_app,controller_btusb_feather_rp2040_usb_host)
 
+.PHONY: controller_btusb_rp2040zero
+controller_btusb_rp2040zero:
+	$(call build_app,controller_btusb_rp2040zero)
+
 
 .PHONY: nes2usb_kb2040
 nes2usb_kb2040:
@@ -1724,6 +1731,10 @@ flash-controller_btusb_feather_rp2040:
 .PHONY: flash-controller_btusb_feather_rp2040_usb_host
 flash-controller_btusb_feather_rp2040_usb_host:
 	@$(MAKE) --no-print-directory _flash_app APP_NAME=controller_btusb_feather_rp2040_usb_host
+
+.PHONY: flash-controller_btusb_rp2040zero
+flash-controller_btusb_rp2040zero:
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=controller_btusb_rp2040zero
 
 
 .PHONY: flash-nes2usb_kb2040
