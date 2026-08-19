@@ -133,6 +133,55 @@ typedef enum {
 } switch_init_state_t;
 
 // ============================================================================
+// CONTROLLER MODEL
+// ============================================================================
+
+// The NSO retro pads (SNES / NES / N64 / Genesis) speak the same Switch Pro
+// protocol and need the same 0x30 handshake, but they place their physical
+// buttons on different bits of the report. They are identified by name — over
+// classic BT the VID/PID often is not available when a driver is picked.
+typedef enum {
+    SWITCH_MODEL_PRO = 0,   // Pro Controller / Joy-Con — standard layout
+    SWITCH_MODEL_NSO_SNES,  // "SNES Controller"
+    SWITCH_MODEL_NSO_NES,   // "NES Controller" / "HVC Controller"
+    SWITCH_MODEL_NSO_N64,   // "N64 Controller"
+    SWITCH_MODEL_NSO_MD,    // "MD/Gen Control Pad"
+} switch_model_t;
+
+// SNES/NES/Genesis pads have no analog sticks; the N64 pad has a left stick only.
+static inline bool switch_model_has_sticks(switch_model_t model)
+{
+    return model == SWITCH_MODEL_PRO || model == SWITCH_MODEL_NSO_N64;
+}
+
+static switch_model_t switch_model_from_name(const char* name)
+{
+    if (!name) return SWITCH_MODEL_PRO;
+
+    // Order matters: "SNES Controller" contains "NES Controller", so the SNES
+    // test has to come first.
+    if (strstr(name, "SNES Controller") != NULL) return SWITCH_MODEL_NSO_SNES;
+    if (strstr(name, "N64 Controller") != NULL)  return SWITCH_MODEL_NSO_N64;
+    if (strstr(name, "MD/Gen") != NULL)          return SWITCH_MODEL_NSO_MD;
+    // "HVC Controller" is the Japanese Famicom variant of the NES pad.
+    if (strstr(name, "NES Controller") != NULL ||
+        strstr(name, "HVC Controller") != NULL)  return SWITCH_MODEL_NSO_NES;
+
+    return SWITCH_MODEL_PRO;
+}
+
+static const char* switch_model_str(switch_model_t model)
+{
+    switch (model) {
+        case SWITCH_MODEL_NSO_SNES: return "NSO SNES";
+        case SWITCH_MODEL_NSO_NES:  return "NSO NES";
+        case SWITCH_MODEL_NSO_N64:  return "NSO N64";
+        case SWITCH_MODEL_NSO_MD:   return "NSO MD/Genesis";
+        default:                    return "Pro/Joy-Con";
+    }
+}
+
+// ============================================================================
 // DRIVER DATA
 // ============================================================================
 
@@ -145,6 +194,7 @@ typedef struct {
     uint32_t init_time;     // Timestamp for init delays
     uint8_t rumble_left;    // Cached rumble state
     uint8_t rumble_right;
+    switch_model_t model;   // Physical pad — selects the button decode
 } switch_bt_data_t;
 
 static switch_bt_data_t switch_data[BTHID_MAX_DEVICES];
@@ -247,18 +297,24 @@ static bool switch_match(const char* device_name, const uint8_t* class_of_device
             case 0x2006:  // Joy-Con L
             case 0x2007:  // Joy-Con R
             case 0x2009:  // Pro Controller
+            case 0x2017:  // SNES Controller (NSO) — same PID the USB host side uses
                 return true;
         }
         // Don't return true for unknown Nintendo PIDs
         // Let specific drivers handle them
     }
 
-    // Name-based match (fallback for classic BT where VID/PID may be unavailable)
+    // Name-based match (fallback for classic BT where VID/PID may be unavailable).
+    // The NSO retro pads only ever advertise a name on the classic-BT path, so
+    // this is the match that actually fires for them in practice.
     if (device_name) {
         if (strstr(device_name, "Pro Controller") != NULL) {
             return true;
         }
         if (strstr(device_name, "Joy-Con") != NULL) {
+            return true;
+        }
+        if (switch_model_from_name(device_name) != SWITCH_MODEL_PRO) {
             return true;
         }
     }
@@ -268,12 +324,16 @@ static bool switch_match(const char* device_name, const uint8_t* class_of_device
 
 static bool switch_init(bthid_device_t* device)
 {
-    printf("[SWITCH_BT] Init for device: %s\n", device->name);
+    switch_model_t model = switch_model_from_name(device->name);
+
+    printf("[SWITCH_BT] Init for device: %s (model: %s)\n",
+           device->name, switch_model_str(model));
 
     for (int i = 0; i < BTHID_MAX_DEVICES; i++) {
         if (!switch_data[i].initialized) {
             init_input_event(&switch_data[i].event);
             switch_data[i].initialized = true;
+            switch_data[i].model = model;
             switch_data[i].full_report_mode = false;
             switch_data[i].output_seq = 0;
             switch_data[i].rumble_left = 0;
@@ -297,6 +357,84 @@ static bool switch_init(bthid_device_t* device)
     return false;
 }
 
+// Report bits normalised across the 0x30 and 0x3F layouts. The two reports use
+// different bit orders, but once unpacked into named fields the NSO pads land on
+// the same fields in both — so one mapping table covers both paths.
+typedef struct {
+    uint8_t b, a, y, x;
+    uint8_t l, r, zl, zr;
+    uint8_t minus, plus, lstick, rstick, home, capture;
+} switch_raw_btns_t;
+
+// Map an NSO retro pad's raw report bits onto JoypadOS buttons.
+//
+// The NSO pads reuse the Switch Pro report format but put their physical buttons
+// on unrelated bits. Bit assignments cross-checked against BlueRetro's Switch
+// tables (main/adapter/wireless/sw.c), which are validated against real hardware.
+//
+// Returns the button mask; for the N64 pad the C-button cluster is synthesised
+// onto the right stick via out_rx/out_ry, since it sits where the right stick
+// would be and every output path already knows how to read a stick.
+static uint32_t switch_map_nso_buttons(switch_model_t model, const switch_raw_btns_t* n,
+                                       uint8_t* out_rx, uint8_t* out_ry)
+{
+    uint32_t buttons = 0;
+
+    // Common across every NSO pad
+    if (n->plus)    buttons |= JP_BUTTON_S2;   // Start
+    if (n->home)    buttons |= JP_BUTTON_A1;
+    if (n->capture) buttons |= JP_BUTTON_A2;
+
+    switch (model) {
+        case SWITCH_MODEL_NSO_N64:
+            if (n->a)      buttons |= JP_BUTTON_B1;  // N64 A (bottom)
+            if (n->b)      buttons |= JP_BUTTON_B3;  // N64 B (left of A)
+            if (n->l)      buttons |= JP_BUTTON_L1;  // N64 L
+            if (n->r)      buttons |= JP_BUTTON_R1;  // N64 R
+            if (n->zl)     buttons |= JP_BUTTON_L2;  // N64 Z (underside trigger)
+            if (n->lstick) buttons |= JP_BUTTON_R2;  // NSO-only right-grip ZR
+
+            // C-button cluster → right stick. HID convention: up = low.
+            if (n->x)     *out_rx = 0;    // C-Left
+            if (n->minus) *out_rx = 255;  // C-Right
+            if (n->y)     *out_ry = 0;    // C-Up
+            if (n->zr)    *out_ry = 255;  // C-Down
+            break;
+
+        case SWITCH_MODEL_NSO_MD:
+            // Genesis 6-button face: A B C on the bottom row, X Y Z on the top.
+            if (n->b) buttons |= JP_BUTTON_B1;  // B (bottom)
+            if (n->r) buttons |= JP_BUTTON_B2;  // C (right)
+            if (n->a) buttons |= JP_BUTTON_B3;  // A (left)
+            if (n->y) buttons |= JP_BUTTON_B4;  // Y (top)
+            // X reports on the X bit in the 0x30 report and on the ZL bit in
+            // 0x3F. Neither bit carries anything else on this pad, so OR them
+            // rather than branching on report type.
+            if (n->x || n->zl) buttons |= JP_BUTTON_L1;  // X
+            if (n->l)          buttons |= JP_BUTTON_R1;  // Z
+            if (n->zr)         buttons |= JP_BUTTON_S1;  // Mode
+            break;
+
+        case SWITCH_MODEL_NSO_SNES:
+        case SWITCH_MODEL_NSO_NES:
+        default:
+            // SNES and NES pads keep the standard Nintendo face/shoulder bits —
+            // the standard decode is already correct for them.
+            if (n->b)     buttons |= JP_BUTTON_B1;
+            if (n->a)     buttons |= JP_BUTTON_B2;
+            if (n->y)     buttons |= JP_BUTTON_B3;
+            if (n->x)     buttons |= JP_BUTTON_B4;
+            if (n->l)     buttons |= JP_BUTTON_L1;
+            if (n->r)     buttons |= JP_BUTTON_R1;
+            if (n->zl)    buttons |= JP_BUTTON_L2;
+            if (n->zr)    buttons |= JP_BUTTON_R2;
+            if (n->minus) buttons |= JP_BUTTON_S1;
+            break;
+    }
+
+    return buttons;
+}
+
 static void switch_process_report(bthid_device_t* device, const uint8_t* data, uint16_t len)
 {
     switch_bt_data_t* sw = (switch_bt_data_t*)device->driver_data;
@@ -312,28 +450,40 @@ static void switch_process_report(bthid_device_t* device, const uint8_t* data, u
 
         // Build button state
         uint32_t buttons = 0x00000000;
+        uint8_t nso_rx = 128, nso_ry = 128;
 
-        // Face buttons (map by position, not label — Nintendo layout is rotated)
-        if (rpt->b)      buttons |= JP_BUTTON_B1;  // B = bottom
-        if (rpt->a)      buttons |= JP_BUTTON_B2;  // A = right
-        if (rpt->y)      buttons |= JP_BUTTON_B3;  // Y = left
-        if (rpt->x)      buttons |= JP_BUTTON_B4;  // X = top
+        if (sw->model != SWITCH_MODEL_PRO) {
+            const switch_raw_btns_t n = {
+                .b = rpt->b, .a = rpt->a, .y = rpt->y, .x = rpt->x,
+                .l = rpt->l, .r = rpt->r, .zl = rpt->zl, .zr = rpt->zr,
+                .minus = rpt->minus, .plus = rpt->plus,
+                .lstick = rpt->lstick, .rstick = rpt->rstick,
+                .home = rpt->home, .capture = rpt->capture,
+            };
+            buttons = switch_map_nso_buttons(sw->model, &n, &nso_rx, &nso_ry);
+        } else {
+            // Face buttons (map by position, not label — Nintendo layout is rotated)
+            if (rpt->b)      buttons |= JP_BUTTON_B1;  // B = bottom
+            if (rpt->a)      buttons |= JP_BUTTON_B2;  // A = right
+            if (rpt->y)      buttons |= JP_BUTTON_B3;  // Y = left
+            if (rpt->x)      buttons |= JP_BUTTON_B4;  // X = top
 
-        // Shoulder buttons
-        if (rpt->l)      buttons |= JP_BUTTON_L1;
-        if (rpt->r)      buttons |= JP_BUTTON_R1;
-        if (rpt->zl)     buttons |= JP_BUTTON_L2;
-        if (rpt->zr)     buttons |= JP_BUTTON_R2;
+            // Shoulder buttons
+            if (rpt->l)      buttons |= JP_BUTTON_L1;
+            if (rpt->r)      buttons |= JP_BUTTON_R1;
+            if (rpt->zl)     buttons |= JP_BUTTON_L2;
+            if (rpt->zr)     buttons |= JP_BUTTON_R2;
 
-        // System buttons
-        if (rpt->minus)  buttons |= JP_BUTTON_S1;
-        if (rpt->plus)   buttons |= JP_BUTTON_S2;
-        if (rpt->lstick) buttons |= JP_BUTTON_L3;
-        if (rpt->rstick) buttons |= JP_BUTTON_R3;
-        if (rpt->home)   buttons |= JP_BUTTON_A1;
-        if (rpt->capture) buttons |= JP_BUTTON_A2;
+            // System buttons
+            if (rpt->minus)  buttons |= JP_BUTTON_S1;
+            if (rpt->plus)   buttons |= JP_BUTTON_S2;
+            if (rpt->lstick) buttons |= JP_BUTTON_L3;
+            if (rpt->rstick) buttons |= JP_BUTTON_R3;
+            if (rpt->home)   buttons |= JP_BUTTON_A1;
+            if (rpt->capture) buttons |= JP_BUTTON_A2;
+        }
 
-        // D-pad
+        // D-pad — same bits on every model
         if (rpt->up)     buttons |= JP_BUTTON_DU;
         if (rpt->down)   buttons |= JP_BUTTON_DD;
         if (rpt->left)   buttons |= JP_BUTTON_DL;
@@ -341,17 +491,31 @@ static void switch_process_report(bthid_device_t* device, const uint8_t* data, u
 
         sw->event.buttons = buttons;
 
-        // Unpack 12-bit sticks
-        uint16_t lx = unpack_stick_12bit(rpt->left_stick, false);
-        uint16_t ly = unpack_stick_12bit(rpt->left_stick, true);
-        uint16_t rx = unpack_stick_12bit(rpt->right_stick, false);
-        uint16_t ry = unpack_stick_12bit(rpt->right_stick, true);
+        if (switch_model_has_sticks(sw->model)) {
+            // Unpack 12-bit sticks
+            uint16_t lx = unpack_stick_12bit(rpt->left_stick, false);
+            uint16_t ly = unpack_stick_12bit(rpt->left_stick, true);
 
-        // Scale to 8-bit and invert Y (Nintendo: up=high, HID: up=low)
-        sw->event.analog[ANALOG_LX] = scale_12bit_to_8bit(lx);
-        sw->event.analog[ANALOG_LY] = 255 - scale_12bit_to_8bit(ly);
-        sw->event.analog[ANALOG_RX] = scale_12bit_to_8bit(rx);
-        sw->event.analog[ANALOG_RY] = 255 - scale_12bit_to_8bit(ry);
+            // Scale to 8-bit and invert Y (Nintendo: up=high, HID: up=low)
+            sw->event.analog[ANALOG_LX] = scale_12bit_to_8bit(lx);
+            sw->event.analog[ANALOG_LY] = 255 - scale_12bit_to_8bit(ly);
+        } else {
+            // Stickless pad — the stick bytes are not meaningful, so centre them
+            // rather than letting them read as a permanently deflected stick.
+            sw->event.analog[ANALOG_LX] = 128;
+            sw->event.analog[ANALOG_LY] = 128;
+        }
+
+        if (sw->model == SWITCH_MODEL_PRO) {
+            uint16_t rx = unpack_stick_12bit(rpt->right_stick, false);
+            uint16_t ry = unpack_stick_12bit(rpt->right_stick, true);
+            sw->event.analog[ANALOG_RX] = scale_12bit_to_8bit(rx);
+            sw->event.analog[ANALOG_RY] = 255 - scale_12bit_to_8bit(ry);
+        } else {
+            // N64 C-cluster, or centred for the stickless pads.
+            sw->event.analog[ANALOG_RX] = nso_rx;
+            sw->event.analog[ANALOG_RY] = nso_ry;
+        }
 
         // Battery: bits 7-4 = level (0/2/4/6/8), bit 3 = charging
         uint8_t bat_raw = rpt->battery_conn >> 4;
@@ -365,21 +529,33 @@ static void switch_process_report(bthid_device_t* device, const uint8_t* data, u
         const switch_simple_report_t* rpt = (const switch_simple_report_t*)data;
 
         uint32_t buttons = 0x00000000;
+        uint8_t nso_rx = 128, nso_ry = 128;
 
-        if (rpt->b)      buttons |= JP_BUTTON_B1;  // B = bottom
-        if (rpt->a)      buttons |= JP_BUTTON_B2;  // A = right
-        if (rpt->y)      buttons |= JP_BUTTON_B3;  // Y = left
-        if (rpt->x)      buttons |= JP_BUTTON_B4;  // X = top
-        if (rpt->l)      buttons |= JP_BUTTON_L1;
-        if (rpt->r)      buttons |= JP_BUTTON_R1;
-        if (rpt->zl)     buttons |= JP_BUTTON_L2;
-        if (rpt->zr)     buttons |= JP_BUTTON_R2;
-        if (rpt->minus)  buttons |= JP_BUTTON_S1;
-        if (rpt->plus)   buttons |= JP_BUTTON_S2;
-        if (rpt->lstick) buttons |= JP_BUTTON_L3;
-        if (rpt->rstick) buttons |= JP_BUTTON_R3;
-        if (rpt->home)   buttons |= JP_BUTTON_A1;
-        if (rpt->capture) buttons |= JP_BUTTON_A2;
+        if (sw->model != SWITCH_MODEL_PRO) {
+            const switch_raw_btns_t n = {
+                .b = rpt->b, .a = rpt->a, .y = rpt->y, .x = rpt->x,
+                .l = rpt->l, .r = rpt->r, .zl = rpt->zl, .zr = rpt->zr,
+                .minus = rpt->minus, .plus = rpt->plus,
+                .lstick = rpt->lstick, .rstick = rpt->rstick,
+                .home = rpt->home, .capture = rpt->capture,
+            };
+            buttons = switch_map_nso_buttons(sw->model, &n, &nso_rx, &nso_ry);
+        } else {
+            if (rpt->b)      buttons |= JP_BUTTON_B1;  // B = bottom
+            if (rpt->a)      buttons |= JP_BUTTON_B2;  // A = right
+            if (rpt->y)      buttons |= JP_BUTTON_B3;  // Y = left
+            if (rpt->x)      buttons |= JP_BUTTON_B4;  // X = top
+            if (rpt->l)      buttons |= JP_BUTTON_L1;
+            if (rpt->r)      buttons |= JP_BUTTON_R1;
+            if (rpt->zl)     buttons |= JP_BUTTON_L2;
+            if (rpt->zr)     buttons |= JP_BUTTON_R2;
+            if (rpt->minus)  buttons |= JP_BUTTON_S1;
+            if (rpt->plus)   buttons |= JP_BUTTON_S2;
+            if (rpt->lstick) buttons |= JP_BUTTON_L3;
+            if (rpt->rstick) buttons |= JP_BUTTON_R3;
+            if (rpt->home)   buttons |= JP_BUTTON_A1;
+            if (rpt->capture) buttons |= JP_BUTTON_A2;
+        }
 
         // Hat to D-pad
         if (rpt->hat == 0 || rpt->hat == 1 || rpt->hat == 7) buttons |= JP_BUTTON_DU;
@@ -388,11 +564,23 @@ static void switch_process_report(bthid_device_t* device, const uint8_t* data, u
         if (rpt->hat >= 5 && rpt->hat <= 7) buttons |= JP_BUTTON_DL;
 
         sw->event.buttons = buttons;
-        // 16-bit sticks scaled to 8-bit (0-65535 → 0-255)
-        sw->event.analog[ANALOG_LX] = rpt->lx >> 8;
-        sw->event.analog[ANALOG_LY] = 255 - (rpt->ly >> 8);  // Invert Y (Nintendo: up=high, HID: up=low)
-        sw->event.analog[ANALOG_RX] = rpt->rx >> 8;
-        sw->event.analog[ANALOG_RY] = 255 - (rpt->ry >> 8);  // Invert Y (Nintendo: up=high, HID: up=low)
+
+        if (switch_model_has_sticks(sw->model)) {
+            // 16-bit sticks scaled to 8-bit (0-65535 → 0-255)
+            sw->event.analog[ANALOG_LX] = rpt->lx >> 8;
+            sw->event.analog[ANALOG_LY] = 255 - (rpt->ly >> 8);  // Invert Y (Nintendo: up=high, HID: up=low)
+        } else {
+            sw->event.analog[ANALOG_LX] = 128;
+            sw->event.analog[ANALOG_LY] = 128;
+        }
+
+        if (sw->model == SWITCH_MODEL_PRO) {
+            sw->event.analog[ANALOG_RX] = rpt->rx >> 8;
+            sw->event.analog[ANALOG_RY] = 255 - (rpt->ry >> 8);  // Invert Y (Nintendo: up=high, HID: up=low)
+        } else {
+            sw->event.analog[ANALOG_RX] = nso_rx;
+            sw->event.analog[ANALOG_RY] = nso_ry;
+        }
 
         router_submit_input(&sw->event);
     }
