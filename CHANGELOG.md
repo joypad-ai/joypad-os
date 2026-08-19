@@ -106,6 +106,10 @@ Patch release. **Every adapter running 2.4.0 should update**: the universal prof
 
 - **iPega PG-9021 Classic Bluetooth gamepad driver**, wired into the RP2040, ESP32-S3 and nRF builds.
   (#239, thanks @Atreus171)
+- **First release UF2 for `controller_btusb` on the Seeed XIAO nRF52840.** v2.4.0 and every release
+  before it shipped no asset for that board — it had to be built from source. This release adds
+  `joypad_2.4.1_controller_btusb_seeed_xiao_nrf52840.uf2`, taking the release from 69 UF2s to 70.
+  (#219)
 
 ### Changed
 
@@ -120,12 +124,13 @@ Patch release. **Every adapter running 2.4.0 should update**: the universal prof
 ### Build & CI
 
 - 🔴 **Released firmware reports its own version correctly again.** Every 2.4.0 UF2 self-reported
-  `2.3.0`, and every 2.3.0 UF2 reported `2.2.0` — in the web config, in the boot banner, and in the
-  USB device descriptor, so there was no surface on which a user could confirm which build they were
-  running. The release workflow bumped `VERSION` in a new commit but the build jobs did not depend on
-  that job, so they compiled the tree from just before the bump. The builds now check out the bump
-  commit, and the run fails outright if the tree being compiled does not carry the version being
-  released — the original failure produced no error at all, which is how it survived two releases.
+  `2.3.0` — in the web config, in the boot banner, and in the USB device descriptor, so there was no
+  surface on which a user could confirm which build they were running. The release workflow bumped
+  `VERSION` in a new commit but the build jobs did not depend on that job, so they compiled the tree
+  from just before the bump. The builds now check out the bump commit, and the run fails outright if
+  the tree being compiled does not carry the version being released — the original failure produced
+  no error at all, which is how it went unnoticed. **2.3.0 and 2.2.0 are unaffected**: both were
+  released with `VERSION` bumped in the repo beforehand, so there was no bump commit to miss.
   (#245, #246; thanks mitsuschi for the report)
 - Every driver the BTHID/device registries reference is now compiled, and CI fails if one is
   referenced but not built. (#233)
@@ -134,6 +139,14 @@ Patch release. **Every adapter running 2.4.0 should update**: the universal prof
 
 ### Documentation
 
+- 🔴 **Sixteen pages documented a profile-switch gesture that does not exist.** They instructed
+  *"hold Select for 2 seconds, then press D-Pad Up/Down"* — a two-step sequence nothing implements,
+  so a user who held Select, released it, and then pressed the D-pad got no response at all. The
+  real gesture is **SELECT + D-Pad Up/Down pressed together and held ~0.7 s**. Four of those pages
+  also had the direction inverted (Up is *previous*, Down is *next*), and every one of them said
+  "cycle" although the built-in hotkeys clamp at the ends instead of wrapping. The bt2usb build
+  guide separately claimed SELECT + D-Pad Left/Right does nothing on bt2usb — it is the D-pad
+  slider, live on every app that takes the default combos. (#253)
 - `app.h` manifests no longer advertise feature flags the build never reads — several of them stated
   the opposite of what the firmware does. (#198, #199)
 - **usb2gc build guide:** removed the dead GPIO 6 "console-presence sense wire" instruction, which
