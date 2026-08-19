@@ -776,6 +776,62 @@ joypad_target_common(joypad_dc_rp2040zero)
 joypad_add_btstack(joypad_dc_rp2040zero)
 pico_generate_pio_header(joypad_dc_rp2040zero ${CMAKE_CURRENT_LIST_DIR}/native/device/dreamcast/maple.pio)
 
+# --- USB to Wii extension (USB host -> I2C slave at 0x52) ---
+# The wired sibling of joypad_bt2wiiext further down: same output stage
+# (wii_ext_device.c, Classic Controller Pro at 0x52 on GP4/GP5), USB host as
+# the input stage instead of the CYW43 radio.
+#
+# Deliberately does NOT define CONFIG_USB_HOST. That flag is read in exactly
+# one place — sinput_mode.c, a USB *device* output mode — and this app links
+# USB_HOST_SOURCES without USB_DEVICE_SOURCES, so the flag would be dead.
+# usb2dc sets it; copying that by analogy is the cargo-cult mistake called
+# out in joypad-ai/joypad-os#194. Host mode on RHPORT0 comes from tusb_config.h
+# taking its default branch when none of CONFIG_USB / DISABLE_USB_HOST /
+# CONFIG_NGC / CONFIG_BT2WIIEXT is defined — which is the case here.
+#
+# Architecture is identical across both boards; they differ only in whether a
+# WS2812 exists. Keeping the shared set in one variable is the anti-drift rule
+# usb2dc_config.h's header argues for.
+set(USB2WIIEXT_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/device/wii_ext/wii_ext_device.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/device/wii_ext/wii_ext_crypto.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2wiiext/app.c
+)
+set(USB2WIIEXT_INCLUDES
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2wiiext
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/device/wii_ext
+)
+
+# kb2040: no NeoPixel on this board. Primary target — its USB host port can
+# be jumpered to supply 5 V to the attached controller, which is the practical
+# blocker for bus-powered pads on this adapter.
+add_executable(joypad_usb2wiiext)
+target_compile_definitions(joypad_usb2wiiext PRIVATE CONFIG_NO_NEOPIXEL=1)
+target_sources(joypad_usb2wiiext PUBLIC ${COMMON_SOURCES} ${USB2WIIEXT_SOURCES})
+target_include_directories(joypad_usb2wiiext PUBLIC ${USB2WIIEXT_INCLUDES})
+target_link_libraries(joypad_usb2wiiext PRIVATE ${COMMON_LIBRARIES}
+    hardware_i2c
+    pico_i2c_slave
+)
+joypad_target_common(joypad_usb2wiiext)
+joypad_add_btstack(joypad_usb2wiiext)
+
+# Pi Pico: no board WS2812 pin, so ws2812.h auto-defines CONFIG_NO_NEOPIXEL
+# (same path gc2usb_pico relies on). BOOTSEL is the only button.
+add_executable(joypad_usb2wiiext_pico)
+target_compile_definitions(joypad_usb2wiiext_pico PRIVATE
+    USE_BOOTSEL_BUTTON=1
+    RPI_PICO_BUILD=1
+)
+target_sources(joypad_usb2wiiext_pico PUBLIC ${COMMON_SOURCES} ${USB2WIIEXT_SOURCES})
+target_include_directories(joypad_usb2wiiext_pico PUBLIC ${USB2WIIEXT_INCLUDES})
+target_link_libraries(joypad_usb2wiiext_pico PRIVATE ${COMMON_LIBRARIES}
+    hardware_i2c
+    pico_i2c_slave
+)
+joypad_target_common(joypad_usb2wiiext_pico)
+joypad_add_btstack(joypad_usb2wiiext_pico)
+
 # --- NEOGEO ---
 add_executable(joypad_neogeo)
 target_compile_definitions(joypad_neogeo PRIVATE CONFIG_NEOGEO=1)
