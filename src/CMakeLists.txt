@@ -353,6 +353,13 @@ set(LODGENET_HOST_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/native/host/lodgenet/lodgenet_host.c
 )
 
+# 24G host sources (nRF24L01+ radio, SF30 2.4G wireless dongle emulation)
+set(RF24G_HOST_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/host/rf24g/rf24g_host.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/host/rf24g/nrf24l01.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/host/rf24g/rf24g_hal_rp2040.c
+)
+
 # Wii extension host sources (hardware I2C via platform HAL + protocol lib)
 set(WII_HOST_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/native/host/wii_ext/wii_ext_host.c
@@ -2701,6 +2708,31 @@ elseif (PICO_BOARD STREQUAL "pico")
     target_compile_definitions(joypad_pce2usb PRIVATE BOARD_LED_PIN=25)
 endif()
 joypad_target_common(joypad_pce2usb)
+
+
+# --- 24G2USB (nRF24L01+ / SF30 2.4G wireless receiver -> USB HID) ---
+add_executable(joypad_24g2usb)
+target_compile_definitions(joypad_24g2usb PRIVATE CONFIG_24G2USB=1 CONFIG_USB=1 DISABLE_USB_HOST=1 USE_BOOTSEL_BUTTON=1)
+target_sources(joypad_24g2usb PUBLIC ${CORE_SOURCES} ${USB_DEVICE_SOURCES}
+    ${RF24G_HOST_SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/24g2usb/app.c
+)
+target_include_directories(joypad_24g2usb PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/apps/24g2usb
+    ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd
+    ${CMAKE_CURRENT_SOURCE_DIR}/native/host/rf24g
+)
+target_link_libraries(joypad_24g2usb PRIVATE pico_stdlib pico_multicore hardware_pio hardware_spi pico_rand tinyusb_device tinyusb_board)
+# Status LED: Pico W / Pico 2 W's onboard LED is behind the CYW43 chip
+# (WL_GPIO0), so bring up cyw43_arch (no wireless) just to drive it. A plain
+# Pico / Pico 2's LED is a normal GPIO (GP25).
+if (PICO_BOARD STREQUAL "pico_w" OR PICO_BOARD STREQUAL "pico2_w")
+    target_compile_definitions(joypad_24g2usb PRIVATE BOARD_LED_CYW43=1)
+    target_link_libraries(joypad_24g2usb PRIVATE pico_cyw43_arch_none)
+elseif (PICO_BOARD STREQUAL "pico" OR PICO_BOARD STREQUAL "pico2")
+    target_compile_definitions(joypad_24g2usb PRIVATE BOARD_LED_PIN=25)
+endif()
+joypad_target_common(joypad_24g2usb)
 
 
 # --- JAG2USB (Atari Jaguar -> USB HID) ---
