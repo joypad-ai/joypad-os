@@ -130,8 +130,30 @@ bool ps4_auth_flash_load(ps4_auth_data_t *out)
     return true;
 }
 
-void ps4_auth_flash_save(const ps4_auth_data_t *data)
+// Run a flash worker and report whether it was actually carried out.
+//
+// Deliberately NOT falling back to a direct erase/program with interrupts
+// disabled the way flash.c does for the adjacent settings sectors
+// (flash.c:302, :326). Disabling interrupts on Core 0 does not park Core 1, so
+// if flash_safe_execute() failed because the multicore lockout is unavailable,
+// a direct erase can fault Core 1 while it executes from XIP. flash.c accepts
+// that trade for settings; taking it here would be a behaviour change that
+// cannot be validated without hardware, inside a fix whose whole point is to
+// stop reporting unverified success. Surface the failure instead.
+static bool run_flash_op(void (*worker)(void *), void *param,
+                         const char *what)
 {
+    int result = flash_safe_execute(worker, param, UINT32_MAX);
+    if (result == PICO_OK) return true;
+
+    printf("[ps4_auth] flash_safe_execute failed for %s (%d)\n", what, result);
+    return false;
+}
+
+bool ps4_auth_flash_save(const ps4_auth_data_t *data)
+{
+    if (!data) return false;
+
     // Build the write buffer (static so it survives flash ops)
     static ps4_auth_data_t write_buf;
     memcpy(&write_buf, data, sizeof(ps4_auth_data_t));
@@ -149,7 +171,10 @@ void ps4_auth_flash_save(const ps4_auth_data_t *data)
         .offset = FLASH_PS4_AUTH_OFFSET,
         .length = FLASH_SECTOR_SIZE
     };
-    flash_safe_execute(do_flash_erase, &ep, UINT32_MAX);
+    if (!run_flash_op(do_flash_erase, &ep, "erase")) {
+        printf("[ps4_auth] Auth data NOT saved — erase did not run\n");
+        return false;
+    }
 
     // Program 1024 bytes (4 × 256-byte pages)
     flash_program_params_t pp = {
@@ -157,18 +182,44 @@ void ps4_auth_flash_save(const ps4_auth_data_t *data)
         .data   = (const uint8_t *)&write_buf,
         .length = sizeof(ps4_auth_data_t)  // 1024 bytes, 4 pages
     };
-    flash_safe_execute(do_flash_program, &pp, UINT32_MAX);
+    if (!run_flash_op(do_flash_program, &pp, "program")) {
+        printf("[ps4_auth] Auth data NOT saved — program did not run\n");
+        return false;
+    }
 
-    printf("[ps4_auth] Auth data saved successfully\n");
+    // Read back from flash and validate. A PICO_OK from flash_safe_execute()
+    // only says the worker ran, not that a usable record landed, so the final
+    // verdict is taken from the sector itself.
+    const ps4_auth_data_t *flash_ptr =
+        (const ps4_auth_data_t *)(XIP_BASE + FLASH_PS4_AUTH_OFFSET);
+    if (!ps4_auth_flash_is_valid(flash_ptr)) {
+        printf("[ps4_auth] Auth data NOT saved — read-back failed validation\n");
+        return false;
+    }
+
+    printf("[ps4_auth] Auth data saved successfully (read-back verified)\n");
+    return true;
 }
 
-void ps4_auth_flash_erase(void)
+bool ps4_auth_flash_erase(void)
 {
     printf("[ps4_auth] Erasing auth data from flash...\n");
     flash_erase_params_t ep = {
         .offset = FLASH_PS4_AUTH_OFFSET,
         .length = FLASH_SECTOR_SIZE
     };
-    flash_safe_execute(do_flash_erase, &ep, UINT32_MAX);
+    if (!run_flash_op(do_flash_erase, &ep, "erase")) {
+        printf("[ps4_auth] Auth data NOT erased — erase did not run\n");
+        return false;
+    }
+
+    const ps4_auth_data_t *flash_ptr =
+        (const ps4_auth_data_t *)(XIP_BASE + FLASH_PS4_AUTH_OFFSET);
+    if (flash_ptr->magic == PS4_AUTH_FLASH_MAGIC) {
+        printf("[ps4_auth] Auth data NOT erased — magic still present\n");
+        return false;
+    }
+
     printf("[ps4_auth] Auth data erased\n");
+    return true;
 }
