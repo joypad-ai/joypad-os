@@ -108,6 +108,14 @@ static void frame_send(uint8_t type, const void* payload, size_t plen) {
 // RX DISPATCH
 // ============================================================================
 
+// P5General auth-bridge RX hook. Strong definition lives in p5general_link.c
+// (linked alongside via UART_PEER_SOURCES); the weak no-op here keeps uart_peer
+// self-contained for any target that doesn't build the bridge.
+__attribute__((weak)) void p5general_link_on_frame(uint8_t type, const uint8_t* payload,
+                                                   uint16_t plen) {
+    (void)type; (void)payload; (void)plen;
+}
+
 static void submit_peer_event(const uart_peer_event_t* packed) {
     input_event_t event;
     init_input_event(&event);
@@ -168,6 +176,8 @@ static void dispatch_frame(const uint8_t* frame, uint16_t len) {
             }
             break;
         default:
+            // P5General auth-bridge types (0x04-0x09) and any future ones.
+            p5general_link_on_frame(type, payload, plen);
             break;
     }
 }
@@ -249,6 +259,10 @@ bool uart_peer_is_connected(void) {
 
 uint32_t uart_peer_get_rx_raw_count(void)   { return rx_raw_bytes; }
 uint32_t uart_peer_get_rx_frame_count(void) { return rx_valid_frames; }
+
+void uart_peer_send_frame(uint8_t type, const void* payload, uint16_t plen) {
+    frame_send(type, payload, plen);
+}
 
 // ----- producer -----
 void uart_peer_producer_tap(output_target_t output, uint8_t player_index,

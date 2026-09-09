@@ -40,6 +40,19 @@
 #define UART_PEER_MSG_STATUS     0x02   // consumer -> producer: feedback/status
 #define UART_PEER_MSG_DEBUG      0x03   // producer -> consumer: liveness/host telemetry
 
+// P5General PS5-auth bridge (dual-chip). Carries the p5general_auth_data handoff
+// across the link so GP2040 P5General auth — normally single-chip shared RAM —
+// works split across the DEVICE side (A, presents to the PS5) and the HOST side
+// (B, owns the auth dongle). A distinct type per operation keeps every payload
+// <= 64 bytes (the frame_send cap), avoiding a subtype byte on the 64B buffers.
+// Handled by the weak p5general_link_on_frame() hook (src/uart_peer/p5general_link.c).
+#define UART_PEER_MSG_P5G_SIGN_REQ   0x04   // A->B: 64B report to sign
+#define UART_PEER_MSG_P5G_SIGN_RESP  0x05   // B->A: 64B signed report
+#define UART_PEER_MSG_P5G_F0         0x06   // A->B: 64B auth_buffer (PS5 F0 challenge)
+#define UART_PEER_MSG_P5G_POLL_F1    0x07   // A->B: 0B, PS5 is polling F1/F2
+#define UART_PEER_MSG_P5G_AUTH_DATA  0x08   // B->A: 64B auth_buffer (dongle F1/F2 response)
+#define UART_PEER_MSG_P5G_DONGLE     0x09   // B->A: 1B dongle_ready
+
 // Diagnostic heartbeat (producer/host MCU -> consumer): proves B is alive, its
 // loop is advancing (uptime_ms), and how many USB host devices it has mounted.
 typedef struct __attribute__((packed)) {
@@ -97,6 +110,9 @@ bool uart_peer_is_connected(void);
 // Link RX diagnostics: total raw bytes seen on the wire / valid frames decoded.
 uint32_t uart_peer_get_rx_raw_count(void);
 uint32_t uart_peer_get_rx_frame_count(void);
+// Send a raw framed message of the given type. plen must be <= 64. Used by the
+// P5General auth bridge to carry the p5general_auth_data handoff across the link.
+void uart_peer_send_frame(uint8_t type, const void* payload, uint16_t plen);
 
 // ----- producer side (USB host MCU) -----
 // Router tap: serialize input_event_t -> EVENT frame. Install via router_set_tap().

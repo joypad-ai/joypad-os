@@ -387,6 +387,7 @@ set(I2C_PEER_SOURCES
 # UART peer input sharing sources (inter-MCU link, dual-RP2040 boards)
 set(UART_PEER_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/uart_peer/uart_peer.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/uart_peer/p5general_link.c
 )
 
 # Controller app common sources

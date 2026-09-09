@@ -13,6 +13,7 @@
 #include "core/services/players/feedback.h"
 #include "usb/usbh/usbh.h"
 #include "uart_peer/uart_peer.h"
+#include "uart_peer/p5general_link.h"
 #include "pico/stdlib.h"
 #include "tusb.h"
 #include <stdio.h>
@@ -54,6 +55,11 @@ static void link_output_task(void)
 {
     // Pump the link (drain TX ring, decode incoming feedback frames).
     uart_peer_task();
+
+    // P5General (PS5) auth bridge: this host side owns the auth dongle; forward
+    // its signed reports + F1/F2 auth data + dongle-ready to the device side (A),
+    // and the incoming A->B frames were just applied by uart_peer_task().
+    p5general_link_host_task();
 
     // Apply any feedback (rumble/LED) the device side sent back.
     uart_peer_status_t st;

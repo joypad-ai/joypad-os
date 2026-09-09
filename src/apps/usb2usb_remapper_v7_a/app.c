@@ -15,6 +15,7 @@
 #include "usb/usbd/cdc/cdc_commands.h"
 #include "usb/usbd/cdc/cdc_protocol.h"
 #include "uart_peer/uart_peer.h"
+#include "uart_peer/p5general_link.h"
 #include "pico/stdlib.h"
 #include <string.h>
 #include <stdio.h>
@@ -94,6 +95,11 @@ void app_task(void)
     // Pump the link (RX events were submitted to the router via the input
     // interface task; this also drains TX). Then push feedback back to B.
     uart_peer_task();
+
+    // P5General (PS5) auth bridge: forward this device's report-to-sign / F0 /
+    // F1-poll to the host side (B), which owns the auth dongle. No-op in other
+    // output modes (the device mode only writes these fields in PS5 mode).
+    p5general_link_device_task();
 
     // Send feedback (rumble/LED requested by the host PC) to the host side at
     // ~125 Hz so it can drive the controllers.
