@@ -1071,6 +1071,11 @@ target_compile_definitions(joypad_usb2usb_remapper_v7_a PRIVATE
     DISABLE_USB_HOST=1
     UART_PEER_ENABLED=1
     USE_BOOTSEL_BUTTON=1   # board's only user button grounds A's QSPI CS (BOOTSEL)
+    # A hosts no USB/BT itself, but the host MCU (B) does and forwards over the
+    # link. Advertise USB-host presence in CAPS so the web config (which talks to
+    # A) surfaces the USB input page instead of hiding it — the inputs are real,
+    # just one hop away. Read-only (no local pins to configure).
+    HOST_OVER_LINK=1
 )
 target_sources(joypad_usb2usb_remapper_v7_a PUBLIC ${CORE_SOURCES} ${USB_DEVICE_SOURCES}
     ${UART_PEER_SOURCES}

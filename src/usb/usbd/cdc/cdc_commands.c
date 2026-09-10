@@ -2568,7 +2568,11 @@ static void cmd_caps_get(const char* json)
     //                   Native-USB adapters (usb2pce/usb2gc) are fixed by silicon
     //                   → present but not configurable → read-only page.
     //   dp           — the PIO USB D+ pin, or -1 for native USB / no host.
-#if defined(REQUIRE_USB_HOST) && REQUIRE_USB_HOST
+#if (defined(REQUIRE_USB_HOST) && REQUIRE_USB_HOST) || (defined(HOST_OVER_LINK) && HOST_OVER_LINK)
+    // HOST_OVER_LINK: this MCU hosts nothing itself but proxies a USB host that
+    // lives on the peer MCU (dual-RP remapper) — advertise it so the config UI
+    // shows the USB input page. Presence is real; the controllers arrive via the
+    // inter-MCU link and register as players like any USB device.
     const char* uh_present = "true";
 #else
     const char* uh_present = "false";
