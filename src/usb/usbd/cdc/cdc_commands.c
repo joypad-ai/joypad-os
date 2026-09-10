@@ -283,15 +283,32 @@ static void cmd_info(const char* json)
         snprintf(imu_str, sizeof(imu_str), "false");  // no IMU reporting
     }
 
+    // Dual-RP: the SWD relay writes a B-flash result to WATCHDOG_SCRATCH0/1
+    // (0x40058000 + 0x0c/0x10) before its warm reboot. status 1=bad header
+    // (likely XIP read failure), 2=SWD flash failed, 3=success; SCRATCH1 = image
+    // length (or the bad magic for status 1). Only valid until the next COLD
+    // boot clears it, so read INFO after flashing but BEFORE power-cycling.
+    char bflash_str[48] = "null";
+#ifdef HOST_OVER_LINK
+    {
+        uint32_t s0 = *(volatile uint32_t*)(0x40058000u + 0x0cu);
+        uint32_t s1 = *(volatile uint32_t*)(0x40058000u + 0x10u);
+        if ((s0 & 0xFFFFFF00u) == 0xB0000000u)
+            snprintf(bflash_str, sizeof(bflash_str), "{\"st\":%lu,\"v\":%lu}",
+                     (unsigned long)(s0 & 0xFFu), (unsigned long)s1);
+    }
+#endif
+
     snprintf(response_buf, sizeof(response_buf),
              "{\"app\":\"%s\",\"version\":\"%s\",\"board\":\"%s\",\"serial\":\"%s\",\"commit\":\"%s\",\"build\":\"%s\""
              ",\"reset\":\"0x%lx\",\"battery_mv\":%d,\"chg\":%d,\"imu\":%s,\"flashw\":%lu,\"featw\":%lu"
+             ",\"bflash\":%s"
              ",\"features\":{\"onboard_led\":%s}}"
              ,
              APP_NAME, JOYPAD_VERSION, BOARD_NAME, serial, GIT_COMMIT, BUILD_TIME,
              (unsigned long)platform_last_reset_reason(), platform_battery_millivolts(),
              platform_battery_charging(), imu_str, (unsigned long)flash_get_write_count(),
-             (unsigned long)sinput_get_feature_count(),
+             (unsigned long)sinput_get_feature_count(), bflash_str,
 #ifdef BTSTACK_USE_CYW43
              "true"
 #elif defined(BOARD_LED_PIN)

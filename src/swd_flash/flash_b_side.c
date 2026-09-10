@@ -17,6 +17,7 @@
 #include <hardware/regs/addressmap.h>
 #include <hardware/sync.h>
 #include <hardware/watchdog.h>
+#include <pico/bootrom.h>
 
 #include "adi.h"
 #include "flash.h"
@@ -45,15 +46,31 @@ static void watchdog_reboot_target(void) {
 }
 
 int main(void) {
+    // CRITICAL: re-enter XIP first. The bootrom writes our flash blocks (A's
+    // firmware + B's image) then hands control to this no_flash RAM binary with
+    // flash left in exit-XIP state — so memory-mapped reads of B's image (staged
+    // in A's flash) return garbage until XIP is re-established. Without this the
+    // header check below fails and B is never flashed (keeps its old image).
+    rom_connect_internal_flash();
+    rom_flash_flush_cache();
+    rom_flash_enter_cmd_xip();
+
     // B's image, read straight from A's XIP flash: [magic][length][raw image].
     const volatile uint32_t* hdr = (const volatile uint32_t*)(XIP_BASE + B_IMAGE_OFFSET);
     const uint8_t* b_image = (const uint8_t*)(XIP_BASE + B_IMAGE_OFFSET + 8);
     uint32_t b_magic = hdr[0];
     uint32_t b_length = hdr[1];
 
+    // Result marker for the device side (A) to surface over CDC. SCRATCH0/1
+    // survive the warm reboot (watchdog_reboot only uses SCRATCH4-7). Status in
+    // the low byte of SCRATCH0: 1=bad header, 2=SWD flash failed, 3=success.
+    volatile uint32_t* scratch = (volatile uint32_t*)(WATCHDOG_BASE + WATCHDOG_SCRATCH0_OFFSET);
+
     // Bail out (leaving B untouched) if the image header is missing/corrupt, so
-    // a bad combine can't brick B by flashing garbage.
+    // a bad combine (or a failed XIP re-entry) can't brick B by flashing garbage.
     if (b_magic != B_IMAGE_MAGIC || b_length == 0 || b_length > 0x200000u) {
+        scratch[0] = 0xB0000000u | 1u;  // bad header
+        scratch[1] = b_magic;           // what we actually read (helps diagnose XIP)
         watchdog_reboot(0, 0, 0);
         while (true) { __wfi(); }
     }
@@ -71,8 +88,9 @@ int main(void) {
     // transfer errors (marginal links can fail mid-bulk-transfer). The flash
     // engine reads the source pointer sequentially, so streaming from XIP is
     // fine — no need to stage the image in RAM.
+    int wrc = -1;
     for (int tries = 0; tries < 4; tries++) {
-        int wrc = rp2040_add_flash_bit(0, b_image, (int)b_length);
+        wrc = rp2040_add_flash_bit(0, b_image, (int)b_length);
         rp2040_add_flash_bit(0xffffffff, NULL, 0);
         if (wrc == 0) break;
         // Re-establish the debug connection before retrying.
@@ -80,6 +98,8 @@ int main(void) {
         core_select(0);
         core_reset_halt();
     }
+    scratch[0] = 0xB0000000u | (wrc == 0 ? 3u : 2u);
+    scratch[1] = b_length;
 
     // Reboot B (the freshly-flashed target), then reboot ourselves (A) so the
     // bootloader hands control to A's flash image.
