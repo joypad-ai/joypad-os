@@ -2381,10 +2381,17 @@ void tud_hid_set_report_cb(uint8_t itf, uint8_t report_id, hid_report_type_t rep
         return;
     }
 
-    // PS5 native (P5General) auth feature reports (F0 challenge from the console)
+    // PS5 native (P5General): auth feature reports (F0 challenge from the console)
+    // + DualSense-style output reports (rumble / player LED / lightbar) on the OUT
+    // endpoint, relayed to the connected pad via handle_output → get_feedback.
     if (output_mode == USB_OUTPUT_MODE_PS5) {
         if (report_type == HID_REPORT_TYPE_FEATURE) {
             p5general_mode_set_feature_report(report_id, buffer, bufsize);
+        } else {
+            const usbd_mode_t* mode = usbd_modes[USB_OUTPUT_MODE_PS5];
+            if (mode && mode->handle_output) {
+                mode->handle_output(report_id, buffer, bufsize);
+            }
         }
         return;
     }

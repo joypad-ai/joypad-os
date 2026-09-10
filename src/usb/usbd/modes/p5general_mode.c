@@ -15,8 +15,11 @@
 #include "usbd_mode.h"
 #include "descriptors/p5general_descriptors.h"
 #include "usb/usbh/hid/devices/vendors/sony/p5general_host.h"  // shared auth data
+#include "usb/usbh/hid/devices/vendors/sony/sony_ds5.h"        // ds5_feedback_t (PS5 output report body)
 #include "core/buttons.h"
+#include "app_config.h"   // LED_Px_PATTERN — reverse-map host player-LED patterns
 #include "tusb.h"
+#include <stddef.h>       // offsetof
 #include <string.h>
 
 // Shared with the host relay (defined here so device-only builds still link).
@@ -200,6 +203,105 @@ void p5general_mode_set_feature_report(uint8_t report_id, const uint8_t* buffer,
     }
 }
 
+// --- Output (PS5 → controller): rumble / lightbar / player LEDs ---------------
+// The PS5 drives P5General exactly like a DualSense: an output report 0x02 whose
+// body IS a ds5_feedback_t (rumble_r@2, rumble_l@3, player_led@43, RGB@44-46).
+// This is a straight sibling of dualsense_mode.c's handler — same wire layout,
+// same feedback plumbing — so a real DualSense on the host port gets its haptics,
+// player LED and lightbar back while running in authenticated PS5 mode.
+static struct {
+    uint8_t motor_left, motor_right;
+    uint8_t led_r, led_g, led_b;
+    uint8_t player_leds;   // DualSense 5-bit bitmask
+    bool available;
+} p5g_out;
+
+static void p5general_mode_handle_output(uint8_t report_id, const uint8_t* data, uint16_t len)
+{
+    if (!data || len == 0) return;
+    // On the OUT endpoint TinyUSB delivers report_id=0 with the real id in data[0].
+    if (report_id == 0 && data[0] == P5GENERAL_REPORT_ID_OUTPUT) { report_id = data[0]; data++; len--; }
+    if (report_id != P5GENERAL_REPORT_ID_OUTPUT || len < 4) return;  // need at least the motors
+
+    const ds5_feedback_t* fb = (const ds5_feedback_t*)data;
+    uint8_t new_ml = fb->rumble_l;
+    uint8_t new_mr = fb->rumble_r;
+    uint8_t new_pl = p5g_out.player_leds;
+    uint8_t new_r  = p5g_out.led_r, new_g = p5g_out.led_g, new_b = p5g_out.led_b;
+    // Player LED only when the flag is asserted (bit 12 = high byte bit 4 = 0x10).
+    // Read the flags byte-wise: `data` is often odd-aligned and an unpacked 16-bit
+    // load of fb->flags HardFaults the Cortex-M0+ inside tud_task (see dualsense_mode).
+    if ((data[1] & 0x10) && len > offsetof(ds5_feedback_t, player_led))
+        new_pl = fb->player_led & 0x1F;
+    // Lightbar RGB (@44-46) only when the flag is asserted (bit 10 = high byte
+    // bit 2 = 0x04). Gate on the field offset, not sizeof (struct pads to 48).
+    if ((data[1] & 0x04) && len >= offsetof(ds5_feedback_t, lightbar_r) + 3) {
+        new_r = fb->lightbar_r;
+        new_g = fb->lightbar_g;
+        new_b = fb->lightbar_b;
+    }
+
+    // Change-gate: the PS5 streams identical output reports continuously; only mark
+    // feedback available on a real change so get_feedback doesn't fire the cascade
+    // every loop forever.
+    if (new_ml != p5g_out.motor_left || new_mr != p5g_out.motor_right ||
+        new_pl != p5g_out.player_leds ||
+        new_r != p5g_out.led_r || new_g != p5g_out.led_g || new_b != p5g_out.led_b) {
+        p5g_out.motor_left  = new_ml;
+        p5g_out.motor_right = new_mr;
+        p5g_out.player_leds = new_pl;
+        p5g_out.led_r = new_r;
+        p5g_out.led_g = new_g;
+        p5g_out.led_b = new_b;
+        p5g_out.available = true;
+    }
+}
+
+static uint8_t p5general_mode_get_rumble(void)
+{
+    return (p5g_out.motor_left > p5g_out.motor_right) ? p5g_out.motor_left : p5g_out.motor_right;
+}
+
+// Reverse of output_sony_ds5()'s player-number → DualSense LED pattern mapping.
+static uint8_t p5general_playerled_pattern_to_number(uint8_t pattern)
+{
+    uint8_t p = pattern & 0x1F;
+    if (p == LED_P1_PATTERN) return 1;
+    if (p == LED_P2_PATTERN) return 2;
+    if (p == LED_P3_PATTERN) return 3;
+    if (p == LED_P4_PATTERN) return 4;
+#ifdef LED_P5_PATTERN
+    if (p == LED_P5_PATTERN) return 5;
+#endif
+#ifdef LED_P6_PATTERN
+    if (p == LED_P6_PATTERN) return 6;
+#endif
+#ifdef LED_P7_PATTERN
+    if (p == LED_P7_PATTERN) return 7;
+#endif
+    return 0;  // unrecognized / off
+}
+
+static bool p5general_mode_get_feedback(output_feedback_t* fb)
+{
+    if (!p5g_out.available) return false;
+    fb->rumble_left  = p5g_out.motor_left;
+    fb->rumble_right = p5g_out.motor_right;
+    fb->led_r = p5g_out.led_r;
+    fb->led_g = p5g_out.led_g;
+    fb->led_b = p5g_out.led_b;
+    // Emit the player number ONLY when it changes: feedback_set_led_player() writes
+    // the LED RGB which the cascade then overwrites, so emitting it every pass forces
+    // led_dirty on and adds churn at the PS5's output rate.
+    static uint8_t last_player = 0;
+    uint8_t player = p5general_playerled_pattern_to_number(p5g_out.player_leds);
+    fb->led_player = (player != last_player) ? player : 0;
+    last_player = player;
+    fb->dirty = true;
+    p5g_out.available = false;
+    return true;
+}
+
 static const uint8_t* p5general_mode_get_device_descriptor(void) {
     return (const uint8_t*)&p5general_device_descriptor;
 }
@@ -219,9 +321,11 @@ const usbd_mode_t p5general_mode = {
     .init = p5general_mode_init,
     .send_report = p5general_mode_send_report,
     .is_ready = p5general_mode_is_ready,
-    .handle_output = NULL,   // no rumble in the GP2040 P5General path (yet)
-    .get_rumble = NULL,
-    .get_feedback = NULL,
+    // Feedback to the connected pad: PS5 DualSense output report → handle_output →
+    // get_feedback → output_sony_ds5() (report 0x02). Same plumbing as dualsense_mode.
+    .handle_output = p5general_mode_handle_output,
+    .get_rumble = p5general_mode_get_rumble,
+    .get_feedback = p5general_mode_get_feedback,
     .get_report = p5general_mode_get_report,
     .get_class_driver = NULL,
     .task = NULL,
