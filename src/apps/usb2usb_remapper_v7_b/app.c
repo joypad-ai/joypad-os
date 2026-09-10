@@ -17,6 +17,10 @@
 #include "pico/stdlib.h"
 #include "tusb.h"
 #include <stdio.h>
+#ifdef ENABLE_BTSTACK
+#include "bt/transport/bt_transport.h"   // bt_is_ready / bt_get_connection_count
+#include "bt/btstack/btstack_host.h"     // scan control
+#endif
 
 // ============================================================================
 // INPUT INTERFACES — native USB host
@@ -148,10 +152,27 @@ void app_task(void)
 {
     // Output interface task pumps the link.
 
+    uint32_t now = to_ms_since_boot(get_absolute_time());
+
+#ifdef ENABLE_BTSTACK
+    // B has no user button (the BOOT button is on A), so a USB BT dongle would
+    // never enter pairing on its own. Auto-start a 30s scan whenever the dongle
+    // is powered and nothing is connected; re-arm every few seconds while idle.
+    // Once a controller connects, connection_count > 0 suppresses further scans;
+    // if it drops, scanning resumes so reconnection/re-pairing just works.
+    static uint32_t last_scan_ms = 0;
+    if (bt_is_ready() && (now - last_scan_ms >= 3000)) {
+        last_scan_ms = now;
+        if (!btstack_host_is_scanning() && bt_get_connection_count() == 0) {
+            printf("[usb2usb_remapper_v7_b] BT idle -> starting 30s scan\n");
+            btstack_host_start_timed_scan(30000);
+        }
+    }
+#endif
+
     // Diagnostic heartbeat: report B liveness + USB host device count to A
     // every ~200ms so the device side can surface it over CDC during bring-up.
     static uint32_t last_dbg_ms = 0;
-    uint32_t now = to_ms_since_boot(get_absolute_time());
     if (now - last_dbg_ms >= 200) {
         last_dbg_ms = now;
 
