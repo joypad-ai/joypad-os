@@ -18,10 +18,17 @@
 #include <hardware/sync.h>
 #include <hardware/watchdog.h>
 
-#include "dual_b_binary.h"
 #include "adi.h"
 #include "flash.h"
 #include "swd.h"
+
+// B's image lives in A's flash (written by the bootloader from the combined
+// UF2), not in this RAM-resident relay — so B can be far larger than the
+// relay's RAM. combine_uf2.py places it at XIP_BASE + B_IMAGE_OFFSET as
+// [magic u32][length u32][raw image]. We read it via XIP and stream it to B
+// over SWD. Keep B_IMAGE_OFFSET / B_IMAGE_MAGIC in sync with combine_uf2.py.
+#define B_IMAGE_OFFSET 0x40000u
+#define B_IMAGE_MAGIC  0x42494D47u  // "BIMG"
 
 // Reboot the SWD *target* (B) via its watchdog, using SWD memory writes.
 static void watchdog_reboot_target(void) {
@@ -38,6 +45,19 @@ static void watchdog_reboot_target(void) {
 }
 
 int main(void) {
+    // B's image, read straight from A's XIP flash: [magic][length][raw image].
+    const volatile uint32_t* hdr = (const volatile uint32_t*)(XIP_BASE + B_IMAGE_OFFSET);
+    const uint8_t* b_image = (const uint8_t*)(XIP_BASE + B_IMAGE_OFFSET + 8);
+    uint32_t b_magic = hdr[0];
+    uint32_t b_length = hdr[1];
+
+    // Bail out (leaving B untouched) if the image header is missing/corrupt, so
+    // a bad combine can't brick B by flashing garbage.
+    if (b_magic != B_IMAGE_MAGIC || b_length == 0 || b_length > 0x200000u) {
+        watchdog_reboot(0, 0, 0);
+        while (true) { __wfi(); }
+    }
+
     swd_init();
     dp_init();
 
@@ -47,10 +67,12 @@ int main(void) {
     core_reset_halt();
     core_select(0);
 
-    // Write B's flash from the embedded image, retrying the whole sequence if
-    // the SWD transfer errors (marginal links can fail mid-bulk-transfer).
+    // Write B's flash from A's XIP image, retrying the whole sequence if the SWD
+    // transfer errors (marginal links can fail mid-bulk-transfer). The flash
+    // engine reads the source pointer sequentially, so streaming from XIP is
+    // fine — no need to stage the image in RAM.
     for (int tries = 0; tries < 4; tries++) {
-        int wrc = rp2040_add_flash_bit(0, dual_b_binary, dual_b_binary_length);
+        int wrc = rp2040_add_flash_bit(0, b_image, (int)b_length);
         rp2040_add_flash_bit(0xffffffff, NULL, 0);
         if (wrc == 0) break;
         // Re-establish the debug connection before retrying.
