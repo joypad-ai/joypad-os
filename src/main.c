@@ -21,6 +21,7 @@
 #include <stdio.h>
 #include "pico/stdlib.h"
 #include "pico/multicore.h"
+#include "hardware/clocks.h"   // set_sys_clock_khz (JOYPAD_USB_FAST_CLOCK)
 #include "pico/flash.h"
 
 #include "core/app_registry.h"
@@ -136,6 +137,18 @@ static void __not_in_flash_func(core0_main)(void)
 
 int main(void)
 {
+#ifdef JOYPAD_USB_FAST_CLOCK
+  // Board clock policy: raise to 200 MHz here, before ANY peripheral init.
+  // The UART/link baud, USB SOF, etc. all derive from the system clock, so it
+  // must be final before those are configured. usbd_init() also sets this, but
+  // only USB-DEVICE apps call usbd_init(); USB-HOST apps (e.g. the dual-RP2040
+  // remapper's host MCU) never do. On the remapper BOTH MCUs must share this
+  // clock or their 4 Mbps inter-MCU UART link computes mismatched bauds and no
+  // input passes through — so set it here on every fast-clock app, host or
+  // device. (200 MHz is the fastest build-supported clock; it keeps PS4
+  // local-auth RSA signing inside the console's challenge window.)
+  set_sys_clock_khz(200000, true);
+#endif
 #ifdef BOARD_LED_PIN
   // Early boot indicator — toggle LED before any PIO init
   gpio_init(BOARD_LED_PIN);
