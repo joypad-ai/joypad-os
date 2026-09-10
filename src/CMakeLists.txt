@@ -1063,6 +1063,7 @@ target_compile_definitions(joypad_usb2usb_remapper_v7_a PRIVATE
     CONFIG_USB=1
     DISABLE_USB_HOST=1
     UART_PEER_ENABLED=1
+    USE_BOOTSEL_BUTTON=1   # board's only user button grounds A's QSPI CS (BOOTSEL)
 )
 target_sources(joypad_usb2usb_remapper_v7_a PUBLIC ${CORE_SOURCES} ${USB_DEVICE_SOURCES}
     ${UART_PEER_SOURCES}

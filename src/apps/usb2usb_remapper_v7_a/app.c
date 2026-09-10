@@ -11,6 +11,7 @@
 #include "core/input_interface.h"
 #include "core/output_interface.h"
 #include "core/services/players/feedback.h"
+#include "core/services/button/button.h"
 #include "usb/usbd/usbd.h"
 #include "usb/usbd/cdc/cdc_commands.h"
 #include "usb/usbd/cdc/cdc_protocol.h"
@@ -45,6 +46,36 @@ const OutputInterface** app_get_output_interfaces(uint8_t* count)
 }
 
 // ============================================================================
+// BUTTON — BOOT button cycles the USB output mode (device side owns usbd)
+// ============================================================================
+
+static void on_button_event(button_event_t event)
+{
+    switch (event) {
+        case BUTTON_EVENT_CLICK:
+            // Single click: report the current mode (no side effect).
+            printf("[app:usb2usb_remapper_v7_a] current mode: %s\n",
+                   usbd_get_mode_name(usbd_get_mode()));
+            break;
+        case BUTTON_EVENT_DOUBLE_CLICK: {
+            // Double click: cycle to the next USB output mode (saved to flash).
+            usb_output_mode_t next = usbd_get_next_mode();
+            printf("[app:usb2usb_remapper_v7_a] Double-click - switching USB mode -> %s\n",
+                   usbd_get_mode_name(next));
+            usbd_set_mode(next);
+            break;
+        }
+        case BUTTON_EVENT_TRIPLE_CLICK:
+            // Triple click: reset to the default HID mode.
+            printf("[app:usb2usb_remapper_v7_a] Triple-click - resetting to HID mode\n");
+            usbd_reset_to_hid();
+            break;
+        default:
+            break;
+    }
+}
+
+// ============================================================================
 // APP INIT / TASK
 // ============================================================================
 
@@ -53,6 +84,8 @@ void app_init(void)
     printf("[app:usb2usb_remapper_v7_a] Initializing %s v%s\n", APP_NAME, JOYPAD_VERSION);
 
     feedback_init();
+    button_init();
+    button_set_callback(on_button_event);
 
     router_config_t router_cfg = {
         .mode = ROUTING_MODE,
@@ -96,13 +129,33 @@ void app_task(void)
     // interface task; this also drains TX). Then push feedback back to B.
     uart_peer_task();
 
+    // BOOT button: double-click cycles the USB output mode (see on_button_event).
+    button_task();
+
     // P5General (PS5) auth bridge: forward this device's report-to-sign / F0 /
     // F1-poll to the host side (B), which owns the auth dongle. No-op in other
     // output modes (the device mode only writes these fields in PS5 mode).
     p5general_link_device_task();
 
-    // Send feedback (rumble/LED requested by the host PC) to the host side at
-    // ~125 Hz so it can drive the controllers.
+    // Latch the host PC's requested feedback (rumble + player LED + RGB lightbar).
+    // get_feedback() is change-gated (returns true only when a value changed and
+    // led_player/RGB are non-zero only on the changing frame), so hold the last
+    // seen values here and stream them continuously to B. get_player_led on the
+    // usbd output interface is NULL, and RGB has no scalar getter — get_feedback
+    // is the only path that carries the lightbar colour, so this is also what
+    // makes DualSense/P5General lightbar + player LED reach the pad on the link.
+    static uint8_t fb_ml = 0, fb_mr = 0, fb_player = 0, fb_r = 0, fb_g = 0, fb_b = 0;
+    if (usbd_output_interface.get_feedback) {
+        output_feedback_t fb;
+        if (usbd_output_interface.get_feedback(&fb)) {
+            fb_ml = fb.rumble_left;
+            fb_mr = fb.rumble_right;
+            if (fb.led_player > 0) fb_player = fb.led_player;
+            if (fb.led_r || fb.led_g || fb.led_b) { fb_r = fb.led_r; fb_g = fb.led_g; fb_b = fb.led_b; }
+        }
+    }
+
+    // Send feedback to the host side at ~125 Hz so it can drive the controllers.
     static uint32_t last_ms = 0;
     uint32_t now = to_ms_since_boot(get_absolute_time());
     if (now - last_ms >= 8) {
@@ -112,14 +165,12 @@ void app_task(void)
         memset(&st, 0, sizeof(st));
         st.flags = UART_PEER_STATUS_FLAG_CONNECTED;
         st.player_number = 1;
-        if (usbd_output_interface.get_rumble) {
-            uint8_t r = usbd_output_interface.get_rumble();
-            st.rumble_left = r;
-            st.rumble_right = r;
-        }
-        if (usbd_output_interface.get_player_led) {
-            st.led_player = usbd_output_interface.get_player_led();
-        }
+        st.rumble_left = fb_ml;
+        st.rumble_right = fb_mr;
+        st.led_player = fb_player;
+        st.led_color[0] = fb_r;
+        st.led_color[1] = fb_g;
+        st.led_color[2] = fb_b;
         uart_peer_send_status(&st);
     }
 

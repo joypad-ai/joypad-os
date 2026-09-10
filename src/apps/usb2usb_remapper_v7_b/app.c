@@ -66,7 +66,9 @@ static void link_output_task(void)
     if (uart_peer_get_status(&st)) {
         uint8_t p = st.player_number ? (uint8_t)(st.player_number - 1) : 0;
         feedback_set_rumble(p, st.rumble_left, st.rumble_right);
-        feedback_set_led_rgb(p, st.led_color[0], st.led_color[1], st.led_color[2]);
+        if (st.led_player > 0) feedback_set_led_player(p, st.led_player);
+        if (st.led_color[0] || st.led_color[1] || st.led_color[2])
+            feedback_set_led_rgb(p, st.led_color[0], st.led_color[1], st.led_color[2]);
     }
 }
 
