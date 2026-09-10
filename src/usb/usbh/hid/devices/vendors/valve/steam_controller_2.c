@@ -301,8 +301,12 @@ static void sc2_process(uint8_t dev_addr, uint8_t instance,
         .button_count = 20,
         .analog = {lx, ly, rx, ry, l2, r2, 0},
         .has_motion = true,
-        .accel = {accel_x, accel_y, accel_z},
-        .gyro  = {gyro_x,  gyro_y,  gyro_z},
+        // Steam Controller 2 (Triton) device frame -> canonical SDL frame:
+        // (sx,sy,sz) = (+rawX, +rawZ, -rawY), per SDL's steam_triton driver.
+        // Normalizing here (instead of in ps4_mode) lets every output stay
+        // source-agnostic.
+        .accel = {accel_x, accel_z, imu_negate_s16(accel_y)},
+        .gyro  = {gyro_x,  gyro_z,  imu_negate_s16(gyro_y)},
         .gyro_range  = 2000,
         .accel_range = 4000,
         .battery_level = batt_level[dev_addr][instance],

@@ -1011,7 +1011,10 @@ static inline void router_merge_mode(const input_event_t* event, output_target_t
                     }
                     dev->delta_wheel = 0;
 
-                    // Motion: use first device that has motion data
+                    // Motion: use first device that has motion data. Copy the
+                    // ranges too — without them the device's declared full-scale
+                    // is dropped and outputs mis-scale (masked only because most
+                    // devices default to 2000 dps / 4000 mg).
                     if (dev->has_motion && !x_current_state.has_motion) {
                         x_current_state.has_motion = true;
                         x_current_state.accel[0] = dev->accel[0];
@@ -1020,6 +1023,8 @@ static inline void router_merge_mode(const input_event_t* event, output_target_t
                         x_current_state.gyro[0] = dev->gyro[0];
                         x_current_state.gyro[1] = dev->gyro[1];
                         x_current_state.gyro[2] = dev->gyro[2];
+                        x_current_state.accel_range = dev->accel_range;
+                        x_current_state.gyro_range = dev->gyro_range;
                     }
 
                     // Pressure: use first device that has pressure data

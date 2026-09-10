@@ -149,8 +149,10 @@ void process_sinput_host(uint8_t dev_addr, uint8_t instance, uint8_t const* repo
     .button_count = 10,
     .analog = {analog_lx, analog_ly, analog_rx, analog_ry, analog_lt, analog_rt},
     .has_motion = sinput_devices[dev_addr].has_motion,
-    .accel = {rpt.accel_x, rpt.accel_y, rpt.accel_z},
-    .gyro = {rpt.gyro_x, rpt.gyro_y, rpt.gyro_z},
+    // SInput device frame -> canonical SDL frame: (sx,sy,sz) = (-rawX, +rawZ, -rawY).
+    // Matches SDL's SDL_hidapi_sinput.c so cross-device routing lands correct.
+    .accel = {imu_negate_s16(rpt.accel_x), rpt.accel_z, imu_negate_s16(rpt.accel_y)},
+    .gyro  = {imu_negate_s16(rpt.gyro_x),  rpt.gyro_z,  imu_negate_s16(rpt.gyro_y)},
     .accel_range = 4000,
     .gyro_range = 2000,
     .battery_level = rpt.charge_level,

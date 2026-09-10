@@ -192,11 +192,23 @@ typedef struct {
     bool has_rumble;            // Device supports rumble
     bool has_force_feedback;    // Device supports force feedback
 
-    // Motion data (SIXAXIS/DualShock/DualSense)
-    // Accelerometer: raw sensor values, typically ~512 center for DS3, signed for DS4/DS5
-    // Gyroscope: angular velocity, DS3 only has Z axis (X/Y remain 0)
-    int16_t accel[3];           // Accelerometer X, Y, Z
-    int16_t gyro[3];            // Gyroscope X, Y, Z
+    // Motion data (SIXAXIS/DualShock/DualSense/SInput/Steam Controller 2).
+    //
+    // CANONICAL FRAME — SDL's gamepad sensor frame (SDL3 SDL_sensor.h), the core
+    // contract for IMU exactly as sticks/buttons are already normalized:
+    //   +X = right, +Y = up, +Z = toward the user (right-hand rule).
+    //   Accel at rest, controller face-up  -> (0, +1g, 0).
+    //   Gyro axis order: [0]=X=pitch, [1]=Y=yaw, [2]=Z=roll.
+    // Each INPUT driver converts its device-native frame -> SDL ONCE (and sets the
+    // ranges below); the core carries SDL-frame values unmodified through the
+    // router/profiles; each OUTPUT mode converts SDL -> its own device frame, then
+    // scales by range. So a device's frame quirk lives in exactly one place (its
+    // input driver + its output mode) — outputs never sniff the source device.
+    //
+    // SCALE: int16, ±32767 == ±range. gyro_range in dps, accel_range in milli-g.
+    // Use imu_negate_s16() for axis sign flips (plain -v overflows at INT16_MIN).
+    int16_t accel[3];           // Accelerometer X, Y, Z (SDL frame; ±32767 = ±accel_range)
+    int16_t gyro[3];            // Gyroscope X=pitch, Y=yaw, Z=roll (SDL frame; ±32767 = ±gyro_range)
     uint16_t gyro_range;        // Gyro full-scale range in dps (e.g., 100 for DS3, 2000 for DS4/DS5)
     uint16_t accel_range;       // Accel full-scale range in milli-g (e.g., 2000 for DS3, 4000 for DS4/DS5)
     bool has_motion;            // Motion data is valid
@@ -245,6 +257,12 @@ static inline uint16_t touch_norm_from_range(int32_t v, int32_t max) {
 }
 static inline uint16_t touch_norm_to_range(uint16_t c, int32_t max) {
     return (uint16_t)(((int32_t)c * max) / 65535);  // 0..65535 -> 0..max
+}
+
+// Saturating int16 negate for IMU axis sign flips in the SDL frame transforms.
+// Plain -v overflows undefined at INT16_MIN (-32768); clamp it to INT16_MAX.
+static inline int16_t imu_negate_s16(int16_t v) {
+    return v == INT16_MIN ? INT16_MAX : (int16_t)(-v);
 }
 
 // Initialize event with safe defaults

@@ -223,12 +223,14 @@ static void sc2_ble_process_report(bthid_device_t* device, const uint8_t* data, 
     // IMU (accel/gyro at fixed offsets for both report types).
     if (len >= SC2_MOTION_REPORT_LEN) {
         sc2->event.has_motion = true;
+        // Triton device frame -> canonical SDL frame: (+rawX, +rawZ, -rawY).
+        // Twin of the USB path in steam_controller_2.c.
         sc2->event.accel[0] = rd_s16(data, SC2_OFF_ACCEL);
-        sc2->event.accel[1] = rd_s16(data, SC2_OFF_ACCEL + 2);
-        sc2->event.accel[2] = rd_s16(data, SC2_OFF_ACCEL + 4);
+        sc2->event.accel[1] = rd_s16(data, SC2_OFF_ACCEL + 4);
+        sc2->event.accel[2] = imu_negate_s16(rd_s16(data, SC2_OFF_ACCEL + 2));
         sc2->event.gyro[0]  = rd_s16(data, SC2_OFF_GYRO);
-        sc2->event.gyro[1]  = rd_s16(data, SC2_OFF_GYRO + 2);
-        sc2->event.gyro[2]  = rd_s16(data, SC2_OFF_GYRO + 4);
+        sc2->event.gyro[1]  = rd_s16(data, SC2_OFF_GYRO + 4);
+        sc2->event.gyro[2]  = imu_negate_s16(rd_s16(data, SC2_OFF_GYRO + 2));
     }
 
     // Trackpads (bytes 18-29): left pos 18/20 + pressure 22, right pos 24/26 +

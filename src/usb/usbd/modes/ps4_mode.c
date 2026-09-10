@@ -37,33 +37,6 @@ _Static_assert(offsetof(sony_ds4_report_t, tpad_f1_pos) + 1 == 36,
 #include "ps4_local_auth.h"
 #endif
 
-// Vendor detection for the IMU frame remap below.
-#if (defined(CONFIG_USB_HOST) || defined(CONFIG_USB)) && !defined(DISABLE_USB_HOST)
-#include "usb/usbh/hid/hid_registry.h"
-extern int hid_get_ctrl_type(uint8_t dev_addr, uint8_t instance);
-#endif
-#ifdef ENABLE_BTSTACK
-#include "bt/bthid/bthid.h"
-#endif
-
-// True when the source input is a Steam Controller 2 (USB or BLE). The SC2 reports
-// its IMU in the Triton device frame, which needs an SC2-specific remap to the DS4
-// output's expected (SDL) frame; other inputs (DS4/DualSense) are already in-frame.
-static bool ps4_input_is_sc2(uint8_t dev_addr, int8_t instance)
-{
-#if (defined(CONFIG_USB_HOST) || defined(CONFIG_USB)) && !defined(DISABLE_USB_HOST)
-    if (hid_get_ctrl_type(dev_addr, (uint8_t)instance) == CONTROLLER_STEAM_2) return true;
-#else
-    (void)instance;
-#endif
-#ifdef ENABLE_BTSTACK
-    bthid_device_t* d = bthid_get_device(dev_addr);
-    if (d && d->vendor_id == 0x28DE) return true;
-#endif
-    (void)dev_addr;
-    return false;
-}
-
 // ============================================================================
 // STATE
 // ============================================================================
@@ -239,23 +212,14 @@ static bool ps4_mode_send_report(uint8_t player_index,
     // USB layout (Linux hid-playstation / joypad-web's DS4 parser). The event carries
     // raw int16 + full-scale ranges; DS4 is ±2000 dps gyro / ±4 g accel over full int16,
     // so scale each axis by its declared range into that standard.
-    //   NOTE (needs a real PS4 / faithful DS4 parser to verify): axis order and signs
-    //   are passed straight, but the SC2/DS device frames differ, so the orientation
-    //   axes may need a per-input remap. This at least streams live motion (was static).
+    //   The core delivers motion already in the canonical SDL frame; the DS4
+    //   output frame is SDL (identity), so axes pass straight — no per-input
+    //   remap. (The SC2's Triton->SDL transform now lives in its input driver.)
     if (event->has_motion) {
         int32_t gr = event->gyro_range  ? event->gyro_range  : 2000;
         int32_t ar = event->accel_range ? event->accel_range : 4000;
         int32_t gyro[3]  = { event->gyro[0],  event->gyro[1],  event->gyro[2]  };
         int32_t accel[3] = { event->accel[0], event->accel[1], event->accel[2] };
-        // SC2 (Triton) IMU frame -> DS4/SDL frame: x=rawX, y=rawZ, z=-rawY (both gyro
-        // and accel, per SDL's steam_triton driver). Without this the SC2 reads pitch
-        // ~-90 when flat — sitting on the gimbal-lock singularity, so roll bounces.
-        // DS4/DualSense inputs are already in-frame, so gate this to the SC2.
-        if (ps4_input_is_sc2(event->dev_addr, event->instance)) {
-            int32_t t;
-            t = gyro[1];  gyro[1]  = gyro[2];  gyro[2]  = -t;
-            t = accel[1]; accel[1] = accel[2]; accel[2] = -t;
-        }
         for (int i = 0; i < 3; i++) {
             int32_t g = gyro[i]  * gr / 2000;
             int32_t a = accel[i] * ar / 4000;
