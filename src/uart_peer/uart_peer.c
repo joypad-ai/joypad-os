@@ -56,6 +56,14 @@ static bool latest_status_new;
 static uart_peer_debug_t latest_debug;
 static bool latest_debug_new;
 
+// Consumer-side: latest extended state (touch + motion), buffered per player.
+// A MSG_EXT arrives just before its matching EVENT; submit_peer_event() merges
+// it into that event and clears the valid flag (so a later touch/motion-free
+// event doesn't inherit stale touch). Slots are player_index & (SLOTS-1).
+#define UART_PEER_EXT_SLOTS 8
+static uart_peer_ext_t latest_ext[UART_PEER_EXT_SLOTS];
+static bool            latest_ext_valid[UART_PEER_EXT_SLOTS];
+
 // Device name learned over the link
 static char peer_device_name[32] = "Joypad Controller";
 
@@ -132,6 +140,31 @@ static void submit_peer_event(const uart_peer_event_t* packed) {
     event.analog[ANALOG_L2] = packed->analog[4];
     event.analog[ANALOG_R2] = packed->analog[5];
 
+    // Merge any extended state (touch + motion) that arrived just before this
+    // event, then consume it so a later touch/motion-free event stays clean.
+    uint8_t pi = packed->player_index & (UART_PEER_EXT_SLOTS - 1);
+    if (latest_ext_valid[pi]) {
+        const uart_peer_ext_t* x = &latest_ext[pi];
+        if (x->flags & UART_PEER_EXT_FLAG_TOUCH) {
+            event.has_touch = true;
+            for (int f = 0; f < 2; f++) {
+                event.touch[f].x = x->touch_x[f];
+                event.touch[f].y = x->touch_y[f];
+                event.touch[f].active = (x->touch_active >> f) & 1u;
+            }
+        }
+        if (x->flags & UART_PEER_EXT_FLAG_MOTION) {
+            event.has_motion = true;
+            for (int i = 0; i < 3; i++) {
+                event.accel[i] = x->accel[i];
+                event.gyro[i]  = x->gyro[i];
+            }
+            event.gyro_range  = x->gyro_range;
+            event.accel_range = x->accel_range;
+        }
+        latest_ext_valid[pi] = false;
+    }
+
     router_submit_input(&event);
 }
 
@@ -173,6 +206,15 @@ static void dispatch_frame(const uint8_t* frame, uint16_t len) {
             if (plen == sizeof(uart_peer_debug_t)) {
                 memcpy(&latest_debug, payload, sizeof(latest_debug));
                 latest_debug_new = true;
+            }
+            break;
+        case UART_PEER_MSG_EXT:
+            if (plen == sizeof(uart_peer_ext_t)) {
+                uart_peer_ext_t x;
+                memcpy(&x, payload, sizeof(x));
+                uint8_t pi = x.player_index & (UART_PEER_EXT_SLOTS - 1);
+                latest_ext[pi] = x;
+                latest_ext_valid[pi] = true;
             }
             break;
         default:
@@ -282,6 +324,32 @@ void uart_peer_producer_tap(output_target_t output, uint8_t player_index,
             event->analog[ANALOG_L2], event->analog[ANALOG_R2],
         },
     };
+    // Touch/motion don't fit the 12-byte event — send them first as MSG_EXT so
+    // the consumer can merge them into the event it's about to submit. Only when
+    // present, so plain controllers add no link traffic.
+    if (event->has_touch || event->has_motion) {
+        uart_peer_ext_t ext = {0};
+        ext.player_index = player_index;
+        if (event->has_touch) {
+            ext.flags |= UART_PEER_EXT_FLAG_TOUCH;
+            for (int f = 0; f < 2; f++) {
+                ext.touch_x[f] = event->touch[f].x;
+                ext.touch_y[f] = event->touch[f].y;
+                if (event->touch[f].active) ext.touch_active |= (uint8_t)(1u << f);
+            }
+        }
+        if (event->has_motion) {
+            ext.flags |= UART_PEER_EXT_FLAG_MOTION;
+            for (int i = 0; i < 3; i++) {
+                ext.accel[i] = event->accel[i];
+                ext.gyro[i]  = event->gyro[i];
+            }
+            ext.gyro_range  = event->gyro_range;
+            ext.accel_range = event->accel_range;
+        }
+        frame_send(UART_PEER_MSG_EXT, &ext, sizeof(ext));
+    }
+
     frame_send(UART_PEER_MSG_EVENT, &packed, sizeof(packed));
 }
 

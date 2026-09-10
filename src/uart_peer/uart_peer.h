@@ -53,6 +53,15 @@
 #define UART_PEER_MSG_P5G_AUTH_DATA  0x08   // B->A: 64B auth_buffer (dongle F1/F2 response)
 #define UART_PEER_MSG_P5G_DONGLE     0x09   // B->A: 1B dongle_ready
 
+// Extended input state (touch + motion) — producer -> consumer. The 12-byte
+// EVENT only carries buttons + 6 analog axes; a DualSense/DS4/SC2 input also has
+// touchpad + gyro/accel that output modes (e.g. P5General DualSense) can emit.
+// The producer sends this frame immediately BEFORE the matching EVENT whenever
+// the source event has touch or motion; the consumer buffers it per-player and
+// merges it into that next EVENT before submitting to the router. Optional: an
+// input with neither touch nor motion sends no EXT (event stays touch/motion-free).
+#define UART_PEER_MSG_EXT            0x0A   // producer -> consumer: touch + motion
+
 // Diagnostic heartbeat (producer/host MCU -> consumer): proves B is alive, its
 // loop is advancing (uptime_ms), and how many USB host devices it has mounted.
 typedef struct __attribute__((packed)) {
@@ -73,6 +82,27 @@ typedef struct __attribute__((packed)) {
 } uart_peer_event_t;
 
 _Static_assert(sizeof(uart_peer_event_t) == 12, "uart_peer_event_t must be 12 bytes");
+
+// Extended input state (touch + motion) for MSG_EXT. Kept separate from the
+// 12-byte event so uart_peer_event_t stays byte-identical to i2c_peer_event_t.
+// Touch coords are the device-agnostic normalized 0..65535 (input_event_t.touch);
+// accel/gyro are raw int16 as the source driver produced them.
+typedef struct __attribute__((packed)) {
+    uint8_t  player_index;      // player/slot this extends (matches the EVENT)
+    uint8_t  flags;             // bit0 = has_touch, bit1 = has_motion
+    uint8_t  touch_active;      // bit0 = touch[0] active, bit1 = touch[1] active
+    uint16_t touch_x[2];        // normalized 0..65535
+    uint16_t touch_y[2];        // normalized 0..65535
+    int16_t  accel[3];          // raw accelerometer X,Y,Z
+    int16_t  gyro[3];           // raw gyroscope X,Y,Z
+    uint16_t gyro_range;        // dps full-scale (for output-side scaling)
+    uint16_t accel_range;       // milli-g full-scale
+} uart_peer_ext_t;
+
+#define UART_PEER_EXT_FLAG_TOUCH   (1 << 0)
+#define UART_PEER_EXT_FLAG_MOTION  (1 << 1)
+
+_Static_assert(sizeof(uart_peer_ext_t) == 27, "uart_peer_ext_t must be 27 bytes");
 
 // Feedback status (consumer -> producer) — same shape as i2c_peer_status_t.
 typedef struct __attribute__((packed)) {
