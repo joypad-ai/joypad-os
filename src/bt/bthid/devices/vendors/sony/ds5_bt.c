@@ -1521,6 +1521,7 @@ static void ds5_process_report(bthid_device_t* device, const uint8_t* data, uint
     // Motion data (DS5 has full 3-axis gyro and accel)
     // Check if we have enough data for motion
     if (report_len >= sizeof(ds5_input_report_t)) {
+        // DS5 native frame already matches the canonical SDL frame -> identity.
         ds5->event.has_motion = true;
         ds5->event.accel[0] = rpt->accel[0];
         ds5->event.accel[1] = rpt->accel[1];
@@ -1528,6 +1529,8 @@ static void ds5_process_report(bthid_device_t* device, const uint8_t* data, uint
         ds5->event.gyro[0] = rpt->gyro[0];
         ds5->event.gyro[1] = rpt->gyro[1];
         ds5->event.gyro[2] = rpt->gyro[2];
+        ds5->event.gyro_range = 2000;   // ±2000 dps, ±32767 full-scale
+        ds5->event.accel_range = 4000;  // ±4g
     } else {
         ds5->event.has_motion = false;
     }

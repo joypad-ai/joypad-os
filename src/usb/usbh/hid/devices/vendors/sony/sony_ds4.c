@@ -141,6 +141,15 @@ bool diff_report_ds4(sony_ds4_report_t const* rpt1, sony_ds4_report_t const* rpt
   result |= (rpt1->tpad_f2_down != rpt2->tpad_f2_down);
   result |= memcmp(&rpt1->tpad_f2_pos, &rpt2->tpad_f2_pos, 3);
 
+  // Motion: a DS4 streams gyro/accel every report. Submit on ANY change so the
+  // output IMU tracks at the full poll rate (matching a direct connection) —
+  // mirrors the DS5 fix (33578ed1). Sensor noise means a real controller is
+  // essentially never identical frame-to-frame, so this streams continuously.
+  for (int i = 0; i < 3; i++) {
+    result |= (rpt1->gyro[i]  != rpt2->gyro[i]);
+    result |= (rpt1->accel[i] != rpt2->accel[i]);
+  }
+
   return result;
 }
 
@@ -317,10 +326,13 @@ void input_sony_ds4(uint8_t dev_addr, uint8_t instance, uint8_t const* report, u
         .analog = {analog_1x, analog_1y, analog_2x, analog_2y, analog_l, analog_r},
         .delta_x = touchpad_delta_x,  // Touchpad horizontal swipe as mouse-like delta
         .keys = 0,
-        // Motion data (DS4 has full 3-axis gyro and accel)
+        // Motion data (DS4 has full 3-axis gyro and accel).
+        // DS4 native frame already matches the canonical SDL frame -> identity.
         .has_motion = true,
         .accel = {ds4_report.accel[0], ds4_report.accel[1], ds4_report.accel[2]},
         .gyro = {ds4_report.gyro[0], ds4_report.gyro[1], ds4_report.gyro[2]},
+        .gyro_range = 2000,   // ±2000 dps, ±32767 full-scale
+        .accel_range = 4000,  // ±4g
         .battery_level = bat_level,
         .battery_charging = bat_charging,
         // Touchpad (2-finger capacitive)

@@ -248,10 +248,16 @@ void input_sony_ds3(uint8_t dev_addr, uint8_t instance, uint8_t const* report, u
         .analog = {analog_1x, analog_1y, analog_2x, analog_2y, analog_l, analog_r},
         .keys = 0,
         .has_motion = has_motion,
-        .accel = {accel_x, accel_y, accel_z},
+        // DS3 device frame -> canonical SDL frame: accel X=+A, Y=-C, Z=-B
+        // (A/B/C = raw report X/Y/Z). Gyro is single-axis; kept in the Z slot.
+        // PS3 output (ps3_mode.c) applies the inverse for a byte-identical round-trip.
+        .accel = {accel_x, imu_negate_s16(accel_z), imu_negate_s16(accel_y)},
         .gyro = {0, 0, gyro_z},  // DS3 only has Z-axis gyro
-        .gyro_range = 100,   // DS3 gyro is ±100 dps
-        .accel_range = 2000, // DS3 accel is ±2g (2000 milli-g)
+        // Values are pre-scaled into the canonical ±2000 dps / ±4g container
+        // (±32767 = ±range), so declare 2000/4000 to match — else range-scaling
+        // outputs (DS5/PS4) read the motion ~20x too small.
+        .gyro_range = 2000,
+        .accel_range = 4000,
         .battery_level = bat_level,
         .battery_charging = bat_charging,
         .has_pressure = true,

@@ -130,21 +130,25 @@ static bool ps3_mode_send_report(uint8_t player_index,
     }
 
     // Motion data (SIXAXIS) - big-endian 16-bit values
-    // Internal format is normalized to SInput convention: ±32767 = ±2000 dps (gyro), ±4g (accel)
-    // PS3 expects: centered at 512, ±512 range for ±100 dps (gyro), ±2g (accel)
+    // Core carries the canonical SDL frame, ±32767 = ±2000 dps (gyro) / ±4g (accel).
+    // PS3 expects: centered at 512, ±512 range for ±100 dps (gyro), ±2g (accel).
+    // Frame inverse of sony_ds3.c input (accel X=+A, Y=-C, Z=-B), so:
+    //   native A = +sdlX, native B = -sdlZ, native C = -sdlY.
+    // Input∘output is identity → DS3→PS3 stays byte-identical.
     if (event->has_motion) {
-        // De-normalize gyro from SInput (±32767 = ±2000 dps) to DS3 (±512 = ±100 dps, centered at 512)
+        // De-normalize gyro from SDL (±32767 = ±2000 dps) to DS3 (±512 = ±100 dps, centered at 512)
         // Conversion: raw = (normalized * 10240 / 32767) + 512
         int32_t gyro_raw = ((int32_t)event->gyro[2] * 10240) / 32767 + 512;
         // Clamp to valid DS3 range (10-bit: 0-1023)
         if (gyro_raw < 0) gyro_raw = 0;
         if (gyro_raw > 1023) gyro_raw = 1023;
 
-        // De-normalize accel from SInput (±32767 = ±4g) to DS3 (±512 = ±2g, centered at 512)
-        // Conversion: raw = (normalized * 1024 / 32767) + 512
-        int32_t accel_x_raw = ((int32_t)event->accel[0] * 1024) / 32767 + 512;
-        int32_t accel_y_raw = ((int32_t)event->accel[1] * 1024) / 32767 + 512;
-        int32_t accel_z_raw = ((int32_t)event->accel[2] * 1024) / 32767 + 512;
+        // De-normalize accel from SDL (±32767 = ±4g) to DS3 (±512 = ±2g, centered at 512),
+        // applying the frame inverse (A=+X, B=-Z, C=-Y). Negation on int32 is INT16_MIN-safe.
+        // Conversion: raw = (native * 1024 / 32767) + 512
+        int32_t accel_x_raw = ( (int32_t)event->accel[0] * 1024) / 32767 + 512;
+        int32_t accel_y_raw = (-(int32_t)event->accel[2] * 1024) / 32767 + 512;
+        int32_t accel_z_raw = (-(int32_t)event->accel[1] * 1024) / 32767 + 512;
         // Clamp to valid DS3 range (10-bit: 0-1023)
         if (accel_x_raw < 0) accel_x_raw = 0;
         if (accel_x_raw > 1023) accel_x_raw = 1023;

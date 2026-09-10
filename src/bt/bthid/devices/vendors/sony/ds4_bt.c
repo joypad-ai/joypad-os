@@ -334,6 +334,7 @@ static void ds4_process_report(bthid_device_t* device, const uint8_t* data, uint
     // Motion data (DS4 has full 3-axis gyro and accel)
     // Only available in full report mode (report_len includes gyro/accel)
     if (ds4->sixaxis_enabled && report_len >= sizeof(ds4_input_report_t)) {
+        // DS4 native frame already matches the canonical SDL frame -> identity.
         ds4->event.has_motion = true;
         ds4->event.accel[0] = rpt->accel[0];
         ds4->event.accel[1] = rpt->accel[1];
@@ -341,6 +342,8 @@ static void ds4_process_report(bthid_device_t* device, const uint8_t* data, uint
         ds4->event.gyro[0] = rpt->gyro[0];
         ds4->event.gyro[1] = rpt->gyro[1];
         ds4->event.gyro[2] = rpt->gyro[2];
+        ds4->event.gyro_range = 2000;   // ±2000 dps, ±32767 full-scale
+        ds4->event.accel_range = 4000;  // ±4g
     } else {
         ds4->event.has_motion = false;
     }

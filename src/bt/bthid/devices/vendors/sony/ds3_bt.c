@@ -329,15 +329,21 @@ static void ds3_process_report(bthid_device_t* device, const uint8_t* data, uint
     ds3->event.analog[ANALOG_R2] = rt;
 
     // Motion data
+    // DS3 device frame -> canonical SDL frame: accel X=+A, Y=-C, Z=-B
+    // (A/B/C = raw report X/Y/Z). Gyro is single-axis; kept in the Z slot.
+    // Twin of sony_ds3.c (USB); PS3 output (ps3_mode.c) applies the inverse.
     ds3->event.has_motion = has_motion;
     ds3->event.accel[0] = accel_x;
-    ds3->event.accel[1] = accel_y;
-    ds3->event.accel[2] = accel_z;
+    ds3->event.accel[1] = imu_negate_s16(accel_z);
+    ds3->event.accel[2] = imu_negate_s16(accel_y);
     ds3->event.gyro[0] = 0;  // DS3 only has Z-axis gyro
     ds3->event.gyro[1] = 0;
     ds3->event.gyro[2] = gyro_z;
-    ds3->event.gyro_range = 100;   // DS3 gyro is ±100 dps
-    ds3->event.accel_range = 2000; // DS3 accel is ±2g (2000 milli-g)
+    // Values are pre-scaled into the canonical ±2000 dps / ±4g container
+    // (±32767 = ±range), so the declared range must be 2000/4000 to match —
+    // otherwise range-scaling outputs (DS5/PS4) read the motion ~20x too small.
+    ds3->event.gyro_range = 2000;
+    ds3->event.accel_range = 4000;
 
     // Pressure data (same layout as USB: first 4 bytes are reserved/junk)
     ds3->event.has_pressure = true;
