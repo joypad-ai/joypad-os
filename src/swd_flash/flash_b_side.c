@@ -17,6 +17,8 @@
 #include <hardware/regs/addressmap.h>
 #include <hardware/sync.h>
 #include <hardware/watchdog.h>
+#include <hardware/clocks.h>
+#include <pico/stdlib.h>
 #include <pico/bootrom.h>
 
 #include "adi.h"
@@ -53,6 +55,14 @@ static void watchdog_reboot_target(void) {
 }
 
 int main(void) {
+    // Pin a known system clock FIRST. The bootrom hands off to this bare RAM
+    // stage without running clocks_init, so clk_sys is whatever the boot path
+    // left — which makes the bit-banged SWD timing (divider off clk_sys) vary
+    // boot-to-boot and go marginal on the long large-image transfer. Lock it to
+    // 48 MHz from the XOSC PLL for deterministic, reliable SWD timing. Do this
+    // before XIP setup so the flash-read timing is also against a known clock.
+    set_sys_clock_khz(48000, true);
+
     // CRITICAL: re-enter XIP first. The bootrom writes our flash blocks (A's
     // firmware + B's image) then hands control to this no_flash RAM binary with
     // flash left in exit-XIP state — so memory-mapped reads of B's image (staged
