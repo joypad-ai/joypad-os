@@ -31,6 +31,13 @@
 #define B_IMAGE_OFFSET 0x40000u
 #define B_IMAGE_MAGIC  0x42494D47u  // "BIMG"
 
+// RAM staging buffer (one 64K SWD chunk). BSS on this RAM-resident relay.
+// The SWD transfer reads its source repeatedly while bit-banging; feeding it
+// straight from XIP flash proved unreliable on the large image, so we bulk-copy
+// each chunk XIP->RAM here first and push to B from stable RAM (as the original
+// embedded-array relay did).
+static uint8_t g_stage[65536];
+
 // Reboot the SWD *target* (B) via its watchdog, using SWD memory writes.
 static void watchdog_reboot_target(void) {
     mem_write32(WATCHDOG_BASE + WATCHDOG_CTRL_OFFSET + REG_ALIAS_CLR_BITS,
@@ -84,15 +91,28 @@ int main(void) {
     core_reset_halt();
     core_select(0);
 
-    // Write B's flash from A's XIP image, retrying the whole sequence if the SWD
-    // transfer errors (marginal links can fail mid-bulk-transfer). The flash
-    // engine reads the source pointer sequentially, so streaming from XIP is
-    // fine — no need to stage the image in RAM.
+    // Write B's flash: copy each 64K chunk XIP->RAM, then push it to B over SWD
+    // from RAM. Retry the whole sequence on SWD error (marginal links can fail
+    // mid-transfer). b_length is padded to a 4K multiple by combine_uf2.py, so
+    // every chunk length is 256/4K-aligned for the ROM flash program on B.
     int wrc = -1;
     for (int tries = 0; tries < 4; tries++) {
-        wrc = rp2040_add_flash_bit(0, b_image, (int)b_length);
-        rp2040_add_flash_bit(0xffffffff, NULL, 0);
-        if (wrc == 0) break;
+        wrc = 0;
+        uint32_t off = 0;
+        while (off < b_length) {
+            uint32_t n = (b_length - off) < 65536u ? (b_length - off) : 65536u;
+            // Bulk XIP -> RAM (word copy; b_image is 4-byte aligned, n is 4K-aligned)
+            const uint32_t* s = (const uint32_t*)(b_image + off);
+            uint32_t* d = (uint32_t*)g_stage;
+            for (uint32_t i = 0; i < n / 4; i++) d[i] = s[i];
+            wrc = rp2040_add_flash_bit(off, g_stage, (int)n);
+            if (wrc != 0) break;
+            off += n;
+        }
+        if (wrc == 0) {
+            wrc = rp2040_add_flash_bit(0xffffffff, NULL, 0);  // flush residual chunk
+            if (wrc == 0) break;
+        }
         // Re-establish the debug connection before retrying.
         dp_init();
         core_select(0);
