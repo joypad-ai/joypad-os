@@ -93,6 +93,17 @@ def main():
     with open(b_bin, "rb") as f:
         b_image = f.read()
 
+    # Pad B's image up to a 4 KB flash-sector boundary with 0xFF (erased state).
+    # The relay streams B in 64 KB chunks and its final flash_range_program call
+    # gets a length = len % 64K; the RP2040 ROM flash program requires a multiple
+    # of 256, and erase works in 4K sectors. An unpadded image (e.g. 449152 bytes
+    # -> tail 55936, not a 256-multiple) makes that ROM call fault on B, hanging
+    # the relay so A never reboots and B is left unflashed. Pad to 4K to keep
+    # every chunk 256- and 4K-aligned. The trailing 0xFF bytes are unused by B.
+    SECTOR = 4096
+    if len(b_image) % SECTOR:
+        b_image += b"\xff" * (SECTOR - (len(b_image) % SECTOR))
+
     # Guard: A's firmware must not reach into B's image region.
     a_hi = max_flash_addr(a_blocks)
     if a_hi > XIP_BASE + B_IMAGE_OFFSET:
