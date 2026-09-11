@@ -376,6 +376,19 @@ void input_report_switch_pro(uint8_t dev_addr, uint8_t instance, uint8_t const* 
         .transport = INPUT_TRANSPORT_USB,
         .buttons = buttons,
         .button_count = 10,  // B, A, Y, X, L, R, ZL, ZR, L3, R3
+        // Per-event field-ownership mask. Single Joy-Cons only own
+        // their physical stick (L=LX/LY, R=RX/RY); the partner Joy-Con
+        // shares the same shared_analog slot but its own report content
+        // is what the router should consume. Pro Controllers (is_pro)
+        // own every stick and fall back to 0 (legacy "all valid"). The
+        // first report arrives before grip_side is detected, so we
+        // treat it as "undecided" — full overwrite — until the side
+        // becomes known.
+        .valid_fields =
+            (switch_devices[dev_addr].is_pro ? 0 :
+             switch_devices[dev_addr].grip_side[instance] == 0 ? INPUT_VALID_BUTTONS | INPUT_VALID_L_STICK :
+             switch_devices[dev_addr].grip_side[instance] == 1 ? INPUT_VALID_BUTTONS | INPUT_VALID_R_STICK :
+             0),  // grip_side == -1: pre-detection, full overwrite
         .analog = {
           switch_devices[dev_addr].shared_analog[0],
           switch_devices[dev_addr].shared_analog[1],

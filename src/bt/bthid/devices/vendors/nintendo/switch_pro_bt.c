@@ -141,6 +141,13 @@ typedef struct {
     bool initialized;
     bool full_report_mode;
     uint8_t output_seq;     // Sequence counter for output reports
+    // L/R role for single Joy-Cons, detected from the report content on the
+    // first HID report (see switch_process_report). -1 = Pro Controller or
+    // undecided yet (all sticks valid), 0 = Joy-Con L (owns LX/LY), 1 =
+    // Joy-Con R (owns RX/RY). The driver sets a matching valid_fields mask
+    // so the router's MERGE_BLEND/MERGE_ALL doesn't let the non-physical
+    // stick's "0 → 1" raw value clobber the partner Joy-Con's real stick.
+    int8_t grip_side;
     switch_init_state_t init_state;
     uint32_t init_time;     // Timestamp for init delays
     uint8_t rumble_left;    // Cached rumble state
@@ -278,6 +285,11 @@ static bool switch_init(bthid_device_t* device)
             switch_data[i].output_seq = 0;
             switch_data[i].rumble_left = 0;
             switch_data[i].rumble_right = 0;
+            // Side is decided later, from the first HID report (both
+            // standalone Joy-Cons advertise PID 0x2006 in Classic-BT mode,
+            // so the SDP query doesn't distinguish L from R). Pro
+            // Controllers carry data on both sticks and stay at -1.
+            switch_data[i].grip_side = -1;
 
             // Start init state machine — commands sent from task()
             switch_data[i].init_state = SWITCH_STATE_WAIT_READY;
@@ -341,17 +353,64 @@ static void switch_process_report(bthid_device_t* device, const uint8_t* data, u
 
         sw->event.buttons = buttons;
 
+        // R Joy-Con has no physical d-pad. Some firmware versions and
+        // host remaps still send non-zero d-pad bits in the report (e.g.
+        // SR + stick mapped to d-pad). Strip them so a paired L Joy-Con
+        // is the only source of DU/DD/DL/DR. The clear runs AFTER the
+        // d-pad block above (clearing before would be a no-op because
+        // the block OR-sets the bits back in).
+        if (sw->grip_side == 1) {
+            sw->event.buttons &= ~(JP_BUTTON_DU | JP_BUTTON_DD |
+                                   JP_BUTTON_DL | JP_BUTTON_DR);
+        }
+
         // Unpack 12-bit sticks
         uint16_t lx = unpack_stick_12bit(rpt->left_stick, false);
         uint16_t ly = unpack_stick_12bit(rpt->left_stick, true);
         uint16_t rx = unpack_stick_12bit(rpt->right_stick, false);
         uint16_t ry = unpack_stick_12bit(rpt->right_stick, true);
 
+        // Side detection from report content (one-shot). Both standalone
+        // Joy-Cons advertise PID 0x2006 in Classic-BT mode, so the SDP
+        // query can't tell L from R. Instead, look at the sticks: the
+        // non-physical stick is filled with raw-zero 12-bit values on
+        // both axes, while the physical stick reports real values (≥~2048
+        // at rest). The USB Joy-Con Charging Grip driver uses the same
+        // signal. Pro Controllers have data on both sticks and stay at
+        // grip_side=-1 ("all valid"). If both sticks are still zero on
+        // the very first report (user holding a centered physical stick),
+        // we wait for a later report — the non-physical stick is constant
+        // so the asymmetry appears as soon as the user touches the
+        // physical one.
+        if (sw->grip_side == -1) {
+            bool r_empty = (rx == 0 && ry == 0);
+            bool l_empty = (lx == 0 && ly == 0);
+            if (r_empty && !l_empty) {
+                sw->grip_side = 0;  // Right stick empty → Joy-Con L
+            } else if (l_empty && !r_empty) {
+                sw->grip_side = 1;  // Left stick empty → Joy-Con R
+            }
+        }
+
         // Scale to 8-bit and invert Y (Nintendo: up=high, HID: up=low)
         sw->event.analog[ANALOG_LX] = scale_12bit_to_8bit(lx);
         sw->event.analog[ANALOG_LY] = 255 - scale_12bit_to_8bit(ly);
         sw->event.analog[ANALOG_RX] = scale_12bit_to_8bit(rx);
         sw->event.analog[ANALOG_RY] = 255 - scale_12bit_to_8bit(ry);
+
+        // Mark only the owned stick as valid. d-pad ownership was
+        // enforced above (R has d-pad bits stripped from the event).
+        // Pro Controllers and unknown devices fall back to 0 ("all
+        // valid") so we don't drop any fields.
+        uint32_t valid_fields = INPUT_VALID_BUTTONS;
+        if (sw->grip_side == 0) {
+            valid_fields |= INPUT_VALID_L_STICK;
+        } else if (sw->grip_side == 1) {
+            valid_fields |= INPUT_VALID_R_STICK;
+        } else {
+            valid_fields = 0;
+        }
+        sw->event.valid_fields = valid_fields;
 
         // Battery: bits 7-4 = level (0/2/4/6/8), bit 3 = charging
         uint8_t bat_raw = rpt->battery_conn >> 4;
@@ -388,11 +447,43 @@ static void switch_process_report(bthid_device_t* device, const uint8_t* data, u
         if (rpt->hat >= 5 && rpt->hat <= 7) buttons |= JP_BUTTON_DL;
 
         sw->event.buttons = buttons;
+
+        // Same d-pad strip for R in the simple report (hat-to-dpad
+        // mapping above might have set bits).
+        if (sw->grip_side == 1) {
+            sw->event.buttons &= ~(JP_BUTTON_DU | JP_BUTTON_DD |
+                                   JP_BUTTON_DL | JP_BUTTON_DR);
+        }
+
         // 16-bit sticks scaled to 8-bit (0-65535 → 0-255)
         sw->event.analog[ANALOG_LX] = rpt->lx >> 8;
         sw->event.analog[ANALOG_LY] = 255 - (rpt->ly >> 8);  // Invert Y (Nintendo: up=high, HID: up=low)
         sw->event.analog[ANALOG_RX] = rpt->rx >> 8;
         sw->event.analog[ANALOG_RY] = 255 - (rpt->ry >> 8);  // Invert Y (Nintendo: up=high, HID: up=low)
+
+        // Side detection from report content (same logic as the 0x30
+        // path). 0x3F reports arrive before SET_INPUT_MODE completes, so
+        // detecting here lets the side be known a few hundred ms earlier.
+        if (sw->grip_side == -1) {
+            bool r_empty = (rpt->rx == 0 && rpt->ry == 0);
+            bool l_empty = (rpt->lx == 0 && rpt->ly == 0);
+            if (r_empty && !l_empty) {
+                sw->grip_side = 0;  // Joy-Con L
+            } else if (l_empty && !r_empty) {
+                sw->grip_side = 1;  // Joy-Con R
+            }
+        }
+
+        // Per-event field ownership. Buttons are always "valid" as a
+        // bitmap (d-pad stripped above for R); only the stick mask
+        // differs by side.
+        if (sw->grip_side == 1) {
+            sw->event.valid_fields = INPUT_VALID_BUTTONS | INPUT_VALID_R_STICK;
+        } else if (sw->grip_side == 0) {
+            sw->event.valid_fields = INPUT_VALID_BUTTONS | INPUT_VALID_L_STICK;
+        } else {
+            sw->event.valid_fields = 0;  // Pro: all valid
+        }
 
         router_submit_input(&sw->event);
     }
