@@ -81,14 +81,18 @@ def blocks_for_bytes(data, base_addr):
 
 
 def main():
-    if len(sys.argv) != 5:
-        sys.stderr.write("usage: combine_uf2.py <A.uf2> <relay.uf2> <B.bin> <out.uf2>\n")
+    if len(sys.argv) not in (5, 6):
+        sys.stderr.write("usage: combine_uf2.py <A.uf2> <relay.uf2> <B.bin> <out.uf2> [stage]\n")
         sys.exit(2)
 
     a_uf2, relay_uf2, b_bin, out_uf2 = sys.argv[1:5]
+    # "stage" mode: emit A's firmware + B's image staged in A's flash, but NO
+    # boot relay — so flashing boots A cleanly (no dark board) and the app-side
+    # FLASH.B command does the actual B write. Normal mode includes the relay.
+    stage_only = (len(sys.argv) > 5 and sys.argv[5] == "stage")
 
     a_blocks = read_uf2_blocks(a_uf2)
-    ram_blocks = read_uf2_blocks(relay_uf2)
+    ram_blocks = [] if stage_only else read_uf2_blocks(relay_uf2)
 
     with open(b_bin, "rb") as f:
         b_image = f.read()
@@ -117,20 +121,22 @@ def main():
     b_blocks = blocks_for_bytes(b_payload, XIP_BASE + B_IMAGE_OFFSET)
 
     flash_blocks = a_blocks + b_blocks
-    patched_total = max(len(flash_blocks), len(ram_blocks)) + 1
+    # Normal mode: inflate numBlocks so the bootloader doesn't complete after the
+    # flash blocks (it stays in BOOTSEL, loads + runs the RAM relay). Stage mode:
+    # use the TRUE count so the bootloader completes and boots A normally.
+    total = (max(len(flash_blocks), len(ram_blocks)) + 1) if not stage_only else len(flash_blocks)
 
-    # Renumber all flash blocks into one consistent sequence, with numBlocks set
-    # to the (deliberately too-large) patched total so the bootloader stays put.
     with open(out_uf2, "wb") as f:
         for i, block in enumerate(flash_blocks):
-            struct.pack_into("<I", block, 20, i)                 # blockNo
-            struct.pack_into("<I", block, 24, patched_total)     # numBlocks
+            struct.pack_into("<I", block, 20, i)         # blockNo
+            struct.pack_into("<I", block, 24, total)     # numBlocks
             f.write(block)
         for block in ram_blocks:
             f.write(block)
 
-    print("combine_uf2: A=%d blocks, B image=%d bytes (%d blocks) @ 0x%08X, relay=%d RAM blocks"
-          % (len(a_blocks), len(b_image), len(b_blocks), XIP_BASE + B_IMAGE_OFFSET, len(ram_blocks)))
+    print("combine_uf2%s: A=%d blocks, B image=%d bytes (%d blocks) @ 0x%08X, relay=%d RAM blocks"
+          % (" [stage]" if stage_only else "", len(a_blocks), len(b_image),
+             len(b_blocks), XIP_BASE + B_IMAGE_OFFSET, len(ram_blocks)))
 
 
 if __name__ == "__main__":
