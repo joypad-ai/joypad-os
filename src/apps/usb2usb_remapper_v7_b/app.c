@@ -177,11 +177,12 @@ void app_task(void)
         last_dbg_ms = now;
 
         uart_peer_debug_t dbg = {
-            .magic = 0xDB,
+            .magic = 0xDC,   // 0xDC => this B carries the bt_status field
             .dev_count = 0,
             .last_vid = 0,
             .last_pid = 0,
             .uptime_ms = now,
+            .bt_status = 0,
         };
         for (uint8_t daddr = 1; daddr <= CFG_TUH_DEVICE_MAX; daddr++) {
             if (tuh_mounted(daddr)) {
@@ -192,6 +193,13 @@ void app_task(void)
                 dbg.last_pid = pid;
             }
         }
+#ifdef ENABLE_BTSTACK
+        dbg.bt_status = 0x08  // has_btstack marker (bit3): B was built with BTstack
+                      | (bt_is_ready()               ? 0x01 : 0)
+                      | (btstack_host_is_powered_on() ? 0x02 : 0)
+                      | (btstack_host_is_scanning()   ? 0x04 : 0)
+                      | ((bt_get_connection_count() & 0x0F) << 4);
+#endif
         uart_peer_send_debug(&dbg);
     }
 }

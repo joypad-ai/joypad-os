@@ -65,11 +65,13 @@
 // Diagnostic heartbeat (producer/host MCU -> consumer): proves B is alive, its
 // loop is advancing (uptime_ms), and how many USB host devices it has mounted.
 typedef struct __attribute__((packed)) {
-    uint8_t  magic;            // 0xDB sentinel
+    uint8_t  magic;            // 0xDB = legacy B, 0xDC = B with BT-status field
     uint8_t  dev_count;        // mounted USB host devices
     uint16_t last_vid;         // VID of most-recently-mounted device
     uint16_t last_pid;         // PID of most-recently-mounted device
     uint32_t uptime_ms;        // B uptime (changing value => B loop running)
+    uint8_t  bt_status;        // BT state (magic 0xDC): bit0=ready bit1=powered
+                               // bit2=scanning bit3=has_btstack; bits4-7=conn_count
 } uart_peer_debug_t;
 
 // 12-byte wire event — byte-identical to i2c_peer_event_t so the two peer

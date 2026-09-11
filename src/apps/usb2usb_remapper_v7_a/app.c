@@ -178,11 +178,11 @@ void app_task(void)
     // whether B is alive, the link is up, and how many USB host devices B sees.
     uart_peer_debug_t dbg;
     if (uart_peer_get_debug(&dbg)) {
-        char buf[96];
+        char buf[112];
         snprintf(buf, sizeof(buf),
-                 "{\"type\":\"peer\",\"magic\":%u,\"devs\":%u,\"vid\":\"%04X\",\"pid\":\"%04X\",\"up\":%lu}",
+                 "{\"type\":\"peer\",\"magic\":%u,\"devs\":%u,\"vid\":\"%04X\",\"pid\":\"%04X\",\"up\":%lu,\"bt\":%u}",
                  dbg.magic, dbg.dev_count, dbg.last_vid, dbg.last_pid,
-                 (unsigned long)dbg.uptime_ms);
+                 (unsigned long)dbg.uptime_ms, dbg.bt_status);
         cdc_protocol_send_event(cdc_commands_get_protocol(), buf);
     }
 }
