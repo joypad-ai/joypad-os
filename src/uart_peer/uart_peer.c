@@ -203,8 +203,13 @@ static void dispatch_frame(const uint8_t* frame, uint16_t len) {
             }
             break;
         case UART_PEER_MSG_DEBUG:
-            if (plen == sizeof(uart_peer_debug_t)) {
-                memcpy(&latest_debug, payload, sizeof(latest_debug));
+            // Accept the current 16-byte struct AND the legacy 12-byte one (no
+            // bt_status, magic 0xDB) so a device MCU on either firmware version
+            // is visible. Zero-fill first so the absent bt_status reads as 0.
+            if (plen == sizeof(uart_peer_debug_t) || plen == 12) {
+                memset(&latest_debug, 0, sizeof(latest_debug));
+                memcpy(&latest_debug, payload,
+                       plen < sizeof(latest_debug) ? plen : sizeof(latest_debug));
                 latest_debug_new = true;
             }
             break;

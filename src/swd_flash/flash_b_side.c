@@ -88,7 +88,12 @@ int main(void) {
     // warm reset PRESERVES scratch, so scratch[2] (progress) survives and A can
     // report exactly where the relay hung. Petted before every chunk below.
     scratch[2] = 0xC0000001u;   // reached: about to init SWD
-    watchdog_enable(8300, 1);
+    // The bare relay never ran clocks_init, so the watchdog TICK isn't started
+    // and watchdog_enable() would count at zero (never fire) — which is why A
+    // stayed dark on a hang instead of auto-recovering. Start the tick from the
+    // 12 MHz XOSC the bootrom leaves running, then arm the 8.3s watchdog.
+    watchdog_start_tick(12);
+    watchdog_enable(8300, 0);   // pause_on_debug=0: never pause A's own watchdog
 
     swd_init();
     dp_init();
