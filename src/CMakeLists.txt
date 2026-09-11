@@ -1076,19 +1076,28 @@ target_compile_definitions(joypad_usb2usb_remapper_v7_a PRIVATE
     # A) surfaces the USB input page instead of hiding it — the inputs are real,
     # just one hop away. Read-only (no local pins to configure).
     HOST_OVER_LINK=1
+    APP_CAN_FLASH_B=1      # enables the FLASH.B CDC command (SWD-flash B from A's app)
+    PIN_SWDCLK=28 PIN_SWDIO=27
 )
 target_sources(joypad_usb2usb_remapper_v7_a PUBLIC ${CORE_SOURCES} ${USB_DEVICE_SOURCES}
     ${UART_PEER_SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/swd_flash/swd.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/swd_flash/adi.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/swd_flash/flash.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/swd_flash/flash_b_app.c
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2usb_remapper_v7_a/app.c
 )
 target_include_directories(joypad_usb2usb_remapper_v7_a PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2usb_remapper_v7_a
     ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd
     ${CMAKE_CURRENT_SOURCE_DIR}/uart_peer
+    ${CMAKE_CURRENT_SOURCE_DIR}/swd_flash
 )
 target_link_libraries(joypad_usb2usb_remapper_v7_a PRIVATE
     pico_stdlib pico_multicore hardware_pio pico_rand hardware_uart
+    hardware_watchdog hardware_clocks
     tinyusb_device tinyusb_board)
+pico_generate_pio_header(joypad_usb2usb_remapper_v7_a ${CMAKE_CURRENT_SOURCE_DIR}/swd_flash/swd.pio)
 joypad_target_common(joypad_usb2usb_remapper_v7_a)
 pico_enable_stdio_uart(joypad_usb2usb_remapper_v7_a 1)
 

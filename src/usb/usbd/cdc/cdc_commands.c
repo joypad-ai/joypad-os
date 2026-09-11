@@ -686,6 +686,31 @@ static void cmd_bootsel(const char* json)
     pending_reboot_time = platform_time_ms();
 }
 
+#ifdef APP_CAN_FLASH_B
+#include "flash_b_app.h"
+#include <string.h>
+// FLASH.B — SWD-flash the host MCU (B) from A's running app, using the image
+// combine_uf2.py staged in A's flash. Blocks ~10-20s (USB drops during the
+// flash, then returns). The last progress line is echoed back so the outcome /
+// failure point is visible over CDC even though logs can't stream mid-block.
+static char flashb_last[96];
+static void flashb_log(const char* m) {
+    strncpy(flashb_last, m, sizeof(flashb_last) - 1);
+    flashb_last[sizeof(flashb_last) - 1] = 0;
+    printf("[FLASH.B] %s\n", m);
+}
+static void cmd_flash_b(const char* json)
+{
+    (void)json;
+    flashb_last[0] = 0;
+    int rc = flash_b_app(flashb_log);
+    snprintf(response_buf, sizeof(response_buf),
+             "{\"ok\":%s,\"rc\":%d,\"last\":\"%s\"}",
+             rc == 0 ? "true" : "false", rc, flashb_last);
+    send_json(response_buf);
+}
+#endif
+
 // OTA — reboot into over-the-air (BLE) DFU. Works over the BLE NUS too (the NUS
 // tunnels this command protocol), so a USB-less nRF52 board can be updated
 // wirelessly: send OTA, then push the DFU .zip with nRF Connect.
@@ -3995,6 +4020,9 @@ static const cmd_entry_t commands[] = {
     {"MP.STATS", cmd_mp_stats},
     {"MP.MODE", cmd_mp_mode},
     {"PING", cmd_ping},
+#ifdef APP_CAN_FLASH_B
+    {"FLASH.B", cmd_flash_b},
+#endif
     {"REBOOT", cmd_reboot},
     {"BOOTSEL", cmd_bootsel},
 #ifdef JOYPAD_HAS_ESP_COREDUMP

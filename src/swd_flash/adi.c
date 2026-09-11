@@ -987,8 +987,11 @@ int rp2040_call_function(uint32_t addr, uint32_t args[], int argc) {
 
 
     rc = core_is_halted();
-    if (rc == -1) panic("aaarg!");
-    if (!rc) panic("core not halted");
+    // Return errors rather than panic() — this routine now also runs from A's
+    // app (not just the boot relay), where a panic would take the whole device
+    // down. The caller retries / reports instead.
+    if (rc == -1) return SWD_ERROR;
+    if (!rc) return SWD_ERROR;
 
     // Now can we continue and just wait for a halt?
 //    core_unhalt();

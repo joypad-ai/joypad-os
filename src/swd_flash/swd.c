@@ -2,6 +2,7 @@
 #include <string.h>
 #include "pico/stdlib.h"
 #include "hardware/gpio.h"
+#include "hardware/clocks.h"
 
 #pragma GCC optimize ("O0")
 
@@ -85,12 +86,15 @@ int swd_init() {
     // And initialise
     pio_sm_init(pio, swd_sm, 0, &c);    // 0=offset
 
-    // SWD clock divider. The flash relay runs once at install time, so we trade
-    // speed for reliability: divider 16 => ~4 MHz at 125 MHz sys clock. The
-    // upstream value of 3 (~20 MHz) was marginal on this board (bulk transfers
-    // corrupted), so go conservative.
-    //pio_sm_set_clkdiv_int_frac(pio, swd_sm, 3, 0);   // ~20 MHz (upstream, marginal)
-    pio_sm_set_clkdiv_int_frac(pio, swd_sm, 16, 0);    // ~4 MHz (safe)
+    // SWD clock divider, computed from the ACTUAL system clock to target a
+    // conservative ~2 MHz regardless of context. The relay runs at a pinned
+    // 48 MHz and the app-side flasher at 200 MHz — a fixed divider would give
+    // wildly different (and at 200 MHz, marginal) SWD speeds, which corrupted
+    // the long large-image transfer. Deriving it keeps SWD reliable everywhere.
+    uint32_t div = clock_get_hz(clk_sys) / 2000000u;   // -> ~2 MHz
+    if (div < 2)   div = 2;
+    if (div > 255) div = 255;
+    pio_sm_set_clkdiv_int_frac(pio, swd_sm, (uint16_t)div, 0);
 
     pio_sm_set_enabled(swd_pio, swd_sm, true);
     return SWD_OK;
