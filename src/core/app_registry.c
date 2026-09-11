@@ -47,6 +47,9 @@ const char* app_registry_input_source_name(input_source_t source)
         case INPUT_SOURCE_NATIVE_NUON:     return "native_nuon";
         case INPUT_SOURCE_NATIVE_WII:      return "native_wii";
         case INPUT_SOURCE_NATIVE_PSX:      return "native_psx";
+        case INPUT_SOURCE_NATIVE_PCE:      return "native_pce";
+        case INPUT_SOURCE_NATIVE_JAGUAR:   return "native_jaguar";
+        case INPUT_SOURCE_NATIVE_24G:      return "native_24g";
         case INPUT_SOURCE_GPIO:            return "gpio";
         case INPUT_SOURCE_SENSORS:         return "sensors";
         case INPUT_SOURCE_I2C_PEER:        return "i2c_peer";

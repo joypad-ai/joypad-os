@@ -87,6 +87,10 @@ jobs:
           - lodgenet2usb_pico2
           - lodgenet2n64_pico
           - lodgenet2gc_pico
+          - 24g2usb_pico2_w
+          - 24g2usb_pico_w
+          - 24g2usb_pico
+          - 24g2usb_pico2
 
     steps:
       - name: Checkout code with submodules

@@ -50,6 +50,7 @@ nav:
     - PSX/PS2: input/psx.md
     - GameCube: input/gamecube.md
     - LodgeNet: input/lodgenet.md
+    - 24G: input/24g.md
     - NES: input/nes.md
     - PCEngine: input/pcengine.md
     - Neo Geo: input/neogeo.md
@@ -104,6 +105,7 @@ nav:
       - pce2usb: apps/pce2usb.md
       - neogeo2usb: apps/neogeo2usb.md
       - lodgenet2usb: apps/lodgenet2usb.md
+      - 24g2usb: apps/24g2usb.md
       - wii2usb: apps/wii2usb.md
       - psx2usb: apps/psx2usb.md
     - Wii Adapters:
@@ -141,6 +143,7 @@ nav:
     - Nuon Polyface: protocols/NUON_POLYFACE.md
     - PC Engine: protocols/PCENGINE.md
     - LodgeNet: protocols/lodgenet.md
+    - 24G: protocols/24g.md
     - SInput HID: protocols/sinput.md
   - Features:
     - SNES Rumble: features/SNES_RUMBLE.md

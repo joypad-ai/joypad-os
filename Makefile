@@ -125,6 +125,7 @@ CONSOLE_gc2eth_feather := joypad_gc2eth_feather
 CONSOLE_wii2usb := joypad_wii2usb
 CONSOLE_wii2gc := joypad_wii2gc
 CONSOLE_wii2n64 := joypad_wii2n64
+CONSOLE_24g2usb := joypad_24g2usb
 CONSOLE_lodgenet2usb := joypad_lodgenet2usb
 CONSOLE_lodgenet2n64 := joypad_lodgenet2n64
 CONSOLE_lodgenet2gc := joypad_lodgenet2gc
@@ -230,6 +231,10 @@ APP_gc2usb_feather_usbhost := feather_usbhost gc2usb_feather_usbhost gc2usb_feat
 APP_wii2usb_kb2040 := kb2040 wii2usb wii2usb_kb2040 Wii USB
 APP_wii2gc_kb2040 := kb2040 wii2gc wii2gc_kb2040 Wii GameCube
 APP_wii2n64_pico := pico wii2n64 wii2n64_pico Wii N64
+APP_24g2usb_pico2_w := pico2_w 24g2usb 24g2usb_pico2_w 24G USB
+APP_24g2usb_pico_w := pico_w 24g2usb 24g2usb_pico_w 24G USB
+APP_24g2usb_pico := pico 24g2usb 24g2usb_pico 24G USB
+APP_24g2usb_pico2 := pico2 24g2usb 24g2usb_pico2 24G USB
 APP_lodgenet2usb_pico := pico lodgenet2usb lodgenet2usb_pico LodgeNet USB
 APP_lodgenet2usb_pico2 := pico2 lodgenet2usb lodgenet2usb_pico2 LodgeNet USB
 APP_lodgenet2n64_pico := pico lodgenet2n64 lodgenet2n64_pico LodgeNet N64
@@ -309,6 +314,10 @@ APPS += controller_fisherprice_v2_kb2040
 APPS += controller_alpakka_pico
 APPS += usb2ami_rp2040zero
 APPS += usb2ami_xiao
+APPS += 24g2usb_pico2_w
+APPS += 24g2usb_pico_w
+APPS += 24g2usb_pico
+APPS += 24g2usb_pico2
 APPS := $(strip $(APPS))
 
 # Stable apps for release
@@ -438,6 +447,10 @@ help:
 	@echo "  make pce2usb_pico_w     - PCEngine -> USB HID (Pico W)"
 	@echo "  make jag2usb_pico       - Atari Jaguar -> USB HID (Pico)"
 	@echo "  make jag2usb_pico_w     - Atari Jaguar -> USB HID (Pico W)"
+	@echo "  make 24g2usb_pico2_w     - SF30 2.4G -> USB HID (Pico 2 W)"
+	@echo "  make 24g2usb_pico_w      - SF30 2.4G -> USB HID (Pico W)"
+	@echo "  make 24g2usb_pico        - SF30 2.4G -> USB HID (Pico)"
+	@echo "  make 24g2usb_pico2       - SF30 2.4G -> USB HID (Pico 2)"
 	@echo "  make lodgenet2usb_pico   - LodgeNet -> USB HID (Pico)"
 	@echo "  make lodgenet2usb_pico2  - LodgeNet -> USB HID (Pico 2)"
 	@echo "  make lodgenet2n64_pico   - LodgeNet -> N64 (Pico)"
@@ -1315,6 +1328,22 @@ jag2usb_pico:
 jag2usb_pico_w:
 	$(call build_app,jag2usb_pico_w)
 
+.PHONY: 24g2usb_pico2_w
+24g2usb_pico2_w:
+	$(call build_app,24g2usb_pico2_w)
+
+.PHONY: 24g2usb_pico_w
+24g2usb_pico_w:
+	$(call build_app,24g2usb_pico_w)
+
+.PHONY: 24g2usb_pico
+24g2usb_pico:
+	$(call build_app,24g2usb_pico)
+
+.PHONY: 24g2usb_pico2
+24g2usb_pico2:
+	$(call build_app,24g2usb_pico2)
+
 .PHONY: lodgenet2usb_pico
 lodgenet2usb_pico:
 	$(call build_app,lodgenet2usb_pico)
@@ -1756,6 +1785,22 @@ flash-pce2usb_pico:
 .PHONY: flash-pce2usb_pico_w
 flash-pce2usb_pico_w:
 	@$(MAKE) --no-print-directory _flash_app APP_NAME=pce2usb_pico_w
+
+.PHONY: flash-24g2usb_pico2_w
+flash-24g2usb_pico2_w:
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=24g2usb_pico2_w
+
+.PHONY: flash-24g2usb_pico_w
+flash-24g2usb_pico_w:
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=24g2usb_pico_w
+
+.PHONY: flash-24g2usb_pico
+flash-24g2usb_pico:
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=24g2usb_pico
+
+.PHONY: flash-24g2usb_pico2
+flash-24g2usb_pico2:
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=24g2usb_pico2
 
 .PHONY: flash-lodgenet2usb_pico
 flash-lodgenet2usb_pico:

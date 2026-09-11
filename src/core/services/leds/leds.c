@@ -9,6 +9,7 @@
 #include "platform/platform.h"
 
 static int connected_devices = 0;
+static bool pairing_active = false;
 
 // ============================================================================
 // PLAIN GPIO LED (fallback when no NeoPixel)
@@ -59,9 +60,10 @@ static void board_led_set(bool on)
 }
 
 // Plain LED status patterns:
-//   Solid on:            Device(s) connected
-//   Slow blink  (500ms): No devices connected (idle)
-//   Profile indicator:   Fast blinks (count = profile_index + 1)
+//   Solid on:              Device(s) connected
+//   Fast blink  (100ms):   Pairing rendezvous in progress
+//   Slow blink  (500ms):   No devices connected, not pairing (idle)
+//   Profile indicator:     Fast blinks (count = profile_index + 1)
 static void board_led_task(int count)
 {
     if (!board_led_inited) return;
@@ -91,6 +93,12 @@ static void board_led_task(int count)
     if (count > 0) {
         // Connected — solid on
         board_led_set(true);
+    } else if (pairing_active) {
+        // Pairing — fast blink
+        if (now - board_led_last_toggle >= 100) {
+            board_led_last_toggle = now;
+            board_led_set(!board_led_state);
+        }
     } else {
         // Idle — slow blink
         if (now - board_led_last_toggle >= 500) {
@@ -116,6 +124,11 @@ void leds_init(void)
 void leds_set_connected_devices(int count)
 {
     connected_devices = count;
+}
+
+void leds_set_pairing(bool active)
+{
+    pairing_active = active;
 }
 
 void leds_set_color(uint8_t r, uint8_t g, uint8_t b)

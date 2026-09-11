@@ -72,6 +72,7 @@ These apps read retro controllers directly and output as USB HID gamepads.
 | `nes2usb` | NES | SIMPLE | KB2040 | `make nes2usb_kb2040` |
 | `neogeo2usb` | Neo Geo | SIMPLE | KB2040 | `make neogeo2usb_kb2040` |
 | `lodgenet2usb` | LodgeNet | SIMPLE | Pico | `make lodgenet2usb_pico` |
+| `24g2usb` | 24G (SF30 2.4G) | SIMPLE | Pico 2 W/Pico W/Pico/Pico 2 | `make 24g2usb_pico2_w` |
 | `nuon2usb` | Nuon | SIMPLE | KB2040 | `make nuon2usb_kb2040` |
 | `psx2usb` | PSX/PS2 | SIMPLE | QT Py/KB2040/Pico | `make psx2usb_qtpy` (or `_kb2040` / `_pico`) |
 
