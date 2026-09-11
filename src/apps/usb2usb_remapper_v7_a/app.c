@@ -20,6 +20,9 @@
 #include "pico/stdlib.h"
 #include <string.h>
 #include <stdio.h>
+#ifdef APP_CAN_FLASH_B
+#include "flash_b_app.h"   // SWD-flash B from this app (reliable, no boot relay)
+#endif
 
 // ============================================================================
 // INTERFACES — UART link in, USB device out
@@ -176,8 +179,10 @@ void app_task(void)
 
     // Surface B's diagnostic heartbeat over CDC so bring-up tooling can see
     // whether B is alive, the link is up, and how many USB host devices B sees.
+    static bool b_is_current = false;   // B has reported the new-firmware magic
     uart_peer_debug_t dbg;
     if (uart_peer_get_debug(&dbg)) {
+        if (dbg.magic == 0xDC) b_is_current = true;  // 0xDC = B built from this era
         char buf[112];
         snprintf(buf, sizeof(buf),
                  "{\"type\":\"peer\",\"magic\":%u,\"devs\":%u,\"vid\":\"%04X\",\"pid\":\"%04X\",\"up\":%lu,\"bt\":%u}",
@@ -185,4 +190,26 @@ void app_task(void)
                  (unsigned long)dbg.uptime_ms, dbg.bt_status);
         cdc_protocol_send_event(cdc_commands_get_protocol(), buf);
     }
+
+#ifdef APP_CAN_FLASH_B
+    // Auto-flash B if it isn't running current firmware. combine_uf2 "stage"
+    // mode drops B's image into A's flash but doesn't program B (no boot relay),
+    // so on the first boot after a stage flash B is stale. If B hasn't reported
+    // the current heartbeat magic ~6s after boot and a valid image is staged,
+    // flash it once from here — reliable (stable clock) and safe (writes B's
+    // flash over SWD, never A's own). B then needs one power-cycle to run it;
+    // after that it reports magic 0xDC and this never fires again.
+    static bool b_autoflash_done = false;
+    if (!b_autoflash_done && !b_is_current && now > 6000) {
+        const volatile uint32_t* bimg = (const volatile uint32_t*)(0x10040000u);
+        if (bimg[0] == 0x42494D47u) {   // "BIMG" staged image present
+            b_autoflash_done = true;
+            printf("[remapper_a] B not current -> auto-flashing from app...\n");
+            int rc = flash_b_app(NULL);
+            printf("[remapper_a] auto-flash B rc=%d (power-cycle for B to boot it)\n", rc);
+        } else {
+            b_autoflash_done = true;   // no staged image; nothing to do
+        }
+    }
+#endif
 }

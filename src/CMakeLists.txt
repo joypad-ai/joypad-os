@@ -1129,9 +1129,13 @@ pico_generate_pio_header(joypad_flash_b_side ${CMAKE_CURRENT_SOURCE_DIR}/swd_fla
 pico_add_extra_outputs(joypad_flash_b_side)
 pico_set_binary_type(joypad_flash_b_side no_flash)
 
-# Combine A (flash) + B's image (staged in A's flash) + flash_b_side (RAM) into
-# one drag-drop UF2. combine_uf2.py places B.bin at XIP_BASE + 0x40000 with a
-# header; the relay reads it from there and streams it to B over SWD.
+# Combine A (flash) + B's image staged in A's flash into one drag-drop UF2, in
+# "stage" mode: NO boot relay. Flashing boots A cleanly (no dark board), and A
+# then flashes B itself from the running app (auto on boot when B is stale, or
+# via the FLASH.B CDC command) — reliable because it runs at a stable clock with
+# a working watchdog, unlike the bare-context boot relay. B needs one power-cycle
+# afterwards to boot its freshly-written image. (flash_b_side is still built for
+# the relay path / diagnostics but is intentionally not embedded here.)
 add_custom_command(
     OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/joypad_usb2usb_remapper_v7.uf2
     DEPENDS joypad_usb2usb_remapper_v7_a joypad_usb2usb_remapper_v7_b joypad_flash_b_side
@@ -1140,6 +1144,7 @@ add_custom_command(
             $<TARGET_FILE_DIR:joypad_flash_b_side>/joypad_flash_b_side.uf2
             $<TARGET_FILE_DIR:joypad_usb2usb_remapper_v7_b>/joypad_usb2usb_remapper_v7_b.bin
             ${CMAKE_CURRENT_BINARY_DIR}/joypad_usb2usb_remapper_v7.uf2
+            stage
     VERBATIM
 )
 add_custom_target(joypad_usb2usb_remapper_v7
