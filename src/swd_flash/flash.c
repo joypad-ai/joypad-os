@@ -111,8 +111,9 @@ int rp2040_add_flash_bit(uint32_t offset, const uint8_t *src, int size) {
 
     // If we are starting outside the range of an existing block...
     if (chunk_size && (offset >= (chunk_start + 65536))) {
-        rp2040_program_flash_chunk(chunk_start, chunk_size);
+        rc = rp2040_program_flash_chunk(chunk_start, chunk_size);
         chunk_size = 0;
+        if (rc != SWD_OK) return rc;   // propagate so the relay reports the failure
     }
 
     // If size is zero here then we are the last bit...
@@ -144,8 +145,9 @@ int rp2040_add_flash_bit(uint32_t offset, const uint8_t *src, int size) {
 
         // If we have a full one...
         if (chunk_size == 65536) {
-            rp2040_program_flash_chunk(chunk_start, chunk_size);
+            rc = rp2040_program_flash_chunk(chunk_start, chunk_size);
             chunk_size = 0;
+            if (rc != SWD_OK) return rc;   // propagate so the relay reports the failure
         }
 
         // Now process the remainder...
