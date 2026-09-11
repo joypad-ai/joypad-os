@@ -524,34 +524,56 @@ bool ds4_auth_send_nonce(const uint8_t* data, uint16_t len) {
     return true;
 }
 
-// Get cached signature response (0xF1) for a specific page
-// Format: [nonce_id][page][0][signature_data(56)][padding(4)]
+// PS4 auth reports carry a CRC32 over [report_id .. payload] in their last 4
+// bytes, LITTLE-ENDIAN. Standard reflected CRC-32 (poly 0xEDB88320, init and
+// final-xor 0xFFFFFFFF — same as zlib/PKZIP), and it MUST include the report ID
+// byte even though TinyUSB carries the ID separately (matches GP2040-CE). We
+// were never appending this, so the console rejected every signature page.
+static uint32_t ds4_auth_crc32(uint8_t report_id, const uint8_t* data, uint16_t len) {
+    uint32_t crc = 0xFFFFFFFFu;
+    uint8_t first = report_id;
+    for (int pass = 0; pass < 2; pass++) {
+        const uint8_t* p = pass == 0 ? &first : data;
+        uint16_t n = pass == 0 ? 1 : len;
+        for (uint16_t i = 0; i < n; i++) {
+            crc ^= p[i];
+            for (int b = 0; b < 8; b++)
+                crc = (crc >> 1) ^ (0xEDB88320u & (uint32_t)(-(int32_t)(crc & 1)));
+        }
+    }
+    return ~crc;
+}
+
+// Get cached signature response (0xF1) for a specific page. Returns the 63-byte
+// payload (report ID stripped; TinyUSB prepends it): [nonce_id][page][0]
+// [signature_data(56)][crc32(4, LE)]. Returns the payload length (63).
 uint16_t ds4_auth_get_signature(uint8_t* buffer, uint16_t max_len, uint8_t page) {
-    // Zero entire buffer first to avoid uninitialized bytes
+    if (max_len < 63) return 0;
     memset(buffer, 0, max_len);
 
     if (page >= DS4_AUTH_SIGNATURE_PAGES) {
         TU_LOG1("[DS4 Auth] Invalid signature page request %d\r\n", page);
-        return max_len;
+        return 0;
     }
 
-    // Build response: [nonce_id][page][0][signature_data(56)]
+    // [nonce_id][page][0][signature_data(56)] = 59 bytes at buffer[0..58]
     buffer[0] = ds4_auth.nonce_id;
     buffer[1] = page;
     buffer[2] = 0;
-
-    if (!ds4_auth.signature_ready) {
-        // Signature not ready - already zeroed above
-        TU_LOG1("[DS4 Auth] Signature page %d requested but not ready (have %d pages)\r\n",
-                page, ds4_auth.signature_pages_fetched);
-    } else {
-        // Copy signature data for this page
+    if (ds4_auth.signature_ready) {
         memcpy(&buffer[3], &ds4_auth.signature_buffer[page * DS4_AUTH_PAGE_SIZE], 56);
+    } else {
+        TU_LOG1("[DS4 Auth] Signature page %d requested but not ready (have %d)\r\n",
+                page, ds4_auth.signature_pages_fetched);
     }
 
-    TU_LOG1("[DS4 Auth] Returning signature page %d (id=%d, ready=%d)\r\n",
-            page, ds4_auth.nonce_id, ds4_auth.signature_ready);
-    return max_len;
+    // CRC32 over [0xF1][buffer[0..58]] (60 bytes incl. report ID) -> buffer[59..62] LE
+    uint32_t crc = ds4_auth_crc32(DS4_AUTH_REPORT_SIGNATURE, buffer, 59);
+    buffer[59] = (uint8_t)(crc & 0xFF);
+    buffer[60] = (uint8_t)((crc >> 8) & 0xFF);
+    buffer[61] = (uint8_t)((crc >> 16) & 0xFF);
+    buffer[62] = (uint8_t)((crc >> 24) & 0xFF);
+    return 63;
 }
 
 // Get next signature page (auto-incrementing)
@@ -571,20 +593,28 @@ uint16_t ds4_auth_get_next_signature(uint8_t* buffer, uint16_t max_len) {
     return len;
 }
 
-// Get auth status (0xF2)
-// Format: [nonce_id][status][zeros(13)]
-// status: 0 = ready, 16 = signing
+// Get auth status (0xF2). 15-byte payload (report ID stripped; TinyUSB prepends
+// it): [nonce_id][status][zeros(9)][crc32(4, LE)]. status 0=ready, 16=signing.
+// Ready only once WE'VE fetched all 19 pages (signature_ready), so the console
+// doesn't start reading 0xF1 before the pages are cached.
 uint16_t ds4_auth_get_status(uint8_t* buffer, uint16_t max_len) {
-    // Zero entire buffer first to avoid uninitialized bytes
+    if (max_len < 15) return 0;
     memset(buffer, 0, max_len);
 
     buffer[0] = ds4_auth.nonce_id;
     buffer[1] = ds4_auth.signature_ready ? 0 : 16;
+    // buffer[2..10] = 0 (already)
 
-    TU_LOG1("[DS4 Auth] Status: %s (id=%d, ready=%d)\r\n",
-            ds4_auth.signature_ready ? "ready" : "signing",
-            ds4_auth.nonce_id, ds4_auth.signature_ready);
-    return max_len;
+    // CRC32 over [0xF2][buffer[0..10]] (12 bytes incl. report ID) -> buffer[11..14] LE
+    uint32_t crc = ds4_auth_crc32(DS4_AUTH_REPORT_STATUS, buffer, 11);
+    buffer[11] = (uint8_t)(crc & 0xFF);
+    buffer[12] = (uint8_t)((crc >> 8) & 0xFF);
+    buffer[13] = (uint8_t)((crc >> 16) & 0xFF);
+    buffer[14] = (uint8_t)((crc >> 24) & 0xFF);
+
+    TU_LOG1("[DS4 Auth] Status: %s (id=%d)\r\n",
+            ds4_auth.signature_ready ? "ready" : "signing", ds4_auth.nonce_id);
+    return 15;
 }
 
 // Reset auth state (0xF3)
