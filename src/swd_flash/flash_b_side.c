@@ -82,6 +82,14 @@ int main(void) {
         while (true) { __wfi(); }
     }
 
+    // Hardware watchdog: SWD chunk ops are sub-second, so if anything hangs the
+    // board would otherwise stay dark forever. Arm an 8.3s watchdog (RP2040 max)
+    // and pet it at each step; on a true hang it warm-resets A within 8.3s. A
+    // warm reset PRESERVES scratch, so scratch[2] (progress) survives and A can
+    // report exactly where the relay hung. Petted before every chunk below.
+    scratch[2] = 0xC0000001u;   // reached: about to init SWD
+    watchdog_enable(8300, 1);
+
     swd_init();
     dp_init();
 
@@ -90,6 +98,8 @@ int main(void) {
     core_select(1);
     core_reset_halt();
     core_select(0);
+    watchdog_update();
+    scratch[2] = 0xC0000002u;   // reached: SWD up, cores halted
 
     // Write B's flash: copy each 64K chunk XIP->RAM, then push it to B over SWD
     // from RAM. Retry the whole sequence on SWD error (marginal links can fail
@@ -101,6 +111,8 @@ int main(void) {
         uint32_t off = 0;
         while (off < b_length) {
             uint32_t n = (b_length - off) < 65536u ? (b_length - off) : 65536u;
+            watchdog_update();
+            scratch[2] = 0xC0001000u | (off >> 12);  // progress: chunk offset (4K units)
             // Bulk XIP -> RAM (word copy; b_image is 4-byte aligned, n is 4K-aligned)
             const uint32_t* s = (const uint32_t*)(b_image + off);
             uint32_t* d = (uint32_t*)g_stage;
@@ -110,9 +122,12 @@ int main(void) {
             off += n;
         }
         if (wrc == 0) {
+            watchdog_update();
+            scratch[2] = 0xC00000F0u;  // progress: flushing residual chunk
             wrc = rp2040_add_flash_bit(0xffffffff, NULL, 0);  // flush residual chunk
             if (wrc == 0) break;
         }
+        watchdog_update();
         // Re-establish the debug connection before retrying.
         dp_init();
         core_select(0);
@@ -120,6 +135,7 @@ int main(void) {
     }
     scratch[0] = 0xB0000000u | (wrc == 0 ? 3u : 2u);
     scratch[1] = b_length;
+    scratch[2] = (wrc == 0) ? 0xC00000FFu : scratch[2];  // FF = ran to completion
 
     // Reboot B (the freshly-flashed target), then reboot ourselves (A) so the
     // bootloader hands control to A's flash image.

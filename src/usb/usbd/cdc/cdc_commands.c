@@ -288,14 +288,20 @@ static void cmd_info(const char* json)
     // (likely XIP read failure), 2=SWD flash failed, 3=success; SCRATCH1 = image
     // length (or the bad magic for status 1). Only valid until the next COLD
     // boot clears it, so read INFO after flashing but BEFORE power-cycling.
-    char bflash_str[48] = "null";
+    char bflash_str[80] = "null";
 #ifdef HOST_OVER_LINK
     {
-        uint32_t s0 = *(volatile uint32_t*)(0x40058000u + 0x0cu);
-        uint32_t s1 = *(volatile uint32_t*)(0x40058000u + 0x10u);
-        if ((s0 & 0xFFFFFF00u) == 0xB0000000u)
-            snprintf(bflash_str, sizeof(bflash_str), "{\"st\":%lu,\"v\":%lu}",
-                     (unsigned long)(s0 & 0xFFu), (unsigned long)s1);
+        uint32_t s0 = *(volatile uint32_t*)(0x40058000u + 0x0cu);  // result
+        uint32_t s1 = *(volatile uint32_t*)(0x40058000u + 0x10u);  // length
+        uint32_t s2 = *(volatile uint32_t*)(0x40058000u + 0x14u);  // progress
+        int has_res  = (s0 & 0xFFFFFF00u) == 0xB0000000u;
+        int has_prog = (s2 & 0xF0000000u) == 0xC0000000u;
+        if (has_res || has_prog)
+            snprintf(bflash_str, sizeof(bflash_str),
+                     "{\"st\":%lu,\"v\":%lu,\"prog\":\"%08lx\"}",
+                     (unsigned long)(has_res ? (s0 & 0xFFu) : 0),
+                     (unsigned long)s1,
+                     (unsigned long)(has_prog ? s2 : 0));
     }
 #endif
 
