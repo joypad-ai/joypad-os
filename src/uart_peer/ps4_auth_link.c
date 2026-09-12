@@ -76,16 +76,8 @@ uint16_t ps4_auth_link_get_signature(uint8_t* buf, uint16_t max_len) {
     if (a_ready && page < PS4L_NPAGES)
         memcpy(&buf[3], &a_sig[page * PS4L_PAGE], PS4L_PAGE);
     if (page == 0) PS4L_LOG("[PS4L-A] console fetching 0xF1 sig (ready=%u)\n", a_ready);
-    if (page == PS4L_NPAGES - 1) {
+    if (page == PS4L_NPAGES - 1)
         PS4L_LOG("[PS4L-A] console fetched last 0xF1 page (ready=%u)\n", a_ready);
-        // diag: console consumed our full signature -> tell B to pulse the DS4
-        // (distinct from the signing buzz). Felt => the whole auth flow completed
-        // and the console still dropped => signature CONTENT was rejected.
-        if (a_ready && !a_diag_buzzed) {
-            a_diag_buzzed = true;
-            uart_peer_send_frame(UART_PEER_MSG_PS4_DIAG_BUZZ, NULL, 0);
-        }
-    }
     uint32_t crc = ps4l_crc32(PS4L_F1, buf, 59);
     buf[59] = (uint8_t)(crc);       buf[60] = (uint8_t)(crc >> 8);
     buf[61] = (uint8_t)(crc >> 16); buf[62] = (uint8_t)(crc >> 24);
@@ -163,7 +155,14 @@ void ps4_auth_link_on_frame(uint8_t type, const uint8_t* payload, uint16_t plen)
             break;
         case UART_PEER_MSG_PS4_READY:   // A: signature complete
             if (plen >= 1) { a_nonce_id = payload[0]; a_ready = true; a_page_returning = 0;
-                PS4L_LOG("[PS4L-A] B signature READY id=%u -> can serve console\n", payload[0]); }
+                PS4L_LOG("[PS4L-A] B signature READY id=%u -> can serve console\n", payload[0]);
+                // diag: A received the full signature from B. Felt (2nd buzz) =>
+                // B->A relay works and A now reports ready; if it STILL drops the
+                // console rejects our 0xF2/0xF1 (CRC/content or status timing).
+                // Not felt => B->A relay never delivered the signature to A.
+                if (!a_diag_buzzed) { a_diag_buzzed = true;
+                    uart_peer_send_frame(UART_PEER_MSG_PS4_DIAG_BUZZ, NULL, 0); }
+            }
             break;
         default:
             break;
