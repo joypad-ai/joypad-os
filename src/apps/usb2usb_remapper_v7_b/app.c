@@ -182,7 +182,7 @@ void app_task(void)
         last_dbg_ms = now;
 
         uart_peer_debug_t dbg = {
-            .magic = 0xDC,   // 0xDC => this B carries the bt_status field
+            .magic = 0xDD,   // 0xDD => this era (bt_status field + DS4-auth relay diag)
             .dev_count = 0,
             .last_vid = 0,
             .last_pid = 0,

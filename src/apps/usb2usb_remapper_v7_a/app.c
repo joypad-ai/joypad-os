@@ -182,7 +182,7 @@ void app_task(void)
     static bool b_is_current = false;   // B has reported the new-firmware magic
     uart_peer_debug_t dbg;
     if (uart_peer_get_debug(&dbg)) {
-        if (dbg.magic == 0xDC) b_is_current = true;  // 0xDC = B built from this era
+        if (dbg.magic == 0xDD) b_is_current = true;  // 0xDD = B built from this era
         char buf[112];
         snprintf(buf, sizeof(buf),
                  "{\"type\":\"peer\",\"magic\":%u,\"devs\":%u,\"vid\":\"%04X\",\"pid\":\"%04X\",\"up\":%lu,\"bt\":%u}",
