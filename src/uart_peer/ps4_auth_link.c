@@ -160,14 +160,7 @@ void ps4_auth_link_on_frame(uint8_t type, const uint8_t* payload, uint16_t plen)
             break;
         case UART_PEER_MSG_PS4_READY:   // A: signature complete
             if (plen >= 1) { a_nonce_id = payload[0]; a_ready = true; a_page_returning = 0;
-                PS4L_LOG("[PS4L-A] B signature READY id=%u -> can serve console\n", payload[0]);
-                // diag: A received the full signature from B. Felt (2nd buzz) =>
-                // B->A relay works and A now reports ready; if it STILL drops the
-                // console rejects our 0xF2/0xF1 (CRC/content or status timing).
-                // Not felt => B->A relay never delivered the signature to A.
-                if (!a_diag_buzzed) { a_diag_buzzed = true;
-                    uart_peer_send_frame(UART_PEER_MSG_PS4_DIAG_BUZZ, NULL, 0); }
-            }
+                PS4L_LOG("[PS4L-A] B signature READY id=%u -> can serve console\n", payload[0]); }
             break;
         default:
             break;

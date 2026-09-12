@@ -542,7 +542,7 @@ bool ds4_auth_send_nonce(const uint8_t* data, uint16_t len) {
         ds4_auth.nonce_page_sending = 0;
         ds4_auth.internal = AUTH_SENDING_RESET;  // First get 0xF3 from DS4
         ds4_auth.state = DS4_AUTH_STATE_NONCE_PENDING;
-        ds4_auth_indicate(true);  // diagnostic: green while this handshake signs
+        ds4_auth_diag_pulse();  // diagnostic: brief green blink per auth challenge
         printf("[DS4 Auth] All 5 nonce pages received, starting auth with DS4\n");
     }
 
@@ -758,7 +758,6 @@ void tuh_hid_get_report_complete_cb(uint8_t dev_addr, uint8_t idx,
                 ds4_auth.internal = AUTH_IDLE;
                 ds4_auth.signature_ready = true;
                 ds4_auth.state = DS4_AUTH_STATE_READY;
-                ds4_auth_indicate(false);  // diagnostic: handshake done, LED off
                 printf("[DS4 Auth] CB: All 19 signature pages received, auth ready!\n");
             }
             break;
