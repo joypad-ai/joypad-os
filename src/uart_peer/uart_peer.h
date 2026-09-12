@@ -70,6 +70,7 @@
 #define UART_PEER_MSG_PS4_SIG        0x0C   // B->A: one signature page [page][56B]
 #define UART_PEER_MSG_PS4_READY      0x0D   // B->A: [nonce_id] signature complete
 #define UART_PEER_MSG_PS4_RESET      0x0E   // A->B: reset the DS4 auth handshake
+#define UART_PEER_MSG_PS4_DIAG_BUZZ  0x0F   // A->B: diag — console read full 0xF1 sig, pulse DS4
 
 // Diagnostic heartbeat (producer/host MCU -> consumer): proves B is alive, its
 // loop is advancing (uptime_ms), and how many USB host devices it has mounted.

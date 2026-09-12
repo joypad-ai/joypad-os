@@ -157,6 +157,8 @@ uint8_t ds4_auth_get_nonce_id(void);
 void ds4_auth_copy_raw_page(uint8_t page, uint8_t* out56);
 // Feed one raw nonce page (from A over the link) as if from the console 0xF0.
 void ds4_auth_feed_nonce_page(uint8_t nonce_id, uint8_t page, const uint8_t* data56);
+// Diagnostic: brief self-timed rumble pulse (A signals console-side events here).
+void ds4_auth_diag_pulse(void);
 
 // Reset auth state (0xF3)
 void ds4_auth_reset(void);

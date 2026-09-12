@@ -45,12 +45,13 @@ static uint8_t a_sig[PS4L_SIG];
 static uint8_t a_nonce_id;
 static bool    a_ready;
 static uint8_t a_page_returning;
+static bool    a_diag_buzzed;   // diag: buzzed B once when console read the full sig this round
 
 void ps4_auth_link_device_send_nonce(const uint8_t* data, uint16_t len) {
     // console 0xF0 payload: [nonce_id][page][0][nonce_chunk(56)]
     if (len < 59) return;
     uint8_t nid = data[0], page = data[1];
-    if (page == 0) { a_ready = false; a_page_returning = 0;
+    if (page == 0) { a_ready = false; a_page_returning = 0; a_diag_buzzed = false;
         PS4L_LOG("[PS4L-A] console nonce id=%u START (re)auth\n", nid); }
     if (page == 4) PS4L_LOG("[PS4L-A] console nonce id=%u all 5 pages relayed->B\n", nid);
     a_nonce_id = nid;
@@ -75,7 +76,16 @@ uint16_t ps4_auth_link_get_signature(uint8_t* buf, uint16_t max_len) {
     if (a_ready && page < PS4L_NPAGES)
         memcpy(&buf[3], &a_sig[page * PS4L_PAGE], PS4L_PAGE);
     if (page == 0) PS4L_LOG("[PS4L-A] console fetching 0xF1 sig (ready=%u)\n", a_ready);
-    if (page == PS4L_NPAGES - 1) PS4L_LOG("[PS4L-A] console fetched last 0xF1 page (ready=%u)\n", a_ready);
+    if (page == PS4L_NPAGES - 1) {
+        PS4L_LOG("[PS4L-A] console fetched last 0xF1 page (ready=%u)\n", a_ready);
+        // diag: console consumed our full signature -> tell B to pulse the DS4
+        // (distinct from the signing buzz). Felt => the whole auth flow completed
+        // and the console still dropped => signature CONTENT was rejected.
+        if (a_ready && !a_diag_buzzed) {
+            a_diag_buzzed = true;
+            uart_peer_send_frame(UART_PEER_MSG_PS4_DIAG_BUZZ, NULL, 0);
+        }
+    }
     uint32_t crc = ps4l_crc32(PS4L_F1, buf, 59);
     buf[59] = (uint8_t)(crc);       buf[60] = (uint8_t)(crc >> 8);
     buf[61] = (uint8_t)(crc >> 16); buf[62] = (uint8_t)(crc >> 24);
@@ -141,6 +151,10 @@ void ps4_auth_link_on_frame(uint8_t type, const uint8_t* payload, uint16_t plen)
         case UART_PEER_MSG_PS4_RESET:   // B: reset the DS4 handshake
             PS4L_LOG("[PS4L-B] reset DS4 handshake\n");
             ds4_auth_reset();
+            break;
+        case UART_PEER_MSG_PS4_DIAG_BUZZ:  // B: diag — console read full sig, pulse DS4
+            PS4L_LOG("[PS4L-B] console read full sig -> diag pulse\n");
+            ds4_auth_diag_pulse();
             break;
 #endif
         case UART_PEER_MSG_PS4_SIG:     // A: store a signed page from B

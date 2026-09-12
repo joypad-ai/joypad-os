@@ -482,6 +482,16 @@ static void ds4_auth_rumble(bool on) {
     tuh_hid_send_report(ds4_auth.dev_addr, ds4_auth.instance, 5, &r, sizeof(r));
 }
 
+// Self-timed diagnostic buzz: rumble on now, auto-off after ~350ms (cleared in
+// ds4_auth_task). Used to signal a console-side event (A relays it over the
+// link) distinctly from the signing buzz. 0 = no pending pulse.
+static uint32_t ds4_auth_diag_off_ms = 0;
+void ds4_auth_diag_pulse(void) {
+    if (!ds4_auth.ds4_available) return;
+    ds4_auth_rumble(true);
+    ds4_auth_diag_off_ms = platform_time_ms() + 350;
+}
+
 // Get the current auth state
 ds4_auth_state_t ds4_auth_get_state(void) {
     return ds4_auth.state;
@@ -807,6 +817,11 @@ void tuh_hid_set_report_complete_cb(uint8_t dev_addr, uint8_t idx,
 
 // Auth task - state machine matching hid-remapper approach
 void ds4_auth_task(void) {
+    // Clear a finished diagnostic pulse (see ds4_auth_diag_pulse).
+    if (ds4_auth_diag_off_ms && platform_time_ms() >= ds4_auth_diag_off_ms) {
+        ds4_auth_diag_off_ms = 0;
+        ds4_auth_rumble(false);
+    }
     if (!ds4_auth.ds4_available || ds4_auth.busy) return;
 
     switch (ds4_auth.internal) {
