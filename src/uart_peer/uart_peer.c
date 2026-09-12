@@ -124,6 +124,13 @@ __attribute__((weak)) void p5general_link_on_frame(uint8_t type, const uint8_t* 
     (void)type; (void)payload; (void)plen;
 }
 
+// PS4/DS4 auth-bridge RX hook. Strong definition in ps4_auth_link.c; weak no-op
+// here so uart_peer stays self-contained on targets without the bridge.
+__attribute__((weak)) void ps4_auth_link_on_frame(uint8_t type, const uint8_t* payload,
+                                                  uint16_t plen) {
+    (void)type; (void)payload; (void)plen;
+}
+
 static void submit_peer_event(const uart_peer_event_t* packed) {
     input_event_t event;
     init_input_event(&event);
@@ -225,6 +232,8 @@ static void dispatch_frame(const uint8_t* frame, uint16_t len) {
         default:
             // P5General auth-bridge types (0x04-0x09) and any future ones.
             p5general_link_on_frame(type, payload, plen);
+            // PS4/DS4 auth-bridge types (0x0B-0x0E).
+            ps4_auth_link_on_frame(type, payload, plen);
             break;
     }
 }

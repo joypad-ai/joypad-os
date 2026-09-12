@@ -617,6 +617,25 @@ uint16_t ds4_auth_get_status(uint8_t* buffer, uint16_t max_len) {
     return 15;
 }
 
+// --- Dual-chip bridge accessors (host side B) ---
+bool ds4_auth_signature_ready(void) { return ds4_auth.signature_ready; }
+uint8_t ds4_auth_get_nonce_id(void) { return ds4_auth.nonce_id; }
+
+void ds4_auth_copy_raw_page(uint8_t page, uint8_t* out56) {
+    if (page >= DS4_AUTH_SIGNATURE_PAGES) { memset(out56, 0, DS4_AUTH_PAGE_SIZE); return; }
+    memcpy(out56, &ds4_auth.signature_buffer[page * DS4_AUTH_PAGE_SIZE], DS4_AUTH_PAGE_SIZE);
+}
+
+void ds4_auth_feed_nonce_page(uint8_t nonce_id, uint8_t page, const uint8_t* data56) {
+    // Re-frame as the console's 0xF0 payload and reuse the normal path.
+    uint8_t buf[59];
+    buf[0] = nonce_id;
+    buf[1] = page;
+    buf[2] = 0;
+    memcpy(&buf[3], data56, DS4_AUTH_PAGE_SIZE);
+    ds4_auth_send_nonce(buf, sizeof(buf));
+}
+
 // Reset auth state (0xF3)
 void ds4_auth_reset(void) {
     ds4_auth.state = DS4_AUTH_STATE_IDLE;

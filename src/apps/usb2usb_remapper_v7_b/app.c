@@ -14,6 +14,7 @@
 #include "usb/usbh/usbh.h"
 #include "uart_peer/uart_peer.h"
 #include "uart_peer/p5general_link.h"
+#include "uart_peer/ps4_auth_link.h"
 #include "pico/stdlib.h"
 #include "tusb.h"
 #include <stdio.h>
@@ -64,6 +65,10 @@ static void link_output_task(void)
     // its signed reports + F1/F2 auth data + dongle-ready to the device side (A),
     // and the incoming A->B frames were just applied by uart_peer_task().
     p5general_link_host_task();
+
+    // PS4/DS4 auth bridge: once the genuine DS4 here has signed the console's
+    // nonce, stream its 19 signature pages back to A to serve to the PS4.
+    ps4_auth_link_host_task();
 
     // Apply any feedback (rumble/LED) the device side sent back.
     uart_peer_status_t st;

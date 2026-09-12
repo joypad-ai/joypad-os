@@ -62,6 +62,15 @@
 // input with neither touch nor motion sends no EXT (event stays touch/motion-free).
 #define UART_PEER_MSG_EXT            0x0A   // producer -> consumer: touch + motion
 
+// PS4/DS4 auth passthrough bridge (device A <-> host B). The console-facing PS4
+// mode lives on A; the real DS4 (auth source) is on B. A relays the console's
+// nonce to B, B drives the DS4 and streams the 19 signature pages back to A,
+// which serves them (with CRC) to the console. Mirrors the P5General bridge.
+#define UART_PEER_MSG_PS4_NONCE      0x0B   // A->B: one nonce page [nonce_id][page][56B]
+#define UART_PEER_MSG_PS4_SIG        0x0C   // B->A: one signature page [page][56B]
+#define UART_PEER_MSG_PS4_READY      0x0D   // B->A: [nonce_id] signature complete
+#define UART_PEER_MSG_PS4_RESET      0x0E   // A->B: reset the DS4 auth handshake
+
 // Diagnostic heartbeat (producer/host MCU -> consumer): proves B is alive, its
 // loop is advancing (uptime_ms), and how many USB host devices it has mounted.
 typedef struct __attribute__((packed)) {

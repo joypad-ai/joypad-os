@@ -388,6 +388,7 @@ set(I2C_PEER_SOURCES
 set(UART_PEER_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/uart_peer/uart_peer.c
     ${CMAKE_CURRENT_SOURCE_DIR}/uart_peer/p5general_link.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/uart_peer/ps4_auth_link.c
 )
 
 # Controller app common sources
@@ -1078,6 +1079,9 @@ target_compile_definitions(joypad_usb2usb_remapper_v7_a PRIVATE
     HOST_OVER_LINK=1
     APP_CAN_FLASH_B=1      # enables the FLASH.B CDC command (SWD-flash B from A's app)
     PIN_SWDCLK=28 PIN_SWDIO=27
+    # PS4/DS4 auth passthrough: the genuine DS4 lives on B, so serve the console
+    # 0xF0-F3 handshake from B's signed pages relayed over the link (not local).
+    PS4_AUTH_OVER_LINK=1
 )
 target_sources(joypad_usb2usb_remapper_v7_a PUBLIC ${CORE_SOURCES} ${USB_DEVICE_SOURCES}
     ${UART_PEER_SOURCES}

@@ -37,6 +37,10 @@ _Static_assert(offsetof(sony_ds4_report_t, tpad_f1_pos) + 1 == 36,
 #include "ps4_local_auth.h"
 #endif
 
+#ifdef PS4_AUTH_OVER_LINK
+#include "uart_peer/ps4_auth_link.h"   // dual-RP: DS4 auth is served from the peer MCU
+#endif
+
 // ============================================================================
 // STATE
 // ============================================================================
@@ -368,7 +372,9 @@ static uint16_t ps4_mode_get_report(uint8_t report_id, hid_report_type_t report_
                 return ps4_local_auth_get_next_page(buffer, len);
             }
 #endif
-#ifndef DISABLE_USB_HOST
+#ifdef PS4_AUTH_OVER_LINK
+            return ps4_auth_link_get_signature(buffer, len);  // served from peer DS4
+#elif !defined(DISABLE_USB_HOST)
             if (ds4_auth_is_available()) {
                 return ds4_auth_get_next_signature(buffer, len);
             }
@@ -384,7 +390,9 @@ static uint16_t ps4_mode_get_report(uint8_t report_id, hid_report_type_t report_
                 return ps4_local_auth_get_status_report(buffer, len);
             }
 #endif
-#ifndef DISABLE_USB_HOST
+#ifdef PS4_AUTH_OVER_LINK
+            return ps4_auth_link_get_status(buffer, len);
+#elif !defined(DISABLE_USB_HOST)
             if (ds4_auth_is_available()) {
                 return ds4_auth_get_status(buffer, len);
             }
@@ -406,7 +414,9 @@ static uint16_t ps4_mode_get_report(uint8_t report_id, hid_report_type_t report_
                 ps4_local_auth_reset();
             }
 #endif
-#ifndef DISABLE_USB_HOST
+#ifdef PS4_AUTH_OVER_LINK
+            ps4_auth_link_device_reset();
+#elif !defined(DISABLE_USB_HOST)
             ds4_auth_reset();
 #endif
             len = sizeof(ps4_feature_f3);
@@ -431,7 +441,9 @@ void ps4_mode_set_feature_report(uint8_t report_id, const uint8_t* buffer, uint1
                 break;
             }
 #endif
-#ifndef DISABLE_USB_HOST
+#ifdef PS4_AUTH_OVER_LINK
+            ps4_auth_link_device_send_nonce(buffer, bufsize);  // relay to peer MCU's DS4
+#elif !defined(DISABLE_USB_HOST)
             if (ds4_auth_is_available()) {
                 ds4_auth_send_nonce(buffer, bufsize);
             }
@@ -444,7 +456,9 @@ void ps4_mode_set_feature_report(uint8_t report_id, const uint8_t* buffer, uint1
                 ps4_local_auth_reset();
             }
 #endif
-#ifndef DISABLE_USB_HOST
+#ifdef PS4_AUTH_OVER_LINK
+            ps4_auth_link_device_reset();
+#elif !defined(DISABLE_USB_HOST)
             ds4_auth_reset();
 #endif
             break;

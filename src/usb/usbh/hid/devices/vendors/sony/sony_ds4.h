@@ -148,6 +148,16 @@ uint16_t ds4_auth_get_next_signature(uint8_t* buffer, uint16_t max_len);
 // Returns status report data
 uint16_t ds4_auth_get_status(uint8_t* buffer, uint16_t max_len);
 
+// --- Dual-chip bridge accessors (host side B forwards raw pages to device A) ---
+// True once all 19 signature pages have been fetched from the real DS4.
+bool ds4_auth_signature_ready(void);
+// The nonce id currently being signed.
+uint8_t ds4_auth_get_nonce_id(void);
+// Copy one raw 56-byte signature page (0-18) — no framing/CRC (A adds those).
+void ds4_auth_copy_raw_page(uint8_t page, uint8_t* out56);
+// Feed one raw nonce page (from A over the link) as if from the console 0xF0.
+void ds4_auth_feed_nonce_page(uint8_t nonce_id, uint8_t page, const uint8_t* data56);
+
 // Reset auth state (0xF3)
 void ds4_auth_reset(void);
 
