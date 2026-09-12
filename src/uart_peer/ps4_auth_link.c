@@ -81,7 +81,12 @@ uint16_t ps4_auth_link_get_signature(uint8_t* buf, uint16_t max_len) {
     uint32_t crc = ps4l_crc32(PS4L_F1, buf, 59);
     buf[59] = (uint8_t)(crc);       buf[60] = (uint8_t)(crc >> 8);
     buf[61] = (uint8_t)(crc >> 16); buf[62] = (uint8_t)(crc >> 24);
-    if (page < PS4L_NPAGES - 1) a_page_returning++;   // hold last page for retries
+    // Only advance once the signature is actually present. Across the link the
+    // console can poll 0xF1 during the latency window before B has streamed the
+    // signature; advancing then would desync the page sequence (console gets
+    // blanks/out-of-order pages -> rejects -> retry storm). Hold page 0 until
+    // ready, then walk 0..18 and hold the last page for retries.
+    if (a_ready && page < PS4L_NPAGES - 1) a_page_returning++;
     return 63;
 }
 

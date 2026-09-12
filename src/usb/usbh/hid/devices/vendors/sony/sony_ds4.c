@@ -469,26 +469,27 @@ bool ds4_auth_is_available(void) {
     return ds4_auth.ds4_available;
 }
 
-// Diagnostic: buzz the auth DS4 so a handshake is observable with no serial tap.
-// Pulsed ON when a fresh nonce starts signing, OFF when the signature is ready.
-// A buzz at connect + another at ~8min => the console re-challenged (re-auth);
-// no second buzz before a drop => it never re-challenged (grace-period expiry).
-static void ds4_auth_rumble(bool on) {
+// Diagnostic: flash the auth DS4's lightbar (green) so a handshake is observable
+// with no serial tap and without rumbling the pad off the shelf. Green while a
+// fresh nonce is signing, off when the signature is ready. The auth DS4 isn't
+// driven for normal output (init not called), so its lightbar is free to use.
+static void ds4_auth_indicate(bool on) {
     if (!ds4_auth.ds4_available) return;
     sony_ds4_output_report_t r = {0};
-    r.set_rumble = 1;
-    r.motor_left = on ? 160 : 0;
-    r.motor_right = on ? 160 : 0;
+    r.set_led = 1;
+    r.lightbar_red   = 0;
+    r.lightbar_green = on ? 255 : 0;
+    r.lightbar_blue  = 0;
     tuh_hid_send_report(ds4_auth.dev_addr, ds4_auth.instance, 5, &r, sizeof(r));
 }
 
-// Self-timed diagnostic buzz: rumble on now, auto-off after ~350ms (cleared in
-// ds4_auth_task). Used to signal a console-side event (A relays it over the
-// link) distinctly from the signing buzz. 0 = no pending pulse.
+// Self-timed diagnostic flash: green on now, auto-off after ~350ms (cleared in
+// ds4_auth_task). Signals a console-side event (A relays it over the link)
+// distinctly from the signing flash. 0 = no pending pulse.
 static uint32_t ds4_auth_diag_off_ms = 0;
 void ds4_auth_diag_pulse(void) {
     if (!ds4_auth.ds4_available) return;
-    ds4_auth_rumble(true);
+    ds4_auth_indicate(true);
     ds4_auth_diag_off_ms = platform_time_ms() + 350;
 }
 
@@ -541,7 +542,7 @@ bool ds4_auth_send_nonce(const uint8_t* data, uint16_t len) {
         ds4_auth.nonce_page_sending = 0;
         ds4_auth.internal = AUTH_SENDING_RESET;  // First get 0xF3 from DS4
         ds4_auth.state = DS4_AUTH_STATE_NONCE_PENDING;
-        ds4_auth_rumble(true);  // diagnostic: buzz while this handshake signs
+        ds4_auth_indicate(true);  // diagnostic: green while this handshake signs
         printf("[DS4 Auth] All 5 nonce pages received, starting auth with DS4\n");
     }
 
@@ -757,7 +758,7 @@ void tuh_hid_get_report_complete_cb(uint8_t dev_addr, uint8_t idx,
                 ds4_auth.internal = AUTH_IDLE;
                 ds4_auth.signature_ready = true;
                 ds4_auth.state = DS4_AUTH_STATE_READY;
-                ds4_auth_rumble(false);  // diagnostic: handshake done, stop buzz
+                ds4_auth_indicate(false);  // diagnostic: handshake done, LED off
                 printf("[DS4 Auth] CB: All 19 signature pages received, auth ready!\n");
             }
             break;
@@ -820,7 +821,7 @@ void ds4_auth_task(void) {
     // Clear a finished diagnostic pulse (see ds4_auth_diag_pulse).
     if (ds4_auth_diag_off_ms && platform_time_ms() >= ds4_auth_diag_off_ms) {
         ds4_auth_diag_off_ms = 0;
-        ds4_auth_rumble(false);
+        ds4_auth_indicate(false);
     }
     if (!ds4_auth.ds4_available || ds4_auth.busy) return;
 
