@@ -43,6 +43,8 @@ static ds4_device_t ds4_devices[MAX_DEVICES] = { 0 };
 #define DS4_AUTH_SIGNATURE_SIZE  (DS4_AUTH_PAGE_SIZE * DS4_AUTH_SIGNATURE_PAGES) // 1064 bytes
 #define DS4_AUTH_STATUS_SIZE     16   // Status report size
 #define DS4_AUTH_REPORT_SIZE     64   // Full report size with report ID
+#define DS4_AUTH_STEP_MS         3    // Min gap between auth control transfers
+                                      // so they don't starve input polling
 
 // Internal auth states (matching hid-remapper)
 typedef enum {
@@ -818,12 +820,18 @@ void tuh_hid_set_report_complete_cb(uint8_t dev_addr, uint8_t idx,
 
 // Auth task - state machine matching hid-remapper approach
 void ds4_auth_task(void) {
-    // Clear a finished diagnostic pulse (see ds4_auth_diag_pulse).
-    if (ds4_auth_diag_off_ms && platform_time_ms() >= ds4_auth_diag_off_ms) {
-        ds4_auth_diag_off_ms = 0;
-        ds4_auth_indicate(false);
-    }
     if (!ds4_auth.ds4_available || ds4_auth.busy) return;
+    if (ds4_auth.internal == AUTH_IDLE) return;
+
+    // Throttle the handshake's control transfers. On the shared PIO-USB bus a
+    // back-to-back burst (the 0xF2 signing-status poll loop + 19 signature
+    // fetches) starves the other controllers' interrupt polling, so input gets
+    // delayed/missed whenever (re-)auth runs. One step per few ms leaves bus
+    // time for input while still finishing auth well within the console's wait.
+    static uint32_t last_step_ms = 0;
+    uint32_t now_ms = platform_time_ms();
+    if ((uint32_t)(now_ms - last_step_ms) < DS4_AUTH_STEP_MS) return;
+    last_step_ms = now_ms;
 
     switch (ds4_auth.internal) {
         case AUTH_IDLE:
