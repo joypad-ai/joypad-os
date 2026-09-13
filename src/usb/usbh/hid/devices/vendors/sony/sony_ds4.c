@@ -542,7 +542,8 @@ bool ds4_auth_send_nonce(const uint8_t* data, uint16_t len) {
         ds4_auth.nonce_page_sending = 0;
         ds4_auth.internal = AUTH_SENDING_RESET;  // First get 0xF3 from DS4
         ds4_auth.state = DS4_AUTH_STATE_NONCE_PENDING;
-        ds4_auth_diag_pulse();  // diagnostic: brief green blink per auth challenge
+        // (no DS4 output report here: sending one mid-auth jammed the shared
+        //  USB host and stalled the other controller's input passthrough)
         printf("[DS4 Auth] All 5 nonce pages received, starting auth with DS4\n");
     }
 
@@ -849,6 +850,17 @@ void ds4_auth_task(void) {
             memcpy(&ds4_auth.report_buffer[3],
                    &ds4_auth.nonce_buffer[page * DS4_AUTH_PAGE_SIZE],
                    DS4_AUTH_PAGE_SIZE);
+
+            // Append CRC32 over [0xF0][buffer[0..58]] (LE) — the DS4 validates
+            // the nonce report's CRC exactly like the console validates ours.
+            // Without it the DS4 rejects the nonce and never signs it correctly,
+            // so the console rejects the signature (single failed auth -> 8-min
+            // grace -> drop). Mirrors the outgoing 0xF1/0xF2 framing.
+            uint32_t ncrc = ds4_auth_crc32(DS4_AUTH_REPORT_NONCE, ds4_auth.report_buffer, 59);
+            ds4_auth.report_buffer[59] = (uint8_t)(ncrc);
+            ds4_auth.report_buffer[60] = (uint8_t)(ncrc >> 8);
+            ds4_auth.report_buffer[61] = (uint8_t)(ncrc >> 16);
+            ds4_auth.report_buffer[62] = (uint8_t)(ncrc >> 24);
 
             printf("[DS4 Auth] Task: Sending nonce page %d to DS4\n", page);
             tuh_hid_set_report(ds4_auth.dev_addr, ds4_auth.instance,
