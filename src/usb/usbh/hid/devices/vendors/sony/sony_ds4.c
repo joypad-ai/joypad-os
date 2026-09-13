@@ -45,6 +45,8 @@ static ds4_device_t ds4_devices[MAX_DEVICES] = { 0 };
 #define DS4_AUTH_REPORT_SIZE     64   // Full report size with report ID
 #define DS4_AUTH_STEP_MS         3    // Min gap between auth control transfers
                                       // so they don't starve input polling
+#define DS4_AUTH_TIMEOUT_MS      1500 // Abort a stalled handshake after this so a
+                                      // wedged re-auth stops hammering the bus
 
 // Internal auth states (matching hid-remapper)
 typedef enum {
@@ -489,6 +491,8 @@ static void ds4_auth_indicate(bool on) {
 // ds4_auth_task). Signals a console-side event (A relays it over the link)
 // distinctly from the signing flash. 0 = no pending pulse.
 static uint32_t ds4_auth_diag_off_ms = 0;
+// Deadline for the in-progress handshake; 0 = no handshake running.
+static uint32_t ds4_auth_deadline_ms = 0;
 void ds4_auth_diag_pulse(void) {
     if (!ds4_auth.ds4_available) return;
     ds4_auth_indicate(true);
@@ -544,6 +548,7 @@ bool ds4_auth_send_nonce(const uint8_t* data, uint16_t len) {
         ds4_auth.nonce_page_sending = 0;
         ds4_auth.internal = AUTH_SENDING_RESET;  // First get 0xF3 from DS4
         ds4_auth.state = DS4_AUTH_STATE_NONCE_PENDING;
+        ds4_auth_deadline_ms = platform_time_ms() + DS4_AUTH_TIMEOUT_MS;  // arm watchdog
         // (no DS4 output report here: sending one mid-auth jammed the shared
         //  USB host and stalled the other controller's input passthrough)
         printf("[DS4 Auth] All 5 nonce pages received, starting auth with DS4\n");
@@ -761,6 +766,7 @@ void tuh_hid_get_report_complete_cb(uint8_t dev_addr, uint8_t idx,
                 ds4_auth.internal = AUTH_IDLE;
                 ds4_auth.signature_ready = true;
                 ds4_auth.state = DS4_AUTH_STATE_READY;
+                ds4_auth_deadline_ms = 0;  // handshake done, disarm watchdog
                 printf("[DS4 Auth] CB: All 19 signature pages received, auth ready!\n");
             }
             break;
@@ -822,6 +828,18 @@ void tuh_hid_set_report_complete_cb(uint8_t dev_addr, uint8_t idx,
 void ds4_auth_task(void) {
     if (!ds4_auth.ds4_available || ds4_auth.busy) return;
     if (ds4_auth.internal == AUTH_IDLE) return;
+
+    // Watchdog: if a handshake stalls (e.g. the DS4 stops returning signing
+    // status after repeated re-auths), abort it so we stop hammering 0xF2 on the
+    // shared bus. Freeing the bus lets input recover instead of crawling forever;
+    // the next console nonce starts a fresh handshake.
+    if (ds4_auth_deadline_ms && (int32_t)(platform_time_ms() - ds4_auth_deadline_ms) >= 0) {
+        printf("[DS4 Auth] Handshake timed out -> abort, freeing bus\n");
+        ds4_auth.internal = AUTH_IDLE;
+        ds4_auth.busy = false;
+        ds4_auth_deadline_ms = 0;
+        return;
+    }
 
     // Throttle the handshake's control transfers. On the shared PIO-USB bus a
     // back-to-back burst (the 0xF2 signing-status poll loop + 19 signature
