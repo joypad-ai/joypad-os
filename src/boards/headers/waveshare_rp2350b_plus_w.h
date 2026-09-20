@@ -1,7 +1,7 @@
 // Joypad OS board header for the Waveshare RP2350B-Plus-W.
 //
 // Adapts the Raspberry Pi Pico 2 W reference header for the Waveshare board:
-//   - RP2350B (48-pin) instead of RP2350A (30-pin) -> drops PICO_RP2350A
+//   - RP2350B (48-pin) instead of RP2350A (30-pin) -> sets PICO_RP2350B
 //   - 16 MB flash instead of 4 MB
 //   - Raspberry Pi RM2 (CYW43) wired to a different set of RP2350 GPIOs
 //     (Waveshare picked pins only the B-package exposes; the A-package
@@ -25,6 +25,12 @@
 
 pico_board_cmake_set(PICO_PLATFORM, rp2350)
 pico_board_cmake_set(PICO_CYW43_SUPPORTED, 1)
+
+// Enable 48-GPIO support for RP2350B package
+pico_board_cmake_set_default(PICO_RP2350B, 1)
+#ifndef PICO_RP2350B
+#define PICO_RP2350B 1
+#endif
 
 #define WAVESHARE_RP2350B_PLUS_W
 
@@ -106,7 +112,7 @@ pico_board_cmake_set_default(PICO_RP2350_A2_SUPPORTED, 1)
 #define PICO_RP2350_A2_SUPPORTED 1
 #endif
 
-// RM2 SPI pins -- Waveshare chose pins only the RP2350B package exposes.
+// RM2 SPI pins -- Waveshare RP2350B package pinout
 #ifndef CYW43_PIN_WL_DYNAMIC
 #define CYW43_PIN_WL_DYNAMIC 0
 #endif
