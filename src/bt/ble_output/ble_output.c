@@ -384,6 +384,83 @@ static ble_output_mode_t current_mode = BLE_MODE_STANDARD;
 static btstack_packet_callback_registration_t hci_event_callback_registration;
 static btstack_packet_callback_registration_t sm_event_callback_registration;
 
+// Diagnostic stage marker — strong implementation on nRF writes a noinit RAM
+// ring that survives resets (nrf/src/main.c); weak no-op everywhere else.
+__attribute__((weak)) void bt_diag_mark(uint32_t code) { (void)code; }
+
+// Raw LE link handle from connection-complete (see LE_META case): valid even
+// before the HID-subscription handshake that sets con_handle.
+static uint16_t last_le_handle = 0xFFFF;  // HCI_CON_HANDLE_INVALID
+
+// Pairing-safety state for the USB-dominance enforcement: yanking the link
+// with gap_disconnect while SM pairing / encryption setup is in flight
+// crashed the controller hard (silent reset, RESETREAS=0) on nRF52840.
+// Dominance must wait for pairing to finish and give a fresh link a grace
+// window before disconnecting it.
+static volatile bool sm_pairing_active = false;
+static uint32_t link_up_ms = 0;
+#define USB_DOM_LINK_GRACE_MS 10000u
+
+// ---------------------------------------------------------------------------
+// Cross-thread send marshalling. On multi-threaded ports (nRF/ESP32) BTstack
+// runs in its own thread, and the ble_output_task_* senders run in the app
+// main loop. hids_device_request_can_send_now_event() can send SYNCHRONOUSLY
+// in the caller's context when ATT is free, racing the BTstack thread for the
+// single HCI TX buffer — hci_reserve_packet_buffer() double-reserve assert,
+// device dead (this killed every BLE HID session on the Makerdiary dongle the
+// moment a host subscribed). Marshal the request onto the BTstack run-loop
+// thread; coalesce because pending_* already holds the latest report.
+// ---------------------------------------------------------------------------
+#if defined(BTSTACK_USE_NRF) || defined(BTSTACK_USE_ESP32)
+static btstack_context_callback_registration_t send_req_marshal;
+static volatile bool send_req_queued = false;
+static volatile uint16_t send_req_handle;
+
+static void request_send_on_btstack_thread(void *context)
+{
+    (void)context;
+    // Clear BEFORE requesting so a task-side set that lands mid-callback
+    // queues a fresh marshal instead of being swallowed.
+    send_req_queued = false;
+    uint16_t h = send_req_handle;
+    if (h != HCI_CON_HANDLE_INVALID) {
+        hids_device_request_can_send_now_event(h);
+    }
+}
+
+static void ble_request_can_send_now(uint16_t handle)
+{
+    send_req_handle = handle;
+    if (send_req_queued) return;  // marshal already in flight; it sends latest
+    send_req_queued = true;
+    send_req_marshal.callback = &request_send_on_btstack_thread;
+    send_req_marshal.context = NULL;
+    btstack_run_loop_execute_on_main_thread(&send_req_marshal);
+}
+#else
+// Single-threaded ports (Pico W): direct call, same context as BTstack.
+static void ble_request_can_send_now(uint16_t handle)
+{
+    hids_device_request_can_send_now_event(handle);
+}
+#endif
+
+// Bench tool (BLE.PAIR): send an SM Security Request on the live link so the
+// central initiates pairing. Must run in the BTstack context (NUS command
+// path does).
+void ble_output_request_pairing(void)
+{
+    uint16_t h = (con_handle != HCI_CON_HANDLE_INVALID) ? con_handle
+                                                        : last_le_handle;
+    if (h != HCI_CON_HANDLE_INVALID) {
+        printf("[ble_output] requesting SM pairing (handle=0x%04x)\n", h);
+        bt_diag_mark(0xC1000099u);
+        sm_request_pairing(h);
+    } else {
+        printf("[ble_output] BLE.PAIR: no connection\n");
+    }
+}
+
 // ============================================================================
 // ADVERTISING DATA
 // ============================================================================
@@ -493,7 +570,10 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
     switch (hci_event_packet_get_type(packet)) {
         case HCI_EVENT_DISCONNECTION_COMPLETE: {
             uint8_t reason = hci_event_disconnection_complete_get_reason(packet);
+            bt_diag_mark(0xC0D00000u | reason);
             con_handle = HCI_CON_HANDLE_INVALID;
+            last_le_handle = HCI_CON_HANDLE_INVALID;
+            sm_pairing_active = false;
             ble_connected = false;
             pending_type = PENDING_NONE;
 
@@ -526,17 +606,45 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
             break;
         }
 
+        case HCI_EVENT_LE_META:
+            if (hci_event_le_meta_get_subevent_code(packet) ==
+                HCI_SUBEVENT_LE_CONNECTION_COMPLETE) {
+                bt_diag_mark(0xC0C00001u);
+                // Track the raw link handle: con_handle proper is only set
+                // once the host subscribes to HID reports, but BLE.PAIR needs
+                // a handle for a bare GATT client (e.g. CoreBluetooth, which
+                // never touches the hidden HID service).
+                last_le_handle =
+                    hci_subevent_le_connection_complete_get_connection_handle(packet);
+                link_up_ms = btstack_run_loop_get_time_ms();
+            }
+            break;
+
+        case SM_EVENT_PAIRING_STARTED:
+            bt_diag_mark(0xC1000010u);
+            sm_pairing_active = true;
+            break;
+
+        case SM_EVENT_PAIRING_COMPLETE:
+            bt_diag_mark(0xC1001100u |
+                         sm_event_pairing_complete_get_status(packet));
+            sm_pairing_active = false;
+            break;
+
         case SM_EVENT_JUST_WORKS_REQUEST:
+            bt_diag_mark(0xC1000001u);
             sm_just_works_confirm(sm_event_just_works_request_get_handle(packet));
             break;
 
         case SM_EVENT_NUMERIC_COMPARISON_REQUEST:
+            bt_diag_mark(0xC1000002u);
             sm_numeric_comparison_confirm(sm_event_passkey_display_number_get_handle(packet));
             break;
 
         case HCI_EVENT_HIDS_META:
             switch (hci_event_hids_meta_get_subevent_code(packet)) {
                 case HIDS_SUBEVENT_INPUT_REPORT_ENABLE:
+                    bt_diag_mark(0xC2000001u);
                     con_handle = hids_subevent_input_report_enable_get_con_handle(packet);
                     ble_connected = true;
                     printf("[ble_output] BLE connected (handle=0x%04x)\n", con_handle);
@@ -724,8 +832,15 @@ static void usb_dom_timer_handler(btstack_timer_source_t *ts)
     if (ble_usb_host()) {
         // A USB data host is connected → BT yields: drop any link and stop
         // advertising. The disconnect handler sees the host and stays off.
+        // NEVER mid-pairing, and give a fresh link a grace window: a forced
+        // gap_disconnect during SM/encryption setup hard-crashed the
+        // controller (the original "pairing kills the dongle" bug).
         if (con_handle != HCI_CON_HANDLE_INVALID) {
-            gap_disconnect(con_handle);
+            bool young = (uint32_t)(btstack_run_loop_get_time_ms() - link_up_ms)
+                         < USB_DOM_LINK_GRACE_MS;
+            if (!sm_pairing_active && !young) {
+                gap_disconnect(con_handle);
+            }
         }
         set_adv(false);
     } else {
@@ -932,7 +1047,7 @@ static void ble_output_task_standard(void)
             if (memcmp(&report, &last_sent_keyboard, sizeof(report)) == 0) return;
             pending_keyboard = report;
             pending_type = PENDING_KEYBOARD;
-            hids_device_request_can_send_now_event(con_handle);
+            ble_request_can_send_now(con_handle);
             break;
         }
 
@@ -942,7 +1057,7 @@ static void ble_output_task_standard(void)
             if (memcmp(&report, &last_sent_mouse, sizeof(report)) == 0) return;
             pending_mouse = report;
             pending_type = PENDING_MOUSE;
-            hids_device_request_can_send_now_event(con_handle);
+            ble_request_can_send_now(con_handle);
             break;
         }
 
@@ -962,7 +1077,7 @@ static void ble_output_task_standard(void)
             if (memcmp(&report, &last_sent_gamepad, sizeof(report)) == 0) return;
             pending_gamepad = report;
             pending_type = PENDING_GAMEPAD;
-            hids_device_request_can_send_now_event(con_handle);
+            ble_request_can_send_now(con_handle);
             break;
         }
     }
@@ -986,7 +1101,7 @@ static void ble_output_task_xbox(void)
 
     pending_xbox = report;
     pending_type = PENDING_XBOX;
-    hids_device_request_can_send_now_event(con_handle);
+    ble_request_can_send_now(con_handle);
 }
 
 // ============================================================================
@@ -1014,7 +1129,7 @@ static void ble_output_task_sinput(void)
     if (sinput_feature_response_take(pending_feature, &flen)) {
         pending_feature_len = flen;
         pending_type = PENDING_SINPUT_FEATURE;
-        hids_device_request_can_send_now_event(con_handle);
+        ble_request_can_send_now(con_handle);
         return;
     }
 
@@ -1023,7 +1138,7 @@ static void ble_output_task_sinput(void)
     if (memcmp(&report, &last_sent_sinput, sizeof(report)) == 0) return;
     pending_sinput = report;
     pending_type = PENDING_SINPUT;
-    hids_device_request_can_send_now_event(con_handle);
+    ble_request_can_send_now(con_handle);
 }
 
 // ============================================================================

@@ -76,12 +76,112 @@ static bool fault_crumb_consume(void)
     return crumb_present;
 }
 
+// BT stage trace: a tiny noinit event ring written from the BLE peripheral
+// path (ble_output.c calls bt_diag_mark). Survives even a hardware LOCKUP
+// reset that bypasses every software handler, so after a silent reset the
+// boot log shows how far pairing got. Codes are defined at the call sites.
+#define BT_TRACE_MAGIC 0xB7D1A600u
+#define BT_TRACE_N 16
+__noinit static uint32_t bt_trace_magic;
+__noinit static uint32_t bt_trace_ring[BT_TRACE_N];
+__noinit static uint32_t bt_trace_idx;
+
+void bt_diag_mark(uint32_t code)
+{
+    if (bt_trace_magic != BT_TRACE_MAGIC) {
+        for (int i = 0; i < BT_TRACE_N; i++) bt_trace_ring[i] = 0;
+        bt_trace_idx = 0;
+        bt_trace_magic = BT_TRACE_MAGIC;
+    }
+    bt_trace_ring[bt_trace_idx % BT_TRACE_N] = code;
+    bt_trace_idx++;
+    // Live view for app-level milestones (0xC...) and low-rate LE meta events
+    // (0xE03E: connection complete, param/PHY updates). Per-packet marks
+    // (other HCI events, ACL 0xACC0) stay ring-only — printf in the
+    // cooperative BTstack thread is a polled-UART stall.
+    if ((code >> 28) == 0xC || (code >> 16) == 0xE03E) {
+        printf("[btdiag] mark %08x\n", (unsigned)code);
+    }
+}
+
+// Snapshot of the ring from before this boot's reset, for periodic reprint
+// (CDC log clients usually connect well after boot).
+static uint32_t bt_trace_snap[BT_TRACE_N];
+static uint32_t bt_trace_snap_n = 0, bt_trace_snap_total = 0;
+
+static void bt_trace_consume(void)
+{
+    if (bt_trace_magic != BT_TRACE_MAGIC || bt_trace_idx == 0) return;
+    uint32_t n = bt_trace_idx < BT_TRACE_N ? bt_trace_idx : BT_TRACE_N;
+    uint32_t start = bt_trace_idx - n;
+    for (uint32_t i = 0; i < n; i++) {
+        bt_trace_snap[i] = bt_trace_ring[(start + i) % BT_TRACE_N];
+    }
+    bt_trace_snap_n = n;
+    bt_trace_snap_total = bt_trace_idx;
+    // Reset the ring for this boot's marks
+    bt_trace_idx = 0;
+    for (int i = 0; i < BT_TRACE_N; i++) bt_trace_ring[i] = 0;
+}
+
+// On-demand dump of the LIVE ring (this boot's marks) — BT.TRACE command.
+void bt_diag_dump(void)
+{
+    if (bt_trace_magic != BT_TRACE_MAGIC || bt_trace_idx == 0) {
+        printf("[btdiag] live trace: empty\n");
+        return;
+    }
+    uint32_t n = bt_trace_idx < BT_TRACE_N ? bt_trace_idx : BT_TRACE_N;
+    uint32_t start = bt_trace_idx - n;
+    printf("[btdiag] live trace (%u marks, oldest first):",
+           (unsigned)bt_trace_idx);
+    for (uint32_t i = 0; i < n; i++) {
+        printf(" %08x", (unsigned)bt_trace_ring[(start + i) % BT_TRACE_N]);
+    }
+    printf("\n");
+}
+
+static void bt_trace_report(void)
+{
+    if (bt_trace_snap_n == 0) return;
+    printf("[btdiag] trace before reset (%u marks, oldest first):",
+           (unsigned)bt_trace_snap_total);
+    for (uint32_t i = 0; i < bt_trace_snap_n; i++) {
+        printf(" %08x", (unsigned)bt_trace_snap[i]);
+    }
+    printf("\n");
+}
+
 static void fault_crumb_report(void)
 {
     if (crumb_present) {
         printf("[fault] PREVIOUS BOOT FAULTED: reason=%u pc=0x%08x lr=0x%08x\n",
                (unsigned)crumb_reason, (unsigned)crumb_pc, (unsigned)crumb_lr);
     }
+}
+
+// Newlib assert() → abort() → k_panic loses the assert location (its message
+// goes to the unwired UART). Capture file+line in the crumb and reboot:
+// reason=0xA5, pc=line, lr=first 4 chars of the file's basename.
+void __assert_func(const char *file, int line, const char *func,
+                   const char *expr)
+{
+    (void)func; (void)expr;
+    fault_crumb_magic = FAULT_CRUMB_MAGIC;
+    fault_crumb_reason = 0xA5;
+    fault_crumb_pc = (uint32_t)line;
+    fault_crumb_lr = 0;
+    if (file) {
+        const char *base = file;
+        for (const char *p = file; *p; p++) {
+            if (*p == '/') base = p + 1;
+        }
+        for (int i = 0; i < 4 && base[i]; i++) {
+            fault_crumb_lr |= ((uint32_t)(uint8_t)base[i]) << (8 * i);
+        }
+    }
+    NVIC_SystemReset();
+    for (;;) { }
 }
 
 void k_sys_fatal_error_handler(unsigned int reason, const struct arch_esf *esf)
@@ -116,7 +216,21 @@ void k_sys_fatal_error_handler(unsigned int reason, const struct arch_esf *esf)
 
 void bt_ctlr_assert_handle(char *file, uint32_t line)
 {
-    printf("[BT] Controller assert: %s:%u\n", file, (unsigned)line);
+    // SDC asserts can fire from radio ISR context; printf-and-return leaves
+    // the controller in an undefined state (observed as a hard lockup, USB
+    // gone). Record it in the fault crumb (reason 0xB7 tag; pc=line, lr=first
+    // 4 chars of the file name) and reboot — next boot is a safe boot that
+    // reports it over CDC.
+    fault_crumb_magic = FAULT_CRUMB_MAGIC;
+    fault_crumb_reason = 0xB7;
+    fault_crumb_pc = line;
+    fault_crumb_lr = 0;
+    if (file) {
+        for (int i = 0; i < 4 && file[i]; i++) {
+            fault_crumb_lr |= ((uint32_t)(uint8_t)file[i]) << (8 * i);
+        }
+    }
+    NVIC_SystemReset();
 }
 
 // ============================================================================
@@ -285,6 +399,8 @@ int main(void)
     // the CDC log; the boot after that is normal again.
     bool safe_boot = fault_crumb_consume();
     fault_crumb_report();
+    bt_trace_consume();
+    bt_trace_report();
     if (safe_boot) {
         printf("[joypad] SAFE BOOT after fault — skipping storage/BT init\n");
     }
@@ -411,6 +527,7 @@ int main(void)
             if ((uint32_t)(crumb_now - crumb_last_ms) >= 5000u) {
                 crumb_last_ms = crumb_now;
                 fault_crumb_report();
+                bt_trace_report();
             }
         }
 

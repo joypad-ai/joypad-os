@@ -545,6 +545,15 @@ elseif(APP_TYPE STREQUAL "controller_btusb")
         target_compile_definitions(app PRIVATE SENSOR_JOYWING=1)
     endif()
 
+    # Bench/coexist option: keep BLE advertising and connections alive while a
+    # USB data host owns the device (disables the usb_dom force-disconnect in
+    # ble_output.c). Sysbuild strips custom -D vars, so like APP_TYPE this is
+    # detected from EXTRA_CONF_FILE: include nrf/prj_coexist_bench.conf.
+    if(DEFINED EXTRA_CONF_FILE AND EXTRA_CONF_FILE MATCHES "coexist_bench")
+        target_compile_definitions(app PRIVATE CONFIG_BLE_USB_COEXIST=1)
+        message(STATUS "BLE/USB coexist bench mode ENABLED")
+    endif()
+
     if(DEFINED JP_RECOVERY_WIPE_ON_BOOT)
         target_compile_definitions(app PRIVATE JP_RECOVERY_WIPE_ON_BOOT=1)
     endif()

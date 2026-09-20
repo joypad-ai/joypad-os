@@ -66,6 +66,18 @@
 	clock-frequency = <400000>;
 };
 
+/* Pairing brownout fix: this dongle is USB-5V powered in high-voltage mode
+ * (VDDH -> internal REG0 -> VDD). The base board dts enables DCDC only on
+ * REG1, leaving REG0 — the stage carrying the whole 5V->3.3V load — in LDO
+ * mode. Under the sustained radio bursts of a BLE *connection* (advertising
+ * survives; every connection attempt POR-reset the board: RESETREAS=0,
+ * noinit RAM wiped) the REG0 LDO collapses VDD. The MDK dongle has both
+ * DCDC inductors and Makerdiary's own SDK enables both converters — enable
+ * REG0 DCDC here too. */
+&reg0 {
+	status = "okay";
+};
+
 /* SAADC — platform_gpio_nrf.c compiles DT_NODELABEL(adc) whenever CONFIG_ADC
  * is on (prj.conf), and the base board dts leaves the node disabled. AIN0-AIN3
  * (P0.02-P0.05) are exposed edge pads, usable for analog sticks. */

@@ -307,12 +307,13 @@ static void cmd_info(const char* json)
 
     snprintf(response_buf, sizeof(response_buf),
              "{\"app\":\"%s\",\"version\":\"%s\",\"board\":\"%s\",\"serial\":\"%s\",\"commit\":\"%s\",\"build\":\"%s\""
-             ",\"reset\":\"0x%lx\",\"battery_mv\":%d,\"chg\":%d,\"imu\":%s,\"flashw\":%lu,\"featw\":%lu"
+             ",\"reset\":\"0x%lx\",\"up\":%lu,\"battery_mv\":%d,\"chg\":%d,\"imu\":%s,\"flashw\":%lu,\"featw\":%lu"
              ",\"bflash\":%s"
              ",\"features\":{\"onboard_led\":%s}}"
              ,
              APP_NAME, JOYPAD_VERSION, BOARD_NAME, serial, GIT_COMMIT, BUILD_TIME,
-             (unsigned long)platform_last_reset_reason(), platform_battery_millivolts(),
+             (unsigned long)platform_last_reset_reason(),
+             (unsigned long)platform_time_ms(), platform_battery_millivolts(),
              platform_battery_charging(), imu_str, (unsigned long)flash_get_write_count(),
              (unsigned long)sinput_get_feature_count(), bflash_str,
 #ifdef BTSTACK_USE_CYW43
@@ -857,6 +858,28 @@ static void cmd_mode_list(const char* json)
 // ============================================================================
 
 #if REQUIRE_BLE_OUTPUT
+
+// BLE.PAIR — bench tool: send an SM Security Request on the current BLE
+// peripheral link so the connected central initiates pairing. Lets a script
+// exercise the pairing path without a GUI (e.g. macOS pairs just-works
+// silently). Safe threading: over NUS this runs in the BTstack thread.
+static void cmd_ble_pair(const char* json)
+{
+    (void)json;
+    extern void ble_output_request_pairing(void);
+    ble_output_request_pairing();
+    send_ok();
+}
+
+// BT.TRACE — dump the live diagnostic mark ring (nRF: noinit ring in main.c;
+// weak no-op elsewhere). Read-only bench tool.
+__attribute__((weak)) void bt_diag_dump(void) { }
+static void cmd_bt_trace(const char* json)
+{
+    (void)json;
+    bt_diag_dump();
+    send_ok();
+}
 
 static void cmd_ble_mode_get(const char* json)
 {
@@ -4149,6 +4172,8 @@ static const cmd_entry_t commands[] = {
     {"BLE.MODE.GET", cmd_ble_mode_get},
     {"BLE.MODE.SET", cmd_ble_mode_set},
     {"BLE.MODE.LIST", cmd_ble_mode_list},
+    {"BLE.PAIR", cmd_ble_pair},
+    {"BT.TRACE", cmd_bt_trace},
 #endif
 #ifdef CONFIG_PAD_INPUT
     {"PAD.CONFIG.GET", cmd_pad_config_get},

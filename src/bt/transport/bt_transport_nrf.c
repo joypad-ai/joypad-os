@@ -168,11 +168,23 @@ static void deliver_controller_packet(struct net_buf *buf)
     uint16_t size = buf->len;
     uint8_t *packet = buf->data;
 
+    // Diagnostic stage marker (noinit ring in main.c, weak no-op elsewhere):
+    // record every HCI event (and ACL traffic coarsely) so after a silent
+    // hardware reset the last controller traffic is readable.
+    extern void bt_diag_mark(uint32_t code);
+
     switch (h4_type) {
         case BT_HCI_H4_EVT:  // 0x04
+            // 0xE0EEss00|evcode: ss=subevent for LE meta (0x3E)
+            if (size >= 2 && packet[0] == 0x3E) {
+                bt_diag_mark(0xE03E0000u | (size >= 3 ? packet[2] : 0xFF));
+            } else {
+                bt_diag_mark(0xE0000000u | (size >= 1 ? packet[0] : 0xFF));
+            }
             hci_packet_handler(HCI_EVENT_PACKET, packet, size);
             break;
         case BT_HCI_H4_ACL:  // 0x02
+            bt_diag_mark(0xACC00000u | size);
             hci_packet_handler(HCI_ACL_DATA_PACKET, packet, size);
             break;
         default:
