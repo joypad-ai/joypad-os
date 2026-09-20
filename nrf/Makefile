@@ -1,6 +1,6 @@
 # Makefile for Joypad on nRF52840 boards (nRF Connect SDK / Zephyr)
 #
-# Supported boards: xiao_ble, adafruit_feather_nrf52840
+# Supported boards: xiao_ble, adafruit_feather_nrf52840, nrf52840dk
 # Supported apps:   bt2usb (default), usb2usb (with MAX3421E FeatherWing),
 #                   btusb2usb (MAX3421E + Bluetooth combined),
 #                   controller_btusb (sensor input + BLE peripheral + USB)
@@ -11,6 +11,7 @@
 #   make build BOARD=adafruit_feather_nrf52840  # Build for Feather
 #   make build APP_TYPE=usb2usb BOARD=adafruit_feather_nrf52840  # usb2usb
 #   make build APP_TYPE=btusb2usb BOARD=adafruit_feather_nrf52840  # btusb2usb
+#   make build APP_TYPE=usb2usb BOARD=nrf52840dk  # nRF52840-DK, flash via J-Link
 #   make flash-uf2         # Flash via UF2 bootloader drive
 #   make clean             # Remove build directory
 
@@ -21,10 +22,16 @@ APP_TYPE ?= bt2usb
 
 # Map JoypadOS board aliases -> actual Zephyr board. Overlay/conf are keyed off
 # the alias (BOARD), but west builds against ZEPHYR_BOARD. The April Brother
-# dongle is the upstream nrf52840dongle_nrf52840 board + a custom overlay.
+# dongle is the upstream nrf52840dongle_nrf52840 board + a custom overlay. The
+# nRF52840-DK is the upstream nrf52840dk/nrf52840 hardware-model-v2 target —
+# it has an onboard J-Link (no UF2 bootloader), so its overlay links the app
+# straight at flash 0x0 instead of a bootloader-offset partition.
 ZEPHYR_BOARD := $(BOARD)
 ifeq ($(BOARD),aprbrother_nrf52840)
     ZEPHYR_BOARD := nrf52840dongle_nrf52840
+endif
+ifeq ($(BOARD),nrf52840dk)
+    ZEPHYR_BOARD := nrf52840dk/nrf52840
 endif
 
 # Auto-detect NCS toolchain (adds west, cmake, python3, etc. to PATH)
@@ -33,9 +40,15 @@ ifneq ($(NCS_TOOLCHAIN),)
     export PATH := $(NCS_TOOLCHAIN):$(PATH)
 endif
 
-# Build with board-specific overlay and conf if they exist
+# Build with board-specific overlay and conf if they exist. Boards whose
+# board.cmake defines multiple SoC variants (e.g. nrf52840dk covers both
+# nrf52840 and nrf52811) require Zephyr's '<board>_<soc>.conf' naming for the
+# conf file, so try that before falling back to the plain '<board>.conf'.
 OVERLAY := $(wildcard $(shell pwd)/boards/$(BOARD).overlay)
-CONF := $(wildcard $(shell pwd)/boards/$(BOARD).conf)
+CONF := $(wildcard $(shell pwd)/boards/$(BOARD)_nrf52840.conf)
+ifeq ($(CONF),)
+    CONF := $(wildcard $(shell pwd)/boards/$(BOARD).conf)
+endif
 
 # App-specific extra conf (e.g., prj_usb2usb.conf)
 APP_CONF := $(wildcard $(shell pwd)/prj_$(APP_TYPE).conf)
