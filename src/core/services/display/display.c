@@ -154,7 +154,11 @@ static const uint8_t font_6x8[] = {
 static bool initialized = false;
 static uint8_t col_offset = 2;  // SH1106 default
 static bool rotated_panel = false;  // SH1107: 64x128 native panel rotated 90° to 128x64
-static bool async_mode = false;
+// Async by default: display_update() marks the framebuffer dirty and returns;
+// the platform main loop's display_task() pumps the transfer one page at a
+// time, so no single loop iteration blocks on a full-frame I2C/SPI transfer
+// (~tens of ms — long enough to visibly stall input polling).
+static bool async_mode = true;
 static volatile bool dirty = false;
 
 // Transport function pointers (set by display_spi_init or display_i2c_init)
@@ -443,6 +447,14 @@ void display_update(void) {
 
 void display_set_async(bool async) {
     async_mode = async;
+}
+
+// Main-loop pump: advances any pending incremental flush by one page per
+// call. No-op when the display is uninitialized or nothing is dirty. This
+// strong definition overrides the weak stub each platform main loop carries
+// for targets that don't compile the display service.
+void display_task(void) {
+    display_flush_step();
 }
 
 bool display_is_dirty(void) {
