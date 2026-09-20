@@ -437,6 +437,17 @@ bool usbd_set_mode(usb_output_mode_t mode)
     // CH32 settings buffer lives in a .noinit section (see flash_wch.c).
     printf("[usbd] Resetting device for re-enumeration...\n");
     flush_debug_output();
+
+    // Detach and dwell before resetting so the host fully tears down the old
+    // USB personality. macOS 26 otherwise keeps stale state for the previous
+    // device at this port and refuses to configure the new descriptor set
+    // (observed switching into CDC-only mode: it read every descriptor but
+    // never sent SET_CONFIGURATION; a cold plug worked). ~600 ms detached
+    // reads as a real unplug.
+#ifndef PLATFORM_CH32
+    tud_disconnect();
+    platform_sleep_ms(600);
+#endif
     platform_reboot();
 
     return true;  // Never reached
@@ -1918,12 +1929,12 @@ uint8_t const *tud_descriptor_configuration_cb(uint8_t index)
     (void)index;
     switch (output_mode) {
         case USB_OUTPUT_MODE_CDC:
-            // Reset-surviving breadcrumb (BT.TRACE on nRF): CDC-only mode
-            // fails to enumerate on some hosts (macOS 26 reads the config
-            // twice and never sends SET_CONFIGURATION — host-side issue,
-            // the descriptor is served correctly). The mark makes that
-            // diagnosis repeatable: 0xCFxx00LL = xx-th request this boot,
-            // LL = low byte of wTotalLength.
+            // Reset-surviving breadcrumb (BT.TRACE on nRF): when a fast
+            // persona-switch reboot leaves the host holding stale state,
+            // macOS 26 reads the config twice and never sends
+            // SET_CONFIGURATION (fixed by the detach-dwell in
+            // usbd_set_mode). The mark keeps that diagnosis repeatable:
+            // 0xCFxx00LL = xx-th request this boot, LL = wTotalLength low.
             {
                 static uint8_t cfg_req_count;
                 bt_diag_mark(0xCF000000u | ((uint32_t)cfg_req_count++ << 16) |
