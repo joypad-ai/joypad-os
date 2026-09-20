@@ -113,6 +113,34 @@ typedef enum {
     ANALOG_COUNT = 7,   // Number of standard analog axes
 } analog_axis_index_t;
 
+// ============================================================================
+// Field Validity Mask (per-event field ownership)
+// ============================================================================
+// Bitmask of which fields in input_event_t are "owned" by the producer of
+// this event. Lets asymmetric sources (e.g. a single Joy-Con that physically
+// has no right stick) submit events without their non-physical fill values
+// clobbering a partner device's data in MERGE_BLEND/MERGE_ALL.
+//
+// In MERGE_BLEND each blend device's stored event is re-blended into the
+// output, and only fields whose bit is set in valid_fields contribute.
+// In MERGE_ALL a non-zero valid_fields turns the overwrite into a partial
+// update that preserves the other fields from the current output state.
+//
+// 0 (the default) means "all fields valid" and preserves legacy behaviour
+// for full devices (Pro Controller, Xbox, PS, generic HID).
+#define INPUT_VALID_BUTTONS    (1u << 0)
+#define INPUT_VALID_LX         (1u << 1)
+#define INPUT_VALID_LY         (1u << 2)
+#define INPUT_VALID_RX         (1u << 3)
+#define INPUT_VALID_RY         (1u << 4)
+#define INPUT_VALID_L2         (1u << 5)
+#define INPUT_VALID_R2         (1u << 6)
+#define INPUT_VALID_RZ         (1u << 7)
+#define INPUT_VALID_L_STICK    (INPUT_VALID_LX | INPUT_VALID_LY)
+#define INPUT_VALID_R_STICK    (INPUT_VALID_RX | INPUT_VALID_RY)
+#define INPUT_VALID_TRIGGERS   (INPUT_VALID_L2 | INPUT_VALID_R2)
+#define INPUT_VALID_STICKS     (INPUT_VALID_L_STICK | INPUT_VALID_R_STICK)
+
 
 // ============================================================================
 // Unified Input Event Structure
@@ -152,9 +180,17 @@ typedef struct {
                                   // [1] = LY (Left stick Y)
                                   // [2] = RX (Right stick X)
                                   // [3] = RY (Right stick Y)
-                                  // [4] = L2 (Left trigger)
-                                  // [5] = R2 (Right trigger)
-                                  // [6] = RZ (Twist/spinner)
+                                   // [4] = L2 (Left trigger)
+                                   // [5] = R2 (Right trigger)
+                                   // [6] = RZ (Twist/spinner)
+
+    // Per-event field-ownership bitmask (INPUT_VALID_*). 0 = all fields
+    // valid (legacy default for "full" devices). When non-zero, the
+    // router only merges the fields whose bits are set; fields not
+    // owned by the producer are preserved from the current output state.
+    // See INPUT_VALID_* defines above.
+    uint32_t valid_fields;
+
 
     // Relative inputs (mouse, spinner, trackball)
     // delta_x/delta_y are int16 so high-resolution pointers (e.g. Augmental
@@ -271,6 +307,11 @@ static inline void init_input_event(input_event_t* event) {
 
     // Buttons are active-high (1 = pressed), so 0x00000000 = all released
     event->buttons = 0x00000000;
+
+    // Legacy default: all fields valid. Drivers that emit partial events
+    // (single Joy-Cons, asymmetric custom controllers) set this to a
+    // narrower mask so the router can preserve the rest.
+    event->valid_fields = 0;
 
     // Set analog axes to appropriate defaults:
     // - Sticks (0-3): centered at 128

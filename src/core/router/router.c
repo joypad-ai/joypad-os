@@ -345,6 +345,22 @@ typedef struct {
 // Per-output blend state (tracks each device's contribution)
 static blend_device_state_t blend_devices[MAX_OUTPUTS][MAX_BLEND_DEVICES];
 
+// Map an analog axis index to its INPUT_VALID_* bit. Returns 0 for indices
+// without a corresponding field in valid_fields, so the caller treats the
+// field as "always valid" by default.
+static inline uint32_t valid_field_bit_for_axis(int axis) {
+    switch (axis) {
+        case ANALOG_LX: return INPUT_VALID_LX;
+        case ANALOG_LY: return INPUT_VALID_LY;
+        case ANALOG_RX: return INPUT_VALID_RX;
+        case ANALOG_RY: return INPUT_VALID_RY;
+        case ANALOG_L2: return INPUT_VALID_L2;
+        case ANALOG_R2: return INPUT_VALID_R2;
+        case ANALOG_RZ: return INPUT_VALID_RZ;
+        default:       return 0;
+    }
+}
+
 // ============================================================================
 // ROUTING TABLE (Phase 6)
 // ============================================================================
@@ -871,8 +887,29 @@ static inline void router_merge_mode(const input_event_t* event, output_target_t
 
     switch (router_config.merge_mode) {
         case MERGE_ALL:
-            // Latest active input wins (overwrites previous state)
-            merged = *final_event;
+            // Latest active input wins (overwrites previous state).
+            // If the event carries a non-zero valid_fields mask, only
+            // update the fields it owns; fields not owned are preserved
+            // from the current output state. This lets a single Joy-Con
+            // submit events that only touch its physical stick while the
+            // other Joy-Con's data stays live. Reading current_state
+            // here is producer-core-safe (only Core 0 writes via
+            // router_publish), mirroring the MERGE_PRIORITY path below.
+            if (final_event->valid_fields != 0) {
+                merged = router_outputs[output][0].current_state;
+                if (final_event->valid_fields & INPUT_VALID_BUTTONS) {
+                    merged.buttons = final_event->buttons;
+                }
+                for (int j = 0; j < ANALOG_COUNT; j++) {
+                    uint32_t bit = valid_field_bit_for_axis(j);
+                    if (bit != 0 && (final_event->valid_fields & bit)) {
+                        merged.analog[j] = final_event->analog[j];
+                    }
+                }
+            } else {
+                // Legacy: full overwrite (every field treated as valid).
+                merged = *final_event;
+            }
             break;
 
         case MERGE_BLEND: {
@@ -977,6 +1014,19 @@ static inline void router_merge_mode(const input_event_t* event, output_target_t
                     // Analog: use furthest from center for sticks, max for triggers
                     // New format: [0]=LX, [1]=LY, [2]=RX, [3]=RY, [4]=L2, [5]=R2
                     for (int j = 0; j < ANALOG_COUNT; j++) {
+                        // Respect per-event field ownership. A single
+                        // Joy-Con L (valid_fields = buttons|LX|LY) must
+                        // not contribute to RX/RY — the Joy-Con reports
+                        // 0/4095 for its non-physical stick, which 12→8
+                        // scaling maps to 1/254 (max deflection), and
+                        // that would otherwise win the "furthest from
+                        // center" rule and pin the partner Joy-Con's
+                        // real stick data to a corner.
+                        uint32_t bit = valid_field_bit_for_axis(j);
+                        if (bit != 0 && dev->valid_fields != 0 &&
+                            !(dev->valid_fields & bit)) {
+                            continue;
+                        }
                         if (j >= ANALOG_L2) {
                             // Triggers (L2, R2): use max value
                             if (dev->analog[j] > x_current_state.analog[j]) {
