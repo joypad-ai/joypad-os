@@ -2118,6 +2118,16 @@ if (PICO_BOARD STREQUAL "pico_w" OR
         CONFIG_CONTROLLER_BTUSB=1
         CONFIG_USB=1
         CONFIG_PAD_INPUT=1
+        # RP2040 RAM squeeze (usb2dc pattern, see usb2dc_config.h): this build
+        # carries CYW43 + BTstack + PIO-USB host and sits at the edge of the
+        # 264KB budget — the shared-core growth from #270 tipped it over.
+        # A controller's single passthrough USB port doesn't need cascaded
+        # hubs or 10 devices; the dev_addr-indexed arrays (hid_devices,
+        # _xinputh_dev, per-driver prev_report) scale with these.
+        # Floor rule: MAX_DEVICES >= CFG_TUH_DEVICE_MAX + CFG_TUH_HUB + 1.
+        CFG_TUH_HUB=1
+        CFG_TUH_DEVICE_MAX=5
+        MAX_DEVICES=7
         USE_BOOTSEL_BUTTON=1
         CYW43_LWIP=0
         BTSTACK_USE_CYW43=1
