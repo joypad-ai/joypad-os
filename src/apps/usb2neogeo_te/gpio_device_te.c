@@ -1,6 +1,8 @@
 // gpio_device.c
 
 #include "gpio_device.h"
+#include <stdio.h>
+#include "platform/platform.h"
 #include "hardware/clocks.h"
 #include "hardware/gpio.h"
 #include "hardware/structs/iobank0.h"

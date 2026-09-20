@@ -425,19 +425,11 @@ set(SD_SOURCES
 
 set(COMMON_SOURCES ${CORE_SOURCES} ${USB_HOST_SOURCES})
 
-# TE-specific source list: replaces router.c and hid.c with TE versions
-# that add router_register_device() for immediate controller detection.
-# Kept separate to avoid modifying shared core files.
+# TE builds use the shared core sources — immediate-on-connect player
+# registration is an opt-in core feature (CONFIG_REGISTER_ON_CONNECT, see
+# hid.c / router_register_device) rather than forked router/hid copies,
+# so TE tracks core router fixes instead of freezing a snapshot (#175).
 set(TE_SOURCES ${COMMON_SOURCES})
-list(REMOVE_ITEM TE_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/core/router/router.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbh/hid/hid.c
-)
-list(APPEND TE_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2neogeo_te/router_te.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2neogeo_te/hid_te.c
-)
-
 
 # Common libraries for USB host apps
 set(COMMON_LIBRARIES pico_stdlib pico_multicore hardware_pio pico_rand tinyusb_host tinyusb_board xinput_host)
@@ -880,7 +872,7 @@ joypad_add_btstack(joypad_neogeo_retrofrog)
 # Stripped-down build: single default profile, consecutive remap only,
 # remap auto-clears on disconnect, no alt remap, no auto fire.
 add_executable(joypad_neogeo_te)
-target_compile_definitions(joypad_neogeo_te PRIVATE CONFIG_NEOGEO=1)
+target_compile_definitions(joypad_neogeo_te PRIVATE CONFIG_NEOGEO=1 CONFIG_REGISTER_ON_CONNECT=1)
 target_sources(joypad_neogeo_te PUBLIC ${TE_SOURCES}
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2neogeo_te/gpio_device_te.c
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2neogeo_te/app.c
@@ -899,6 +891,7 @@ joypad_add_btstack(joypad_neogeo_te)
 add_executable(joypad_neogeo_te_pico)
 target_compile_definitions(joypad_neogeo_te_pico PRIVATE
     CONFIG_NEOGEO=1
+    CONFIG_REGISTER_ON_CONNECT=1
     WS2812_PIN=25
     USE_BOOTSEL_BUTTON=1
     RPI_PICO_BUILD=1
@@ -921,6 +914,7 @@ joypad_add_btstack(joypad_neogeo_te_pico)
 add_executable(joypad_neogeo_te_rp2040zero)
 target_compile_definitions(joypad_neogeo_te_rp2040zero PRIVATE
     CONFIG_NEOGEO=1
+    CONFIG_REGISTER_ON_CONNECT=1
     PICO_RP2040_ZERO_BUILD=1
 )
 target_sources(joypad_neogeo_te_rp2040zero PUBLIC ${TE_SOURCES}

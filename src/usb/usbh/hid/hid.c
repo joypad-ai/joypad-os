@@ -2,6 +2,7 @@
 #include "tusb.h"
 #include <stdio.h>
 #include "core/buttons.h"
+#include "core/router/router.h"   // router_register_device (CONFIG_REGISTER_ON_CONNECT)
 #include "core/output_interface.h"
 #include "core/services/players/manager.h"
 #include "core/services/players/feedback.h"
@@ -251,6 +252,17 @@ void tuh_hid_mount_cb(uint8_t dev_addr, uint8_t instance, uint8_t const* desc_re
     }
   }
 
+#ifdef CONFIG_REGISTER_ON_CONNECT
+  // Tournament builds (usb2neogeo_te): register the device as a player
+  // immediately on connect — no button press needed, works for all
+  // controller types including digital-only sticks. Default apps keep
+  // press-to-join slot assignment.
+  router_register_device(dev_addr, instance, INPUT_TRANSPORT_USB,
+                         devices[dev_addr].product_name[0]
+                             ? devices[dev_addr].product_name
+                             : "USB Controller");
+#endif
+
   // request to receive report
   // tuh_hid_report_received_cb() will be invoked when report is available
   if ( !tuh_hid_receive_report(dev_addr, instance) )
@@ -444,4 +456,9 @@ void hid_set_product_name(uint8_t dev_addr, const char* name)
   if (dev_addr >= MAX_DEVICES || !name) return;
   strncpy(devices[dev_addr].product_name, name, PRODUCT_NAME_LEN - 1);
   devices[dev_addr].product_name[PRODUCT_NAME_LEN - 1] = '\0';
+#ifdef CONFIG_REGISTER_ON_CONNECT
+  // XInput controllers arrive through here rather than the HID mount path;
+  // register immediately so they don't need a button press either.
+  router_register_device(dev_addr, 0, INPUT_TRANSPORT_USB, name);
+#endif
 }

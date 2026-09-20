@@ -316,6 +316,12 @@ void router_reset_outputs(void);
 // Call this BEFORE removing the player from the player manager
 void router_device_disconnected(uint8_t dev_addr, int8_t instance);
 
+// Register a device as a player immediately on connect (no button press
+// needed). Used by builds that define CONFIG_REGISTER_ON_CONNECT (e.g. the
+// usb2neogeo_te tournament app); default apps keep press-to-join.
+void router_register_device(uint8_t dev_addr, uint8_t instance,
+                            input_transport_t transport, const char* name);
+
 // ============================================================================
 // OUTPUT TAP (Push-based notification)
 // ============================================================================

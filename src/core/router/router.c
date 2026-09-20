@@ -1999,6 +1999,26 @@ void router_reset_outputs(void) {
 }
 
 // Clean up router state when a device disconnects
+// Register a device as a player immediately on connect, without waiting for a
+// button press or analog activity. Opt-in (see CONFIG_REGISTER_ON_CONNECT in
+// hid.c): tournament builds (usb2neogeo_te) want a plugged pad to occupy its
+// slot instantly; the default apps keep press-to-join slot assignment.
+// Upstreamed from #175's router_te.c fork so the TE app tracks core router
+// fixes instead of freezing a copy.
+void router_register_device(uint8_t dev_addr, uint8_t instance,
+                            input_transport_t transport, const char* name)
+{
+    int8_t slot_inst = (int8_t)instance;
+    int player_index = find_player_index(dev_addr, slot_inst);
+    if (player_index < 0) {
+        player_index = add_player(dev_addr, slot_inst, transport, name);
+        if (player_index >= 0) {
+            printf(LOG_TAG "Player %d registered on connect: %s (dev_addr=%d)\n",
+                player_index + 1, name ? name : "Unknown", dev_addr);
+        }
+    }
+}
+
 void router_device_disconnected(uint8_t dev_addr, int8_t instance) {
     printf(LOG_TAG "Device disconnected: dev_addr=%d, instance=%d\n", dev_addr, instance);
 
