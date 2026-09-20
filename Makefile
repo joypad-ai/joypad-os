@@ -423,6 +423,10 @@ help:
 	@echo "  make flash-controller_btusb_feather_nrf52840 - Flash Feather nRF52840 controller_btusb via UF2"
 	@echo "  make controller_btusb_seeed_xiao_nrf52840 - Sensor/BLE -> USB HID (Seeed XIAO nRF52840 + JoyWing)"
 	@echo "  make flash-controller_btusb_seeed_xiao_nrf52840 - Flash Seeed XIAO nRF52840 controller_btusb via UF2"
+	@echo "  make bt2usb_makerdiary_nrf52840    - Bluetooth -> USB HID (Makerdiary MDK USB Dongle, requires NCS)"
+	@echo "  make flash-bt2usb_makerdiary_nrf52840 - Flash Makerdiary MDK dongle via UF2 bootloader"
+	@echo "  make controller_btusb_makerdiary_nrf52840 - GPIO/BLE -> USB HID (Makerdiary MDK USB Dongle)"
+	@echo "  make flash-controller_btusb_makerdiary_nrf52840 - Flash Makerdiary MDK controller_btusb via UF2"
 	@echo "  make bt2loopy_pico_w    - Bluetooth -> Loopy (Pico W)"
 	@echo "  make bt2nuon_pico_w     - Bluetooth -> Nuon (Pico W)"
 	@echo "  make bt2n64_pico_w      - Bluetooth -> N64 (Pico W)"
@@ -1061,6 +1065,49 @@ flash-bt2usb_aprbrother_nrf52840: bt2usb_aprbrother_nrf52840
 
 .PHONY: monitor-bt2usb_aprbrother_nrf52840
 monitor-bt2usb_aprbrother_nrf52840:
+	@cd nrf && $(MAKE) monitor
+
+# --- Makerdiary nRF52840 MDK USB Dongle bt2usb (requires nRF Connect SDK) ---
+# Compact RGB-LED dongle with a real USER button (P0.18). Ships a UF2
+# bootloader (UF2BOOT or MDK-DONGLE drive depending on bootloader build).
+.PHONY: bt2usb_makerdiary_nrf52840
+bt2usb_makerdiary_nrf52840:
+	@echo "$(YELLOW)Building bt2usb for Makerdiary nRF52840 MDK USB Dongle...$(NC)"
+	@cd nrf && $(MAKE) build BOARD=makerdiary_nrf52840
+	@mkdir -p $(RELEASE_DIR)
+	@cp nrf/build/nrf/zephyr/zephyr.uf2 \
+	    $(RELEASE_DIR)/joypad_$(VERSION_ID)_bt2usb_makerdiary_nrf52840.uf2
+	@echo "$(GREEN)✓ bt2usb_makerdiary_nrf52840 built successfully$(NC)"
+	@echo "  File: $(RELEASE_DIR)/joypad_$(VERSION_ID)_bt2usb_makerdiary_nrf52840.uf2"
+	@echo ""
+
+.PHONY: flash-bt2usb_makerdiary_nrf52840
+flash-bt2usb_makerdiary_nrf52840: bt2usb_makerdiary_nrf52840
+	@cd nrf && $(MAKE) flash-uf2
+	@echo ""
+
+.PHONY: monitor-bt2usb_makerdiary_nrf52840
+monitor-bt2usb_makerdiary_nrf52840:
+	@cd nrf && $(MAKE) monitor
+
+# --- Makerdiary nRF52840 MDK USB Dongle controller_btusb (GPIO pad + BLE + USB) ---
+.PHONY: controller_btusb_makerdiary_nrf52840
+controller_btusb_makerdiary_nrf52840:
+	@echo "$(YELLOW)Building controller_btusb for Makerdiary nRF52840 MDK USB Dongle...$(NC)"
+	@cd nrf && $(MAKE) build BOARD=makerdiary_nrf52840 APP_TYPE=controller_btusb
+	@mkdir -p $(RELEASE_DIR)
+	@cp nrf/build/nrf/zephyr/zephyr.uf2 \
+	    $(RELEASE_DIR)/joypad_$(VERSION_ID)_controller_btusb_makerdiary_nrf52840.uf2
+	@echo "$(GREEN)✓ controller_btusb_makerdiary_nrf52840 built successfully$(NC)"
+	@echo "  File: $(RELEASE_DIR)/joypad_$(VERSION_ID)_controller_btusb_makerdiary_nrf52840.uf2"
+	@echo ""
+
+.PHONY: flash-controller_btusb_makerdiary_nrf52840
+flash-controller_btusb_makerdiary_nrf52840: controller_btusb_makerdiary_nrf52840
+	@cd nrf && $(MAKE) flash-uf2
+
+.PHONY: monitor-controller_btusb_makerdiary_nrf52840
+monitor-controller_btusb_makerdiary_nrf52840:
 	@cd nrf && $(MAKE) monitor
 
 # --- April Brother nRF52840 Dongle MouthPad app (HID + NUS relay) ---

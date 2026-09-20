@@ -2,8 +2,9 @@
 //
 // Implements button.h using Zephyr GPIO. Active low with internal pull-up.
 //
-// XIAO nRF52840:   D1 = P0.03 on gpio0
+// XIAO nRF52840:    D1 = P0.03 on gpio0
 // Feather nRF52840: User switch = P1.02 on gpio1
+// Makerdiary MDK:   USER button = P0.18 on gpio0 (overlay drops gpio-as-nreset)
 
 #include "core/services/button/button.h"
 #include "platform/platform.h"
@@ -14,6 +15,10 @@
 #define BUTTON_PORT_LABEL DT_NODELABEL(gpio1)
 #define BUTTON_PIN 2   // P1.02 (User switch)
 #define BUTTON_PIN_STR "P1.02"
+#elif defined(BOARD_MAKERDIARY_NRF52840)
+#define BUTTON_PORT_LABEL DT_NODELABEL(gpio0)
+#define BUTTON_PIN 18  // P0.18 (onboard USER button)
+#define BUTTON_PIN_STR "P0.18"
 #else
 #define BUTTON_PORT_LABEL DT_NODELABEL(gpio0)
 #define BUTTON_PIN 3   // P0.03 (D1)

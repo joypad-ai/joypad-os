@@ -73,14 +73,17 @@ static void display_start_thread(void)
 
 void display_i2c_init(const display_i2c_config_t* config)
 {
+    // _OR_NULL so boards whose bus is disabled in devicetree (e.g. the April
+    // Brother dongle's i2c1 in newer Zephyr) still compile — display support
+    // then just reports not-ready at runtime.
 #ifdef BOARD_FEATHER_NRF52840
     // Feather I2C bus: i2c0 (SDA=P0.12, SCL=P0.11)
-    i2c_dev = DEVICE_DT_GET(DT_NODELABEL(i2c0));
+    i2c_dev = DEVICE_DT_GET_OR_NULL(DT_NODELABEL(i2c0));
 #else
     // XIAO I2C bus: i2c1 (SDA=P0.04, SCL=P0.05)
-    i2c_dev = DEVICE_DT_GET(DT_NODELABEL(i2c1));
+    i2c_dev = DEVICE_DT_GET_OR_NULL(DT_NODELABEL(i2c1));
 #endif
-    if (!device_is_ready(i2c_dev)) {
+    if (!i2c_dev || !device_is_ready(i2c_dev)) {
         printf("[display] I2C device not ready\n");
         return;
     }

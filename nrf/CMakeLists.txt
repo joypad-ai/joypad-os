@@ -1,6 +1,7 @@
 # Zephyr app CMakeLists for Joypad on nRF52840 boards
 #
-# Supported boards: xiao_ble (Seeed XIAO), adafruit_feather_nrf52840
+# Supported boards: xiao_ble (Seeed XIAO), adafruit_feather_nrf52840,
+#                   aprbrother_nrf52840, makerdiary_nrf52840 (MDK USB Dongle)
 # Supported apps:   bt2usb (default), usb2usb (with MAX3421E FeatherWing),
 #                   btusb2usb (MAX3421E + Bluetooth combined)
 #
@@ -800,6 +801,11 @@ elseif(BOARD MATCHES "nrf52840dongle")
     # board + boards/aprbrother_nrf52840.overlay (see nrf/Makefile alias).
     set(BOARD_DEFINE "BOARD_APRBROTHER_NRF52840=1")
     set(BOARD_NAME_STR "aprbrother_nrf52840")
+elseif(BOARD MATCHES "nrf52840_mdk_usb_dongle")
+    # Makerdiary MDK USB Dongle is built as the upstream nrf52840_mdk_usb_dongle
+    # board + boards/makerdiary_nrf52840.overlay (see nrf/Makefile alias).
+    set(BOARD_DEFINE "BOARD_MAKERDIARY_NRF52840=1")
+    set(BOARD_NAME_STR "makerdiary_nrf52840")
 else()
     set(BOARD_NAME_STR "xiao_ble")
 endif()

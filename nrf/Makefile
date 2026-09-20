@@ -1,6 +1,7 @@
 # Makefile for Joypad on nRF52840 boards (nRF Connect SDK / Zephyr)
 #
-# Supported boards: xiao_ble, adafruit_feather_nrf52840
+# Supported boards: xiao_ble, adafruit_feather_nrf52840, aprbrother_nrf52840,
+#                   makerdiary_nrf52840
 # Supported apps:   bt2usb (default), usb2usb (with MAX3421E FeatherWing),
 #                   btusb2usb (MAX3421E + Bluetooth combined),
 #                   controller_btusb (sensor input + BLE peripheral + USB)
@@ -24,7 +25,12 @@ APP_TYPE ?= bt2usb
 # dongle is the upstream nrf52840dongle_nrf52840 board + a custom overlay.
 ZEPHYR_BOARD := $(BOARD)
 ifeq ($(BOARD),aprbrother_nrf52840)
-    ZEPHYR_BOARD := nrf52840dongle_nrf52840
+    # Zephyr hw-model-v2 board name (was nrf52840dongle_nrf52840 pre-NCS 3.x)
+    ZEPHYR_BOARD := nrf52840dongle/nrf52840
+endif
+# Makerdiary MDK USB Dongle has a native Zephyr board definition.
+ifeq ($(BOARD),makerdiary_nrf52840)
+    ZEPHYR_BOARD := nrf52840_mdk_usb_dongle
 endif
 
 # Auto-detect NCS toolchain (adds west, cmake, python3, etc. to PATH)
@@ -85,7 +91,7 @@ flash-uf2:
 		echo "Error: No UF2 file found. Run 'make build' first."; \
 		exit 1; \
 	fi; \
-	for DRIVE in XIAO-SENSE NRF52BOOT FTHR840BOOT MDBT50QBOOT UF2BOOT; do \
+	for DRIVE in XIAO-SENSE NRF52BOOT FTHR840BOOT MDBT50QBOOT UF2BOOT MDK-DONGLE; do \
 		if [ -d "/Volumes/$$DRIVE" ]; then \
 			echo "Copying UF2 to /Volumes/$$DRIVE..."; \
 			cp "$$UF2" "/Volumes/$$DRIVE/"; \
@@ -95,7 +101,7 @@ flash-uf2:
 	done; \
 	echo "Error: No UF2 bootloader drive found."; \
 	echo "Enter bootloader mode (double-tap reset) and try again."; \
-	echo "Expected drives: XIAO-SENSE, NRF52BOOT, FTHR840BOOT, MDBT50QBOOT, UF2BOOT"; \
+	echo "Expected drives: XIAO-SENSE, NRF52BOOT, FTHR840BOOT, MDBT50QBOOT, UF2BOOT, MDK-DONGLE"; \
 	exit 1
 
 # Flash via J-Link debugger

@@ -22,9 +22,11 @@ platform_i2c_t platform_i2c_init(const platform_i2c_config_t* config)
     struct platform_i2c* bus = &i2c_buses[config->bus];
     if (bus->initialized) return bus;
 
-    // Get Zephyr I2C device (pins configured via devicetree)
+    // Get Zephyr I2C device (pins configured via devicetree). _OR_NULL so
+    // boards that leave a bus disabled in DT (e.g. Makerdiary MDK dongle has
+    // no i2c0) still compile — the bus just reports not-ready at runtime.
     if (config->bus == 0) {
-        bus->dev = DEVICE_DT_GET(DT_NODELABEL(i2c0));
+        bus->dev = DEVICE_DT_GET_OR_NULL(DT_NODELABEL(i2c0));
     } else {
         bus->dev = DEVICE_DT_GET_OR_NULL(DT_NODELABEL(i2c1));
     }

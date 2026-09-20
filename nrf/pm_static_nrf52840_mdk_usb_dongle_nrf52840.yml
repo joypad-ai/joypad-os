@@ -1,0 +1,28 @@
+# Static partition layout for Makerdiary nRF52840 MDK USB Dongle
+# with a UF2 bootloader (no SoftDevice; code at 0x1000).
+#
+# Works under BOTH bootloaders seen on this dongle:
+#  - stock Makerdiary uf2boot: app region 0x1000-0xF4000, bootloader at top
+#  - Adafruit nRF52 no-SD build (Augmental/MouthPad dongles, MDK-DONGLE drive)
+# Storage ends at 0xF4000 so NVS never touches bootloader flash.
+mbr:
+  address: 0x0
+  size: 0x1000
+  region: flash_primary
+app:
+  address: 0x1000
+  size: 0xe3000
+  region: flash_primary
+nvs_storage:
+  address: 0xe4000
+  size: 0x10000
+  region: flash_primary
+uf2_boot:
+  address: 0xf4000
+  size: 0xc000
+  region: flash_primary
+sram_primary:
+  address: 0x20000000
+  end_address: 0x20040000
+  region: sram_primary
+  size: 0x40000

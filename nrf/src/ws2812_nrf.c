@@ -1,8 +1,9 @@
 // ws2812_nrf.c - RGB LED driver for nRF52840 boards
 //
-// XIAO nRF52840:    3 discrete LEDs (R=P0.26, G=P0.30, B=P0.06), active LOW
-// Feather nRF52840:  WS2812 NeoPixel on P0.16 via PWM3 + EasyDMA
-//                    + discrete blue LED on P1.10 (fallback alive indicator)
+// XIAO nRF52840:      3 discrete LEDs (R=P0.26, G=P0.30, B=P0.06), active LOW
+// Makerdiary MDK:     3 discrete LEDs (R=P0.23, G=P0.22, B=P0.24), active LOW
+// Feather nRF52840:   WS2812 NeoPixel on P0.16 via PWM3 + EasyDMA
+//                     + discrete blue LED on P1.10 (fallback alive indicator)
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -169,6 +170,18 @@ static void blue_led_set(bool on)
         gpio_pin_set(gpio1_dev, BLUE_LED_PIN, on ? 1 : 0);
     }
 }
+
+#elif defined(BOARD_MAKERDIARY_NRF52840)
+
+// ============================================================================
+// Makerdiary MDK USB Dongle: Discrete RGB LED (R=P0.23, G=P0.22, B=P0.24),
+// active LOW — shares the XIAO discrete-LED code path below.
+// ============================================================================
+
+#define LED_RED_PIN   23  // P0.23
+#define LED_GREEN_PIN 22  // P0.22
+#define LED_BLUE_PIN  24  // P0.24
+#define LED_PORT_LABEL DT_NODELABEL(gpio0)
 
 #else
 

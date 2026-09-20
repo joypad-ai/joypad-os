@@ -1,0 +1,118 @@
+/* Joypad — Makerdiary nRF52840 MDK USB Dongle devicetree overlay
+ *
+ * Built as the upstream Zephyr board `nrf52840_mdk_usb_dongle` + this overlay
+ * (see nrf/Makefile ZEPHYR_BOARD mapping for BOARD=makerdiary_nrf52840).
+ *
+ * Bootloader: UF2 at MBR 0x0-0x1000, no SoftDevice, app at 0x1000 — either the
+ * stock Makerdiary "uf2boot" (drive UF2BOOT, app region 0x1000-0xF4000,
+ * family 0xADA52840) or the Adafruit nRF52 no-SD build Augmental ships on this
+ * dongle (drive MDK-DONGLE; see mouthpad-usb reference firmware). The layout
+ * below keeps storage below 0xF4000 so it is safe under BOTH bootloaders.
+ *
+ * TinyUSB drives USB hardware directly, so disable Zephyr's USBD node.
+ * Console -> uart0 (TX=P0.06, RX=P0.07 edge pads).
+ *
+ * RGB LED comes from the base board dts and is already correct for this
+ * hardware: Red=P0.23, Green=P0.22, Blue=P0.24, all active LOW.
+ */
+
+&usbd {
+	status = "disabled";
+};
+
+/ {
+	chosen {
+		zephyr,console = &uart0;
+		zephyr,shell-uart = &uart0;
+	};
+};
+
+/* Onboard USER button = P0.18. The base board programs UICR PSELRESET
+ * (gpio-as-nreset) which would turn it into a reset pin; drop that so it
+ * stays a plain GPIO button (the mouthpad-usb reference firmware ships this
+ * way in production — bootloader entry is hold-button-while-plugging). */
+&uicr {
+	/delete-property/ gpio-as-nreset;
+};
+
+/* i2c1 on exposed edge pads for an optional SSD1306 OLED. The shared display
+ * service compiles DT_NODELABEL(i2c1) on every non-Feather board, so the node
+ * must exist and be enabled. Internal pull-ups let the boot-time probe NAK
+ * cleanly (instead of wedging on floating lines) when nothing is attached. */
+&pinctrl {
+	i2c1_oled_default: i2c1_oled_default {
+		group1 {
+			psels = <NRF_PSEL(TWIM_SDA, 0, 4)>,
+				<NRF_PSEL(TWIM_SCL, 0, 5)>;
+			bias-pull-up;
+		};
+	};
+
+	i2c1_oled_sleep: i2c1_oled_sleep {
+		group1 {
+			psels = <NRF_PSEL(TWIM_SDA, 0, 4)>,
+				<NRF_PSEL(TWIM_SCL, 0, 5)>;
+			low-power-enable;
+		};
+	};
+};
+
+&i2c1 {
+	compatible = "nordic,nrf-twim";
+	status = "okay";
+	pinctrl-0 = <&i2c1_oled_default>;
+	pinctrl-1 = <&i2c1_oled_sleep>;
+	pinctrl-names = "default", "sleep";
+	clock-frequency = <400000>;
+};
+
+/* SAADC — platform_gpio_nrf.c compiles DT_NODELABEL(adc) whenever CONFIG_ADC
+ * is on (prj.conf), and the base board dts leaves the node disabled. AIN0-AIN3
+ * (P0.02-P0.05) are exposed edge pads, usable for analog sticks. */
+&adc {
+	status = "okay";
+};
+
+/* UF2 / no-SoftDevice flash layout (code at 0x1000). Base board dts uses
+ * MCUboot partitions (fstab-stock.dtsi) — replace them. */
+/delete-node/ &boot_partition;
+/delete-node/ &slot0_partition;
+/delete-node/ &slot1_partition;
+/delete-node/ &storage_partition;
+/delete-node/ &scratch_partition;
+
+&flash0 {
+	partitions {
+		compatible = "fixed-partitions";
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		/* MBR / UF2 bootloader entry at 0x0-0x1000 */
+		boot_partition: partition@0 {
+			label = "uf2_boot";
+			reg = <0x00000000 0x00001000>;
+		};
+
+		/* Application code starts immediately after the MBR */
+		code_partition: partition@1000 {
+			label = "code_partition";
+			reg = <0x00001000 0x000e3000>;
+		};
+
+		/* Settings/bonds storage (64 kB). Ends at 0xF4000: the stock
+		 * Makerdiary uf2boot's app region ends there (bootloader lives
+		 * at the top of flash), and the Adafruit-style no-SD build also
+		 * keeps 0xF4000+ for itself. */
+		storage_partition: partition@e4000 {
+			label = "storage";
+			reg = <0x000e4000 0x00010000>;
+		};
+	};
+};
+
+/ {
+	chosen {
+		zephyr,code-partition = &code_partition;
+		zephyr,settings-partition = &storage_partition;
+	};
+};

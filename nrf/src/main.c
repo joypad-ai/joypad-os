@@ -57,6 +57,10 @@ void k_sys_fatal_error_handler(unsigned int reason, const struct arch_esf *esf)
     // Blue LED on Feather = P1.10, active high
     NRF_P1->DIRSET = (1U << 10);
     NRF_P1->OUTSET = (1U << 10);  // LED on (active high)
+#elif defined(BOARD_MAKERDIARY_NRF52840)
+    // Blue LED on MDK dongle = P0.24, active low
+    NRF_P0->DIRSET = (1U << 24);
+    NRF_P0->OUTCLR = (1U << 24);  // LED on (active low)
 #else
     // Blue LED on XIAO BLE = P0.06, active low
     NRF_P0->DIRSET = (1U << 6);
@@ -227,6 +231,8 @@ int main(void)
     printf("[joypad] Starting usb2usb on Adafruit Feather nRF52840...\n");
 #elif defined(BOARD_FEATHER_NRF52840)
     printf("[joypad] Starting bt2usb on Adafruit Feather nRF52840...\n");
+#elif defined(BOARD_MAKERDIARY_NRF52840)
+    printf("[joypad] Starting bt2usb on Makerdiary nRF52840 MDK USB Dongle...\n");
 #else
     printf("[joypad] Starting bt2usb on Seeed XIAO nRF52840...\n");
 #endif
