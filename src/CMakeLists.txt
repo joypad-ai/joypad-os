@@ -3115,6 +3115,8 @@ target_sources(joypad_controller_btusb_feather_rp2040 PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/core/services/display/display.c
     ${CMAKE_CURRENT_SOURCE_DIR}/core/services/display/display_i2c.c
     ${CMAKE_CURRENT_SOURCE_DIR}/core/services/display/joy_anim.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/services/display/eyes_anim.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/services/display/menu.c
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/controller_btusb/app.c
 )
 target_include_directories(joypad_controller_btusb_feather_rp2040 PUBLIC
