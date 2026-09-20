@@ -49,6 +49,7 @@ typedef enum {
     INPUT_SOURCE_NATIVE_PSX,        // PS1/PS2 controller (bit-bang SIO)
     INPUT_SOURCE_NATIVE_PCE,        // PCEngine/TG-16 controller (bit-bang mux)
     INPUT_SOURCE_NATIVE_JAGUAR,     // Atari Jaguar controller (bit-bang matrix)
+    INPUT_SOURCE_NATIVE_24G,        // nRF24L01+ / SF30 2.4G wireless receiver
     INPUT_SOURCE_GPIO,
     INPUT_SOURCE_SENSORS,
     INPUT_SOURCE_I2C_PEER,

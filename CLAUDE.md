@@ -359,7 +359,13 @@ Console protocols use RP2040 PIO for precise timing:
 4. Key functions:
    - `<protocol>_host_init()` - Initialize PIO/GPIO
    - `<protocol>_host_task()` - Poll controller, submit to router
-   - Use `router_submit_input()` with dev_addr 0xD0+ range
+   - Use `router_submit_input()` with a dev_addr in the 0xB0+ range. The
+     0xD0-0xFF space is already fully carved into 16-wide sub-ranges by
+     existing drivers (0xD0 GC/UART, 0xE0 N64/3DO/PSX/Jaguar, 0xF0
+     NES/SNES/LodgeNet/PCE/arcade/JVS), and 0xC0 (Wii) and 0xB0 (24G) are
+     also claimed — grep `_DEV_ADDR` and `0x[A-F]0` in
+     `src/native/host/*/*.h` and `*.c` for the current assignments before
+     picking a new one
 
 5. Remember to invert Y-axis if protocol uses non-HID convention
 

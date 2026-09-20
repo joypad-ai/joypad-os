@@ -6,6 +6,15 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [Unreleased]
+
+### Added
+
+#### 24g2usb
+- **First radio input source: 8BitDo SF30 2.4G wireless receiver over nRF24L01+.** New `24g2usb` app drives an nRF24L01+ over SPI, impersonating the SF30 2.4G's OEM USB dongle closely enough that controllers pair and cold-link directly — no 8BitDo dongle needed. The receiver runs off the radio's IRQ line and a hardware alarm rather than the main polling loop, so other core-0 work (flash writes, LED updates) can't stall a dwell and drop a packet. Supports exactly one controller by design — USB output only ever surfaces a single player (same limitation `bt2usb` already carries), and two controllers hopping the same table at independent phase can starve each other's dwell indefinitely. Hold BOOTSEL ~1.5s to pair a controller. Boards: Pico 2 W, Pico W, Pico, Pico 2. See [24g2usb](docs/apps/24g2usb.md), [24G input](docs/input/24g.md), and the [24G protocol reference](docs/protocols/24g.md) (recovered by logic-analyser capture of the OEM dongle's SPI bus).
+
+---
+
 ## [2.4.1] — 2026-08-16
 
 Patch release. **Every adapter running 2.4.0 should update**: the universal profile hotkeys added in
