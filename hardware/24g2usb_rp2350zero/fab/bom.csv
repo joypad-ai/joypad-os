@@ -1,0 +1,5 @@
+Reference,Qty,Value,Footprint,Description,Notes
+J1,1,RP2350-Zero_Socket,hand-wound 2x9 2.54mm socket,"Female header socket, 2x9, 2.54mm pitch (e.g. two 1x9 strips)",Not on LCSC as one part -- use generic 2.54mm female header strip
+U1,1,nRF24L01_Mini_SMD_8P127,"nRF24L01+ mini SMD module, 1.27mm pitch","2.4GHz transceiver module, single-row castellated SMD",Hand-solder; JLCPCB does not stock this part
+C1,1,C_0805_Hand,10uF 0805 X5R/X7R,"Bulk decoupling, at U1's VCC/GND pads",
+C2,1,C_0805_Hand,100nF 0805 X7R,"HF decoupling, at U1's VCC/GND pads",

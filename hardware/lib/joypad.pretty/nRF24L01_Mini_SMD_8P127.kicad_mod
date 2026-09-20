@@ -1,0 +1,316 @@
+(footprint "nRF24L01_Mini_SMD_8P127"
+	(version 20241229)
+	(generator "pcbnew")
+	(generator_version "9.0")
+	(layer "F.Cu")
+	(descr "nRF24L01+ 'Mini SMD' module, single row of 8 castellated pads at 1.27mm pitch, 12x18mm body (also fits the 12x19mm Ebyte E01-ML01S). Pad order VCC(+3.3V), GND, CE, CSN, SCK, MOSI, MISO, IRQ. Geometry and pad order verified against the vendor dimension drawing for Sunrom model 3962 (https://www.sunrom.com/p/rf-module-2-4ghz-nrf24l01-smd), which gives 12x18mm, 1.27mm pitch, first pad centre 1.6mm from the edge (this footprint: 1.555mm -- 0.045mm inside a 0.95mm-wide pad, immaterial). Note these modules are NOT standardised between sellers: other vendors ship the same body with VCC/GND in different positions, so re-verify before using this footprint with a different source. Antenna end is -Y from the pad row -- keep that end, plus a small margin, completely free of copper (pour, tracks, vias).")
+	(property "Reference" "U1"
+		(at 0 4.95 0)
+		(layer "F.SilkS")
+		(uuid "1352b459-f187-4897-9000-2e5dd6a3a765")
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Value" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "3d0be0aa-aad0-40e2-b532-32abaa16550a")
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Datasheet" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "50f98cff-9438-415f-ada3-64a10e4bc4cb")
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Description" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "e4144204-f4b6-473f-bcbb-8acc84374ea6")
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.15)
+			)
+		)
+	)
+	(fp_line
+		(start -6 -16.75)
+		(end 6 -16.75)
+		(stroke
+			(width 0.1)
+			(type default)
+		)
+		(layer "F.Fab")
+		(uuid "3bf81ebd-e5a4-46fe-b42b-541fe9c49730")
+	)
+	(fp_line
+		(start -6 1.25)
+		(end -6 -16.75)
+		(stroke
+			(width 0.1)
+			(type default)
+		)
+		(layer "F.Fab")
+		(uuid "5b98663d-3335-45c1-ab13-57b1f1403309")
+	)
+	(fp_line
+		(start 6 -16.75)
+		(end 6 1.25)
+		(stroke
+			(width 0.1)
+			(type default)
+		)
+		(layer "F.Fab")
+		(uuid "829a3ebf-f6d7-4301-b07c-e079c8db9ee2")
+	)
+	(fp_line
+		(start 6 1.25)
+		(end -6 1.25)
+		(stroke
+			(width 0.1)
+			(type default)
+		)
+		(layer "F.Fab")
+		(uuid "4075f3ec-ac0e-472d-aa18-781124450f44")
+	)
+	(fp_text user "IRQ"
+		(at 4.445 2.95 90)
+		(layer "F.SilkS")
+		(uuid "08916e46-4623-42c1-8fe8-bf46daf93d36")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.15)
+			)
+		)
+	)
+	(fp_text user "MISO"
+		(at 3.175 2.95 90)
+		(layer "F.SilkS")
+		(uuid "4ca9b74b-e578-4d48-96b2-714e804aa521")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.15)
+			)
+		)
+	)
+	(fp_text user "MOSI"
+		(at 1.905 2.95 90)
+		(layer "F.SilkS")
+		(uuid "5649000a-5bee-40c1-8e2e-eeffec563690")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.15)
+			)
+		)
+	)
+	(fp_text user "CE"
+		(at -1.905 2.95 90)
+		(layer "F.SilkS")
+		(uuid "66da8d85-5dae-4491-b990-bae381093e34")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.15)
+			)
+		)
+	)
+	(fp_text user "GND"
+		(at -3.175 2.95 90)
+		(layer "F.SilkS")
+		(uuid "672338a3-9487-4977-a1cf-326e244e20d4")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.15)
+			)
+		)
+	)
+	(fp_text user "SCK"
+		(at 0.635 2.95 90)
+		(layer "F.SilkS")
+		(uuid "7ab3666e-d273-40c1-a3f4-fa4df4fe114b")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.15)
+			)
+		)
+	)
+	(fp_text user "VCC"
+		(at -4.445 2.95 90)
+		(layer "F.SilkS")
+		(uuid "829e8077-7e52-4676-b58b-2ca7170b30cd")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.15)
+			)
+		)
+	)
+	(fp_text user "CSN"
+		(at -0.635 2.95 90)
+		(layer "F.SilkS")
+		(uuid "bb865467-435a-4407-b3f1-515e740ceda3")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.15)
+			)
+		)
+	)
+	(fp_text user "U1 nRF24L01+"
+		(at 0 6.25 0)
+		(layer "F.SilkS")
+		(uuid "ef6a4fd1-a5d4-4857-a94d-37724e4026f3")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.15)
+			)
+		)
+	)
+	(pad "1" smd rect
+		(at -4.445 0)
+		(size 0.95 2.5)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(thermal_bridge_angle 45)
+		(uuid "ef78372c-17ac-4c8c-a9db-ca619fe52c69")
+	)
+	(pad "2" smd rect
+		(at -3.175 0)
+		(size 0.95 2.5)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(thermal_bridge_angle 45)
+		(uuid "00414cb9-825d-4616-b946-5e32b40256d2")
+	)
+	(pad "3" smd rect
+		(at -1.905 0)
+		(size 0.95 2.5)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(thermal_bridge_angle 45)
+		(uuid "4d12092c-ce24-40fb-a522-15e72679f46c")
+	)
+	(pad "4" smd rect
+		(at -0.635 0)
+		(size 0.95 2.5)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(thermal_bridge_angle 45)
+		(uuid "6ff315c2-e358-4dfc-90a8-7cc41479ad59")
+	)
+	(pad "5" smd rect
+		(at 0.635 0)
+		(size 0.95 2.5)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(thermal_bridge_angle 45)
+		(uuid "ec90df9b-a72b-4416-bfab-b5c2f9a89164")
+	)
+	(pad "6" smd rect
+		(at 1.905 0)
+		(size 0.95 2.5)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(thermal_bridge_angle 45)
+		(uuid "cdf43d8f-fbf7-48a7-9031-97fe947ba028")
+	)
+	(pad "7" smd rect
+		(at 3.175 0)
+		(size 0.95 2.5)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(thermal_bridge_angle 45)
+		(uuid "e44aade0-a853-4131-8f7a-fe914af3c6ed")
+	)
+	(pad "8" smd rect
+		(at 4.445 0)
+		(size 0.95 2.5)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(thermal_bridge_angle 45)
+		(uuid "d71771a9-65fb-42a8-9638-061480ab6305")
+	)
+	(zone
+		(net 0)
+		(net_name "")
+		(layers "F.Cu" "B.Cu")
+		(uuid "85dcf188-c91e-4b77-8b1d-c8be38b10689")
+		(name "U1_ANTENNA_KEEPOUT")
+		(hatch edge 0.5)
+		(connect_pads
+			(clearance 0)
+		)
+		(min_thickness 0.25)
+		(filled_areas_thickness no)
+		(keepout
+			(tracks not_allowed)
+			(vias not_allowed)
+			(pads allowed)
+			(copperpour not_allowed)
+			(footprints allowed)
+		)
+		(placement
+			(enabled no)
+			(sheetname "")
+		)
+		(fill
+			(thermal_gap 0.5)
+			(thermal_bridge_width 0.5)
+		)
+		(polygon
+			(pts
+				(xy -6.5 -17.25) (xy 6.5 -17.25) (xy 6.5 -8.75) (xy -6.5 -8.75)
+			)
+		)
+	)
+	(zone
+		(net 0)
+		(net_name "")
+		(layers "F.Cu" "B.Cu")
+		(uuid "e98dad50-dd6c-4e8f-964a-1e7d5a2b6100")
+		(name "U1_BODY_NOPOUR")
+		(hatch edge 0.5)
+		(connect_pads
+			(clearance 0)
+		)
+		(min_thickness 0.25)
+		(filled_areas_thickness no)
+		(keepout
+			(tracks allowed)
+			(vias allowed)
+			(pads allowed)
+			(copperpour not_allowed)
+			(footprints allowed)
+		)
+		(placement
+			(enabled no)
+			(sheetname "")
+		)
+		(fill
+			(thermal_gap 0.5)
+			(thermal_bridge_width 0.5)
+		)
+		(polygon
+			(pts
+				(xy -6.5 -8.75) (xy 6.5 -8.75) (xy 6.5 -1.25) (xy -6.5 -1.25)
+			)
+		)
+	)
+	(embedded_fonts no)
+)

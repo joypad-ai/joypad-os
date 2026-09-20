@@ -39,3 +39,13 @@ wch/toolchain/
 # DS5 Astro mode: local sound pack, never committed
 tools/ds5-scream/assets/astro_*
 src/bt/bthid/devices/vendors/sony/ds5_astro_assets.h
+
+# Hardware: regenerable KiCad output. The orderable gerber zip, the BOM, the
+# placement file and the 1:1 fit-check print are committed; everything else
+# (per-user editor state, DRC report, layer SVGs, 3D renders, and the loose
+# gerber files already inside the zip) is rebuilt by 'make -C hardware/<board> all'.
+hardware/*/*.kicad_prl
+hardware/*/fab/gerbers/
+hardware/*/fab/drc-report.json
+hardware/*/fab/*.svg
+hardware/*/fab/*-3d-*.png

@@ -61,6 +61,7 @@ BOARD_SCRIPT_feather_usbhost := boards/build_ada_feather_usbhost.sh
 BOARD_SCRIPT_feather := boards/build_ada_feather.sh
 BOARD_SCRIPT_macropad := boards/build_ada_macropad.sh
 BOARD_SCRIPT_rp2350usba := boards/build_waveshare_rp2350_usb_a.sh
+BOARD_SCRIPT_rp2350zero := boards/build_waveshare_rp2350_zero.sh
 BOARD_SCRIPT_rp2040_eth := boards/build_waveshare_rp2040_eth.sh
 BOARD_SCRIPT_waveshare_rp2350b_plus_w := boards/build_waveshare_rp2350b_plus_w.sh
 
@@ -236,6 +237,7 @@ APP_24g2usb_pico2_w := pico2_w 24g2usb 24g2usb_pico2_w 24G USB
 APP_24g2usb_pico_w := pico_w 24g2usb 24g2usb_pico_w 24G USB
 APP_24g2usb_pico := pico 24g2usb 24g2usb_pico 24G USB
 APP_24g2usb_pico2 := pico2 24g2usb 24g2usb_pico2 24G USB
+APP_24g2usb_rp2350zero := rp2350zero 24g2usb 24g2usb_rp2350zero 24G USB
 APP_lodgenet2usb_pico := pico lodgenet2usb lodgenet2usb_pico LodgeNet USB
 APP_lodgenet2usb_pico2 := pico2 lodgenet2usb lodgenet2usb_pico2 LodgeNet USB
 APP_lodgenet2n64_pico := pico lodgenet2n64 lodgenet2n64_pico LodgeNet N64
@@ -320,6 +322,7 @@ APPS += 24g2usb_pico2_w
 APPS += 24g2usb_pico_w
 APPS += 24g2usb_pico
 APPS += 24g2usb_pico2
+APPS += 24g2usb_rp2350zero
 APPS := $(strip $(APPS))
 
 # Stable apps for release
@@ -458,6 +461,7 @@ help:
 	@echo "  make 24g2usb_pico_w      - SF30 2.4G -> USB HID (Pico W)"
 	@echo "  make 24g2usb_pico        - SF30 2.4G -> USB HID (Pico)"
 	@echo "  make 24g2usb_pico2       - SF30 2.4G -> USB HID (Pico 2)"
+	@echo "  make 24g2usb_rp2350zero  - SF30 2.4G -> USB HID (Waveshare RP2350-Zero)"
 	@echo "  make lodgenet2usb_pico   - LodgeNet -> USB HID (Pico)"
 	@echo "  make lodgenet2usb_pico2  - LodgeNet -> USB HID (Pico 2)"
 	@echo "  make lodgenet2n64_pico   - LodgeNet -> N64 (Pico)"
@@ -1398,6 +1402,10 @@ jag2usb_pico_w:
 24g2usb_pico2:
 	$(call build_app,24g2usb_pico2)
 
+.PHONY: 24g2usb_rp2350zero
+24g2usb_rp2350zero:
+	$(call build_app,24g2usb_rp2350zero)
+
 .PHONY: lodgenet2usb_pico
 lodgenet2usb_pico:
 	$(call build_app,lodgenet2usb_pico)
@@ -1859,6 +1867,10 @@ flash-24g2usb_pico:
 .PHONY: flash-24g2usb_pico2
 flash-24g2usb_pico2:
 	@$(MAKE) --no-print-directory _flash_app APP_NAME=24g2usb_pico2
+
+.PHONY: flash-24g2usb_rp2350zero
+flash-24g2usb_rp2350zero:
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=24g2usb_rp2350zero
 
 .PHONY: flash-lodgenet2usb_pico
 flash-lodgenet2usb_pico:

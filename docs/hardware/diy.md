@@ -11,6 +11,7 @@ Pick a guide for your target adapter — these walk through parts, wiring tables
 - [N64 → Dreamcast (KB2040)](builds/n642dc-kb2040.md)
 - [Bluetooth → USB (Pico W)](builds/bt2usb-pico-w.md)
 - [LodgeNet → USB (Pico)](builds/lodgenet2usb-pico.md)
+- [8BitDo SF30 2.4G → USB (Waveshare RP2350-Zero)](builds/24g2usb-rp2350zero.md)
 
 For an adapter not listed above, use the general wiring guide and console-specific pinouts below — every Joypad adapter follows the same pattern: USB host on GPIO 16/17 (or onboard), plus the console-specific output pins.
 

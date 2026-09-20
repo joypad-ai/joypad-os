@@ -1,0 +1,4 @@
+(fp_lib_table
+  (version 7)
+  (lib (name "joypad")(type "KiCad")(uri "${KIPRJMOD}/../lib/joypad.pretty")(options "")(descr "Shared 24g2usb footprints"))
+)

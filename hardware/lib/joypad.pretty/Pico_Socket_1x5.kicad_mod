@@ -1,0 +1,174 @@
+(footprint "Pico_Socket_1x5"
+	(version 20241229)
+	(generator "pcbnew")
+	(generator_version "9.0")
+	(layer "F.Cu")
+	(descr "1x5 THT socket, 2.54mm pitch, pins 40-36 of a Raspberry Pi Pico-family board (VBUS, VSYS, GND, 3V3_EN, 3V3(OUT)) -- reaches 3V3 and a second GND, plus mechanical support at the USB end. Pin 40 (VBUS, unused) is square.")
+	(property "Reference" "J3"
+		(at -2.5 -2 0)
+		(layer "F.SilkS")
+		(uuid "e4a54ea7-e712-43e6-9554-83f479fcdec4")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.13)
+			)
+		)
+	)
+	(property "Value" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "0e7ecded-24bf-4d8a-9b0e-e40f7e928972")
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Datasheet" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "678e8980-3c0f-4e23-b76e-a1b05b314ba5")
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Description" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "8a4fc05f-03bc-49c2-9ce8-67152551c467")
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.15)
+			)
+		)
+	)
+	(fp_text user "1"
+		(at 0 -1.6 0)
+		(layer "F.SilkS")
+		(uuid "0c31a3a9-2ecc-453d-9d84-e681d8bf010a")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.15)
+			)
+		)
+	)
+	(fp_text user "EN"
+		(at -1.7 7.62 90)
+		(layer "F.SilkS")
+		(uuid "2062094f-add4-47f0-93af-42a1b72bc9b5")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.15)
+			)
+		)
+	)
+	(fp_text user "GN"
+		(at -1.7 5.08 90)
+		(layer "F.SilkS")
+		(uuid "8ae61213-cdb9-4a31-a0d7-4fa5f46c11c0")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.15)
+			)
+		)
+	)
+	(fp_text user "VS"
+		(at -1.7 2.54 90)
+		(layer "F.SilkS")
+		(uuid "8b72bdac-ad46-4e84-984b-1219a90d7cb7")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.15)
+			)
+		)
+	)
+	(fp_text user "3V"
+		(at -1.7 10.16 90)
+		(layer "F.SilkS")
+		(uuid "a0aca8ad-c111-4cfd-a853-d7989808decf")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.15)
+			)
+		)
+	)
+	(fp_text user "VB"
+		(at -1.7 0 90)
+		(layer "F.SilkS")
+		(uuid "d1b12d26-c785-48de-a987-908800875a15")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.15)
+			)
+		)
+	)
+	(fp_text user "1"
+		(at 0 -1.6 0)
+		(layer "B.SilkS")
+		(uuid "b607e5bd-d528-420f-9dd7-c2339e9e8c7e")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.15)
+			)
+			(justify mirror)
+		)
+	)
+	(pad "1" thru_hole rect
+		(at 0 0)
+		(size 1.7 1.7)
+		(drill 1.02)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(thermal_bridge_angle 45)
+		(uuid "75ca3f07-4c15-4d42-ad3f-416014345891")
+	)
+	(pad "2" thru_hole circle
+		(at 0 2.54)
+		(size 1.7 1.7)
+		(drill 1.02)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(uuid "19c90b57-c381-4401-83b1-159eccd9dfa3")
+	)
+	(pad "3" thru_hole circle
+		(at 0 5.08)
+		(size 1.7 1.7)
+		(drill 1.02)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(uuid "ba1ccfe6-4fc8-4e7a-9bd3-963415712b7a")
+	)
+	(pad "4" thru_hole circle
+		(at 0 7.62)
+		(size 1.7 1.7)
+		(drill 1.02)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(uuid "e1449c05-b207-42c5-9feb-bae4fb101d06")
+	)
+	(pad "5" thru_hole circle
+		(at 0 10.16)
+		(size 1.7 1.7)
+		(drill 1.02)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(uuid "f4e8214b-4ecc-47ce-9f4d-71a2e4e24e0a")
+	)
+	(embedded_fonts no)
+)

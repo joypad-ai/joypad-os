@@ -33,6 +33,10 @@ the driver, not SPI peripheral functions.
 GPIO 4 and GPIO 7 are not interchangeable: on RP2040/RP2350, GPIO 7 is the fixed
 `spi0` TX function and GPIO 4 is `spi0` RX, so MOSI must be on 7 and CE on 4.
 
+The same GPIO assignments apply to the Waveshare RP2350-Zero -- all six radio
+signals (MISO, CE, CSN, SCK, MOSI, IRQ) sit on its right header column, with
+3V3/GND on the left. See [24g2usb-rp2350zero carrier PCB build guide](../hardware/builds/24g2usb-rp2350zero.md).
+
 ## Core Configuration
 
 | Setting | Value |
@@ -68,6 +72,7 @@ The receiver supports exactly one paired controller, matched by `MAX_PLAYER_SLOT
 | Pico W | `make 24g2usb_pico_w` |
 | Pico | `make 24g2usb_pico` |
 | Pico 2 | `make 24g2usb_pico2` |
+| Waveshare RP2350-Zero | `make 24g2usb_rp2350zero` |
 
 No CYW43 or BTstack needed -- these boards are used only for their onboard LED / form factor.
 

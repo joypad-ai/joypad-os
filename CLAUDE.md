@@ -45,6 +45,7 @@ make n642usb_kb2040    # N64 → USB HID
 make gc2usb_kb2040     # GameCube → USB HID
 make lodgenet2usb_pico # LodgeNet → USB HID (Pico)
 make lodgenet2usb_pico2 # LodgeNet → USB HID (Pico 2)
+make 24g2usb_rp2350zero # 8BitDo SF30 2.4G → USB HID (RP2350-Zero, needs nRF24L01+)
 make n642dc_kb2040     # N64 → Dreamcast
 make bt2usb_pico_w     # BT-only → USB HID (Pico W)
 make bt2usb_xiao_esp32s3    # BLE-only → USB HID (ESP32-S3, requires ESP-IDF)
@@ -100,6 +101,7 @@ Output: `releases/joypad_<commit>_<app>_<board>.uf2`
 | `n642usb` | KB2040 | N64 | USB HID |
 | `gc2usb` | KB2040/RP2040-Zero/Pico | GameCube | USB HID |
 | `lodgenet2usb` | Pico/Pico 2 | LodgeNet (N64/GC/SNES) | USB HID |
+| `24g2usb` | Pico/Pico W/Pico 2/Pico 2 W/RP2350-Zero | 8BitDo SF30 2.4G (nRF24L01+) | USB HID |
 | `n642dc` | KB2040 | N64 | Dreamcast |
 | `snes23do` | RP2040-Zero | SNES | 3DO |
 | `usb2uart` | KB2040 | USB | UART/ESP32 |
@@ -211,7 +213,21 @@ nrf/                                # nRF Connect SDK build directory (nRF52840)
     ├── ws2812_nrf.c                # NeoPixel stub
     ├── btstack_config.h            # BLE-only BTstack config wrapper
     └── tusb_config_nrf.h           # nRF5x TinyUSB config
+hardware/                           # KiCad PCB designs (adapter carrier boards)
+├── generate.py                     # Emits each board from a net/component table
+├── doc_images.py                   # Assembly + schematic figures into docs/images/
+├── lib/joypad.pretty/              # Shared custom footprints (modules, sockets)
+└── <app>_<board>/                  # One directory per board variant
+    ├── Makefile                    # KiCad 9 via Docker: generate/drc/gerbers/zip
+    ├── <name>.kicad_pcb            # Generated -- edit generate.py, not this
+    └── fab/                        # Orderable gerber zip, BOM, 1:1 fit-check PDF
 ```
+
+Boards are generated, never hand-drawn: `generate.py` asserts the netlist against the app's
+wiring table before writing, so a board cannot silently disagree with the firmware's pin
+assignments. Regenerable output (loose gerbers, DRC report, SVGs, 3D renders) is gitignored;
+the gerber zip, BOM, placement file and fit-check print are committed so a board can be
+ordered without installing KiCad.
 
 ### Data Flow
 

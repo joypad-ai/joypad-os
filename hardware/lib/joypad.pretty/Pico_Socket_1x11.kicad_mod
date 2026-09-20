@@ -1,0 +1,288 @@
+(footprint "Pico_Socket_1x11"
+	(version 20241229)
+	(generator "pcbnew")
+	(generator_version "9.0")
+	(layer "F.Cu")
+	(descr "1x11 THT socket, 2.54mm pitch, pins 1-11 of a Raspberry Pi Pico-family board (GP0..GP8 plus two GND), plugged in from above with male headers soldered to it. Pin 1 (GP0) is square.")
+	(property "Reference" "J1"
+		(at 2.5 -2 0)
+		(layer "F.SilkS")
+		(uuid "c74ff8c7-5fa4-41db-8fc3-94a12f03562a")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.13)
+			)
+		)
+	)
+	(property "Value" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "b2c41dfb-6e87-482c-8005-d663421c1558")
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Datasheet" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "18e2233e-a690-449f-96da-10b48e954117")
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Description" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "925f5b07-f680-47d1-9a3a-e41fbd0c9a29")
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.15)
+			)
+		)
+	)
+	(fp_text user "GND"
+		(at 1.7 5.08 90)
+		(layer "F.SilkS")
+		(uuid "144787b5-2106-4bbf-bb59-e0e4fae3ba91")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.15)
+			)
+		)
+	)
+	(fp_text user "GP2"
+		(at 1.7 7.62 90)
+		(layer "F.SilkS")
+		(uuid "257b4174-616d-4061-93db-5b2e3f6ac83f")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.15)
+			)
+		)
+	)
+	(fp_text user "GP8"
+		(at 1.7 25.4 90)
+		(layer "F.SilkS")
+		(uuid "36807376-a653-489b-b5c0-c36236cb1217")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.15)
+			)
+		)
+	)
+	(fp_text user "GP5"
+		(at 1.7 15.24 90)
+		(layer "F.SilkS")
+		(uuid "39c4f31b-6233-4f5a-a916-62cb011576f2")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.15)
+			)
+		)
+	)
+	(fp_text user "GP6"
+		(at 1.7 20.32 90)
+		(layer "F.SilkS")
+		(uuid "615bed99-3a2f-4bac-af42-7726705b6890")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.15)
+			)
+		)
+	)
+	(fp_text user "GP4"
+		(at 1.7 12.7 90)
+		(layer "F.SilkS")
+		(uuid "937747a8-9819-4b58-9454-73a79d18e39c")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.15)
+			)
+		)
+	)
+	(fp_text user "GP0"
+		(at 1.7 0 90)
+		(layer "F.SilkS")
+		(uuid "9ced1f3d-0f80-44ab-be67-4eab99355e41")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.15)
+			)
+		)
+	)
+	(fp_text user "GP7"
+		(at 1.7 22.86 90)
+		(layer "F.SilkS")
+		(uuid "a01a9eaf-41f7-46f8-9b31-cc0ca4e0c67d")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.15)
+			)
+		)
+	)
+	(fp_text user "GND"
+		(at 1.7 17.78 90)
+		(layer "F.SilkS")
+		(uuid "c248932e-7660-4c36-a2ae-49ef27ab869d")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.15)
+			)
+		)
+	)
+	(fp_text user "GP1"
+		(at 1.7 2.54 90)
+		(layer "F.SilkS")
+		(uuid "d884cf6d-5e69-4c81-8a11-81ffb80df3ff")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.15)
+			)
+		)
+	)
+	(fp_text user "1"
+		(at 0 -1.6 0)
+		(layer "F.SilkS")
+		(uuid "dad008e7-49b9-47bd-8d79-24c553686b5c")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.15)
+			)
+		)
+	)
+	(fp_text user "GP3"
+		(at 1.7 10.16 90)
+		(layer "F.SilkS")
+		(uuid "edefae8f-1e4a-472a-abd0-af20a4298e75")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.15)
+			)
+		)
+	)
+	(fp_text user "1"
+		(at 0 -1.6 0)
+		(layer "B.SilkS")
+		(uuid "e4eae200-7f8c-4092-ba98-0861ea080b41")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.15)
+			)
+			(justify mirror)
+		)
+	)
+	(pad "1" thru_hole rect
+		(at 0 0)
+		(size 1.7 1.7)
+		(drill 1.02)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(thermal_bridge_angle 45)
+		(uuid "a323ed33-db24-4626-83d0-4349bdef1f02")
+	)
+	(pad "2" thru_hole circle
+		(at 0 2.54)
+		(size 1.7 1.7)
+		(drill 1.02)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(uuid "406bc673-0e40-4f20-9e11-c9c71e4a3334")
+	)
+	(pad "3" thru_hole circle
+		(at 0 5.08)
+		(size 1.7 1.7)
+		(drill 1.02)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(uuid "5e4d07fe-e56f-4294-97af-1593b0ea6fc9")
+	)
+	(pad "4" thru_hole circle
+		(at 0 7.62)
+		(size 1.7 1.7)
+		(drill 1.02)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(uuid "647a7fc8-393e-4cad-a134-fcfae6de626b")
+	)
+	(pad "5" thru_hole circle
+		(at 0 10.16)
+		(size 1.7 1.7)
+		(drill 1.02)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(uuid "c72dec9b-b74f-4116-b53c-611b3e52e10e")
+	)
+	(pad "6" thru_hole circle
+		(at 0 12.7)
+		(size 1.7 1.7)
+		(drill 1.02)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(uuid "b8f25e7e-c0df-464b-a438-18e8dd21f76d")
+	)
+	(pad "7" thru_hole circle
+		(at 0 15.24)
+		(size 1.7 1.7)
+		(drill 1.02)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(uuid "a6775153-e4e7-4272-9576-32756c23cf1b")
+	)
+	(pad "8" thru_hole circle
+		(at 0 17.78)
+		(size 1.7 1.7)
+		(drill 1.02)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(uuid "1972d9bb-d0ba-402e-a194-fe617360a3f3")
+	)
+	(pad "9" thru_hole circle
+		(at 0 20.32)
+		(size 1.7 1.7)
+		(drill 1.02)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(uuid "b3b73dfc-aa85-41af-bc6e-82df8bbd1f8f")
+	)
+	(pad "10" thru_hole circle
+		(at 0 22.86)
+		(size 1.7 1.7)
+		(drill 1.02)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(uuid "6a70c29e-a3ee-49e0-b733-0ea85771737b")
+	)
+	(pad "11" thru_hole circle
+		(at 0 25.4)
+		(size 1.7 1.7)
+		(drill 1.02)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(uuid "5843f391-c163-4c84-9c23-ccbde24b0fb8")
+	)
+	(embedded_fonts no)
+)
