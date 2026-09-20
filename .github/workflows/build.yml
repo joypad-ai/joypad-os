@@ -21,10 +21,19 @@ on:
           - minor
           - major
 
+# One in-flight run per PR — a new push supersedes the previous build. Non-PR
+# runs fall through to run_id, which is unique per run, so pushes to main and
+# release dispatches are never queued behind or cancelled by anything.
+concurrency:
+  group: build-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   # Build RP2040/RP2350 apps in parallel using matrix (Docker + pico-sdk)
   build-rpi:
     needs: check-version
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -146,6 +155,8 @@ jobs:
   build-esp:
     name: build-esp (${{ matrix.app }})
     needs: check-version
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -212,6 +223,8 @@ jobs:
   build-nrf:
     name: build-nrf (${{ matrix.app }})
     needs: check-version
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
