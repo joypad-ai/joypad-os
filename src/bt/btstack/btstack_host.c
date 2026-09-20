@@ -5523,27 +5523,10 @@ static void hid_host_packet_handler(uint8_t packet_type, uint16_t channel, uint8
             if (conn) {
                 conn->hid_ready = true;
 
-                // PnP (Device ID) SDP query for the hid_host path.
-                //
-                // The only other call site is gated on
-                //     classic_state.pending_hid_connect && wiimote_conn.active
-                // i.e. the direct-L2CAP path, so a pad that comes up through
-                // HID Host is never queried and product_id stays 0. The
-                // remote-name handler then fills in vendor_id from the name
-                // profile default while bt_device_wiimote_pid_from_name()
-                // returns 0 for non-Wiimotes, leaving 054C:0000 for a
-                // DualSense -- which ds5_match() rejects, so the looser
-                // ds4_match() claims it and the pad produces no input.
-                if (conn->product_id == 0) {
-                    memcpy(classic_state.pending_addr, conn->addr, 6);
-                    classic_state.pending_vid = 0;
-                    classic_state.pending_pid = 0;
-                    uint8_t sdp_rc = sdp_client_query_uuid16(
-                        &sdp_query_vid_pid_callback, conn->addr,
-                        BLUETOOTH_SERVICE_CLASS_PNP_INFORMATION);
-                    printf("[BTSTACK_HOST] PnP SDP query for '%s': status=0x%02X\n",
-                           conn->name, sdp_rc);
-                }
+                // PnP (Device ID) SDP query happens at
+                // HID_SUBEVENT_DESCRIPTOR_AVAILABLE, not here: BTstack's
+                // internal HID descriptor SDP query may still be in flight at
+                // CONNECTION_OPENED and the SDP client is single-instance.
 
                 // Check if this is a direct-L2CAP device by profile or name
                 bool is_direct_l2cap = (conn->profile &&
@@ -5676,10 +5659,14 @@ static void hid_host_packet_handler(uint8_t packet_type, uint16_t channel, uint8
                 printf("[BTSTACK_HOST] Calling bt_on_hid_ready(%d)\n", conn_index);
                 bt_on_hid_ready(conn_index);
 
-                // Query VID/PID via SDP if not yet known (deferred from CONNECTION_OPENED
-                // to avoid conflicting with BTstack's internal HID descriptor SDP query)
+                // Query VID/PID via SDP if the PID is not yet known (deferred from
+                // CONNECTION_OPENED to avoid conflicting with BTstack's internal HID
+                // descriptor SDP query). Gate on product_id alone: the remote-name
+                // handler pre-fills vendor_id from the name-profile default (e.g.
+                // "Wireless Controller" -> 054C), and 054C:0000 is exactly the
+                // half-known state that let ds4_match() claim a DualSense (#263).
                 classic_connection_t* desc_conn = find_classic_connection_by_cid(hid_cid);
-                if (desc_conn && desc_conn->vendor_id == 0 && desc_conn->product_id == 0) {
+                if (desc_conn && desc_conn->product_id == 0) {
                     memcpy(classic_state.pending_addr, desc_conn->addr, 6);
                     classic_state.pending_vid = 0;
                     classic_state.pending_pid = 0;
