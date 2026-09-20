@@ -94,7 +94,7 @@ flash-uf2:
 	for DRIVE in XIAO-SENSE NRF52BOOT FTHR840BOOT MDBT50QBOOT UF2BOOT MDK-DONGLE; do \
 		if [ -d "/Volumes/$$DRIVE" ]; then \
 			echo "Copying UF2 to /Volumes/$$DRIVE..."; \
-			cp "$$UF2" "/Volumes/$$DRIVE/"; \
+			cp -X "$$UF2" "/Volumes/$$DRIVE/"; \
 			echo "Flash complete! Device will reset automatically."; \
 			exit 0; \
 		fi; \

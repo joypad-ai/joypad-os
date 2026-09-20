@@ -56,16 +56,31 @@ __noinit static uint32_t fault_crumb_reason;
 __noinit static uint32_t fault_crumb_pc;
 __noinit static uint32_t fault_crumb_lr;
 
+// RAM copy for this boot: the noinit magic is consumed (cleared) at boot so
+// safe boot applies only to the single boot right after a fault, but the
+// crumb keeps re-printing all uptime — printf only reaches CDC once the log
+// redirect is installed and a client connects.
+static bool     crumb_present = false;
+static uint32_t crumb_reason, crumb_pc, crumb_lr;
+
+// Returns true if the previous boot faulted (call once, at boot).
+static bool fault_crumb_consume(void)
+{
+    if (fault_crumb_magic == FAULT_CRUMB_MAGIC) {
+        crumb_present = true;
+        crumb_reason = fault_crumb_reason;
+        crumb_pc = fault_crumb_pc;
+        crumb_lr = fault_crumb_lr;
+    }
+    fault_crumb_magic = 0;
+    return crumb_present;
+}
+
 static void fault_crumb_report(void)
 {
-    // Deliberately does NOT clear the magic: printf only reaches CDC once the
-    // log redirect is installed (app_init) and a client connects, so the main
-    // loop re-prints this periodically. Cleared only by the next fault or a
-    // power cycle (noinit RAM keeps it across soft resets).
-    if (fault_crumb_magic == FAULT_CRUMB_MAGIC) {
+    if (crumb_present) {
         printf("[fault] PREVIOUS BOOT FAULTED: reason=%u pc=0x%08x lr=0x%08x\n",
-               (unsigned)fault_crumb_reason, (unsigned)fault_crumb_pc,
-               (unsigned)fault_crumb_lr);
+               (unsigned)crumb_reason, (unsigned)crumb_pc, (unsigned)crumb_lr);
     }
 }
 
@@ -263,11 +278,20 @@ int main(void)
     printf("[joypad] Starting bt2usb on Seeed XIAO nRF52840...\n");
 #endif
 
+    // Safe boot: the previous boot hard-faulted. If the fault is in early
+    // init (storage/NVS, BT bring-up) a normal boot crash-loops before USB
+    // ever enumerates and the crumb is unreadable. Skip storage/BT init on
+    // the single boot after a fault so USB comes up and the crumb reaches
+    // the CDC log; the boot after that is normal again.
+    bool safe_boot = fault_crumb_consume();
     fault_crumb_report();
+    if (safe_boot) {
+        printf("[joypad] SAFE BOOT after fault — skipping storage/BT init\n");
+    }
 
     // Initialize shared services
     leds_init();
-    storage_init();
+    if (!safe_boot) storage_init();
     players_init();
     app_init();
 
@@ -281,9 +305,10 @@ int main(void)
     }
 #endif
 
-    // Get and initialize input interfaces
+    // Get and initialize input interfaces (skipped in safe boot: BT init
+    // reads the same NVS the crash may involve)
     inputs = app_get_input_interfaces(&input_count);
-    for (uint8_t i = 0; i < input_count; i++) {
+    for (uint8_t i = 0; i < input_count && !safe_boot; i++) {
         if (inputs[i] && inputs[i]->init) {
             printf("[joypad] Initializing input: %s\n", inputs[i]->name);
             inputs[i]->init();

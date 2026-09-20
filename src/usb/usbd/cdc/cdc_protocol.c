@@ -200,8 +200,13 @@ uint16_t cdc_protocol_send(cdc_protocol_t* ctx, cdc_msg_type_t type,
         return 0;
     }
 
-    // Build packet
-    uint8_t packet[CDC_MAX_PACKET];
+    // Build packet. Static, not stack: packet[] is ~1.5 kB and this runs on
+    // the main thread whose Zephyr stack is a few kB — as locals (plus the
+    // former separate crc_buf copy) a single framed response overflowed the
+    // main stack on nRF52840 and smashed a neighboring frame (CPU returned
+    // into the JSON text). CDC sends are serialized through the main loop,
+    // so one shared buffer is safe.
+    static uint8_t packet[CDC_MAX_PACKET];
     uint16_t pos = 0;
 
     // Header
@@ -217,14 +222,8 @@ uint16_t cdc_protocol_send(cdc_protocol_t* ctx, cdc_msg_type_t type,
         pos += len;
     }
 
-    // CRC over type + seq + payload
-    uint8_t crc_buf[2 + CDC_MAX_PAYLOAD];
-    crc_buf[0] = type;
-    crc_buf[1] = seq;
-    if (len > 0 && payload) {
-        memcpy(&crc_buf[2], payload, len);
-    }
-    uint16_t crc = cdc_crc16(crc_buf, 2 + len);
+    // CRC over type + seq + payload — contiguous at packet[3], no copy needed
+    uint16_t crc = cdc_crc16(&packet[3], 2 + len);
     packet[pos++] = crc & 0xFF;
     packet[pos++] = (crc >> 8) & 0xFF;
 
@@ -243,7 +242,8 @@ uint16_t cdc_protocol_send_response(cdc_protocol_t* ctx, const char* json)
     if (ctx->text_mode) {
         uint16_t n = (uint16_t)strlen(json);
         if (n > CDC_MAX_PAYLOAD) n = CDC_MAX_PAYLOAD;
-        uint8_t line[CDC_MAX_PAYLOAD + 2];
+        // Static for the same stack-overflow reason as packet[] above.
+        static uint8_t line[CDC_MAX_PAYLOAD + 2];
         memcpy(line, json, n);
         line[n++] = '\r';
         line[n++] = '\n';
