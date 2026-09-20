@@ -159,7 +159,6 @@ static const pad_device_config_t pad_config_macropad = {
     // QWIIC / STEMMA QT (GPIO 20=SDA, 21=SCL on I2C0)
     .qwiic_tx = 20,             // STEMMA QT SDA (I2C0)
     .qwiic_rx = 21,             // STEMMA QT SCL (I2C0)
-    0
     .usb_host_dp = PAD_PIN_DISABLED,
     .joywing = { 
         { .i2c_bus = 0, .sda = PAD_PIN_DISABLED, .scl = PAD_PIN_DISABLED, .addr = 0x49 }, 
