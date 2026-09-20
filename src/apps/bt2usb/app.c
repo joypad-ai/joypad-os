@@ -490,5 +490,7 @@ void app_task(void)
 
 #ifdef OLED_I2C_DISPLAY
     oled_update_display();
+    // Pump one pending page of the async display flush per iteration.
+    display_task();
 #endif
 }

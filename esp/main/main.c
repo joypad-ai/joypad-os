@@ -26,9 +26,6 @@ static const char *TAG = "joypad";
 // App layer
 extern void app_init(void);
 extern void app_task(void);
-// Display pump — strong definition lives in core/services/display/display.c.
-// Weak no-op so targets that don't compile the display service still link.
-__attribute__((weak)) void display_task(void) {}
 extern const OutputInterface** app_get_output_interfaces(uint8_t* count);
 extern const InputInterface** app_get_input_interfaces(uint8_t* count);
 
@@ -205,9 +202,6 @@ void app_main(void)
         }
 
         app_task();
-
-        // One pending display page per iteration (weak no-op without a display)
-        display_task();
 
 #ifdef CONFIG_MAX3421
         // Process deferred MAX3421E interrupts from main loop context.

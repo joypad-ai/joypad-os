@@ -1204,6 +1204,11 @@ void app_task(void)
             else if (oled_current_mode == OLED_MODE_EYES) eyes_anim_tick(now);
         }
     }
+
+    // Pump one pending page of the async display flush per iteration, so
+    // the OLED transfer never blocks the input path. Inside the OLED guard
+    // so display-less builds keep dead-stripping the display service.
+    display_task();
 #endif
 
     // ----------------------------------------------------------------

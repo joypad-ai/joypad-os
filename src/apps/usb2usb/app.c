@@ -783,6 +783,10 @@ void app_task(void)
 #endif
 #if defined(OLED_I2C_INST) || defined(OLED_I2C_DISPLAY)
     oled_update_display();
+    // Pump one pending page of the async display flush per iteration, so the
+    // OLED transfer never blocks the input path. Guarded so display-less
+    // builds keep dead-stripping the whole display service.
+    display_task();
 #endif
 
 #ifdef I2C_PEER_ENABLED

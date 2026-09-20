@@ -99,9 +99,11 @@ void display_set_async(bool async);
 void display_flush(void);
 bool display_is_dirty(void);
 
-// Pump one page of any pending incremental flush. Called by every platform
-// main loop, right after app_task(); a weak no-op stub there keeps targets
-// without the display service linking.
+// Pump one page of any pending incremental flush. Each display-using app
+// calls this once per app_task() iteration, inside its OLED guard — NOT the
+// platform main loops: an unconditional call there anchors the display
+// service in every target and stops the linker dead-stripping it, which
+// overflowed RAM on controller_btusb_pico_w (display.c compiled but unused).
 void display_task(void);
 
 // Incremental flush: send ONE page per call instead of the whole frame.

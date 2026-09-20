@@ -449,10 +449,10 @@ void display_set_async(bool async) {
     async_mode = async;
 }
 
-// Main-loop pump: advances any pending incremental flush by one page per
-// call. No-op when the display is uninitialized or nothing is dirty. This
-// strong definition overrides the weak stub each platform main loop carries
-// for targets that don't compile the display service.
+// App-loop pump: advances any pending incremental flush by one page per
+// call. No-op when the display is uninitialized or nothing is dirty.
+// Called from each display-using app's task, inside its OLED guard (see
+// display.h for why it must not be called from the platform main loops).
 void display_task(void) {
     display_flush_step();
 }

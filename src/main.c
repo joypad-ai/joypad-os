@@ -37,9 +37,6 @@ extern void app_task(void);
 extern const OutputInterface** app_get_output_interfaces(uint8_t* count);
 extern const InputInterface** app_get_input_interfaces(uint8_t* count);
 
-// Display pump — strong definition lives in core/services/display/display.c.
-// Weak no-op so targets that don't compile the display service still link.
-__attribute__((weak)) void display_task(void) {}
 
 // Cached interfaces (set once at startup)
 static const OutputInterface** outputs = NULL;
@@ -135,10 +132,6 @@ static void __not_in_flash_func(core0_main)(void)
 
     if (first_loop) printf("[joypad] Loop: app\n");
     app_task();
-
-    // Push at most one pending display page per iteration so an OLED frame
-    // transfer never blocks the input path (no-op without a display).
-    display_task();
     first_loop = false;
   }
 }

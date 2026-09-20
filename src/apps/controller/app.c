@@ -451,6 +451,10 @@ void app_task(void)
     // Process button input for mode switching
     button_task();
 
+    // Pump one pending display page per iteration (display service is async;
+    // no-op when no display is configured).
+    display_task();
+
     // Update LED colors when USB output mode changes (skip when peer controls LEDs)
 #ifdef I2C_PEER_ENABLED
     if (!peer_status_valid)

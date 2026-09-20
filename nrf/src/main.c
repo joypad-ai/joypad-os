@@ -32,9 +32,6 @@
 // App layer
 extern void app_init(void);
 extern void app_task(void);
-// Display pump — strong definition lives in core/services/display/display.c.
-// Weak no-op so targets that don't compile the display service still link.
-__attribute__((weak)) void display_task(void) {}
 extern const OutputInterface** app_get_output_interfaces(uint8_t* count);
 extern const InputInterface** app_get_input_interfaces(uint8_t* count);
 
@@ -48,11 +45,36 @@ const InputInterface* native_input = NULL;
 
 // ============================================================================
 // FAULT HANDLER — Zephyr's fault dump goes to UART console automatically.
-// We just turn on an LED as visual indicator and halt.
+// We turn on an LED as visual indicator and halt. On boards with no UART
+// wired (USB dongles) the console dump is unreachable, so we also stash the
+// fault PC/LR in __noinit RAM — it survives the next replug's soft boot and
+// main() prints it, so the crash site is readable over CDC after the fact.
 // ============================================================================
+#define FAULT_CRUMB_MAGIC 0xFA17C4B5u
+__noinit static uint32_t fault_crumb_magic;
+__noinit static uint32_t fault_crumb_reason;
+__noinit static uint32_t fault_crumb_pc;
+__noinit static uint32_t fault_crumb_lr;
+
+static void fault_crumb_report(void)
+{
+    // Deliberately does NOT clear the magic: printf only reaches CDC once the
+    // log redirect is installed (app_init) and a client connects, so the main
+    // loop re-prints this periodically. Cleared only by the next fault or a
+    // power cycle (noinit RAM keeps it across soft resets).
+    if (fault_crumb_magic == FAULT_CRUMB_MAGIC) {
+        printf("[fault] PREVIOUS BOOT FAULTED: reason=%u pc=0x%08x lr=0x%08x\n",
+               (unsigned)fault_crumb_reason, (unsigned)fault_crumb_pc,
+               (unsigned)fault_crumb_lr);
+    }
+}
+
 void k_sys_fatal_error_handler(unsigned int reason, const struct arch_esf *esf)
 {
-    (void)reason; (void)esf;
+    fault_crumb_magic = FAULT_CRUMB_MAGIC;
+    fault_crumb_reason = reason;
+    fault_crumb_pc = esf ? esf->basic.pc : 0;
+    fault_crumb_lr = esf ? esf->basic.lr : 0;
 #ifdef BOARD_FEATHER_NRF52840
     // Blue LED on Feather = P1.10, active high
     NRF_P1->DIRSET = (1U << 10);
@@ -66,6 +88,10 @@ void k_sys_fatal_error_handler(unsigned int reason, const struct arch_esf *esf)
     NRF_P0->DIRSET = (1U << 6);
     NRF_P0->OUTCLR = (1U << 6);   // LED on (active low)
 #endif
+    // Hold the LED visibly, then reboot so the crumb gets printed (halting
+    // forever just strands the dongle until a replug).
+    for (volatile uint32_t i = 0; i < 16000000; i++) { __NOP(); }
+    NVIC_SystemReset();
     for (;;) { __WFI(); }
 }
 
@@ -237,6 +263,8 @@ int main(void)
     printf("[joypad] Starting bt2usb on Seeed XIAO nRF52840...\n");
 #endif
 
+    fault_crumb_report();
+
     // Initialize shared services
     leds_init();
     storage_init();
@@ -342,9 +370,6 @@ int main(void)
 
         app_task();
 
-        // One pending display page per iteration (weak no-op without a display)
-        display_task();
-
 #ifdef CONFIG_CONTROLLER_BTUSB
         imu_task();  // sample onboard IMU → router (throttled to ~100 Hz)
 #endif
@@ -352,6 +377,17 @@ int main(void)
 #if defined(CONFIG_CONTROLLER_BTUSB) && defined(CONFIG_BOARD_XIAO_BLE)
         power_task();  // low-battery cutoff + idle deep-sleep (protects the cell)
 #endif
+
+        // Diagnostic: re-announce a stashed fault crumb every 5s so it reaches
+        // a CDC log client no matter when it connects.
+        {
+            static uint32_t crumb_last_ms = 0;
+            uint32_t crumb_now = platform_time_ms();
+            if ((uint32_t)(crumb_now - crumb_last_ms) >= 5000u) {
+                crumb_last_ms = crumb_now;
+                fault_crumb_report();
+            }
+        }
 
         // Yield to other Zephyr threads (BTstack runs in its own thread)
         k_msleep(1);
