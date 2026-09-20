@@ -128,7 +128,7 @@ On the two NeoPixel boards the colours are: white = SInput, green = XInput, blue
 These come from the shared USB-device layer and are not documented elsewhere for this adapter:
 
 - **Select + Start → A1 (Guide/PS)** — only on **genuine digital-only pads**. DualShock-family pads (DualShock, DS2-pressure, Dual Analog flight) reach A1 through their physical ANALOG button, so their Start+Select is deliberately left intact — otherwise output modes with no A1 (e.g. Xbox Original) would lose the ability to press the two together.
-- **Select (hold ~2 s) + D-pad Up/Down** — cycle button profiles.
+- **Select + D-pad Up** (previous profile) or **Select + D-pad Down** (next) — press both together and hold for about **0.7 s**; pressing them one after the other does nothing, and a quick tap passes straight through to the game. The selection stops at the ends rather than wrapping. These are the router's built-in defaults (`router_install_default_combos()`), which psx2usb inherits because it registers no combo table of its own.
 - Pads with **no Select button** — the Dual Analog flight stick (`0x53`), GunCon and PlayStation Mouse — therefore cannot reach either combo. Use BOOTSEL for A1 on those.
 
 ## Supported Devices

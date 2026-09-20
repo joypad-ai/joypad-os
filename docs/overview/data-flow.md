@@ -100,7 +100,7 @@ Before an event reaches the output, the router applies the active button remappi
 - **Analog targets** -- A button press produces a specific analog axis value.
 - **Analog sensitivity** -- Scale stick ranges.
 
-Users cycle profiles by holding SELECT + D-pad Up (next) or Down (previous) for 2 seconds. The NeoPixel LED flashes to confirm the change. The selected profile persists to flash so it survives power cycles.
+Users step profiles by holding SELECT + D-pad Up (previous) or Down (next) together for about 0.7 s -- pressing them one after the other does nothing, and the selection clamps at the ends rather than wrapping. The NeoPixel LED flashes to confirm the change. The selected profile persists to flash so it survives power cycles.
 
 ## Step 5: Output Read
 
