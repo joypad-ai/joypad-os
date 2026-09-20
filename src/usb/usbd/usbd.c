@@ -1909,11 +1909,26 @@ static void build_config_descriptors(void)
     memcpy(runtime_desc_cdc, cdc_header, TUD_CONFIG_DESC_LEN);
 }
 
+// Diagnostic stage marker — strong impl on nRF (noinit ring in nrf/src/main.c),
+// weak no-op elsewhere (apps that don't link ble_output.c still need a symbol).
+__attribute__((weak)) void bt_diag_mark(uint32_t code) { (void)code; }
+
 uint8_t const *tud_descriptor_configuration_cb(uint8_t index)
 {
     (void)index;
     switch (output_mode) {
         case USB_OUTPUT_MODE_CDC:
+            // Reset-surviving breadcrumb (BT.TRACE on nRF): CDC-only mode
+            // fails to enumerate on some hosts (macOS 26 reads the config
+            // twice and never sends SET_CONFIGURATION — host-side issue,
+            // the descriptor is served correctly). The mark makes that
+            // diagnosis repeatable: 0xCFxx00LL = xx-th request this boot,
+            // LL = low byte of wTotalLength.
+            {
+                static uint8_t cfg_req_count;
+                bt_diag_mark(0xCF000000u | ((uint32_t)cfg_req_count++ << 16) |
+                             runtime_desc_cdc[2]);
+            }
             return runtime_desc_cdc;
         case USB_OUTPUT_MODE_SINPUT:
             return runtime_desc_sinput;

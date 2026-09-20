@@ -2191,8 +2191,14 @@ static void cmd_debug_stream(const char* json)
         // Drain any stale data when disabling
         log_tail = log_head;
     } else {
-        // Flush stale data so only fresh logs are streamed
-        log_tail = log_head;
+        // Flush stale data so only fresh logs are streamed — unless the
+        // caller asks to keep the backlog ({"keep":true}), which streams
+        // everything still in the ring (e.g. boot-time logs).
+        bool keep = false;
+        json_get_bool(json, "keep", &keep);
+        if (!keep) {
+            log_tail = log_head;
+        }
     }
 
     snprintf(response_buf, sizeof(response_buf),

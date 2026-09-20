@@ -175,16 +175,17 @@ static void deliver_controller_packet(struct net_buf *buf)
 
     switch (h4_type) {
         case BT_HCI_H4_EVT:  // 0x04
-            // 0xE0EEss00|evcode: ss=subevent for LE meta (0x3E)
+            // 0xE0EEss00|evcode: ss=subevent for LE meta (0x3E). Skip
+            // Number-of-Completed-Packets (0x13): per-packet chatter floods
+            // the small diagnostic ring and evicts the interesting marks.
             if (size >= 2 && packet[0] == 0x3E) {
                 bt_diag_mark(0xE03E0000u | (size >= 3 ? packet[2] : 0xFF));
-            } else {
-                bt_diag_mark(0xE0000000u | (size >= 1 ? packet[0] : 0xFF));
+            } else if (size >= 1 && packet[0] != 0x13) {
+                bt_diag_mark(0xE0000000u | packet[0]);
             }
             hci_packet_handler(HCI_EVENT_PACKET, packet, size);
             break;
         case BT_HCI_H4_ACL:  // 0x02
-            bt_diag_mark(0xACC00000u | size);
             hci_packet_handler(HCI_ACL_DATA_PACKET, packet, size);
             break;
         default:

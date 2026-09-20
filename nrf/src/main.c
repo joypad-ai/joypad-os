@@ -81,7 +81,7 @@ static bool fault_crumb_consume(void)
 // reset that bypasses every software handler, so after a silent reset the
 // boot log shows how far pairing got. Codes are defined at the call sites.
 #define BT_TRACE_MAGIC 0xB7D1A600u
-#define BT_TRACE_N 16
+#define BT_TRACE_N 64
 __noinit static uint32_t bt_trace_magic;
 __noinit static uint32_t bt_trace_ring[BT_TRACE_N];
 __noinit static uint32_t bt_trace_idx;
