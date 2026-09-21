@@ -36,10 +36,12 @@ export class BtOutputCard {
                         </select>
                     </div>
                     <p class="hint" style="margin-top: 8px;">
-                        Both: USB and BLE stay active together.
-                        USB dominant: Bluetooth turns off while a USB host is connected.
-                        BLE dominant: USB input is muted while a BLE host is connected
-                        (config stays available). Applies immediately, no reboot.
+                        Both: input goes to USB and BLE together.
+                        USB dominant: input goes only to USB while a USB host is
+                        connected (Bluetooth stays paired, just idle).
+                        BLE dominant: input goes only to BLE while a BLE host is
+                        connected (USB stays enumerated, config keeps working).
+                        Applies immediately, no reboot.
                     </p>
                 </div>
             </div>`;

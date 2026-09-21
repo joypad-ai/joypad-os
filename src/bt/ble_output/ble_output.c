@@ -281,21 +281,42 @@ static bool sleep_wake_active_high = false;
 extern bool tud_mounted(void);
 static bool ble_usb_host(void)
 {
-    // Runtime wireless policy (flash, live-settable over CDC): BT yields to a
-    // USB data host only under WIRELESS_POLICY_USB. BOTH (the default) and
-    // BLE keep BT alive alongside USB. The old CONFIG_BLE_USB_COEXIST guard
-    // (face/companion boards that must never yield) is subsumed by the
-    // default: those boards simply ship with policy BOTH; an explicit USB
-    // selection is honored everywhere.
+    // Runtime wireless policy (flash, live-settable over CDC): under
+    // WIRELESS_POLICY_USB with a USB data host connected, input is routed
+    // only to USB — the BLE link stays connected and advertising, it just
+    // stops carrying input (mirror image of WIRELESS_POLICY_BLE, which mutes
+    // USB input while a BLE host is subscribed). BOTH (the default) routes
+    // to both. Nothing ever disconnects the BT link over this.
     const flash_t *settings = flash_get_settings();
     if (!settings || settings->wireless_policy != WIRELESS_POLICY_USB) {
         return false;
     }
-    // CDC-only USB is a config/debug link, not a controller role — BT stays
-    // alive so a bench-powered board (web config) still advertises. HID
-    // modes = the USB host owns us as a controller, so BT yields as before.
+    // CDC-only USB is a config/debug link, not a controller role — BLE keeps
+    // carrying input. HID modes = the USB host owns the input stream.
     if (usbd_get_mode() == USB_OUTPUT_MODE_CDC) return false;
     return platform_usb_powered() && tud_mounted();
+}
+
+// Mute filter for the BLE send paths under WIRELESS_POLICY_USB. Router events
+// are consume-once, so the tasks still consume (and CDC-stream) every event —
+// this decides whether it reaches BLE. On the mute edge a neutral report goes
+// out once so the BLE host doesn't hold whatever was pressed last.
+static const input_event_t ble_neutral_event = {
+    .type = INPUT_TYPE_GAMEPAD,
+    .analog = { 128, 128, 128, 128, 0, 0, 0, 0 },
+};
+static bool ble_mute_active = false;
+static const input_event_t *ble_mute_filter(const input_event_t *event)
+{
+    if (!ble_usb_host()) {
+        ble_mute_active = false;
+        return event;
+    }
+    if (!ble_mute_active) {
+        ble_mute_active = true;
+        return &ble_neutral_event;   // release everything on the BLE side
+    }
+    return NULL;                     // muted: consumed, not forwarded
 }
 
 // Strong override of usbd.c's weak default: under WIRELESS_POLICY_BLE, USB
@@ -415,9 +436,11 @@ static uint16_t last_le_handle = 0xFFFF;  // HCI_CON_HANDLE_INVALID
 // crashed the controller hard (silent reset, RESETREAS=0) on nRF52840.
 // Dominance must wait for pairing to finish and give a fresh link a grace
 // window before disconnecting it.
+// (Dominance no longer disconnects at all — policy only mutes the input
+// stream — but the pairing/link state stays tracked for diagnostics and any
+// future path that must not touch a young or pairing link.)
 static volatile bool sm_pairing_active = false;
 static uint32_t link_up_ms = 0;
-#define USB_DOM_LINK_GRACE_MS 10000u
 
 // ---------------------------------------------------------------------------
 // Cross-thread send marshalling. On multi-threaded ports (nRF/ESP32) BTstack
@@ -603,14 +626,8 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
             // On a deliberate disconnect, power down instead of re-advertising
             // — otherwise a bonded host (e.g. macOS) just auto-reconnects and
             // hogs the link. A dropped link keeps advertising so we reconnect.
-            // USB is dominant: if a USB data host is connected, stay off — no
-            // re-advertise, no sleep (the device is usable over USB).
-            if (ble_usb_host()) {
-                adv_on = false;  // the link drop already stopped advertising
-                printf("[ble_output] Disconnected (reason 0x%02x), USB host present — BT off\n", reason);
-                break;
-            }
-
+            // (Wireless policy never turns BT off — USB-dominant only mutes
+            // the input stream, see ble_mute_filter.)
             bool deliberate = (reason == 0x13 || reason == 0x16);
             if (deliberate && sleep_wake_pin >= 0) {
                 // platform_deep_sleep() powers down (and never returns) on
@@ -869,25 +886,11 @@ static btstack_timer_source_t usb_dom_timer;
 
 static void usb_dom_timer_handler(btstack_timer_source_t *ts)
 {
-    if (ble_usb_host()) {
-        // A USB data host is connected → BT yields: drop any link and stop
-        // advertising. The disconnect handler sees the host and stays off.
-        // NEVER mid-pairing, and give a fresh link a grace window: a forced
-        // gap_disconnect during SM/encryption setup hard-crashed the
-        // controller (the original "pairing kills the dongle" bug).
-        if (con_handle != HCI_CON_HANDLE_INVALID) {
-            bool young = (uint32_t)(btstack_run_loop_get_time_ms() - link_up_ms)
-                         < USB_DOM_LINK_GRACE_MS;
-            if (!sm_pairing_active && !young) {
-                gap_disconnect(con_handle);
-            }
-        }
-        set_adv(false);
-    } else {
-        // No USB host → normal BT logic: advertise whenever not connected.
-        if (con_handle == HCI_CON_HANDLE_INVALID) {
-            set_adv(true);
-        }
+    // Wireless policy never drops the BT link (USB-dominant only mutes the
+    // input stream — see ble_mute_filter); this timer is just a safety net
+    // that keeps advertising alive whenever nothing is connected.
+    if (con_handle == HCI_CON_HANDLE_INVALID) {
+        set_adv(true);
     }
     btstack_run_loop_set_timer(ts, 500);
     btstack_run_loop_add_timer(ts);
@@ -1046,9 +1049,8 @@ void ble_output_late_init(void)
     if (current_mode != BLE_MODE_XBOX) {
         gap_scan_response_set_data(sizeof(scan_resp_standard), (uint8_t *)scan_resp_standard);
     }
-    // Advertise unless a USB data host is already dominant; the usb_dom_timer
-    // below keeps it in sync as USB is plugged/unplugged.
-    set_adv(!ble_usb_host());
+    // Always advertise: wireless policy only routes input, never turns BT off.
+    set_adv(true);
 
     // Register event handlers
     hci_event_callback_registration.callback = &packet_handler;
@@ -1077,10 +1079,14 @@ void ble_output_late_init(void)
 static void ble_output_task_standard(void)
 {
     const input_event_t *event = router_get_output(OUTPUT_TARGET_BLE_PERIPHERAL, 0);
-    if (!event) return;
 
     // Stream output event to CDC/NUS for web config (if enabled)
-    cdc_commands_send_player_output(0, event->buttons, event->analog);
+    if (event) cdc_commands_send_player_output(0, event->buttons, event->analog);
+
+    // Wireless policy: under USB-dominant with a USB host, input is routed
+    // only to USB (one neutral report on the mute edge, then nothing).
+    event = ble_mute_filter(event);
+    if (!event) return;
 
     switch (event->type) {
         // NOTE (all cases): the router hands out each event exactly once, so a
@@ -1142,10 +1148,14 @@ static void ble_output_task_standard(void)
 static void ble_output_task_xbox(void)
 {
     const input_event_t *event = router_get_output(OUTPUT_TARGET_BLE_PERIPHERAL, 0);
-    if (!event) return;
 
     // Stream output event to CDC/NUS for web config (if enabled)
-    cdc_commands_send_player_output(0, event->buttons, event->analog);
+    if (event) cdc_commands_send_player_output(0, event->buttons, event->analog);
+
+    // Wireless policy: under USB-dominant with a USB host, input is routed
+    // only to USB (one neutral report on the mute edge, then nothing).
+    event = ble_mute_filter(event);
+    if (!event) return;
 
     ble_xbox_report_t report;
     ble_xbox_report_from_event(event, &report);
@@ -1168,10 +1178,14 @@ static void ble_output_task_xbox(void)
 static void ble_output_task_sinput(void)
 {
     const input_event_t *event = router_get_output(OUTPUT_TARGET_BLE_PERIPHERAL, 0);
-    if (!event) return;
 
     // Stream output event to CDC/NUS for web config (if enabled)
-    cdc_commands_send_player_output(0, event->buttons, event->analog);
+    if (event) cdc_commands_send_player_output(0, event->buttons, event->analog);
+
+    // Wireless policy: under USB-dominant with a USB host, input is routed
+    // only to USB (one neutral report on the mute edge, then nothing).
+    event = ble_mute_filter(event);
+    if (!event) return;
 
     // Build the input report; may flag a feature refresh on device change. The
     // host's features request (output report) also sets the pending flag.
