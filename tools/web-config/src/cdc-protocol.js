@@ -663,6 +663,14 @@ class CDCProtocol {
         return this.sendCommand('BLE.MODE.LIST');
     }
 
+    async getWirelessPolicy() {
+        return this.sendCommand('WIRELESS.POLICY.GET');
+    }
+
+    async setWirelessPolicy(policy) {
+        return this.sendCommand('WIRELESS.POLICY.SET', { policy });
+    }
+
     // Unified Profile methods (supports both built-in and custom profiles)
     async listProfiles() {
         return this.sendCommand('PROFILE.LIST');

@@ -89,6 +89,18 @@ body {
     flex: 1;
 }
 
+/* Web-config build stamp (commit · date), pinned to the sidebar bottom */
+.sidebar-footer {
+    padding: 8px 20px;
+    border-top: 1px solid var(--border);
+    font-size: 10px;
+    font-family: monospace;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .nav-group { margin-bottom: 8px; }
 
 .nav-group-label {
