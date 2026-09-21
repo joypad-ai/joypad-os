@@ -952,6 +952,52 @@ static void cmd_ble_mode_list(const char* json)
     send_json(response_buf);
 }
 
+// WIRELESS.POLICY.GET/SET — which output wins when USB and BLE could both be
+// live: 0=both (default), 1=USB dominant, 2=BLE dominant. Applies live (the
+// dominance timer and USB tap read it each pass), no reboot.
+static const char* wireless_policy_name(uint8_t p)
+{
+    switch (p) {
+        case WIRELESS_POLICY_USB: return "usb";
+        case WIRELESS_POLICY_BLE: return "ble";
+        default:                  return "both";
+    }
+}
+
+static void cmd_wireless_policy_get(const char* json)
+{
+    (void)json;
+    flash_t* settings = flash_get_settings();
+    uint8_t policy = settings ? settings->wireless_policy : WIRELESS_POLICY_BOTH;
+    snprintf(response_buf, sizeof(response_buf),
+             "{\"policy\":%d,\"name\":\"%s\"}", policy, wireless_policy_name(policy));
+    send_json(response_buf);
+}
+
+static void cmd_wireless_policy_set(const char* json)
+{
+    int policy;
+    if (!json_get_int(json, "policy", &policy)) {
+        send_error("missing policy");
+        return;
+    }
+    if (policy < 0 || policy > WIRELESS_POLICY_MAX) {
+        send_error("invalid policy");
+        return;
+    }
+    flash_t* settings = flash_get_settings();
+    if (!settings) {
+        send_error("no settings");
+        return;
+    }
+    settings->wireless_policy = (uint8_t)policy;
+    flash_save(settings);
+    snprintf(response_buf, sizeof(response_buf),
+             "{\"ok\":true,\"policy\":%d,\"name\":\"%s\"}",
+             policy, wireless_policy_name((uint8_t)policy));
+    send_json(response_buf);
+}
+
 #endif // REQUIRE_BLE_OUTPUT
 
 // ============================================================================
@@ -4215,6 +4261,8 @@ static const cmd_entry_t commands[] = {
     {"BLE.MODE.LIST", cmd_ble_mode_list},
     {"BLE.PAIR", cmd_ble_pair},
     {"BT.TRACE", cmd_bt_trace},
+    {"WIRELESS.POLICY.GET", cmd_wireless_policy_get},
+    {"WIRELESS.POLICY.SET", cmd_wireless_policy_set},
 #endif
 #ifdef CONFIG_PAD_INPUT
     {"PAD.CONFIG.GET", cmd_pad_config_get},

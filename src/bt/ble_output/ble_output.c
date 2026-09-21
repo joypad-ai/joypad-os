@@ -286,12 +286,30 @@ static bool ble_usb_host(void)
     // so BT never yields to a USB host (bench power + CDC debug included).
     return false;
 #else
+    // Runtime wireless policy (flash, live-settable over CDC): BT yields to a
+    // USB data host only under WIRELESS_POLICY_USB. BOTH (the default) and
+    // BLE keep BT alive alongside USB.
+    const flash_t *settings = flash_get_settings();
+    if (!settings || settings->wireless_policy != WIRELESS_POLICY_USB) {
+        return false;
+    }
     // CDC-only USB is a config/debug link, not a controller role — BT stays
     // alive so a bench-powered board (web config) still advertises. HID
     // modes = the USB host owns us as a controller, so BT yields as before.
     if (usbd_get_mode() == USB_OUTPUT_MODE_CDC) return false;
     return platform_usb_powered() && tud_mounted();
 #endif
+}
+
+// Strong override of usbd.c's weak default: under WIRELESS_POLICY_BLE, USB
+// input reports are suppressed while a BLE host is subscribed (USB stays
+// enumerated as a fallback and CDC keeps working). Mirrors USB dominance:
+// the dominant side only wins while its host is actually present.
+bool ble_output_suppresses_usb(void)
+{
+    const flash_t *settings = flash_get_settings();
+    return settings && settings->wireless_policy == WIRELESS_POLICY_BLE &&
+           ble_output_is_connected();
 }
 
 // Tracked advertising state so we can enable/disable idempotently.

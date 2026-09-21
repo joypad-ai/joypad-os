@@ -537,11 +537,22 @@ bool usbd_reset_to_hid(void)
 // ============================================================================
 
 // Called by router immediately when input arrives (push-based notification)
+// Wireless-policy hook: strong impl in ble_output.c returns true under
+// WIRELESS_POLICY_BLE while a BLE host is subscribed; weak false everywhere
+// else so USB-only apps are unaffected.
+__attribute__((weak)) bool ble_output_suppresses_usb(void) { return false; }
+
 static void usbd_on_input(output_target_t output, uint8_t player_index, const input_event_t* event)
 {
     (void)output;  // Always USB_DEVICE
 
     if (player_index >= USB_MAX_PLAYERS || !event) {
+        return;
+    }
+
+    // BLE-dominant policy: drop USB input reports while BLE owns the output.
+    // (USB stays enumerated and CDC config keeps working.)
+    if (ble_output_suppresses_usb()) {
         return;
     }
 

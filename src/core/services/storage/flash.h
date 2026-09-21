@@ -29,6 +29,13 @@
 // at 2, so every reboot reverted it AND wiped router_saved with it).
 #define FLASH_DPAD_MODE_MAX 3
 
+// wireless_policy values — which output wins when USB and BLE could both be
+// live (see the field comment in flash_t).
+#define WIRELESS_POLICY_BOTH 0
+#define WIRELESS_POLICY_USB  1
+#define WIRELESS_POLICY_BLE  2
+#define WIRELESS_POLICY_MAX  2
+
 // Button mapping values:
 // 0x00 = passthrough (no remap, keep original button)
 // 0x01-0x1A = remap to JP_BUTTON_* (1-based: 1=B1, ... 18=A2, ... 24=F2, 25=L5, 26=R5)
@@ -152,8 +159,15 @@ typedef struct {
     // Carved from reserved[] — zero on old flashes = never selected.
     uint8_t ble_mode_saved;
 
-    // Reserved for future global settings (6 bytes)
-    uint8_t reserved[6];
+    // Which output wins when USB and BLE could both be live (dual-output apps
+    // like controller_btusb). WIRELESS_POLICY_*: 0=both active (default),
+    // 1=USB dominant (BT yields while a USB data host is connected),
+    // 2=BLE dominant (USB input reports suppressed while a BLE host is
+    // connected). Carved from reserved[] — zero on old flashes = both.
+    uint8_t wireless_policy;
+
+    // Reserved for future global settings (5 bytes)
+    uint8_t reserved[5];
 
     // Custom profiles (4 x 56 = 224 bytes)
     custom_profile_t profiles[CUSTOM_PROFILE_MAX_COUNT];
@@ -205,6 +219,7 @@ static inline unsigned flash_sanitize_record(flash_t* s)
     FLASH_CLAMP_(dpad_mode, FLASH_DPAD_MODE_MAX);             // incl. Lstick<->Rstick
     FLASH_CLAMP_(bt_input_enabled, 1);
     FLASH_CLAMP_(shoulder_swap, 1);
+    FLASH_CLAMP_(wireless_policy, WIRELESS_POLICY_MAX);      // both/USB/BLE
     FLASH_CLAMP_(joybus_data_pin, 28);                        // 0=default, 1-28=GPIO
     FLASH_CLAMP_(wii_sda_pin, 29);                            // stored as GPIO+1
     FLASH_CLAMP_(wii_scl_pin, 29);
