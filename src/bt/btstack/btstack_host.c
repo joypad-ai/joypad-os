@@ -2956,10 +2956,16 @@ static void sm_packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *pa
     uint8_t event_type = hci_event_packet_get_type(packet);
 
     switch (event_type) {
-        case SM_EVENT_JUST_WORKS_REQUEST:
+        case SM_EVENT_JUST_WORKS_REQUEST: {
+            hci_con_handle_t jw_handle = sm_event_just_works_request_get_handle(packet);
+            // Role gate: only confirm for links this central created. The BLE
+            // peripheral (universal's ble_output) has its own SM handler for
+            // the host link.
+            if (find_connection_by_handle(jw_handle) == NULL) break;
             printf("[BTSTACK_HOST] SM: Just Works request\n");
-            sm_just_works_confirm(sm_event_just_works_request_get_handle(packet));
+            sm_just_works_confirm(jw_handle);
             break;
+        }
 
         case SM_EVENT_PAIRING_STARTED:
             printf("[BTSTACK_HOST] SM: Pairing started\n");
@@ -3066,6 +3072,13 @@ static void sm_packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *pa
                     }
                 }
             } else {
+                // Role gate: this recovery is for CONTROLLERS the central
+                // paired. Running it on the peripheral link (a host like
+                // macOS connecting to us) deleted the HOST's bond and forced
+                // central-style re-pairing, which corrupted the link's
+                // security — macOS then silently discarded keyboard/mouse
+                // HID (it requires a cleanly encrypted bond for typed input).
+                if (find_connection_by_handle(handle) == NULL) break;
                 // Re-encryption failed - remote likely lost bonding info
                 // Delete local bonding and request fresh pairing
                 printf("[BTSTACK_HOST] SM: Re-encryption failed, deleting bond and re-pairing...\n");

@@ -13,6 +13,17 @@ void ble_keyboard_report_from_event(const input_event_t *event, ble_keyboard_rep
 
     if (!event || event->type != INPUT_TYPE_KEYBOARD) return;
 
+    // Dedicated keyboard fields first — real HID keyboard drivers fill these
+    // alongside the packed `keys`, but synthetic sources (KEY.INJECT) fill
+    // ONLY these, so reading just `keys` silently dropped injected input.
+    report->modifier = event->kb_modifier;
+    uint8_t kb_count = 0;
+    for (int i = 0; i < 6; i++) {
+        if (event->kb_keys[i]) report->keycode[kb_count++] = event->kb_keys[i];
+    }
+    if (report->modifier || kb_count) return;
+
+    // Legacy fallback: the packed `keys` field.
     // The keys field packs keycodes from LSB, with modifiers mixed in.
     // Keycodes 0xE0-0xE7 are modifier keys — extract them as modifier bits.
     // Regular keycodes go into the keycode array (up to 6).

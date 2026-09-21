@@ -394,10 +394,12 @@ static hids_device_report_t hid_report_storage[12];
 // with the macOS Gamepad API — verified on hardware.
 #define SINPUT_BLE_COMPOSITE 1
 
-// Composite SInput report map = the SInput gamepad map (IDs 1/2/3) + keyboard (6)
-// + mouse (8) tail. Works with the macOS Gamepad API (detects as STANDARD GAMEPAD,
-// buttons register). SDL keys on the gamepad collection + VID/PID (2E8A:10C6),
-// unchanged, so Steam is preserved. NUS config is reached via joypad-ble.
+// Composite SInput keyboard (ID 6) + mouse (ID 8) report map — served as HID
+// service instance #2's report map (see hid2_read_callback), NOT concatenated
+// onto the gamepad map: kbd/mouse collections inside the gamepad's own map are
+// never dispatched by macOS (single event service, primary usage Gamepad).
+// SDL keys on the gamepad service + VID/PID (2E8A:10C6), unchanged, so Steam
+// is preserved. NUS config is reached via joypad-ble.
 //
 // TWO HARD-WON GOTCHAS:
 //  1) NEVER add a Consumer Control collection here. Over BLE, macOS reclassifies a
@@ -427,7 +429,6 @@ static const uint8_t sinput_kbd_mouse_tail[] = {
     0x05,0x0C, 0x0A,0x38,0x02, 0x15,0x81, 0x25,0x7F, 0x75,0x08, 0x95,0x01, 0x81,0x06,
     0xC0, 0xC0,
 };
-static uint8_t sinput_composite_desc[sizeof(sinput_report_descriptor) + sizeof(sinput_kbd_mouse_tail)];
 #endif  // SINPUT_BLE_COMPOSITE
 
 // Mode (loaded from flash on init)
@@ -455,6 +456,130 @@ static uint16_t last_le_handle = 0xFFFF;  // HCI_CON_HANDLE_INVALID
 static volatile bool sm_pairing_active = false;
 static uint32_t link_up_ms = 0;
 
+#ifdef SINPUT_BLE_COMPOSITE
+// ---------------------------------------------------------------------------
+// HID service instance #2 — keyboard + mouse. One HOGP HID service = one HID
+// device on the host. With kbd/mouse collections inside the gamepad's report
+// map, macOS builds a single event service with primary usage Gamepad and
+// never dispatches the keyboard/pointer collections: the notifications arrive
+// (visible to hidapi) but produce no cursor motion or keystrokes — keystroke-
+// injection protection against "a gamepad that can type". Splitting kbd/mouse
+// into their own HID service instance mirrors the USB build's separate
+// interfaces: macOS enumerates an independent keyboard+mouse device and
+// dispatches normally, while the gamepad service stays claimed as a
+// controller. BTstack's hids_device binds only the first HID service in the
+// DB, so this second instance is served here directly via att_server.
+// ---------------------------------------------------------------------------
+static att_service_handler_t hid2_service_handler;
+static uint8_t  hid2_protocol_mode = 1;   // report protocol
+static uint16_t hid2_kbd_ccc = 0;
+static uint16_t hid2_mouse_ccc = 0;
+
+static uint16_t hid2_read_callback(hci_con_handle_t con, uint16_t attribute_handle,
+                                   uint16_t offset, uint8_t *buffer, uint16_t buffer_size)
+{
+    (void)con;
+    switch (attribute_handle) {
+        case ATT_CHARACTERISTIC_ORG_BLUETOOTH_CHARACTERISTIC_REPORT_MAP_02_VALUE_HANDLE:
+            return att_read_callback_handle_blob(sinput_kbd_mouse_tail,
+                sizeof(sinput_kbd_mouse_tail), offset, buffer, buffer_size);
+        case ATT_CHARACTERISTIC_ORG_BLUETOOTH_CHARACTERISTIC_PROTOCOL_MODE_02_VALUE_HANDLE:
+            return att_read_callback_handle_byte(hid2_protocol_mode, offset, buffer, buffer_size);
+        case ATT_CHARACTERISTIC_ORG_BLUETOOTH_CHARACTERISTIC_REPORT_08_VALUE_HANDLE:
+            return att_read_callback_handle_blob((const uint8_t *)&last_sent_keyboard,
+                sizeof(last_sent_keyboard), offset, buffer, buffer_size);
+        case ATT_CHARACTERISTIC_ORG_BLUETOOTH_CHARACTERISTIC_REPORT_08_CLIENT_CONFIGURATION_HANDLE:
+            return att_read_callback_handle_little_endian_16(hid2_kbd_ccc, offset, buffer, buffer_size);
+        case ATT_CHARACTERISTIC_ORG_BLUETOOTH_CHARACTERISTIC_REPORT_09_VALUE_HANDLE:
+            return att_read_callback_handle_byte(0, offset, buffer, buffer_size);  // lock LEDs
+        case ATT_CHARACTERISTIC_ORG_BLUETOOTH_CHARACTERISTIC_REPORT_0a_VALUE_HANDLE: {
+            static const uint8_t zeros[sizeof(sinput_ble_mouse_report_t)] = {0};
+            return att_read_callback_handle_blob(zeros, sizeof(zeros), offset, buffer, buffer_size);
+        }
+        case ATT_CHARACTERISTIC_ORG_BLUETOOTH_CHARACTERISTIC_REPORT_0a_CLIENT_CONFIGURATION_HANDLE:
+            return att_read_callback_handle_little_endian_16(hid2_mouse_ccc, offset, buffer, buffer_size);
+        default:
+            return 0;
+    }
+}
+
+static int hid2_write_callback(hci_con_handle_t con, uint16_t attribute_handle,
+                               uint16_t transaction_mode, uint16_t offset,
+                               uint8_t *buffer, uint16_t buffer_size)
+{
+    (void)offset;
+    if (transaction_mode != ATT_TRANSACTION_MODE_NONE) return 0;
+    switch (attribute_handle) {
+        case ATT_CHARACTERISTIC_ORG_BLUETOOTH_CHARACTERISTIC_REPORT_08_CLIENT_CONFIGURATION_HANDLE:
+            if (buffer_size >= 2) {
+                hid2_kbd_ccc = little_endian_read_16(buffer, 0);
+                // A kbd/mouse-only subscriber (no service-1 gamepad CCC write)
+                // must still mark the link connected.
+                if (hid2_kbd_ccc) { con_handle = con; ble_connected = true; adv_on = false; }
+            }
+            break;
+        case ATT_CHARACTERISTIC_ORG_BLUETOOTH_CHARACTERISTIC_REPORT_0a_CLIENT_CONFIGURATION_HANDLE:
+            if (buffer_size >= 2) {
+                hid2_mouse_ccc = little_endian_read_16(buffer, 0);
+                if (hid2_mouse_ccc) { con_handle = con; ble_connected = true; adv_on = false; }
+            }
+            break;
+        case ATT_CHARACTERISTIC_ORG_BLUETOOTH_CHARACTERISTIC_PROTOCOL_MODE_02_VALUE_HANDLE:
+            if (buffer_size >= 1) hid2_protocol_mode = buffer[0];
+            break;
+        default:
+            break;
+    }
+    return 0;
+}
+
+// CAN_SEND_NOW equivalent for the second service: att_server grants us a
+// notification slot on this connection, send whatever kbd/mouse report is
+// pending. Runs in the BTstack/ATT context.
+static btstack_context_callback_registration_t hid2_send_request;
+
+static void hid2_can_send_now(void *context)
+{
+    uint16_t h = (uint16_t)(uintptr_t)context;
+    if (h == HCI_CON_HANDLE_INVALID) return;
+    switch (pending_type) {
+        case PENDING_KEYBOARD:
+            att_server_notify(h,
+                ATT_CHARACTERISTIC_ORG_BLUETOOTH_CHARACTERISTIC_REPORT_08_VALUE_HANDLE,
+                (const uint8_t *)&pending_keyboard, sizeof(pending_keyboard));
+            last_sent_keyboard = pending_keyboard;
+            pending_type = PENDING_NONE;
+            break;
+        case PENDING_SINPUT_MOUSE:
+            att_server_notify(h,
+                ATT_CHARACTERISTIC_ORG_BLUETOOTH_CHARACTERISTIC_REPORT_0a_VALUE_HANDLE,
+                (const uint8_t *)&pending_sinput_mouse, sizeof(pending_sinput_mouse));
+            pending_type = PENDING_NONE;
+            break;
+        default:
+            break;
+    }
+}
+
+// In SInput mode, keyboard (ID 6) and mouse (ID 8) live on HID service #2 and
+// go out via att_server_notify; everything else goes through hids_device.
+static bool pending_is_hid2(void)
+{
+    return (current_mode == BLE_MODE_SINPUT) &&
+           (pending_type == PENDING_KEYBOARD || pending_type == PENDING_SINPUT_MOUSE);
+}
+
+static void hid2_request_send(uint16_t handle)
+{
+    hid2_send_request.callback = &hid2_can_send_now;
+    hid2_send_request.context = (void *)(uintptr_t)handle;
+    att_server_request_to_send_notification(&hid2_send_request, handle);
+}
+#else
+static bool pending_is_hid2(void) { return false; }
+static void hid2_request_send(uint16_t handle) { (void)handle; }
+#endif  // SINPUT_BLE_COMPOSITE
+
 // ---------------------------------------------------------------------------
 // Cross-thread send marshalling. On multi-threaded ports (nRF/ESP32) BTstack
 // runs in its own thread, and the ble_output_task_* senders run in the app
@@ -478,7 +603,11 @@ static void request_send_on_btstack_thread(void *context)
     send_req_queued = false;
     uint16_t h = send_req_handle;
     if (h != HCI_CON_HANDLE_INVALID) {
-        hids_device_request_can_send_now_event(h);
+        if (pending_is_hid2()) {
+            hid2_request_send(h);
+        } else {
+            hids_device_request_can_send_now_event(h);
+        }
     }
 }
 
@@ -495,7 +624,11 @@ static void ble_request_can_send_now(uint16_t handle)
 // Single-threaded ports (Pico W): direct call, same context as BTstack.
 static void ble_request_can_send_now(uint16_t handle)
 {
-    hids_device_request_can_send_now_event(handle);
+    if (pending_is_hid2()) {
+        hid2_request_send(handle);
+    } else {
+        hids_device_request_can_send_now_event(handle);
+    }
 }
 #endif
 
@@ -666,6 +799,11 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                 last_le_handle =
                     hci_subevent_le_connection_complete_get_connection_handle(packet);
                 link_up_ms = btstack_run_loop_get_time_ms();
+                // Ask the host to encrypt right away (standard HID-peripheral
+                // behavior). Hosts silently discard keyboard/mouse HID on
+                // unencrypted links — the gamepad often still worked, which
+                // made typed input look selectively broken.
+                sm_send_security_request(last_le_handle);
             }
             break;
 
@@ -711,10 +849,10 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                                 last_sent_gamepad = pending_gamepad;
                                 break;
                             case PENDING_KEYBOARD:
-                                // Keyboard report ID differs per map: 1 in the
-                                // Standard composite, 6 in the SInput composite.
-                                hids_device_send_input_report_for_id(con_handle,
-                                    (current_mode == BLE_MODE_SINPUT) ? 6 : 1,
+                                // Standard composite keyboard (report ID 1).
+                                // SInput-mode keyboard (ID 6) lives on HID
+                                // service #2 and never reaches this handler.
+                                hids_device_send_input_report_for_id(con_handle, 1,
                                     (const uint8_t *)&pending_keyboard, sizeof(pending_keyboard));
                                 last_sent_keyboard = pending_keyboard;
                                 break;
@@ -743,13 +881,8 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                                 hids_device_send_input_report_for_id(con_handle, SINPUT_REPORT_ID_FEATURES,
                                     pending_feature, pending_feature_len);
                                 break;
-                            case PENDING_SINPUT_MOUSE:
-                                // SInput composite mouse (report ID 8). One-shot
-                                // deltas — no last_sent tracking.
-                                hids_device_send_input_report_for_id(con_handle, 8,
-                                    (const uint8_t *)&pending_sinput_mouse,
-                                    sizeof(pending_sinput_mouse));
-                                break;
+                            // PENDING_SINPUT_MOUSE goes out via HID service #2
+                            // (hid2_can_send_now), never through this handler.
                             default:
                                 break;
                         }
@@ -939,6 +1072,21 @@ void ble_output_late_init(void)
            (current_mode == BLE_MODE_XBOX) ? "Xbox" : "Standard", gatt_db);
     att_server_init(gatt_db, NULL, att_write_callback);
 
+#ifdef SINPUT_BLE_COMPOSITE
+    // HID service instance #2 (keyboard + mouse) — only in the standard GATT
+    // DB (Xbox mode uses its own profile without it). hids_device binds
+    // service #1; this handler owns service #2's handle range.
+    if (current_mode != BLE_MODE_XBOX) {
+        hid2_service_handler.start_handle =
+            ATT_SERVICE_ORG_BLUETOOTH_SERVICE_HUMAN_INTERFACE_DEVICE_02_START_HANDLE;
+        hid2_service_handler.end_handle =
+            ATT_SERVICE_ORG_BLUETOOTH_SERVICE_HUMAN_INTERFACE_DEVICE_02_END_HANDLE;
+        hid2_service_handler.read_callback = &hid2_read_callback;
+        hid2_service_handler.write_callback = &hid2_write_callback;
+        att_server_register_service_handler(&hid2_service_handler);
+    }
+#endif
+
     // Setup GATT services
     battery_service_server_init(100);
 #ifdef BTSTACK_USE_ESP32
@@ -989,19 +1137,11 @@ void ble_output_late_init(void)
         hid_desc = ble_xbox_get_descriptor();
         hid_desc_size = ble_xbox_get_descriptor_size();
     } else if (current_mode == BLE_MODE_SINPUT) {
-#ifdef SINPUT_BLE_COMPOSITE
-        // Composite map (gamepad + keyboard/mouse). Works with the Gamepad API and
-        // adds kbd/mouse over BLE (see sinput_kbd_mouse_tail comment).
-        memcpy(sinput_composite_desc, sinput_report_descriptor, sizeof(sinput_report_descriptor));
-        memcpy(sinput_composite_desc + sizeof(sinput_report_descriptor),
-               sinput_kbd_mouse_tail, sizeof(sinput_kbd_mouse_tail));
-        hid_desc = sinput_composite_desc;
-        hid_desc_size = sizeof(sinput_composite_desc);
-#else
-        // Pure SInput gamepad (no kbd/mouse). Also works with the Gamepad API.
+        // Pure SInput gamepad map on HID service #1. The composite's keyboard
+        // and mouse live on HID service #2 (sinput_kbd_mouse_tail) — see the
+        // hid2_* handler for why they must be a separate service instance.
         hid_desc = sinput_report_descriptor;
         hid_desc_size = sizeof(sinput_report_descriptor);
-#endif
     } else {
         hid_desc = standard_hid_descriptor;
         hid_desc_size = sizeof(standard_hid_descriptor);
@@ -1306,17 +1446,6 @@ void ble_output_task(void)
 #ifdef CONFIG_BT_CLASSIC_OUTPUT
     if (current_mode == BLE_MODE_SWITCH_BT) { switch_bt_task(); return; }
 #endif
-    // TEMP bench: once/sec, record gate state: 0xB0 mm cc hh
-    {
-        static uint32_t last_gate_ms;
-        uint32_t now = platform_time_ms();
-        if ((uint32_t)(now - last_gate_ms) > 1000) {
-            last_gate_ms = now;
-            bt_diag_mark(0xB0000000u | ((uint32_t)current_mode << 16) |
-                         ((uint32_t)(ble_connected ? 1 : 0) << 8) |
-                         (con_handle != HCI_CON_HANDLE_INVALID ? 1u : 0u));
-        }
-    }
     if (!ble_connected || con_handle == HCI_CON_HANDLE_INVALID) return;
 
     if (current_mode == BLE_MODE_XBOX) {
