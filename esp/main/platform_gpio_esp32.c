@@ -4,10 +4,34 @@
 #include "platform/platform_gpio.h"
 #include "driver/gpio.h"
 #include "esp_adc/adc_oneshot.h"
+#include "soc/soc_caps.h"
+#include "soc/gpio_periph.h"
 #include <stdio.h>
 
 static adc_oneshot_unit_handle_t adc_handle = NULL;
 static bool adc_inited = false;
+
+uint8_t platform_gpio_pin_count(void) {
+    return (uint8_t)SOC_GPIO_PIN_COUNT;
+}
+
+bool platform_gpio_pin_usable(uint8_t pin) {
+    // GPIO_IS_VALID_GPIO screens the gaps in the SoC's numbering space — the
+    // ESP32-S3 has no GPIO 22-25, and pins backing internal SPI flash/PSRAM
+    // are absent from the table.
+    if (pin >= SOC_GPIO_PIN_COUNT) return false;
+    return GPIO_IS_VALID_GPIO(pin);
+}
+
+uint8_t platform_adc_channel_count(void) {
+    return 4;  // pad_read_adc() centres anything above channel 3
+}
+
+int8_t platform_adc_channel_gpio(uint8_t channel) {
+    // ADC1 channels map to pins through a per-SoC table, not a fixed offset.
+    (void)channel;
+    return -1;
+}
 
 void platform_gpio_init_input(uint8_t pin, bool pull_up) {
     gpio_config_t cfg = {
