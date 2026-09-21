@@ -261,7 +261,19 @@ typedef enum {
     PENDING_XBOX,
     PENDING_SINPUT,          // SInput input report (ID 1)
     PENDING_SINPUT_FEATURE,  // SInput feature response (ID 2)
+    PENDING_SINPUT_MOUSE,    // SInput composite mouse report (ID 8)
 } pending_report_type_t;
+
+// SInput BLE composite mouse report (ID 8): 5 buttons, 16-bit X/Y, wheel,
+// AC Pan — matches sinput_kbd_mouse_tail. The standard-mode ble_mouse_report_t
+// (ID 2) only carries 8-bit deltas, so this has its own layout.
+typedef struct __attribute__((packed)) {
+    uint8_t buttons;
+    int16_t x;
+    int16_t y;
+    int8_t  wheel;
+    int8_t  pan;
+} sinput_ble_mouse_report_t;
 
 // ============================================================================
 // STATE
@@ -357,6 +369,7 @@ static ble_keyboard_report_t pending_keyboard;
 static ble_mouse_report_t pending_mouse;
 static ble_xbox_report_t pending_xbox;
 static sinput_report_t pending_sinput;
+static sinput_ble_mouse_report_t pending_sinput_mouse;
 static uint8_t pending_feature[63];       // SInput feature response payload
 static uint16_t pending_feature_len;
 // Input state arrived while a feature response was queued: pending_sinput holds
@@ -698,7 +711,10 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                                 last_sent_gamepad = pending_gamepad;
                                 break;
                             case PENDING_KEYBOARD:
-                                hids_device_send_input_report_for_id(con_handle, 1,
+                                // Keyboard report ID differs per map: 1 in the
+                                // Standard composite, 6 in the SInput composite.
+                                hids_device_send_input_report_for_id(con_handle,
+                                    (current_mode == BLE_MODE_SINPUT) ? 6 : 1,
                                     (const uint8_t *)&pending_keyboard, sizeof(pending_keyboard));
                                 last_sent_keyboard = pending_keyboard;
                                 break;
@@ -726,6 +742,13 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                                 // Input report ID 2: the SInput feature response.
                                 hids_device_send_input_report_for_id(con_handle, SINPUT_REPORT_ID_FEATURES,
                                     pending_feature, pending_feature_len);
+                                break;
+                            case PENDING_SINPUT_MOUSE:
+                                // SInput composite mouse (report ID 8). One-shot
+                                // deltas — no last_sent tracking.
+                                hids_device_send_input_report_for_id(con_handle, 8,
+                                    (const uint8_t *)&pending_sinput_mouse,
+                                    sizeof(pending_sinput_mouse));
                                 break;
                             default:
                                 break;
@@ -1186,6 +1209,53 @@ static void ble_output_task_sinput(void)
     // only to USB (one neutral report on the mute edge, then nothing).
     event = ble_mute_filter(event);
     if (!event) return;
+
+#ifdef SINPUT_BLE_COMPOSITE
+    // Composite keyboard (ID 6) and mouse (ID 8): typed events go out their
+    // own report characteristics; only gamepad-shaped events feed the SInput
+    // input report below. Same coalescing rules as everywhere else — held
+    // keyboard state overwrites the queued report, one-shot mouse deltas
+    // ACCUMULATE into it so a fast drag never loses motion.
+    if (event->type == INPUT_TYPE_KEYBOARD) {
+        ble_keyboard_report_t kb;
+        ble_keyboard_report_from_event(event, &kb);
+        const ble_keyboard_report_t *kref = (pending_type == PENDING_KEYBOARD)
+            ? &pending_keyboard : &last_sent_keyboard;
+        if (memcmp(&kb, kref, sizeof(kb)) == 0) return;
+        pending_keyboard = kb;
+        pending_type = PENDING_KEYBOARD;
+        ble_request_can_send_now(con_handle);
+        return;
+    }
+    if (event->type == INPUT_TYPE_MOUSE && !event->as_gamepad) {
+        uint8_t mb = 0;
+        if (event->buttons & JP_BUTTON_B1) mb |= (1 << 0);  // Left
+        if (event->buttons & JP_BUTTON_B2) mb |= (1 << 1);  // Right
+        if (event->buttons & JP_BUTTON_B3) mb |= (1 << 2);  // Middle
+        if (event->buttons & JP_BUTTON_S1) mb |= (1 << 3);  // Back
+        if (event->buttons & JP_BUTTON_S2) mb |= (1 << 4);  // Forward
+        if (pending_type == PENDING_SINPUT_MOUSE) {
+            // Report still queued: fold this event's deltas into it.
+            int32_t x = (int32_t)pending_sinput_mouse.x + event->delta_x;
+            int32_t y = (int32_t)pending_sinput_mouse.y + event->delta_y;
+            int32_t w = (int32_t)pending_sinput_mouse.wheel + event->delta_wheel;
+            pending_sinput_mouse.x = (int16_t)((x > 32767) ? 32767 : (x < -32767) ? -32767 : x);
+            pending_sinput_mouse.y = (int16_t)((y > 32767) ? 32767 : (y < -32767) ? -32767 : y);
+            pending_sinput_mouse.wheel = (int8_t)((w > 127) ? 127 : (w < -127) ? -127 : w);
+            pending_sinput_mouse.buttons = mb;
+            return;  // send request already in flight
+        }
+        if (pending_type != PENDING_NONE) return;  // gamepad/feature in flight: drop the delta
+        memset(&pending_sinput_mouse, 0, sizeof(pending_sinput_mouse));
+        pending_sinput_mouse.buttons = mb;
+        pending_sinput_mouse.x = event->delta_x;
+        pending_sinput_mouse.y = event->delta_y;
+        pending_sinput_mouse.wheel = event->delta_wheel;
+        pending_type = PENDING_SINPUT_MOUSE;
+        ble_request_can_send_now(con_handle);
+        return;
+    }
+#endif  // SINPUT_BLE_COMPOSITE
 
     // Build the input report; may flag a feature refresh on device change. The
     // host's features request (output report) also sets the pending flag.
