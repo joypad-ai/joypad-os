@@ -146,8 +146,14 @@ typedef struct {
     // directly but skipped by SELECT+Up/Down.
     uint8_t builtin_disabled_mask;
 
-    // Reserved for future global settings (7 bytes)
-    uint8_t reserved[7];
+    // Non-zero once the user has explicitly picked a BLE output mode
+    // (BLE.MODE.SET / web config). Apps that force a default BLE mode
+    // (controller_btusb → SInput) honor ble_output_mode when this is set.
+    // Carved from reserved[] — zero on old flashes = never selected.
+    uint8_t ble_mode_saved;
+
+    // Reserved for future global settings (6 bytes)
+    uint8_t reserved[6];
 
     // Custom profiles (4 x 56 = 224 bytes)
     custom_profile_t profiles[CUSTOM_PROFILE_MAX_COUNT];

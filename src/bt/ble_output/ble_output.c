@@ -653,6 +653,7 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                     break;
 
                 case HIDS_SUBEVENT_CAN_SEND_NOW:
+                    bt_diag_mark(0xB2000000u | (uint32_t)pending_type);
                     if (pending_type != PENDING_NONE && con_handle != HCI_CON_HANDLE_INVALID) {
                         switch (pending_type) {
                             case PENDING_GAMEPAD:
@@ -751,14 +752,17 @@ void ble_output_init(void)
 
 #ifdef CONFIG_CONTROLLER_BTUSB
     // controller_btusb is a gamepad and (on builds like the tucked-away XIAO)
-    // has no practical USB/CDC access to switch modes — SInput is THE BLE device
-    // mode here, carrying buttons + gyro/accel + battery to SDL/Steam. But honor an
-    // explicitly-selected Switch-BT (Bluetooth Classic) mode, which is a different
-    // radio role handled by switch_bt.c.
+    // has no practical USB/CDC access to switch modes — SInput is the DEFAULT
+    // BLE device mode here, carrying buttons + gyro/accel + battery to
+    // SDL/Steam. But honor an EXPLICIT selection (BLE.MODE.SET / web config,
+    // marked by ble_mode_saved) and an explicitly-selected Switch-BT mode —
+    // otherwise the mode selector is a silent no-op on this app.
+    if (!(settings && settings->ble_mode_saved)) {
 #ifdef CONFIG_BT_CLASSIC_OUTPUT
-    if (current_mode != BLE_MODE_SWITCH_BT)
+        if (current_mode != BLE_MODE_SWITCH_BT)
 #endif
-        current_mode = BLE_MODE_SINPUT;
+            current_mode = BLE_MODE_SINPUT;
+    }
 #endif
 
     printf("[ble_output] Initializing BLE output (mode: %s)\n",
@@ -1138,6 +1142,7 @@ static void ble_output_task_sinput(void)
     if (memcmp(&report, &last_sent_sinput, sizeof(report)) == 0) return;
     pending_sinput = report;
     pending_type = PENDING_SINPUT;
+    bt_diag_mark(0xB1000001u);
     ble_request_can_send_now(con_handle);
 }
 
@@ -1150,6 +1155,17 @@ void ble_output_task(void)
 #ifdef CONFIG_BT_CLASSIC_OUTPUT
     if (current_mode == BLE_MODE_SWITCH_BT) { switch_bt_task(); return; }
 #endif
+    // TEMP bench: once/sec, record gate state: 0xB0 mm cc hh
+    {
+        static uint32_t last_gate_ms;
+        uint32_t now = platform_time_ms();
+        if ((uint32_t)(now - last_gate_ms) > 1000) {
+            last_gate_ms = now;
+            bt_diag_mark(0xB0000000u | ((uint32_t)current_mode << 16) |
+                         ((uint32_t)(ble_connected ? 1 : 0) << 8) |
+                         (con_handle != HCI_CON_HANDLE_INVALID ? 1u : 0u));
+        }
+    }
     if (!ble_connected || con_handle == HCI_CON_HANDLE_INVALID) return;
 
     if (current_mode == BLE_MODE_XBOX) {
@@ -1178,10 +1194,12 @@ void ble_output_set_mode(ble_output_mode_t mode)
            ble_output_get_mode_name(current_mode),
            ble_output_get_mode_name(mode));
 
-    // Save to flash
+    // Save to flash (ble_mode_saved marks this as an explicit user choice so
+    // apps with a forced default — controller_btusb — honor it after reboot)
     flash_t *settings = flash_get_settings();
     if (settings) {
         settings->ble_output_mode = (uint8_t)mode;
+        settings->ble_mode_saved = 1;
         flash_save_force(settings);
     }
 
