@@ -8,8 +8,12 @@ function buildStamp() {
     let commit = 'dev';
     let dirty = '';
     try {
-        commit = execSync('git rev-parse --short HEAD').toString().trim();
-        dirty = execSync('git status --porcelain -- .').toString().trim() ? '+' : '';
+        // Last commit touching the web config's SOURCE (dist excluded), so the
+        // stamp stays valid when dist is committed separately afterwards.
+        commit = execSync("git log -1 --format=%h -- src vite.config.js package.json")
+            .toString().trim() || 'dev';
+        dirty = execSync('git status --porcelain -- src vite.config.js package.json')
+            .toString().trim() ? '+' : '';
     } catch { /* not a git checkout */ }
     const date = new Date().toLocaleDateString('sv-SE'); // YYYY-MM-DD, local time
     return `${commit}${dirty} · ${date}`;
