@@ -152,5 +152,8 @@ controller_btusb_rp2040zero               # added by #248 (hand-wired GPIO pad -
 # an inconvenience to be excluded away.
 usb2neogeo_te_kb2040       # PR #175 (GerryHolt): tournament-edition Neo Geo app; hardware-verified only on the contributor's Augie adapter, not in the release matrix per the #227 policy. Inert until #175 adds APP_usb2neogeo_te_kb2040 — see the note above.
 usb2neogeo_te_pico         # PR #175 (GerryHolt): see usb2neogeo_te_kb2040
-usb2neogeo_te_rp2040zero   # PR #175 (GerryHolt): see usb2neogeo_te_kb2040
-usb2neogeo_te_pico2p       # PR #175 (GerryHolt): 2-player variant; see usb2neogeo_te_kb2040
+usb2neogeo_te_pico2p       # PR #175 (GerryHolt): 2-player variant; see usb2neogeo_te_kb2040 (buildable since #175 landed; still off-matrix per #227)
+usb2wifi_pico_w            # PS5 Remote Play transport experiment (remote-play-lab); personal research app, not a shippable product yet
+usb2wifi_pico2_w           # see usb2wifi_pico_w
+hardware/24g2usb_pico2w    # KiCad PCB, not firmware: built locally via Docker KiCad 9; orderable gerbers/BOM committed pre-generated (#273)
+hardware/24g2usb_rp2350zero # see hardware/24g2usb_pico2w

@@ -946,6 +946,7 @@ joypad_add_btstack(joypad_neogeo_te_rp2040zero)
 add_executable(joypad_neogeo_te_pico2p)
 target_compile_definitions(joypad_neogeo_te_pico2p PRIVATE
     CONFIG_NEOGEO=1
+    CONFIG_REGISTER_ON_CONNECT=1
     CONFIG_NEOGEO_TE_2P=1
     WS2812_PIN=25
     USE_BOOTSEL_BUTTON=1

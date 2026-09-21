@@ -235,6 +235,12 @@ jobs:
           - app: bt2usb_seeed_xiao_nrf52840
             board: xiao_ble
             app_type: bt2usb
+          - app: bt2usb_makerdiary_nrf52840
+            board: makerdiary_nrf52840
+            app_type: bt2usb
+          - app: controller_btusb_makerdiary_nrf52840
+            board: makerdiary_nrf52840
+            app_type: controller_btusb
           - app: bt2usb_feather_nrf52840
             board: adafruit_feather_nrf52840
             app_type: bt2usb

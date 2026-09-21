@@ -88,6 +88,7 @@ CONSOLE_neogeo_retrofrog := joypad_neogeo_retrofrog
 CONSOLE_neogeo_te := joypad_neogeo_te
 CONSOLE_neogeo_te_pico := joypad_neogeo_te_pico
 CONSOLE_neogeo_te_rp2040zero := joypad_neogeo_te_rp2040zero
+CONSOLE_neogeo_te_pico2p := joypad_neogeo_te_pico2p
 CONSOLE_n642dc := joypad_n642dc
 CONSOLE_n642dc_pico2_w := joypad_n642dc_pico2_w
 CONSOLE_n642nuon := joypad_n642nuon
@@ -171,6 +172,7 @@ APP_usb2neogeo_retrofrog := rp2040zero neogeo_retrofrog usb2neogeo_retrofrog USB
 APP_usb2neogeo_te_kb2040 := kb2040 neogeo_te usb2neogeo_te_kb2040 USB/BT NEOGEO
 APP_usb2neogeo_te_pico := pico neogeo_te_pico usb2neogeo_te_pico USB/BT NEOGEO
 APP_usb2neogeo_te_rp2040zero := rp2040zero neogeo_te_rp2040zero usb2neogeo_te_rp2040zero USB/BT NEOGEO
+APP_usb2neogeo_te_pico2p := pico neogeo_te_pico2p usb2neogeo_te_pico2p USB/BT NEOGEO
 APP_n642dc_kb2040 := kb2040 n642dc n642dc_kb2040 N64 Dreamcast
 APP_n642dc_pico2_w := pico2_w n642dc_pico2_w n642dc_pico2_w N64 Dreamcast
 APP_gc2dc_kb2040 := kb2040 gc2dc gc2dc_kb2040 GameCube Dreamcast
@@ -285,6 +287,7 @@ APPS += usb2neogeo_retrofrog
 APPS += usb2neogeo_te_kb2040
 APPS += usb2neogeo_te_pico
 APPS += usb2neogeo_te_rp2040zero
+APPS += usb2neogeo_te_pico2p
 APPS += n642dc_kb2040
 APPS += n642dc_pico2_w
 APPS += n642nuon_pico
@@ -684,6 +687,10 @@ usb2neogeo_te_pico:
 .PHONY: usb2neogeo_te_rp2040zero
 usb2neogeo_te_rp2040zero:
 	$(call build_app,usb2neogeo_te_rp2040zero)
+
+.PHONY: usb2neogeo_te_pico2p
+usb2neogeo_te_pico2p:
+	$(call build_app,usb2neogeo_te_pico2p)
 
 .PHONY: usb2neogeo_pico
 usb2neogeo_pico:
@@ -1580,6 +1587,10 @@ flash-usb2neogeo_te_pico:
 .PHONY: flash-usb2neogeo_te_rp2040zero
 flash-usb2neogeo_te_rp2040zero:
 	@$(MAKE) --no-print-directory _flash_app APP_NAME=usb2neogeo_te_rp2040zero
+
+.PHONY: flash-usb2neogeo_te_pico2p
+flash-usb2neogeo_te_pico2p:
+	@$(MAKE) --no-print-directory _flash_app APP_NAME=usb2neogeo_te_pico2p
 
 .PHONY: flash-usb2neogeo_pico
 flash-usb2neogeo_pico:
