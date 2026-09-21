@@ -1922,6 +1922,85 @@ static void cmd_input_inject(const char* json)
     send_json(response_buf);
 }
 
+// MOUSE.INJECT - Submit a synthetic mouse event into the router from the
+// config host. One-shot, like a real mouse report: deltas apply once, button
+// state is whatever this call carries (send buttons:0 to release a click).
+//   { "dx": <int16>, "dy": <int16>, "wheel": <int8>, "buttons": <bitmask> }
+// buttons: bit0=left, bit1=right, bit2=middle (HID order), mapped onto the
+// same JP_BUTTON_B1/B2/B3 encoding real pointer drivers use. Routes to every
+// output with a pointer path (SInput USB mouse interface, BLE composite,
+// mouse-to-analog transforms) exactly as a physical mouse would.
+static void cmd_mouse_inject(const char* json)
+{
+    input_event_t event;
+    memset(&event, 0, sizeof(event));
+    event.dev_addr = ROUTER_INJECT_MOUSE_ADDR;
+    event.instance = 0;
+    event.type = INPUT_TYPE_MOUSE;
+    event.transport = INPUT_TRANSPORT_NATIVE;
+    for (int i = 0; i < ANALOG_COUNT; i++) {
+        event.analog[i] = (i == ANALOG_L2 || i == ANALOG_R2) ? 0 : 128;
+    }
+
+    int v;
+    if (json_get_int(json, "dx", &v)) {
+        if (v > 32767) v = 32767; else if (v < -32767) v = -32767;
+        event.delta_x = (int16_t)v;
+    }
+    if (json_get_int(json, "dy", &v)) {
+        if (v > 32767) v = 32767; else if (v < -32767) v = -32767;
+        event.delta_y = (int16_t)v;
+    }
+    if (json_get_int(json, "wheel", &v)) {
+        if (v > 127) v = 127; else if (v < -127) v = -127;
+        event.delta_wheel = (int8_t)v;
+    }
+    int buttons = 0;
+    json_get_int(json, "buttons", &buttons);
+    if (buttons & 0x01) event.buttons |= JP_BUTTON_B1;  // left
+    if (buttons & 0x02) event.buttons |= JP_BUTTON_B2;  // right
+    if (buttons & 0x04) event.buttons |= JP_BUTTON_B3;  // middle
+
+    router_submit_input(&event);
+
+    snprintf(response_buf, sizeof(response_buf),
+             "{\"ok\":true,\"dx\":%d,\"dy\":%d,\"wheel\":%d,\"buttons\":%d}",
+             event.delta_x, event.delta_y, event.delta_wheel, buttons & 7);
+    send_json(response_buf);
+}
+
+// KEY.INJECT - Submit synthetic keyboard state into the router from the
+// config host. Held-state, like a real keyboard report: the keys and modifiers
+// in this call stay pressed until the next call replaces them.
+//   { "mod": <HID modifier mask>, "keys": [<up to 6 HID usage IDs, page 0x07>] }
+// Send {} (or keys:[] with mod:0) to release everything.
+static void cmd_key_inject(const char* json)
+{
+    input_event_t event;
+    memset(&event, 0, sizeof(event));
+    event.dev_addr = ROUTER_INJECT_KB_ADDR;
+    event.instance = 0;
+    event.type = INPUT_TYPE_KEYBOARD;
+    event.transport = INPUT_TRANSPORT_NATIVE;
+    for (int i = 0; i < ANALOG_COUNT; i++) {
+        event.analog[i] = (i == ANALOG_L2 || i == ANALOG_R2) ? 0 : 128;
+    }
+
+    int mod = 0;
+    json_get_int(json, "mod", &mod);
+    event.kb_modifier = (uint8_t)mod;
+
+    uint8_t keys[6] = {0};
+    int count = json_get_int_array(json, "keys", keys, 6);
+    for (int i = 0; i < count; i++) event.kb_keys[i] = keys[i];
+
+    router_submit_input(&event);
+
+    snprintf(response_buf, sizeof(response_buf),
+             "{\"ok\":true,\"mod\":%d,\"keys\":%d}", mod, count > 0 ? count : 0);
+    send_json(response_buf);
+}
+
 // Legacy alias for CPROFILE.SELECT (deprecated, use PROFILE.SET)
 static void cmd_cprofile_select(const char* json)
 {
@@ -4206,6 +4285,8 @@ static const cmd_entry_t commands[] = {
     {"OVERLAY.SET", cmd_overlay_set},
     {"OVERLAY.CLEAR", cmd_overlay_clear},
     {"INPUT.INJECT", cmd_input_inject},
+    {"MOUSE.INJECT", cmd_mouse_inject},
+    {"KEY.INJECT", cmd_key_inject},
     // Legacy CPROFILE.* aliases (deprecated - redirect to unified commands)
     {"CPROFILE.LIST", cmd_cprofile_list},
     {"CPROFILE.GET", cmd_cprofile_get},

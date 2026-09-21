@@ -406,6 +406,15 @@ static bool sinput_mode_send_report(uint8_t player_index,
 {
     (void)player_index;
 
+    // Typing-only device (real keyboard or KEY.INJECT): keyboard/consumer
+    // report on the keyboard interface, nothing for the gamepad. Without this
+    // branch a pure KEYBOARD event fell through to the gamepad build and its
+    // keys never reached the host.
+    if (event->type == INPUT_TYPE_KEYBOARD) {
+        sinput_send_kbd_consumer(event);
+        return true;
+    }
+
     // Relative pointers (e.g. PlayStation Mouse) go out the SInput composite's
     // mouse interface, not the gamepad report.
     if (event->type == INPUT_TYPE_MOUSE) {

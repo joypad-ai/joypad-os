@@ -201,8 +201,11 @@ void router_set_inject_analog(const uint8_t* analog);
 bool router_get_inject_analog(uint8_t* out);
 
 // Address the router sees synthetic input arrive from, so a heartbeat event can
-// be told apart from a real controller's.
-#define ROUTER_INJECT_ADDR 0xD8
+// be told apart from a real controller's. MOUSE/KB are distinct devices so
+// CDC-injected pointer/typing state never collides with the gamepad overlay.
+#define ROUTER_INJECT_ADDR       0xD8
+#define ROUTER_INJECT_MOUSE_ADDR 0xD9
+#define ROUTER_INJECT_KB_ADDR    0xDA
 
 // Keeps injected input flowing when nothing else is attached.
 //

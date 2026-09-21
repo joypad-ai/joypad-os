@@ -857,7 +857,13 @@ static inline void router_merge_mode(const input_event_t* event, output_target_t
     if (player_index < 0) {
         uint32_t buttons_pressed = event->buttons | event->keys;
         bool analog_active = analog_beyond_threshold(event);
-        if (buttons_pressed || analog_active || event->type == INPUT_TYPE_MOUSE) {
+        // A keyboard event may carry only kb_modifier/kb_keys[] (the lossy
+        // `keys` gamepad-mapping stays 0), so gate on the type like MOUSE —
+        // otherwise its first press never registers a player and is dropped.
+        bool kb_active = event->type == INPUT_TYPE_KEYBOARD &&
+                         (event->kb_modifier || event->kb_keys[0]);
+        if (buttons_pressed || analog_active || kb_active ||
+            event->type == INPUT_TYPE_MOUSE) {
             const char* device_name = get_device_name(event);
             player_index = add_player(event->dev_addr, slot_inst, event->transport, device_name);
             if (player_index >= 0) {
@@ -880,6 +886,19 @@ static inline void router_merge_mode(const input_event_t* event, output_target_t
         final_event = &transformed;
     } else {
         final_event = event;  // Zero-copy pass-through
+    }
+
+    // Mouse and keyboard events are their own report streams (deltas /
+    // kb_keys), not gamepad state — blending or priority-merging them with a
+    // gamepad corrupts both (BLEND drops kb fields entirely). Publish them
+    // straight through; the output drivers dispatch by event type.
+    if (final_event->type == INPUT_TYPE_MOUSE ||
+        final_event->type == INPUT_TYPE_KEYBOARD) {
+        router_publish(&router_outputs[output][0], final_event);
+        if (output_taps[output]) {
+            output_taps[output](output, 0, final_event);
+        }
+        return;
     }
 
     // Build the merged result in a local, then publish once (seqlock) so Core 1
@@ -1338,7 +1357,11 @@ void router_submit_input(const input_event_t* event) {
     // event so host-driven presses join the streamer's controller regardless of
     // routing mode (works on SIMPLE, MERGE, BROADCAST). Buttons are OR'd;
     // analog takes whichever value is further from the axis's resting position.
-    if (s_inject_buttons || s_inject_analog_set) {
+    // Gamepad overlay only: on a mouse event `buttons` means click buttons and
+    // on a keyboard event it's unused, so merging gamepad state into either
+    // would fabricate clicks (real mice passing through included).
+    if ((s_inject_buttons || s_inject_analog_set) &&
+        event->type != INPUT_TYPE_MOUSE && event->type != INPUT_TYPE_KEYBOARD) {
         remapped = *event;
         remapped.buttons |= s_inject_buttons;
         if (s_inject_analog_set) inject_merge_analog(&remapped);

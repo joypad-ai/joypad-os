@@ -100,6 +100,19 @@ outputs carry input.
 - **INPUT.INJECT can drive analog axes**, the web config Input Test row can drive real output,
   and injected input flushes on release so nothing sticks — the base for CDC-driven assistive
   input (decode intent in software, emit real USB/BLE HID from the adapter).
+- **MOUSE.INJECT and KEY.INJECT: the whole computer over CDC.** New commands synthesize real
+  pointer and keyboard input from the config host: `MOUSE.INJECT {dx,dy,wheel,buttons}` is
+  one-shot like a physical mouse report; `KEY.INJECT {mod,keys[]}` is held-state (send `{}` to
+  release). Events route through the router like a physical mouse/keyboard and come out the
+  SInput composite's mouse and keyboard interfaces — an assistive front-end can now drive the
+  cursor, type, and press gamepad buttons on any OS with no drivers or permissions, because the
+  host just sees a real HID device. HW-verified on macOS (cursor deltas, modifier and key state).
+  Three latent routing bugs fixed on the way: pure keyboard events never reached the SInput
+  keyboard interface (only the MouthPad mouse path sent them); MERGE mode never registered a
+  keyboard-only device (its first press was dropped); and blend/priority merging corrupted
+  typed events entirely — mouse/keyboard events now bypass the gamepad merge and publish
+  straight through. The gamepad INPUT.INJECT overlay is also type-gated so it can no longer
+  fabricate clicks on a passing mouse event.
 
 ### Fixed
 
