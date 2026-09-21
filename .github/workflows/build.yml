@@ -235,11 +235,16 @@ jobs:
           - app: bt2usb_seeed_xiao_nrf52840
             board: xiao_ble
             app_type: bt2usb
+          # board = overlay/conf name under nrf/boards/; zephyr_board = the
+          # real Zephyr board target when it differs (nrf/Makefile does the
+          # same mapping locally).
           - app: bt2usb_makerdiary_nrf52840
             board: makerdiary_nrf52840
+            zephyr_board: nrf52840_mdk_usb_dongle
             app_type: bt2usb
           - app: universal_makerdiary_nrf52840
             board: makerdiary_nrf52840
+            zephyr_board: nrf52840_mdk_usb_dongle
             app_type: universal
           - app: bt2usb_feather_nrf52840
             board: adafruit_feather_nrf52840
@@ -313,7 +318,7 @@ jobs:
         env:
           GIT_COMMIT: ${{ steps.commit.outputs.hash }}
         run: |
-          west build -b ${{ matrix.board }} . --pristine=always -- \
+          west build -b ${{ matrix.zephyr_board || matrix.board }} . --pristine=always -- \
             -DAPP_TYPE=${{ matrix.app_type }} \
             $([ -f boards/${{ matrix.board }}.overlay ] && echo "-DDTC_OVERLAY_FILE=$(pwd)/boards/${{ matrix.board }}.overlay") \
             $(EXTRA=""; \
@@ -817,7 +822,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           tag_name: v${{ needs.check-version.outputs.version }}
-          name: Joypad v${{ needs.check-version.outputs.version }}
+          name: JoypadOS v${{ needs.check-version.outputs.version }}
           body: |
             📋 **See [CHANGELOG.md](https://github.com/joypad-ai/joypad-os/blob/main/CHANGELOG.md) for full release notes.**
 
