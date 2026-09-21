@@ -1244,6 +1244,22 @@ static void inject_merge_analog(input_event_t* event) {
     }
 }
 
+void router_announce_virtual_pad(void) {
+    if (find_player_index(ROUTER_INJECT_ADDR, 0) < 0) {
+        add_player(ROUTER_INJECT_ADDR, 0, INPUT_TRANSPORT_NATIVE, "Virtual Pad");
+    }
+    // One neutral frame so the stream (and any change-gated output) carries
+    // the new device immediately.
+    input_event_t event;
+    memset(&event, 0, sizeof(event));
+    event.dev_addr = ROUTER_INJECT_ADDR;
+    event.instance = 0;
+    event.type = INPUT_TYPE_GAMEPAD;
+    event.transport = INPUT_TRANSPORT_NATIVE;
+    for (uint8_t i = 0; i < ANALOG_COUNT; i++) event.analog[i] = inject_axis_rest(i);
+    router_submit_input(&event);
+}
+
 void router_inject_task(void) {
     // needs_flush: we last published an injected frame that still needs one more
     // beat to clear once inject goes empty. Without this, releasing the last

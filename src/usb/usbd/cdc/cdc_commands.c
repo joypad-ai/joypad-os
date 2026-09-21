@@ -1288,6 +1288,9 @@ static void cmd_input_stream(const char* json)
         stream_ctx = active_ctx;
         // Reset throttle so the first event per device re-sends the name
         stream_throttle_reset();
+        // Surface the Virtual Pad row right away instead of having it pop
+        // into existence on the first Input Test click.
+        router_announce_virtual_pad();
     } else if (stream_ctx == active_ctx) {
         stream_ctx = NULL;
     }

@@ -200,6 +200,12 @@ uint32_t router_get_inject_buttons(void);
 void router_set_inject_analog(const uint8_t* analog);
 bool router_get_inject_analog(uint8_t* out);
 
+// Pre-register the Virtual Pad (CDC inject) player and publish one neutral
+// frame. Called when a config session starts input streaming, so the web
+// config's Input Test shows the row before the first injected press instead
+// of the row popping into existence mid-click.
+void router_announce_virtual_pad(void);
+
 // Address the router sees synthetic input arrive from, so a heartbeat event can
 // be told apart from a real controller's. MOUSE/KB are distinct devices so
 // CDC-injected pointer/typing state never collides with the gamepad overlay.

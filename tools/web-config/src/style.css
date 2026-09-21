@@ -493,10 +493,18 @@ input[type="password"]:focus { outline: none; border-color: var(--accent); }
 /* Player groups */
 .player-groups { display: flex; flex-direction: column; gap: 16px; }
 
+/* Rows (player groups and their input sources) ease in when a device
+   appears, instead of popping into existence mid-click. */
+@keyframes rowEnter {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: none; }
+}
+
 .player-group {
     border: 1px solid var(--border);
     border-radius: 8px;
     padding: 16px;
+    animation: rowEnter 0.25s ease-out;
 }
 
 .player-header {
@@ -510,7 +518,7 @@ input[type="password"]:focus { outline: none; border-color: var(--accent); }
 
 .player-inputs { display: flex; flex-direction: column; gap: 8px; }
 
-.input-source { margin-bottom: 8px; }
+.input-source { margin-bottom: 8px; animation: rowEnter 0.25s ease-out; }
 .player-inputs {
     padding: 10px;
     border-radius: 6px;
