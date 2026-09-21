@@ -799,11 +799,11 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                 last_le_handle =
                     hci_subevent_le_connection_complete_get_connection_handle(packet);
                 link_up_ms = btstack_run_loop_get_time_ms();
-                // Ask the host to encrypt right away (standard HID-peripheral
-                // behavior). Hosts silently discard keyboard/mouse HID on
-                // unencrypted links — the gamepad often still worked, which
-                // made typed input look selectively broken.
-                sm_send_security_request(last_le_handle);
+                // No SM Security Request here: the report characteristics
+                // require encryption, so the host pairs on demand. A
+                // peripheral-initiated request races the host's own pairing
+                // agent — macOS System Settings completed pairing, dropped
+                // the link (0x13) before GATT, and discarded the keys.
             }
             break;
 
