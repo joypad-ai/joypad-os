@@ -97,6 +97,15 @@ static inline bool analog_beyond_threshold(const input_event_t* event) {
 // Get device name based on transport type and device address
 // Returns pointer to static string or device name buffer
 static const char* get_device_name(const input_event_t* event) {
+    // Synthetic CDC-injected devices (web config Input Test, INPUT.INJECT,
+    // MOUSE.INJECT, KEY.INJECT) — name them for the player list instead of
+    // falling through to the bare transport label ("Native (native)").
+    switch (event->dev_addr) {
+        case ROUTER_INJECT_ADDR:       return "Virtual Pad";
+        case ROUTER_INJECT_MOUSE_ADDR: return "Virtual Mouse";
+        case ROUTER_INJECT_KB_ADDR:    return "Virtual Keyboard";
+        default: break;
+    }
     switch (event->transport) {
 #ifndef DISABLE_USB_HOST
         case INPUT_TRANSPORT_USB: {
