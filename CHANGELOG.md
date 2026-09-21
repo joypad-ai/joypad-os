@@ -8,6 +8,50 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+
+#### universal — SInput BLE carries gamepad + keyboard + mouse
+- **One BLE device is now a controller, keyboard, and mouse at once.** In SInput BLE mode the
+  adapter exposes the SInput gamepad alongside a full keyboard (modifiers + 6 keys) and mouse
+  (5 buttons, 16-bit X/Y, wheel, pan), so `MOUSE.INJECT`/`KEY.INJECT` and real mice/keyboards
+  come out over the air as well as over USB. Verified end to end on macOS on the Makerdiary
+  nRF52840 dongle: SInput reports, cursor motion, and key/modifier state all at the same time.
+  This removes the reason the Standard BLE combo mode existed. **Hosts paired before this
+  change need Forget + re-pair** once, to pick up the new GATT layout.
+- **Mouse & Keyboard test on the web config Input Test page** — drag pad, wheel, click buttons,
+  and a key/modifier panel driving `MOUSE.INJECT`/`KEY.INJECT`.
+
+### Fixed
+
+#### BLE output (universal)
+- 🔴 **BLE keyboard/mouse reports arrived but did nothing on macOS.** With the keyboard and mouse
+  collections inside the gamepad's report map, macOS built one HID device whose primary usage
+  was Gamepad and never dispatched its keyboard/pointer collections — hidapi saw every report,
+  yet the cursor and keys never moved. Keyboard + mouse now live in a **second HID service
+  instance**, which macOS enumerates as its own keyboard/mouse device (mirroring the USB build's
+  separate interfaces) while the gamepad stays claimed as a controller for SDL/Steam.
+- 🔴 **The central role could wreck the host's bond.** On a dual-role build, the BLE central's
+  "re-encryption failed → delete bond and re-pair" recovery also ran on the *peripheral* link
+  (a Mac connecting to us), deleting that host's bond mid-connection and corrupting the link's
+  security. The central's SM handlers now act only on links the central created.
+- **System Settings pairing left the device "paired but Not Connected."** A security request
+  sent on connect raced the host's own pairing agent; macOS completed pairing, then dropped the
+  link and discarded the keys, re-pairing from scratch on every retry. Removed — the encrypted
+  report characteristics already make hosts pair on demand.
+- **Injected keystrokes went out as empty BLE keyboard reports.** The BLE keyboard encoder read
+  only the legacy packed key field, which `KEY.INJECT` doesn't fill; it now reads the dedicated
+  modifier/keycode fields first.
+
+#### nRF52840
+- 🔴 **Sustained BLE sends hard-hung the dongle** (USB gone, no fault crumb, replug only — ~4 s
+  at 30 Hz mouse input). The cross-thread send marshal inserted into the BTstack run loop's
+  callback list without masking interrupts; the cooperative BTstack thread could preempt the
+  insert and leave the list circular. The insert is now interrupt-guarded.
+
+#### Web config
+- **Virtual mouse/keyboard never appeared as Input Test sources**, and **mouse-pad drags never
+  sent** (the pointer-capture gate swallowed every move) — both fixed.
+
 ---
 
 ## [2.5.0] — 2026-09-20
