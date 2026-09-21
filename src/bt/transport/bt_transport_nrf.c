@@ -211,7 +211,17 @@ static void run_loop_set_timer(btstack_timer_source_t *ts, uint32_t timeout_in_m
 
 static void run_loop_execute_on_main_thread(btstack_context_callback_registration_t *callback_registration)
 {
+    // Called from the app main thread while the BTstack thread walks the same
+    // callback linked list. The BTstack thread is COOPERATIVE: it preempts
+    // main the instant it wakes, so an unguarded add can be interrupted
+    // mid-mutation — corrupted (circular) list, execute_callbacks spins
+    // forever in a coop thread, every other thread starves, USB drops off the
+    // bus with no fault. Reproduced reliably with 30Hz MOUSE.INJECT while a
+    // BLE host was subscribed. irq_lock blocks the context switch for the few
+    // instructions of the list insert.
+    unsigned int key = irq_lock();
     btstack_run_loop_base_add_callback(callback_registration);
+    irq_unlock(key);
 }
 
 static void run_loop_execute(void)
