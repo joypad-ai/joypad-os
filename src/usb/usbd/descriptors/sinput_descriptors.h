@@ -436,6 +436,6 @@ static const tusb_desc_device_t sinput_device_descriptor = {
 
 // String descriptors (transport-neutral — also used by the BLE DIS)
 #define SINPUT_MANUFACTURER  "Joypad"
-#define SINPUT_PRODUCT       "Joypad (SInput)"
+#define SINPUT_PRODUCT       "JoypadOS (SInput)"
 
 #endif // SINPUT_DESCRIPTORS_H

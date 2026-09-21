@@ -17,7 +17,7 @@
 #define USB_KBMOUSE_PID          0x0576  // Keyboard/Mouse composite
 #define USB_KBMOUSE_BCD          0x0100  // v1.0
 #define USB_KBMOUSE_MANUFACTURER "Joypad"
-#define USB_KBMOUSE_PRODUCT      "Joypad (KB/Mouse)"
+#define USB_KBMOUSE_PRODUCT      "JoypadOS (KB/Mouse)"
 
 // ============================================================================
 // REPORT IDs

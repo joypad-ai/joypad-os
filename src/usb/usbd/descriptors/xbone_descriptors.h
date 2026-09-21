@@ -21,7 +21,7 @@
 
 // String descriptors
 #define XBONE_MANUFACTURER  "Joypad"
-#define XBONE_PRODUCT       "Joypad (Xbox One)"
+#define XBONE_PRODUCT       "JoypadOS (Xbox One)"
 
 // GIP Protocol Commands
 typedef enum {

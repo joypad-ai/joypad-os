@@ -47,14 +47,14 @@ typedef enum {
 #define USB_HID_PID            0x0575  // 2In1 USB Joystick
 #define USB_HID_BCD            0x0100  // v1.0
 #define USB_HID_MANUFACTURER   "Joypad"
-#define USB_HID_PRODUCT        "Joypad (DInput)"
+#define USB_HID_PRODUCT        "JoypadOS (DInput)"
 
 // SInput Mode (SDL/Steam compatible)
 #define USB_SINPUT_VID         0x2E8A  // Raspberry Pi
 #define USB_SINPUT_PID         0x10C6  // SInput generic
 #define USB_SINPUT_BCD         0x0100  // v1.0
 #define USB_SINPUT_MANUFACTURER "Joypad"
-#define USB_SINPUT_PRODUCT     "Joypad (SInput)"
+#define USB_SINPUT_PRODUCT     "JoypadOS (SInput)"
 
 // Xbox Original Mode (XID)
 #define USB_XOG_VID            0x045E  // Microsoft
@@ -66,7 +66,7 @@ typedef enum {
 #define USB_CDC_PID            0x10C7  // Joypad Config
 #define USB_CDC_BCD            0x0100  // v1.0
 #define USB_CDC_MANUFACTURER   "Joypad"
-#define USB_CDC_PRODUCT        "Joypad Config"
+#define USB_CDC_PRODUCT        "JoypadOS Config"
 
 // Legacy defines for backward compatibility
 #define USB_DEVICE_VENDOR_ID   USB_HID_VID

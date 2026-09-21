@@ -2215,7 +2215,7 @@ uint16_t const *tud_descriptor_string_cb(uint8_t index, uint16_t langid)
             break;
 #if CFG_TUD_CDC >= 1
         case STRID_CDC_DATA:
-            str = "Joypad Data";
+            str = "JoypadOS Data";
             break;
 #endif
         default:
