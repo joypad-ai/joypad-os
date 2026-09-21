@@ -141,30 +141,46 @@ export class InputTestCard {
         if (!pad) return;
         pad.style.touchAction = 'none';
         let accX = 0, accY = 0, accW = 0, lastX = 0, lastY = 0, timer = null, mbtn = 0;
+        let mouseLogged = false;
         const flush = async () => {
             timer = null;
             const dx = Math.round(accX), dy = Math.round(accY), w = Math.round(accW);
             accX -= dx; accY -= dy; accW -= w;
             if (!dx && !dy && !w) return;
-            try { await this.protocol.sendCommand('MOUSE.INJECT', { dx, dy, wheel: w, buttons: mbtn }); } catch (e) { /* older firmware */ }
+            try {
+                await this.protocol.sendCommand('MOUSE.INJECT', { dx, dy, wheel: w, buttons: mbtn });
+                if (!mouseLogged) { mouseLogged = true; this.log('Virtual mouse streaming (MOUSE.INJECT)', 'success'); }
+            } catch (e) {
+                if (!mouseLogged) { mouseLogged = true; this.log(`MOUSE.INJECT failed: ${e.message}`, 'error'); }
+            }
         };
         const queue = () => { if (!timer) timer = setTimeout(flush, 33); };
+        let dragging = false;
         pad.addEventListener('pointerdown', (e) => {
             e.preventDefault();
-            pad.setPointerCapture(e.pointerId);
+            // Capture keeps the drag alive outside the pad, but never gate on
+            // it — setPointerCapture can throw (and does for synthetic
+            // pointers), which silently killed the whole mouse path.
+            try { pad.setPointerCapture(e.pointerId); } catch (err) { /* ok */ }
+            dragging = true;
             lastX = e.clientX; lastY = e.clientY;
         });
         pad.addEventListener('pointermove', (e) => {
-            if (!pad.hasPointerCapture?.(e.pointerId)) return;
+            if (!dragging) return;
             accX += (e.clientX - lastX) * 2;
             accY += (e.clientY - lastY) * 2;
             lastX = e.clientX; lastY = e.clientY;
             queue();
         });
+        const endDrag = () => { dragging = false; };
+        pad.addEventListener('pointerup', endDrag);
+        pad.addEventListener('pointercancel', endDrag);
+        pad.addEventListener('pointerleave', (e) => { if (!pad.hasPointerCapture?.(e.pointerId)) endDrag(); });
         pad.addEventListener('wheel', (e) => { e.preventDefault(); accW += -e.deltaY / 30; queue(); }, { passive: false });
 
         const sendButtons = async () => {
-            try { await this.protocol.sendCommand('MOUSE.INJECT', { buttons: mbtn }); } catch (e) { /* older firmware */ }
+            try { await this.protocol.sendCommand('MOUSE.INJECT', { buttons: mbtn }); }
+            catch (e) { this.log(`MOUSE.INJECT failed: ${e.message}`, 'error'); }
         };
         // Firmware button bits: 1=left, 2=right, 4=middle (HID order).
         [['mBtnL', 1], ['mBtnM', 4], ['mBtnR', 2]].forEach(([id, bit]) => {
@@ -196,7 +212,8 @@ export class InputTestCard {
             const names = [...keys.keys()].map(c => c.replace(/^Key|^Digit/, ''));
             const mods = Object.entries(HID_MODS).filter(([, b]) => mod & b).map(([c]) => c.replace(/Left|Right/, m => m === 'Left' ? 'L' : 'R'));
             heldEl.textContent = [...mods, ...names].join(' + ');
-            try { await this.protocol.sendCommand('KEY.INJECT', { mod, keys: [...keys.values()].slice(0, 6) }); } catch (e) { /* older firmware */ }
+            try { await this.protocol.sendCommand('KEY.INJECT', { mod, keys: [...keys.values()].slice(0, 6) }); }
+            catch (e) { this.log(`KEY.INJECT failed: ${e.message}`, 'error'); }
         };
         box.addEventListener('keydown', (e) => {
             if (e.code === 'Escape') { box.blur(); return; }
