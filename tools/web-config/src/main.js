@@ -8,6 +8,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const el = document.getElementById('wcVersion');
     if (el) {
         const stamp = typeof __WC_BUILD__ !== 'undefined' ? __WC_BUILD__ : 'dev';
-        el.textContent = `web config ${stamp}`;
+        el.textContent = stamp;
+        el.title = `Web config build ${stamp}`;
     }
 });
