@@ -119,8 +119,8 @@ make flash-usb2gc_rp2040zero
 
 Flash by holding the BOOT button while connecting USB (or double-tap reset on boards that support it) to mount the `RPI-RP2` drive, then drag-and-drop the `.uf2`. Output files:
 
-- `releases/joypad_<commit>_usb2gc_kb2040.uf2`
-- `releases/joypad_<commit>_usb2gc_rp2040zero.uf2`
+- `releases/joypad_os_<commit>_usb2gc_kb2040.uf2`
+- `releases/joypad_os_<commit>_usb2gc_rp2040zero.uf2`
 
 ## Testing
 

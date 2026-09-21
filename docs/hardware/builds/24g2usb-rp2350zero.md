@@ -120,7 +120,7 @@ make 24g2usb_pico2_w
 make flash-24g2usb_pico2_w
 ```
 
-Output: `releases/joypad_<commit>_24g2usb_<board>.uf2`. Flash by holding BOOTSEL while plugging in
+Output: `releases/joypad_os_<commit>_24g2usb_<board>.uf2`. Flash by holding BOOTSEL while plugging in
 USB, or drag-and-drop the `.uf2` onto the `RPI-RP2` drive.
 
 ## Pairing

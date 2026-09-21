@@ -59,7 +59,7 @@ make snes2usb_kb2040
 make flash-snes2usb_kb2040
 ```
 
-Output file: `releases/joypad_<commit>_snes2usb_kb2040.uf2`
+Output file: `releases/joypad_os_<commit>_snes2usb_kb2040.uf2`
 
 ## Testing
 

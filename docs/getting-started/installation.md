@@ -26,11 +26,11 @@ These legacy devices can be flashed with the latest joypad-os firmware using the
 
 1. Go to [GitHub Releases](https://github.com/joypad-ai/joypad-os/releases)
 2. Download the latest `.uf2` file for your product:
-   - `joypad_<commit>_usb2pce_kb2040.uf2` - PCEngine adapter
-   - `joypad_<commit>_usb2gc_kb2040.uf2` - GameCube adapter
-   - `joypad_<commit>_usb2nuon_kb2040.uf2` - Nuon adapter
-   - `joypad_<commit>_usb23do_rp2040zero.uf2` - 3DO adapter
-   - `joypad_<commit>_usb2loopy_kb2040.uf2` - Casio Loopy adapter (experimental)
+   - `joypad_os_<commit>_usb2pce_kb2040.uf2` - PCEngine adapter
+   - `joypad_os_<commit>_usb2gc_kb2040.uf2` - GameCube adapter
+   - `joypad_os_<commit>_usb2nuon_kb2040.uf2` - Nuon adapter
+   - `joypad_os_<commit>_usb23do_rp2040zero.uf2` - 3DO adapter
+   - `joypad_os_<commit>_usb2loopy_kb2040.uf2` - Casio Loopy adapter (experimental)
 
 ## Flashing Instructions
 

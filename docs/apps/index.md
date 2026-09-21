@@ -8,7 +8,7 @@ Each app lives in `src/apps/<name>/` and contains:
 - **`app.h`** -- Version, compile-time constants (routing mode, max players, transform flags).
 - **`profiles.h`** -- Button remapping profiles (optional -- apps without this file pass buttons through unchanged).
 
-Building an app produces a standalone firmware binary: `releases/joypad_<commit>_<app>_<board>.uf2`
+Building an app produces a standalone firmware binary: `releases/joypad_os_<commit>_<app>_<board>.uf2`
 
 ## How Apps Work
 

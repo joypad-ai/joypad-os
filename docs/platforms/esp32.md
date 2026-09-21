@@ -129,7 +129,7 @@ make flash-bt2usb_esp32s3
 
 ```bash
 make uf2-bt2usb_esp32s3
-# Output: releases/joypad_<version>_bt2usb_esp32s3.uf2
+# Output: releases/joypad_os_<version>_bt2usb_esp32s3.uf2
 ```
 
 ## Build & Flash

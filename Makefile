@@ -609,7 +609,7 @@ ota-zip:
 	@echo "$(GREEN)OTA package: $(RELEASE_DIR)/joypad_ota.zip$(NC)  → push via nRF Connect (DFU) to 'AdafruitDFU'"
 
 # Generic app build function
-# Output naming: joypad_<version|commit>_<app>.uf2
+# Output naming: joypad_os_<version|commit>_<app>.uf2
 define build_app
 	@echo "$(YELLOW)Building $1...$(NC)"
 	@echo "  Board:   $(word 1,$(APP_$1))"
@@ -621,9 +621,9 @@ define build_app
 	@cd src/build && $(MAKE) --no-print-directory $(CONSOLE_$(word 2,$(APP_$1))) -j$(JOBS)
 	@mkdir -p $(RELEASE_DIR)
 	@cp src/build/$(CONSOLE_$(word 2,$(APP_$1))).uf2 \
-	    $(RELEASE_DIR)/joypad_$(VERSION_ID)_$(word 3,$(APP_$1)).uf2
+	    $(RELEASE_DIR)/joypad_os_$(VERSION_ID)_$(word 3,$(APP_$1)).uf2
 	@echo "$(GREEN)✓ $1 built successfully$(NC)"
-	@echo "  File: $(RELEASE_DIR)/joypad_$(VERSION_ID)_$(word 3,$(APP_$1)).uf2"
+	@echo "  File: $(RELEASE_DIR)/joypad_os_$(VERSION_ID)_$(word 3,$(APP_$1)).uf2"
 	@echo ""
 endef
 
@@ -907,8 +907,8 @@ uf2-bt2usb_feather_esp32s3:
 	@cd esp && $(MAKE) uf2 BOARD=feather_esp32s3
 	@mkdir -p $(RELEASE_DIR)
 	@cp esp/build/joypad_bt2usb.uf2 \
-	    $(RELEASE_DIR)/joypad_$(VERSION_ID)_bt2usb_feather_esp32s3.uf2
-	@echo "$(GREEN)✓ UF2 built: $(RELEASE_DIR)/joypad_$(VERSION_ID)_bt2usb_feather_esp32s3.uf2$(NC)"
+	    $(RELEASE_DIR)/joypad_os_$(VERSION_ID)_bt2usb_feather_esp32s3.uf2
+	@echo "$(GREEN)✓ UF2 built: $(RELEASE_DIR)/joypad_os_$(VERSION_ID)_bt2usb_feather_esp32s3.uf2$(NC)"
 	@echo ""
 
 .PHONY: flash-bt2usb_feather_esp32s3
@@ -936,8 +936,8 @@ uf2-universal_feather_esp32s3:
 	@cd esp && $(MAKE) uf2 CONFIG_APP=universal BOARD=feather_esp32s3
 	@mkdir -p $(RELEASE_DIR)
 	@cp esp/build/joypad_universal.uf2 \
-	    $(RELEASE_DIR)/joypad_$(VERSION_ID)_universal_feather_esp32s3.uf2
-	@echo "$(GREEN)✓ UF2 built: $(RELEASE_DIR)/joypad_$(VERSION_ID)_universal_feather_esp32s3.uf2$(NC)"
+	    $(RELEASE_DIR)/joypad_os_$(VERSION_ID)_universal_feather_esp32s3.uf2
+	@echo "$(GREEN)✓ UF2 built: $(RELEASE_DIR)/joypad_os_$(VERSION_ID)_universal_feather_esp32s3.uf2$(NC)"
 	@echo ""
 
 .PHONY: flash-universal_feather_esp32s3
@@ -965,8 +965,8 @@ uf2-usb2usb_feather_esp32s3:
 	@cd esp && $(MAKE) uf2 CONFIG_APP=usb2usb BOARD=feather_esp32s3
 	@mkdir -p $(RELEASE_DIR)
 	@cp esp/build/joypad_usb2usb.uf2 \
-	    $(RELEASE_DIR)/joypad_$(VERSION_ID)_usb2usb_feather_esp32s3.uf2
-	@echo "$(GREEN)✓ UF2 built: $(RELEASE_DIR)/joypad_$(VERSION_ID)_usb2usb_feather_esp32s3.uf2$(NC)"
+	    $(RELEASE_DIR)/joypad_os_$(VERSION_ID)_usb2usb_feather_esp32s3.uf2
+	@echo "$(GREEN)✓ UF2 built: $(RELEASE_DIR)/joypad_os_$(VERSION_ID)_usb2usb_feather_esp32s3.uf2$(NC)"
 	@echo ""
 
 .PHONY: flash-usb2usb_feather_esp32s3
@@ -994,8 +994,8 @@ uf2-btusb2usb_feather_esp32s3:
 	@cd esp && $(MAKE) uf2 CONFIG_APP=btusb2usb BOARD=feather_esp32s3
 	@mkdir -p $(RELEASE_DIR)
 	@cp esp/build/joypad_btusb2usb.uf2 \
-	    $(RELEASE_DIR)/joypad_$(VERSION_ID)_btusb2usb_feather_esp32s3.uf2
-	@echo "$(GREEN)✓ UF2 built: $(RELEASE_DIR)/joypad_$(VERSION_ID)_btusb2usb_feather_esp32s3.uf2$(NC)"
+	    $(RELEASE_DIR)/joypad_os_$(VERSION_ID)_btusb2usb_feather_esp32s3.uf2
+	@echo "$(GREEN)✓ UF2 built: $(RELEASE_DIR)/joypad_os_$(VERSION_ID)_btusb2usb_feather_esp32s3.uf2$(NC)"
 	@echo ""
 
 .PHONY: flash-btusb2usb_feather_esp32s3
@@ -1016,8 +1016,8 @@ uf2-bt2usb_xiao_esp32s3:
 	@cd esp && $(MAKE) uf2
 	@mkdir -p $(RELEASE_DIR)
 	@cp esp/build/joypad_bt2usb.uf2 \
-	    $(RELEASE_DIR)/joypad_$(VERSION_ID)_bt2usb_xiao_esp32s3.uf2
-	@echo "$(GREEN)✓ UF2 built: $(RELEASE_DIR)/joypad_$(VERSION_ID)_bt2usb_xiao_esp32s3.uf2$(NC)"
+	    $(RELEASE_DIR)/joypad_os_$(VERSION_ID)_bt2usb_xiao_esp32s3.uf2
+	@echo "$(GREEN)✓ UF2 built: $(RELEASE_DIR)/joypad_os_$(VERSION_ID)_bt2usb_xiao_esp32s3.uf2$(NC)"
 	@echo ""
 
 .PHONY: flash-uf2-bt2usb_xiao_esp32s3
@@ -1030,7 +1030,7 @@ flash-uf2-bt2usb_xiao_esp32s3: uf2-bt2usb_xiao_esp32s3
 		exit 1; \
 	fi
 	@echo "$(YELLOW)Flashing UF2 to TinyUF2 drive...$(NC)"
-	@cp $(RELEASE_DIR)/joypad_$(VERSION_ID)_bt2usb_xiao_esp32s3.uf2 /Volumes/XIAOS3BOOT/
+	@cp $(RELEASE_DIR)/joypad_os_$(VERSION_ID)_bt2usb_xiao_esp32s3.uf2 /Volumes/XIAOS3BOOT/
 	@echo "$(GREEN)✓ Firmware flashed, device will reboot$(NC)"
 	@echo ""
 
@@ -1041,9 +1041,9 @@ bt2usb_seeed_xiao_nrf52840:
 	@cd nrf && $(MAKE) build BOARD=xiao_ble
 	@mkdir -p $(RELEASE_DIR)
 	@cp nrf/build/nrf/zephyr/zephyr.uf2 \
-	    $(RELEASE_DIR)/joypad_$(VERSION_ID)_bt2usb_seeed_xiao_nrf52840.uf2
+	    $(RELEASE_DIR)/joypad_os_$(VERSION_ID)_bt2usb_seeed_xiao_nrf52840.uf2
 	@echo "$(GREEN)✓ bt2usb_seeed_xiao_nrf52840 built successfully$(NC)"
-	@echo "  File: $(RELEASE_DIR)/joypad_$(VERSION_ID)_bt2usb_seeed_xiao_nrf52840.uf2"
+	@echo "  File: $(RELEASE_DIR)/joypad_os_$(VERSION_ID)_bt2usb_seeed_xiao_nrf52840.uf2"
 	@echo ""
 
 .PHONY: flash-bt2usb_seeed_xiao_nrf52840
@@ -1062,9 +1062,9 @@ bt2usb_feather_nrf52840:
 	@cd nrf && $(MAKE) build BOARD=adafruit_feather_nrf52840
 	@mkdir -p $(RELEASE_DIR)
 	@cp nrf/build/nrf/zephyr/zephyr.uf2 \
-	    $(RELEASE_DIR)/joypad_$(VERSION_ID)_bt2usb_feather_nrf52840.uf2
+	    $(RELEASE_DIR)/joypad_os_$(VERSION_ID)_bt2usb_feather_nrf52840.uf2
 	@echo "$(GREEN)✓ bt2usb_feather_nrf52840 built successfully$(NC)"
-	@echo "  File: $(RELEASE_DIR)/joypad_$(VERSION_ID)_bt2usb_feather_nrf52840.uf2"
+	@echo "  File: $(RELEASE_DIR)/joypad_os_$(VERSION_ID)_bt2usb_feather_nrf52840.uf2"
 	@echo ""
 
 .PHONY: flash-bt2usb_feather_nrf52840
@@ -1086,9 +1086,9 @@ bt2usb_aprbrother_nrf52840:
 	@cd nrf && $(MAKE) build BOARD=aprbrother_nrf52840
 	@mkdir -p $(RELEASE_DIR)
 	@cp nrf/build/nrf/zephyr/zephyr.uf2 \
-	    $(RELEASE_DIR)/joypad_$(VERSION_ID)_bt2usb_aprbrother_nrf52840.uf2
+	    $(RELEASE_DIR)/joypad_os_$(VERSION_ID)_bt2usb_aprbrother_nrf52840.uf2
 	@echo "$(GREEN)✓ bt2usb_aprbrother_nrf52840 built successfully$(NC)"
-	@echo "  File: $(RELEASE_DIR)/joypad_$(VERSION_ID)_bt2usb_aprbrother_nrf52840.uf2"
+	@echo "  File: $(RELEASE_DIR)/joypad_os_$(VERSION_ID)_bt2usb_aprbrother_nrf52840.uf2"
 	@echo ""
 
 .PHONY: flash-bt2usb_aprbrother_nrf52840
@@ -1109,9 +1109,9 @@ bt2usb_makerdiary_nrf52840:
 	@cd nrf && $(MAKE) build BOARD=makerdiary_nrf52840
 	@mkdir -p $(RELEASE_DIR)
 	@cp nrf/build/nrf/zephyr/zephyr.uf2 \
-	    $(RELEASE_DIR)/joypad_$(VERSION_ID)_bt2usb_makerdiary_nrf52840.uf2
+	    $(RELEASE_DIR)/joypad_os_$(VERSION_ID)_bt2usb_makerdiary_nrf52840.uf2
 	@echo "$(GREEN)✓ bt2usb_makerdiary_nrf52840 built successfully$(NC)"
-	@echo "  File: $(RELEASE_DIR)/joypad_$(VERSION_ID)_bt2usb_makerdiary_nrf52840.uf2"
+	@echo "  File: $(RELEASE_DIR)/joypad_os_$(VERSION_ID)_bt2usb_makerdiary_nrf52840.uf2"
 	@echo ""
 
 .PHONY: flash-bt2usb_makerdiary_nrf52840
@@ -1130,9 +1130,9 @@ universal_makerdiary_nrf52840:
 	@cd nrf && $(MAKE) build BOARD=makerdiary_nrf52840 APP_TYPE=universal
 	@mkdir -p $(RELEASE_DIR)
 	@cp nrf/build/nrf/zephyr/zephyr.uf2 \
-	    $(RELEASE_DIR)/joypad_$(VERSION_ID)_universal_makerdiary_nrf52840.uf2
+	    $(RELEASE_DIR)/joypad_os_$(VERSION_ID)_universal_makerdiary_nrf52840.uf2
 	@echo "$(GREEN)✓ universal_makerdiary_nrf52840 built successfully$(NC)"
-	@echo "  File: $(RELEASE_DIR)/joypad_$(VERSION_ID)_universal_makerdiary_nrf52840.uf2"
+	@echo "  File: $(RELEASE_DIR)/joypad_os_$(VERSION_ID)_universal_makerdiary_nrf52840.uf2"
 	@echo ""
 
 .PHONY: flash-universal_makerdiary_nrf52840
@@ -1150,9 +1150,9 @@ mouthpad_aprbrother_nrf52840:
 	@cd nrf && $(MAKE) build BOARD=aprbrother_nrf52840 APP_TYPE=mouthpad
 	@mkdir -p $(RELEASE_DIR)
 	@cp nrf/build/nrf/zephyr/zephyr.uf2 \
-	    $(RELEASE_DIR)/joypad_$(VERSION_ID)_mouthpad_aprbrother_nrf52840.uf2
+	    $(RELEASE_DIR)/joypad_os_$(VERSION_ID)_mouthpad_aprbrother_nrf52840.uf2
 	@echo "$(GREEN)✓ mouthpad_aprbrother_nrf52840 built successfully$(NC)"
-	@echo "  File: $(RELEASE_DIR)/joypad_$(VERSION_ID)_mouthpad_aprbrother_nrf52840.uf2"
+	@echo "  File: $(RELEASE_DIR)/joypad_os_$(VERSION_ID)_mouthpad_aprbrother_nrf52840.uf2"
 	@echo ""
 
 .PHONY: flash-mouthpad_aprbrother_nrf52840
@@ -1167,9 +1167,9 @@ usb2usb_feather_nrf52840:
 	@cd nrf && $(MAKE) build BOARD=adafruit_feather_nrf52840 APP_TYPE=usb2usb
 	@mkdir -p $(RELEASE_DIR)
 	@cp nrf/build/nrf/zephyr/zephyr.uf2 \
-	    $(RELEASE_DIR)/joypad_$(VERSION_ID)_usb2usb_feather_nrf52840.uf2
+	    $(RELEASE_DIR)/joypad_os_$(VERSION_ID)_usb2usb_feather_nrf52840.uf2
 	@echo "$(GREEN)✓ usb2usb_feather_nrf52840 built successfully$(NC)"
-	@echo "  File: $(RELEASE_DIR)/joypad_$(VERSION_ID)_usb2usb_feather_nrf52840.uf2"
+	@echo "  File: $(RELEASE_DIR)/joypad_os_$(VERSION_ID)_usb2usb_feather_nrf52840.uf2"
 	@echo ""
 
 .PHONY: flash-usb2usb_feather_nrf52840
@@ -1188,9 +1188,9 @@ btusb2usb_feather_nrf52840:
 	@cd nrf && $(MAKE) build BOARD=adafruit_feather_nrf52840 APP_TYPE=btusb2usb
 	@mkdir -p $(RELEASE_DIR)
 	@cp nrf/build/nrf/zephyr/zephyr.uf2 \
-	    $(RELEASE_DIR)/joypad_$(VERSION_ID)_btusb2usb_feather_nrf52840.uf2
+	    $(RELEASE_DIR)/joypad_os_$(VERSION_ID)_btusb2usb_feather_nrf52840.uf2
 	@echo "$(GREEN)✓ btusb2usb_feather_nrf52840 built successfully$(NC)"
-	@echo "  File: $(RELEASE_DIR)/joypad_$(VERSION_ID)_btusb2usb_feather_nrf52840.uf2"
+	@echo "  File: $(RELEASE_DIR)/joypad_os_$(VERSION_ID)_btusb2usb_feather_nrf52840.uf2"
 	@echo ""
 
 .PHONY: flash-btusb2usb_feather_nrf52840
@@ -1209,9 +1209,9 @@ universal_feather_nrf52840:
 	@cd nrf && $(MAKE) build BOARD=adafruit_feather_nrf52840 APP_TYPE=universal
 	@mkdir -p $(RELEASE_DIR)
 	@cp nrf/build/nrf/zephyr/zephyr.uf2 \
-	    $(RELEASE_DIR)/joypad_$(VERSION_ID)_universal_feather_nrf52840.uf2
+	    $(RELEASE_DIR)/joypad_os_$(VERSION_ID)_universal_feather_nrf52840.uf2
 	@echo "$(GREEN)✓ universal_feather_nrf52840 built successfully$(NC)"
-	@echo "  File: $(RELEASE_DIR)/joypad_$(VERSION_ID)_universal_feather_nrf52840.uf2"
+	@echo "  File: $(RELEASE_DIR)/joypad_os_$(VERSION_ID)_universal_feather_nrf52840.uf2"
 	@echo ""
 
 .PHONY: flash-universal_feather_nrf52840
@@ -1229,9 +1229,9 @@ universal_seeed_xiao_nrf52840:
 	@cd nrf && $(MAKE) build BOARD=xiao_ble APP_TYPE=universal
 	@mkdir -p $(RELEASE_DIR)
 	@cp nrf/build/nrf/zephyr/zephyr.uf2 \
-	    $(RELEASE_DIR)/joypad_$(VERSION_ID)_universal_seeed_xiao_nrf52840.uf2
+	    $(RELEASE_DIR)/joypad_os_$(VERSION_ID)_universal_seeed_xiao_nrf52840.uf2
 	@echo "$(GREEN)✓ universal_seeed_xiao_nrf52840 built successfully$(NC)"
-	@echo "  File: $(RELEASE_DIR)/joypad_$(VERSION_ID)_universal_seeed_xiao_nrf52840.uf2"
+	@echo "  File: $(RELEASE_DIR)/joypad_os_$(VERSION_ID)_universal_seeed_xiao_nrf52840.uf2"
 	@echo ""
 
 .PHONY: flash-universal_seeed_xiao_nrf52840

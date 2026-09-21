@@ -127,7 +127,7 @@ make flash-nes2usb_kb2040
 make flash-nes2usb_pico_w
 ```
 
-Output: `releases/joypad_<commit>_nes2usb_<board>.uf2`
+Output: `releases/joypad_os_<commit>_nes2usb_<board>.uf2`
 
 ## Troubleshooting
 

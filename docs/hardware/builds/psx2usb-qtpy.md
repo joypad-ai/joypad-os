@@ -85,7 +85,7 @@ make psx2usb_qtpy            # or psx2usb_kb2040 / psx2usb_pico
 make flash-psx2usb_qtpy      # or psx2usb_kb2040 / psx2usb_pico
 ```
 
-Output file: `releases/joypad_<commit>_psx2usb_<board>.uf2` (a local build is tagged with the short commit hash; release builds are tagged with the version instead, e.g. `joypad_2.4.0_psx2usb_qtpy.uf2`).
+Output file: `releases/joypad_os_<commit>_psx2usb_<board>.uf2` (a local build is tagged with the short commit hash; release builds are tagged with the version instead, e.g. `joypad_2.4.0_psx2usb_qtpy.uf2`).
 
 > ℹ️ **There is no prebuilt UF2 to download yet.** `psx2usb` was only added to the release build matrix on 2026-08-05, after v2.3.0 shipped — no release up to and including v2.3.0 contains a `psx2usb` asset. Until the next release, building from source with the commands above is the only way to get this firmware.
 

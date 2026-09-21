@@ -28,7 +28,7 @@ make bt2usb_pico_w
 make flash-bt2usb_pico_w
 ```
 
-Output file: `releases/joypad_<commit>_bt2usb_pico_w.uf2`
+Output file: `releases/joypad_os_<commit>_bt2usb_pico_w.uf2`
 
 Alternatively, drag and drop the `.uf2` file onto the `RPI-RP2` drive that appears when the Pico W is in bootloader mode.
 

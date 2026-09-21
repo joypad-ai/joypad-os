@@ -69,7 +69,7 @@ make flash-usb2pce_kb2040  # Flash specific app
 make flash-bt2usb_xiao_esp32s3  # Flash via esptool
 ```
 
-Output: `releases/joypad_<commit>_<app>_<board>.uf2`
+Output: `releases/joypad_os_<commit>_<app>_<board>.uf2`
 
 ### App Build Matrix
 
@@ -81,7 +81,7 @@ make flash-usb2pce_kb2040  # Flash specific app
 make flash-bt2usb_xiao_esp32s3  # Flash via esptool
 ```
 
-Output: `releases/joypad_<commit>_<app>_<board>.uf2`
+Output: `releases/joypad_os_<commit>_<app>_<board>.uf2`
 
 ### App Build Matrix
 

@@ -210,7 +210,7 @@ jobs:
           mkdir -p releases
           python3 esp/tools/uf2conv.py esp/build/joypad_${{ matrix.bin_name }}.bin \
             --base 0 --family ${{ matrix.uf2_family }} \
-            --output releases/joypad_${{ steps.commit.outputs.hash }}_${{ matrix.app }}.uf2 \
+            --output releases/joypad_os_${{ steps.commit.outputs.hash }}_${{ matrix.app }}.uf2 \
             --convert
 
       - name: Upload firmware
@@ -325,7 +325,7 @@ jobs:
         run: |
           mkdir -p releases
           cp nrf/build/nrf/zephyr/zephyr.uf2 \
-            releases/joypad_${{ steps.commit.outputs.hash }}_${{ matrix.app }}.uf2
+            releases/joypad_os_${{ steps.commit.outputs.hash }}_${{ matrix.app }}.uf2
 
       - name: Upload firmware
         uses: actions/upload-artifact@v4
@@ -363,7 +363,7 @@ jobs:
           # Known board suffixes (order matters - check longer suffixes first)
           BOARDS="feather_esp32s3 esp32s3 seeed_xiao_nrf52840 feather_nrf52840_max3421 feather_nrf52840 pico2_w pico2 pico_w rp2040_abb rp2040zero rp2350usba kb2040 feather_rp2040_usb_host_max3421 feather_rp2040_usb_host feather_rp2040_max3421 feather_rp2040 feather pico macropad"
 
-          for file in releases/joypad_*.uf2; do
+          for file in releases/joypad_os_*.uf2; do
             if [ -f "$file" ]; then
               basename=$(basename "$file" .uf2)
               app_board=${basename#joypad_*_}

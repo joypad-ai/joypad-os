@@ -86,7 +86,7 @@ make bt2usb_seeed_xiao_nrf52840             # Build
 make flash-bt2usb_seeed_xiao_nrf52840       # Flash
 ```
 
-Output: `releases/joypad_<commit>_<app>_<board>.uf2`
+Output: `releases/joypad_os_<commit>_<app>_<board>.uf2`
 
 **[Full build guide](docs/getting-started/building.md)** — prerequisites, all targets, ESP32/nRF setup, troubleshooting
 

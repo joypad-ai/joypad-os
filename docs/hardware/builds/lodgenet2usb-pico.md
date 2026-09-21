@@ -45,7 +45,7 @@ make lodgenet2usb_pico
 make flash-lodgenet2usb_pico
 ```
 
-Output file: `releases/joypad_<commit>_lodgenet2usb_pico.uf2`
+Output file: `releases/joypad_os_<commit>_lodgenet2usb_pico.uf2`
 
 ## Testing
 
