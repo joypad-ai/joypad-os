@@ -519,6 +519,46 @@ input[type="password"]:focus { outline: none; border-color: var(--accent); }
 .player-inputs { display: flex; flex-direction: column; gap: 8px; }
 
 .input-source { margin-bottom: 8px; animation: rowEnter 0.25s ease-out; }
+
+/* Mouse & Keyboard test (Input Test page) */
+.mousekbd-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+@media (max-width: 700px) { .mousekbd-grid { grid-template-columns: 1fr; } }
+
+.mouse-pad {
+    height: 110px;
+    border: 1px dashed var(--border);
+    border-radius: 8px;
+    background: var(--bg-input);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: crosshair;
+    user-select: none;
+}
+.mouse-pad-hint { font-size: 11px; color: var(--text-muted); pointer-events: none; }
+.mouse-btn-row { display: flex; gap: 6px; margin-top: 8px; }
+
+.kbd-capture {
+    height: 110px;
+    border: 1px dashed var(--border);
+    border-radius: 8px;
+    background: var(--bg-input);
+    padding: 10px;
+    cursor: text;
+    outline: none;
+}
+.kbd-capture.capturing { border-color: var(--accent); border-style: solid; }
+.kbd-held {
+    margin-top: 8px;
+    font-family: monospace;
+    font-size: 13px;
+    color: var(--accent);
+    min-height: 18px;
+}
 .player-inputs {
     padding: 10px;
     border-radius: 6px;

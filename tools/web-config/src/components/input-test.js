@@ -37,6 +37,30 @@ function renderAxes(prefix) {
 // Rest value per axis: sticks center at 128, triggers release to 0 (RZ centered).
 function axisNeutral(idx) { return (idx === 4 || idx === 5) ? 0 : 128; }
 
+// KeyboardEvent.code → HID usage (page 0x07) for KEY.INJECT.
+const HID_KEYS = (() => {
+    const m = {
+        Enter: 40, Escape: 41, Backspace: 42, Tab: 43, Space: 44,
+        Minus: 45, Equal: 46, BracketLeft: 47, BracketRight: 48, Backslash: 49,
+        Semicolon: 51, Quote: 52, Backquote: 53, Comma: 54, Period: 55,
+        Slash: 56, CapsLock: 57,
+        PrintScreen: 70, ScrollLock: 71, Pause: 72, Insert: 73, Home: 74,
+        PageUp: 75, Delete: 76, End: 77, PageDown: 78,
+        ArrowRight: 79, ArrowLeft: 80, ArrowDown: 81, ArrowUp: 82,
+    };
+    for (let i = 0; i < 26; i++) m['Key' + String.fromCharCode(65 + i)] = 4 + i;
+    for (let i = 1; i <= 9; i++) m['Digit' + i] = 29 + i;
+    m.Digit0 = 39;
+    for (let i = 1; i <= 12; i++) m['F' + i] = 57 + i;
+    return m;
+})();
+
+// KeyboardEvent.code → HID modifier bit for KEY.INJECT "mod".
+const HID_MODS = {
+    ControlLeft: 0x01, ShiftLeft: 0x02, AltLeft: 0x04, MetaLeft: 0x08,
+    ControlRight: 0x10, ShiftRight: 0x20, AltRight: 0x40, MetaRight: 0x80,
+};
+
 export class InputTestCard {
     constructor(container, protocol, log) {
         this.protocol = protocol;
@@ -73,11 +97,125 @@ export class InputTestCard {
                 <div id="playerGroups" class="player-groups">
                     <p class="hint" id="streamHint">Start streaming to see connected controllers. Click the Output buttons to drive input over serial (INPUT.INJECT).</p>
                 </div>
+            </div>
+            <div class="card" style="margin-top: 16px;">
+                <div class="card-header">
+                    <h2>Mouse &amp; Keyboard Test</h2>
+                </div>
+                <div class="mousekbd-grid">
+                    <div>
+                        <div class="source-label">Virtual Mouse</div>
+                        <div id="mousePad" class="mouse-pad">
+                            <span class="mouse-pad-hint">drag to move &middot; scroll for wheel</span>
+                        </div>
+                        <div class="mouse-btn-row">
+                            <span class="btn" id="mBtnL">Left</span>
+                            <span class="btn" id="mBtnM">Middle</span>
+                            <span class="btn" id="mBtnR">Right</span>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="source-label">Virtual Keyboard</div>
+                        <div id="kbdCapture" class="kbd-capture" tabindex="0">
+                            <span class="hint" id="kbdHint">click here, then type &mdash; keys pass through (Esc to stop)</span>
+                            <div id="kbdHeld" class="kbd-held"></div>
+                        </div>
+                    </div>
+                </div>
+                <p class="hint" style="margin-top: 8px;">Drives MOUSE.INJECT / KEY.INJECT — the injected pointer and keys come out of the device's USB and BLE mouse/keyboard interfaces like real hardware.</p>
             </div>`;
 
         this.el.querySelector('#streamBtn').addEventListener('click', () => this.toggleStreaming());
         this.el.querySelector('#rumbleBtn').addEventListener('click', () => this.testRumble());
         this.el.querySelector('#injectClearBtn').addEventListener('click', () => this.injectClear());
+        this.wireMouse();
+        this.wireKeyboard();
+    }
+
+    // Virtual mouse: drag inside the pad to send relative deltas over serial
+    // (MOUSE.INJECT), scroll for the wheel, and hold the L/M/R buttons to
+    // click. Deltas accumulate and flush at ~30Hz so pointermove spam never
+    // outruns the serial link.
+    wireMouse() {
+        const pad = this.el.querySelector('#mousePad');
+        if (!pad) return;
+        pad.style.touchAction = 'none';
+        let accX = 0, accY = 0, accW = 0, lastX = 0, lastY = 0, timer = null, mbtn = 0;
+        const flush = async () => {
+            timer = null;
+            const dx = Math.round(accX), dy = Math.round(accY), w = Math.round(accW);
+            accX -= dx; accY -= dy; accW -= w;
+            if (!dx && !dy && !w) return;
+            try { await this.protocol.sendCommand('MOUSE.INJECT', { dx, dy, wheel: w, buttons: mbtn }); } catch (e) { /* older firmware */ }
+        };
+        const queue = () => { if (!timer) timer = setTimeout(flush, 33); };
+        pad.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            pad.setPointerCapture(e.pointerId);
+            lastX = e.clientX; lastY = e.clientY;
+        });
+        pad.addEventListener('pointermove', (e) => {
+            if (!pad.hasPointerCapture?.(e.pointerId)) return;
+            accX += (e.clientX - lastX) * 2;
+            accY += (e.clientY - lastY) * 2;
+            lastX = e.clientX; lastY = e.clientY;
+            queue();
+        });
+        pad.addEventListener('wheel', (e) => { e.preventDefault(); accW += -e.deltaY / 30; queue(); }, { passive: false });
+
+        const sendButtons = async () => {
+            try { await this.protocol.sendCommand('MOUSE.INJECT', { buttons: mbtn }); } catch (e) { /* older firmware */ }
+        };
+        // Firmware button bits: 1=left, 2=right, 4=middle (HID order).
+        [['mBtnL', 1], ['mBtnM', 4], ['mBtnR', 2]].forEach(([id, bit]) => {
+            const b = this.el.querySelector('#' + id);
+            b.style.cursor = 'pointer';
+            b.style.userSelect = 'none';
+            const down = (e) => { e.preventDefault(); mbtn |= bit; b.classList.add('pressed'); sendButtons(); };
+            const up = () => {
+                if (!(mbtn & bit)) return;
+                mbtn &= ~bit; b.classList.remove('pressed'); sendButtons();
+            };
+            b.addEventListener('pointerdown', down);
+            b.addEventListener('pointerup', up);
+            b.addEventListener('pointerleave', up);
+            b.addEventListener('pointercancel', up);
+        });
+    }
+
+    // Virtual keyboard: focus the capture box and type — keydown/keyup map to
+    // HID usages and stream as held state (KEY.INJECT). Esc or clicking away
+    // releases everything, so nothing can stay stuck.
+    wireKeyboard() {
+        const box = this.el.querySelector('#kbdCapture');
+        const heldEl = this.el.querySelector('#kbdHeld');
+        if (!box) return;
+        let mod = 0;
+        const keys = new Map();  // event.code -> HID usage
+        const sendState = async () => {
+            const names = [...keys.keys()].map(c => c.replace(/^Key|^Digit/, ''));
+            const mods = Object.entries(HID_MODS).filter(([, b]) => mod & b).map(([c]) => c.replace(/Left|Right/, m => m === 'Left' ? 'L' : 'R'));
+            heldEl.textContent = [...mods, ...names].join(' + ');
+            try { await this.protocol.sendCommand('KEY.INJECT', { mod, keys: [...keys.values()].slice(0, 6) }); } catch (e) { /* older firmware */ }
+        };
+        box.addEventListener('keydown', (e) => {
+            if (e.code === 'Escape') { box.blur(); return; }
+            e.preventDefault();
+            if (e.repeat) return;
+            if (HID_MODS[e.code]) { mod |= HID_MODS[e.code]; sendState(); return; }
+            const usage = HID_KEYS[e.code];
+            if (usage && !keys.has(e.code) && keys.size < 6) { keys.set(e.code, usage); sendState(); }
+        });
+        box.addEventListener('keyup', (e) => {
+            e.preventDefault();
+            if (HID_MODS[e.code]) { mod &= ~HID_MODS[e.code]; sendState(); return; }
+            if (keys.delete(e.code)) sendState();
+        });
+        box.addEventListener('focus', () => box.classList.add('capturing'));
+        box.addEventListener('blur', () => {
+            box.classList.remove('capturing');
+            if (mod || keys.size) { mod = 0; keys.clear(); sendState(); }
+        });
     }
 
     // Make an Output (Merged) button row clickable to inject: pointer-down presses a
