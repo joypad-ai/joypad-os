@@ -49,3 +49,4 @@ hardware/*/fab/gerbers/
 hardware/*/fab/drc-report.json
 hardware/*/fab/*.svg
 hardware/*/fab/*-3d-*.png
+.gstack/
