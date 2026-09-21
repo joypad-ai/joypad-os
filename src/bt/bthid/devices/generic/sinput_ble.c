@@ -3,7 +3,7 @@
 //
 // Reads a JoypadOS SInput controller over BLE HID (HOGP) and submits its input
 // to the router. This is the BLE counterpart to sinput_host.c (USB). Without it
-// a SInput controller over BLE (e.g. controller_btusb on the XIAO nRF) is only
+// a SInput controller over BLE (e.g. universal on the XIAO nRF) is only
 // seen as an unhandled "Generic BLE Gamepad" — the generic fallback can't parse
 // SInput's custom report ID 1, so it produces no input and looks like a pairing
 // failure. Matches by DIS VID/PID (0x2E8A/0x10C6) or advertised name.

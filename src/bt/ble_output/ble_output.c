@@ -786,8 +786,8 @@ void ble_output_init(void)
         current_mode = BLE_MODE_SINPUT;
     }
 
-#ifdef CONFIG_CONTROLLER_BTUSB
-    // controller_btusb is a gamepad and (on builds like the tucked-away XIAO)
+#ifdef CONFIG_UNIVERSAL
+    // universal is a gamepad and (on builds like the tucked-away XIAO)
     // has no practical USB/CDC access to switch modes — SInput is the DEFAULT
     // BLE device mode here, carrying buttons + gyro/accel + battery to
     // SDL/Steam. But honor an EXPLICIT selection (BLE.MODE.SET / web config,
@@ -1262,7 +1262,7 @@ void ble_output_set_mode(ble_output_mode_t mode)
            ble_output_get_mode_name(mode));
 
     // Save to flash (ble_mode_saved marks this as an explicit user choice so
-    // apps with a forced default — controller_btusb — honor it after reboot)
+    // apps with a forced default — universal — honor it after reboot)
     flash_t *settings = flash_get_settings();
     if (settings) {
         settings->ble_output_mode = (uint8_t)mode;

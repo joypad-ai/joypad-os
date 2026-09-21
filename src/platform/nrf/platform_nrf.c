@@ -227,7 +227,7 @@ bool platform_deep_sleep(uint8_t wake_gpio, bool wake_active_high)
     // asleep. irq_lock() stops thread switches; neopixel_off() is the final
     // write; sys_poweroff() powers down without returning.
     // Cut IMU power (P1.08 stays high through System OFF otherwise → ~0.7 mA
-    // drain that over-discharges a near-empty cell). Weak: only controller_btusb
+    // drain that over-discharges a near-empty cell). Weak: only universal
     // links an IMU; other nRF apps fall through.
     extern void imu_power_off(void) __attribute__((weak));
     extern void neopixel_off(void);

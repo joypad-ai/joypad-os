@@ -24,7 +24,7 @@
 #include "core/services/players/manager.h"
 #include "core/services/leds/leds.h"
 #include "core/services/storage/storage.h"
-#ifdef CONFIG_CONTROLLER_BTUSB
+#ifdef CONFIG_UNIVERSAL
 #include "imu_nrf.h"
 #include "bt/ble_output/ble_output.h"
 #endif
@@ -316,7 +316,7 @@ static void usb_power_init(void)
            !!(NRF_USBD->USBPULLUP));
 }
 
-#if defined(CONFIG_CONTROLLER_BTUSB) && defined(CONFIG_BOARD_XIAO_BLE)
+#if defined(CONFIG_UNIVERSAL) && defined(CONFIG_BOARD_XIAO_BLE)
 // ============================================================================
 // BATTERY PROTECTION + IDLE DEEP-SLEEP
 // ============================================================================
@@ -370,7 +370,7 @@ static void power_task(void)
         platform_deep_sleep(PWR_WAKE_GPIO, PWR_WAKE_ACTIVE_HIGH);
     }
 }
-#endif  // CONFIG_CONTROLLER_BTUSB && CONFIG_BOARD_XIAO_BLE
+#endif  // CONFIG_UNIVERSAL && CONFIG_BOARD_XIAO_BLE
 
 // ============================================================================
 // MAIN
@@ -378,8 +378,8 @@ static void power_task(void)
 
 int main(void)
 {
-#if defined(CONFIG_CONTROLLER_BTUSB)
-    printf("[joypad] Starting controller_btusb on Adafruit Feather nRF52840...\n");
+#if defined(CONFIG_UNIVERSAL)
+    printf("[joypad] Starting universal on Adafruit Feather nRF52840...\n");
 #elif defined(CONFIG_BTUSB2USB)
     printf("[joypad] Starting btusb2usb on Adafruit Feather nRF52840...\n");
 #elif defined(CONFIG_USB2USB)
@@ -459,7 +459,7 @@ int main(void)
     }
 #endif
 
-#ifdef CONFIG_CONTROLLER_BTUSB
+#ifdef CONFIG_UNIVERSAL
     // Onboard IMU (XIAO Sense LSM6DS3TR-C) — after USB is up, so a wedged I2C
     // bus can never block enumeration. No-op if the board has no IMU.
     imu_init();
@@ -511,11 +511,11 @@ int main(void)
 
         app_task();
 
-#ifdef CONFIG_CONTROLLER_BTUSB
+#ifdef CONFIG_UNIVERSAL
         imu_task();  // sample onboard IMU → router (throttled to ~100 Hz)
 #endif
 
-#if defined(CONFIG_CONTROLLER_BTUSB) && defined(CONFIG_BOARD_XIAO_BLE)
+#if defined(CONFIG_UNIVERSAL) && defined(CONFIG_BOARD_XIAO_BLE)
         power_task();  // low-battery cutoff + idle deep-sleep (protects the cell)
 #endif
 

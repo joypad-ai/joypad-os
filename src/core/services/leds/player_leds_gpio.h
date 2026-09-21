@@ -3,7 +3,7 @@
 // Drives four GPIO pins from the same 4-bit PLAYER_LEDS[] bitmap that
 // PS3, Switch Pro, and SInput controllers use internally. Active-high,
 // matching the BOARD_LED_PIN convention. Compile-time-only feature for
-// custom controller builds (controller_btusb on a hand-built board).
+// custom controller builds (universal on a hand-built board).
 //
 // Pin → bit mapping:
 //   pin1 ↔ bit 0 (LED1)   pin2 ↔ bit 1 (LED2)

@@ -1,7 +1,8 @@
-// app.h - ControllerBTUSB App Manifest
-// Modular sensor inputs → BLE gamepad + USB device output (ESP32-S3)
+// app.h - Universal App Manifest (formerly controller_btusb)
+// Modular sensor/GPIO/BT inputs → BLE gamepad + USB device output — the
+// universal configurable app: every input source and wireless/USB output
+// mode selectable at runtime via web config.
 //
-// Same concept as controller (GPIO inputs) but with BLE output like usb2ble.
 // First sensor: JoyWing (seesaw I2C). Future: GPIO pads, arcade inputs, etc.
 //
 // NOTE: this manifest is a human-readable summary and is NOT consumed by the
@@ -9,13 +10,13 @@
 // REQUIRE_BLE_OUTPUT) are read by code, and src/CMakeLists.txt overrides them.
 // Every other flag here is descriptive only. See issue #198.
 
-#ifndef APP_CONTROLLER_BTUSB_H
-#define APP_CONTROLLER_BTUSB_H
+#ifndef APP_UNIVERSAL_H
+#define APP_UNIVERSAL_H
 
 // ============================================================================
 // APP METADATA
 // ============================================================================
-#define APP_NAME "controller_btusb"
+#define APP_NAME "universal"
 #define APP_DESCRIPTION "Controller to BLE+USB gamepad adapter"
 #define APP_AUTHOR "RobertDaleSmith"
 
@@ -113,4 +114,4 @@
 void app_init(void);
 void app_task(void);
 
-#endif // APP_CONTROLLER_BTUSB_H
+#endif // APP_UNIVERSAL_H

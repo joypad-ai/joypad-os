@@ -1,6 +1,6 @@
 // stubs_peripheral.c - Weak stubs for peripheral-only builds
 //
-// When building in peripheral mode (controller_btusb), btstack_host.c and
+// When building in peripheral mode (universal), btstack_host.c and
 // bthid are not linked. Shared code (router.c, cdc_commands.c, sinput_mode.c)
 // references symbols from those modules. These weak stubs satisfy the linker.
 

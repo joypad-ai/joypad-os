@@ -50,7 +50,7 @@ wii2n64_pico                              # announced in CHANGELOG (wii2usb/wii2
 mouthpad_pico_w                           # announced in CHANGELOG by name ("Builds: ...")
 mouthpad_pico2_w                          # announced in CHANGELOG by name ("Builds: ...")
 usb2usb_ogxm_pico                         # announced in CHANGELOG (OGX-Mini Pico hardware)
-controller_btusb_feather_rp2040_usb_host  # announced in CHANGELOG by name (tri-state pins, USB host, OLED)
+universal_feather_rp2040_usb_host  # announced in CHANGELOG by name (tri-state pins, USB host, OLED)
 wifi2usb_pico_w                           # announced in CHANGELOG (JOCP WiFi controller input, Joypad iOS app)
 wifi2usb_pico2_w                          # WiFi/JOCP sibling of an announced target
 
@@ -60,16 +60,16 @@ gc2usb_feather_usbhost                    # no recorded decision
 usb2neogeo_retrofrog                      # no recorded decision
 n642nuon_aries64                          # no recorded decision
 controller_macropad                       # no recorded decision
-controller_btusb_alpakka_pico             # no recorded decision
-controller_btusb_feather_rp2040           # no recorded decision
-controller_btusb_fisherprice_v1_kb2040    # no recorded decision
-controller_btusb_fisherprice_v2_kb2040    # no recorded decision
+universal_alpakka_pico             # no recorded decision
+universal_feather_rp2040           # no recorded decision
+universal_fisherprice_v1_kb2040    # no recorded decision
+universal_fisherprice_v2_kb2040    # no recorded decision
 usb2usb_remapper_v7                       # no recorded decision
 usb2usb_remapper_v7_a                     # no recorded decision
 usb2usb_remapper_v7_b                     # no recorded decision
 
 # --- ESP32-S3. The Feather board has four apps wired up in the Makefile and only
-# controller_btusb reaches CI; bt2usb ships for the XIAO board only.
+# universal reaches CI; bt2usb ships for the XIAO board only.
 bt2usb_feather_esp32s3                    # no recorded decision; bt2usb ships for xiao_esp32s3 only
 usb2usb_feather_esp32s3                   # no recorded decision
 btusb2usb_feather_esp32s3                 # no recorded decision
@@ -118,7 +118,7 @@ tools/sinput-verify                       # host-side SInput verification tool, 
 #
 usb2wiiext_kb2040                         # added by #226 (USB controllers -> Wii extension port); new app, not hardware-verified. #227 policy
 usb2wiiext_pico                           # added by #226 (USB controllers -> Wii extension port); new app, not hardware-verified. #227 policy
-controller_btusb_rp2040zero               # added by #248 (hand-wired GPIO pad -> USB, radio-less board); not hardware-verified. #227 policy
+universal_rp2040zero               # added by #248 (hand-wired GPIO pad -> USB, radio-less board); not hardware-verified. #227 policy
 # --- CONTINGENT: these four are INERT until #175 wires its Makefile.
 #
 # Measured 2026-08-19 by composing this branch with #175's head

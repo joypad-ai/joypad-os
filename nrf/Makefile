@@ -4,7 +4,7 @@
 #                   makerdiary_nrf52840
 # Supported apps:   bt2usb (default), usb2usb (with MAX3421E FeatherWing),
 #                   btusb2usb (MAX3421E + Bluetooth combined),
-#                   controller_btusb (sensor input + BLE peripheral + USB)
+#                   universal (sensor input + BLE peripheral + USB)
 # Requires: nRF Connect SDK v3.1.0 (installed via 'make init')
 # Usage:
 #   make init              # One-time workspace setup
@@ -140,4 +140,4 @@ help:
 	@echo ""
 	@echo "Variables:"
 	@echo "  BOARD        - Target board (default: xiao_ble)"
-	@echo "  APP_TYPE     - App to build: bt2usb (default), usb2usb, btusb2usb, or controller_btusb"
+	@echo "  APP_TYPE     - App to build: bt2usb (default), usb2usb, btusb2usb, or universal"

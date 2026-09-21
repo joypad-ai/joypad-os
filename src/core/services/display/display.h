@@ -103,7 +103,7 @@ bool display_is_dirty(void);
 // calls this once per app_task() iteration, inside its OLED guard — NOT the
 // platform main loops: an unconditional call there anchors the display
 // service in every target and stops the linker dead-stripping it, which
-// overflowed RAM on controller_btusb_pico_w (display.c compiled but unused).
+// overflowed RAM on universal_pico_w (display.c compiled but unused).
 void display_task(void);
 
 // Incremental flush: send ONE page per call instead of the whole frame.

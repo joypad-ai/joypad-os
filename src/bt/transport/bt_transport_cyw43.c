@@ -3,7 +3,7 @@
 //
 // Supports two modes:
 //   - Central (bt2usb): scans/connects BT controllers via btstack_host
-//   - Peripheral (controller_btusb): advertises as BLE gamepad via ble_output
+//   - Peripheral (universal): advertises as BLE gamepad via ble_output
 // Mode is selected via bt_cyw43_set_post_init() callback before bt_init().
 
 #include "bt_transport.h"

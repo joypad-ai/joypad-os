@@ -257,7 +257,7 @@ static bool global_shoulder_swap = false;  // swap L1<->L2, R1<->R2
 
 // True after router_init() installs the built-in SELECT+D-pad hotkeys. The first
 // app router_set_combo() call clears them so the app's own combo table takes over
-// (gc2usb, controller_btusb); apps that register nothing keep the defaults.
+// (gc2usb, universal); apps that register nothing keep the defaults.
 static bool router_default_combos_active = false;
 
 // ---- Global on-the-fly runtime profile (SELECT-hold → autofire / live remap) ----
@@ -376,7 +376,7 @@ static uint8_t route_count = 0;
 static router_tap_callback_t output_taps[MAX_OUTPUTS] = {NULL};
 static bool output_tap_exclusive[MAX_OUTPUTS] = {false};
 
-// Onboard battery: this device's OWN battery (e.g. controller_btusb on a board
+// Onboard battery: this device's OWN battery (e.g. universal on a board
 // with a LiPo), as opposed to a battery reported by a connected input
 // controller. The app updates it from an ADC read; the router stamps it into
 // output states that have no input-device battery, so the SInput report's
@@ -409,7 +409,7 @@ bool router_get_device_battery(uint8_t dev_addr, uint8_t* level, bool* charging)
     return false;
 }
 
-// Onboard motion: this device's OWN IMU (e.g. controller_btusb on a XIAO Sense),
+// Onboard motion: this device's OWN IMU (e.g. universal on a XIAO Sense),
 // as opposed to motion from a connected input controller (DS4/DS5). The app
 // updates it from the IMU; the router stamps it into output states that have no
 // input-device motion, so the SInput report carries accel/gyro. valid=false
@@ -472,7 +472,7 @@ bool router_onboard_motion_get(int16_t accel[3], int16_t gyro[3]) {
 // ============================================================================
 
 // Built-in hotkeys so profile-switch / d-pad-mode / shoulder-swap work on every
-// app out of the box (previously only gc2usb/controller_btusb registered combos).
+// app out of the box (previously only gc2usb/universal registered combos).
 // All require a ~0.7 s deliberate hold (ROUTER_DEFAULT_COMBO_HOLD_MS) before they fire and
 // before they consume the buttons — see the note above the constant. App-registered tables are
 // instant.
@@ -511,7 +511,7 @@ void router_init(const router_config_t* config) {
     }
 
     // Install the built-in SELECT+D-pad hotkeys. Apps that register their own
-    // combos (gc2usb, controller_btusb) clear these on first router_set_combo().
+    // combos (gc2usb, universal) clear these on first router_set_combo().
     router_install_default_combos();
 
     // Register the global on-the-fly runtime profile for every output target so
@@ -2107,7 +2107,7 @@ void router_device_disconnected(uint8_t dev_addr, int8_t instance) {
         }
 
         // No input controller reported a battery → fall back to this device's
-        // own battery (e.g. controller_btusb on a LiPo) so the SInput report
+        // own battery (e.g. universal on a LiPo) so the SInput report
         // carries real charge_level/plug_status.
         if (rebuilt.battery_level == 0 && onboard_batt_pct >= 0) {
             rebuilt.battery_level = (uint8_t)onboard_batt_pct;

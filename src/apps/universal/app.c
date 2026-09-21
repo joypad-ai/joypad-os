@@ -251,11 +251,11 @@ static void on_button_event(button_event_t event)
             // Grip/Order screen detects us fresh — then press L+R there to pair.
             if (ble_output_get_mode() == BLE_MODE_SWITCH_BT) {
                 if (!switch_bt_is_connected()) {
-                    printf("[app:controller_btusb] Switch-BT SYNC — re-advertising; press L+R on the console\n");
+                    printf("[app:universal] Switch-BT SYNC — re-advertising; press L+R on the console\n");
                     switch_bt_request_sync();
                     neopixel_indicate_profile(2);  // visual ack
                 } else {
-                    printf("[app:controller_btusb] Switch-BT already connected\n");
+                    printf("[app:universal] Switch-BT already connected\n");
                 }
                 break;
             }
@@ -271,10 +271,10 @@ static void on_button_event(button_event_t event)
                 has_device = has_device || (usbh_get_device_count() > 0);
 #endif
                 if (has_device) {
-                    printf("[app:controller_btusb] Starting 60s BT scan...\n");
+                    printf("[app:universal] Starting 60s BT scan...\n");
                     btstack_host_start_timed_scan(60000);
                 } else {
-                    printf("[app:controller_btusb] No devices — scanning until connected...\n");
+                    printf("[app:universal] No devices — scanning until connected...\n");
                     extern void btstack_host_suppress_scan(bool suppress);
                     btstack_host_suppress_scan(false);
                     btstack_host_start_scan();
@@ -282,13 +282,13 @@ static void on_button_event(button_event_t event)
             }
 #endif
 #if REQUIRE_BLE_OUTPUT
-            printf("[app:controller_btusb] BLE: %s (%s), USB: %s (%s)\n",
+            printf("[app:universal] BLE: %s (%s), USB: %s (%s)\n",
                    ble_output_get_mode_name(ble_output_get_mode()),
                    ble_output_is_connected() ? "connected" : "advertising",
                    usbd_get_mode_name(usbd_get_mode()),
                    tud_mounted() ? "mounted" : "disconnected");
 #else
-            printf("[app:controller_btusb] USB: %s (%s)\n",
+            printf("[app:universal] USB: %s (%s)\n",
                    usbd_get_mode_name(usbd_get_mode()),
                    tud_mounted() ? "mounted" : "disconnected");
 #endif
@@ -299,7 +299,7 @@ static void on_button_event(button_event_t event)
             if (ble_output_is_connected() || !usb_gamepad_active()) {
                 // BLE connected or no active USB gamepad → cycle BLE mode
                 ble_output_mode_t next = ble_output_get_next_mode();
-                printf("[app:controller_btusb] Double-click - BLE mode → %s\n",
+                printf("[app:universal] Double-click - BLE mode → %s\n",
                        ble_output_get_mode_name(next));
                 ble_output_set_mode(next);  // Saves to flash + reboots
             } else
@@ -307,7 +307,7 @@ static void on_button_event(button_event_t event)
             {
                 // USB gamepad active → cycle USB output mode
                 usb_output_mode_t next = usbd_get_next_mode();
-                printf("[app:controller_btusb] Double-click - USB mode → %s\n",
+                printf("[app:universal] Double-click - USB mode → %s\n",
                        usbd_get_mode_name(next));
                 usbd_set_mode(next);
             }
@@ -316,13 +316,13 @@ static void on_button_event(button_event_t event)
 
         case BUTTON_EVENT_TRIPLE_CLICK:
             // Reset USB output mode to SInput (default gamepad mode)
-            printf("[app:controller_btusb] Triple-click - resetting USB mode to SInput\n");
+            printf("[app:universal] Triple-click - resetting USB mode to SInput\n");
             usbd_set_mode(USB_OUTPUT_MODE_SINPUT);
             break;
 
         case BUTTON_EVENT_HOLD:
 #if REQUIRE_BLE_OUTPUT || REQUIRE_BT_INPUT
-            printf("[app:controller_btusb] Long press - clearing BLE bonds\n");
+            printf("[app:universal] Long press - clearing BLE bonds\n");
 #if REQUIRE_BT_INPUT
             btstack_host_disconnect_all_devices();
             btstack_host_delete_all_bonds();
@@ -332,11 +332,11 @@ static void on_button_event(button_event_t event)
                 le_device_db_remove(i);
             }
 #if REQUIRE_BLE_OUTPUT
-            printf("[app:controller_btusb] Bonds cleared, restarting advertising\n");
+            printf("[app:universal] Bonds cleared, restarting advertising\n");
             gap_advertisements_enable(1);
 #endif
 #else
-            printf("[app:controller_btusb] Long press (no BLE on this board)\n");
+            printf("[app:universal] Long press (no BLE on this board)\n");
 #endif
             break;
 
@@ -360,7 +360,7 @@ static void bt_central_post_init(void)
     btstack_host_init_hid_handlers();
     if (bt_input_enabled) {
         btstack_host_start_timed_scan(60000);
-        printf("[app:controller_btusb] BT Central enabled, scanning...\n");
+        printf("[app:universal] BT Central enabled, scanning...\n");
     } else {
         // Suppress the central's auto-scan. scan_suppressed defaults to
         // false, so the host's state machine would otherwise keep BLE
@@ -369,7 +369,7 @@ static void bt_central_post_init(void)
         // on the nRF SoftDevice controller. Keep scanning off until the
         // user explicitly enables BT input.
         btstack_host_suppress_scan(true);
-        printf("[app:controller_btusb] BT Central disabled (scan suppressed)\n");
+        printf("[app:universal] BT Central disabled (scan suppressed)\n");
     }
 }
 #endif
@@ -418,16 +418,16 @@ const OutputInterface** app_get_output_interfaces(uint8_t* count)
 // Idle timeout: power down after this long with no input. 0 = disabled.
 // Only nRF implements platform_deep_sleep; elsewhere it's a no-op, so leave
 // the idle timer off there to avoid pointless periodic checks.
-#ifndef CONTROLLER_BTUSB_IDLE_SLEEP_MS
+#ifndef UNIVERSAL_IDLE_SLEEP_MS
 #ifdef PLATFORM_NRF
-#define CONTROLLER_BTUSB_IDLE_SLEEP_MS (5u * 60u * 1000u)  // 5 minutes
+#define UNIVERSAL_IDLE_SLEEP_MS (5u * 60u * 1000u)  // 5 minutes
 #else
-#define CONTROLLER_BTUSB_IDLE_SLEEP_MS 0u
+#define UNIVERSAL_IDLE_SLEEP_MS 0u
 #endif
 #endif
 static int s_sleep_wake_pin = -1;
 static bool s_sleep_wake_active_high = false;
-static uint32_t s_idle_sleep_ms = CONTROLLER_BTUSB_IDLE_SLEEP_MS;
+static uint32_t s_idle_sleep_ms = UNIVERSAL_IDLE_SLEEP_MS;
 #endif
 
 // ============================================================================
@@ -436,7 +436,7 @@ static uint32_t s_idle_sleep_ms = CONTROLLER_BTUSB_IDLE_SLEEP_MS;
 
 void app_init(void)
 {
-    printf("[app:controller_btusb] Initializing ControllerBTUSB v%s\n", JOYPAD_VERSION);
+    printf("[app:universal] Initializing ControllerBTUSB v%s\n", JOYPAD_VERSION);
 
 #ifdef JP_RECOVERY_WIPE_ON_BOOT
     // RECOVERY BUILD ONLY: wipe all persisted config (factory reset) at the
@@ -474,7 +474,7 @@ void app_init(void)
 #else
     gpio_put(PICO_DEFAULT_PIO_USB_VBUSEN_PIN, 1);
 #endif
-    printf("[app:controller_btusb] VBUS asserted on GPIO %d (early)\n",
+    printf("[app:universal] VBUS asserted on GPIO %d (early)\n",
            PICO_DEFAULT_PIO_USB_VBUSEN_PIN);
 #endif
 
@@ -496,7 +496,7 @@ void app_init(void)
         uint32_t attempts = watchdog_hw->scratch[0];
         if (attempts >= 3) {
             pad_config_reset();
-            printf("[app:controller_btusb] Boot watchdog: %u failed boots — wiped pad config\n",
+            printf("[app:universal] Boot watchdog: %u failed boots — wiped pad config\n",
                    (unsigned)attempts);
             attempts = 0;
         }
@@ -541,7 +541,7 @@ void app_init(void)
 #endif
     if (pad_cfg) {
         pad_input_add_device(pad_cfg);
-        printf("[app:controller_btusb] Pad: %s (%s)\n", pad_cfg->name,
+        printf("[app:universal] Pad: %s (%s)\n", pad_cfg->name,
                pad_config_has_custom() ? "flash" : "default");
 #if REQUIRE_BLE_OUTPUT
         // Deep-sleep wake pin = the B1 button. A deliberate host disconnect or
@@ -590,7 +590,7 @@ void app_init(void)
                         .addr = jw_pad_cfg->joywing[i].addr,
                     };
                     joywing_input_init_config(&jw_cfg);
-                    printf("[app:controller_btusb] JoyWing %d (bus=%d, SDA=%d, SCL=%d, addr=0x%02X)\n",
+                    printf("[app:universal] JoyWing %d (bus=%d, SDA=%d, SCL=%d, addr=0x%02X)\n",
                            i, jw_cfg.i2c_bus, jw_cfg.sda_pin, jw_cfg.scl_pin, jw_pad_cfg->joywing[i].addr);
                 }
             }
@@ -598,14 +598,14 @@ void app_init(void)
         }
 #endif
         if (!jw_configured) {
-            printf("[app:controller_btusb] No JoyWing config in flash (configure via web config)\n");
+            printf("[app:universal] No JoyWing config in flash (configure via web config)\n");
         }
 
 #ifdef SENSOR_PAD
         // When both pad and JoyWing are active, merge JoyWing into pad's event
         if (jw_configured) {
             joywing_set_merge_with_pad(true);
-            printf("[app:controller_btusb] JoyWing merging with pad input\n");
+            printf("[app:universal] JoyWing merging with pad input\n");
         }
 #endif
     }
@@ -747,9 +747,9 @@ void app_init(void)
         gpio_pull_up(OLED_BUTTON_C_PIN);
 #endif
 #endif
-        printf("[app:controller_btusb] OLED + eyes/joy animations initialized\n");
+        printf("[app:universal] OLED + eyes/joy animations initialized\n");
     } else {
-        printf("[app:controller_btusb] No OLED detected — display features disabled\n");
+        printf("[app:universal] No OLED detected — display features disabled\n");
     }
 #elif defined(OLED_I2C_DISPLAY)
     // Initialize OLED display (nRF — I2C configured via devicetree)
@@ -767,9 +767,9 @@ void app_init(void)
     if (display_is_initialized()) {
         eyes_anim_init();
         eyes_anim_event(EYES_EVENT_BOOT);
-        printf("[app:controller_btusb] OLED + eyes animation initialized (I2C)\n");
+        printf("[app:universal] OLED + eyes animation initialized (I2C)\n");
     } else {
-        printf("[app:controller_btusb] No OLED detected — display features disabled\n");
+        printf("[app:universal] No OLED detected — display features disabled\n");
     }
 #endif
 
@@ -798,10 +798,10 @@ void app_init(void)
                           PLAYER_LED_PIN_3, PLAYER_LED_PIN_4);
 #endif
 
-    printf("[app:controller_btusb] Initialization complete\n");
-    printf("[app:controller_btusb]   Routing: Sensors → %sUSB Device\n",
+    printf("[app:universal] Initialization complete\n");
+    printf("[app:universal]   Routing: Sensors → %sUSB Device\n",
            REQUIRE_BLE_OUTPUT ? "BLE Peripheral + " : "");
-    printf("[app:controller_btusb]   Player slots: %d\n", MAX_PLAYER_SLOTS);
+    printf("[app:universal]   Player slots: %d\n", MAX_PLAYER_SLOTS);
 }
 
 // ============================================================================
@@ -822,7 +822,7 @@ void app_task(void)
             last_idle_check = now;
             if (!platform_usb_powered() &&
                 router_ms_since_activity() >= s_idle_sleep_ms) {
-                printf("[app:controller_btusb] Idle %u ms — deep sleep (wake on GPIO %d)\n",
+                printf("[app:universal] Idle %u ms — deep sleep (wake on GPIO %d)\n",
                        (unsigned)s_idle_sleep_ms, s_sleep_wake_pin);
                 platform_deep_sleep((uint8_t)s_sleep_wake_pin, s_sleep_wake_active_high);
             }
@@ -880,7 +880,7 @@ void app_task(void)
     if (!boot_marked_ok && platform_time_ms() > 5000) {
         watchdog_hw->scratch[0] = 0;
         boot_marked_ok = true;
-        printf("[app:controller_btusb] Boot watchdog: marked successful\n");
+        printf("[app:universal] Boot watchdog: marked successful\n");
     }
 #endif
 
@@ -1133,7 +1133,7 @@ void app_task(void)
                         menu_input(MENU_BTN_SELECT);
                     } else {
                         oled_current_mode = (oled_mode_t)((oled_current_mode + 1) % OLED_MODE_COUNT);
-                        printf("[app:controller_btusb] OLED mode → %d\n", oled_current_mode);
+                        printf("[app:universal] OLED mode → %d\n", oled_current_mode);
                     }
                 }
                 b_press_start = 0;

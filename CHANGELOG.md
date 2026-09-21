@@ -8,6 +8,10 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Changed
+
+- **`controller_btusb` renamed to `universal`.** The app outgrew its name: it's now the universal configurable adapter — GPIO/sensor/BT inputs, BLE + USB outputs, runtime mode and wireless-policy selection via web config. All build targets follow (`make universal_pico_w`, `universal_rp2040_abb`, nRF/ESP32 `APP_TYPE=universal`, `nrf/prj_universal.conf`); UF2s are now `joypad_<commit>_universal_<board>.uf2`. Historic CHANGELOG entries keep the old name.
+
 ### Added
 
 #### 24g2usb

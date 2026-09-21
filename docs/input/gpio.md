@@ -52,4 +52,4 @@ make controller_macropad_rp2040zero
 ## Apps Using This Input
 
 - [controller](../apps/controllers.md) -- Custom GPIO controllers to USB HID
-- [controller_btusb](../apps/controllers.md) -- Custom GPIO controllers with Bluetooth bridge
+- [universal](../apps/controllers.md) -- Custom GPIO controllers with Bluetooth bridge

@@ -4,7 +4,7 @@ GPIO buttons and analog inputs to USB HID gamepad (or BLE + USB).
 
 ## Overview
 
-The `controller` app family turns custom hardware with GPIO buttons and analog inputs into USB gamepads. Each controller type is a build-time configuration that defines its board and GPIO pin mapping. The `controller_btusb` variant adds BLE peripheral output alongside USB, supports I2C sensor inputs (JoyWing seesaw), and optionally USB host input for connecting external controllers.
+The `controller` app family turns custom hardware with GPIO buttons and analog inputs into USB gamepads. Each controller type is a build-time configuration that defines its board and GPIO pin mapping. The `universal` variant adds BLE peripheral output alongside USB, supports I2C sensor inputs (JoyWing seesaw), and optionally USB host input for connecting external controllers.
 
 ## Controller Types
 
@@ -19,18 +19,18 @@ Single-player GPIO controller with USB HID output. Define the controller type at
 | Alpakka | Pico | `make controller_alpakka_pico` |
 | MacroPad | MacroPad RP2040 | `make controller_macropad` |
 
-### controller_btusb -- Sensor to BLE + USB
+### universal -- Sensor to BLE + USB
 
 Modular sensor inputs with dual BLE peripheral + USB device output. First sensor: JoyWing (Adafruit seesaw I2C gamepad).
 
 | Board | Build Command | BLE | USB Host |
 |-------|---------------|-----|----------|
-| Pico W | `make controller_btusb_pico_w` | Yes | No |
-| Pico 2 W | `make controller_btusb_pico2_w` | Yes | No |
-| Feather RP2040 | `make controller_btusb_feather_rp2040` | No | No |
-| Feather ESP32-S3 | `make controller_btusb_feather_esp32s3` | Yes | No |
-| Feather nRF52840 | `make controller_btusb_feather_nrf52840` | Yes | No |
-| ABB (Passthrough) | `make controller_btusb_rp2040_abb` | No | Yes (PIO-USB) |
+| Pico W | `make universal_pico_w` | Yes | No |
+| Pico 2 W | `make universal_pico2_w` | Yes | No |
+| Feather RP2040 | `make universal_feather_rp2040` | No | No |
+| Feather ESP32-S3 | `make universal_feather_esp32s3` | Yes | No |
+| Feather nRF52840 | `make universal_feather_nrf52840` | Yes | No |
+| ABB (Passthrough) | `make universal_rp2040_abb` | No | Yes (PIO-USB) |
 
 ### ABB (RP2040 Advanced Breakout Board)
 
@@ -79,7 +79,7 @@ The ABB Passthrough variant is a plain RP2040 board (no CYW43, no BLE antenna) w
 | Input | GPIO buttons/analog |
 | Output | USB HID gamepad |
 
-**controller_btusb:**
+**universal:**
 
 | Setting | Value |
 |---------|-------|

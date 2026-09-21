@@ -54,8 +54,8 @@ make bt2usb_makerdiary_nrf52840   # BLE-only → USB HID (Makerdiary MDK USB Don
 make mouthpad_aprbrother_nrf52840 # Augmental MouthPad BLE → USB HID + NUS relay (April Brother dongle, NCS)
 make mouthpad_pico_w              # Augmental MouthPad BLE → USB HID + NUS relay (Pico W)
 make wifi2usb_pico_w   # WiFi → USB HID (Pico W)
-make controller_btusb_pico_w        # GPIO+JoyWing → BLE+USB HID (Pico W)
-make controller_btusb_rp2040_abb    # GPIO+USB Host → USB HID (ABB Passthrough)
+make universal_pico_w        # GPIO+JoyWing → BLE+USB HID (Pico W)
+make universal_rp2040_abb    # GPIO+USB Host → USB HID (ABB Passthrough)
 
 # Build all (RP2040 targets only)
 make all
@@ -106,8 +106,8 @@ Output: `releases/joypad_<commit>_<app>_<board>.uf2`
 | `snes23do` | RP2040-Zero | SNES | 3DO |
 | `usb2uart` | KB2040 | USB | UART/ESP32 |
 | `controller_*` | Various | GPIO | USB HID |
-| `controller_btusb` | Pico W/Pico 2 W/ESP32-S3/nRF52840 | GPIO | BLE + USB HID |
-| `controller_btusb_rp2040_abb` | RP2040 ABB (Passthrough) | GPIO + USB Host | USB HID |
+| `universal` | Pico W/Pico 2 W/ESP32-S3/nRF52840 | GPIO | BLE + USB HID |
+| `universal_rp2040_abb` | RP2040 ABB (Passthrough) | GPIO + USB Host | USB HID |
 
 ## Architecture
 

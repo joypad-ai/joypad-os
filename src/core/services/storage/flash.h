@@ -155,12 +155,12 @@ typedef struct {
 
     // Non-zero once the user has explicitly picked a BLE output mode
     // (BLE.MODE.SET / web config). Apps that force a default BLE mode
-    // (controller_btusb → SInput) honor ble_output_mode when this is set.
+    // (universal → SInput) honor ble_output_mode when this is set.
     // Carved from reserved[] — zero on old flashes = never selected.
     uint8_t ble_mode_saved;
 
     // Which output wins when USB and BLE could both be live (dual-output apps
-    // like controller_btusb). WIRELESS_POLICY_*: 0=both active (default),
+    // like universal). WIRELESS_POLICY_*: 0=both active (default),
     // 1=USB dominant (BT yields while a USB data host is connected),
     // 2=BLE dominant (USB input reports suppressed while a BLE host is
     // connected). Carved from reserved[] — zero on old flashes = both.
@@ -228,7 +228,7 @@ static inline unsigned flash_sanitize_record(flash_t* s)
 
     // Two fields have no in-band invalid value, so they can't be range-checked
     // on their own — but an incoherent record is exactly what turns them on:
-    //   router_saved         gates the router settings gc2usb / controller_btusb
+    //   router_saved         gates the router settings gc2usb / universal
     //                        / bt2wiiext restore at boot (0 on a clean record).
     //   builtin_disabled_mask hides built-in profiles from the SELECT+D-pad
     //                        cycle; its valid range is build-dependent (one bit

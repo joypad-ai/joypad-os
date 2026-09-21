@@ -16,8 +16,8 @@ find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 # APP_TYPE selects which app to build (default: bt2usb)
 # Zephyr sysbuild doesn't forward custom -D variables to the inner project,
 # so we detect app type from EXTRA_CONF_FILE (which IS forwarded via sysbuild cache).
-if(DEFINED EXTRA_CONF_FILE AND EXTRA_CONF_FILE MATCHES "prj_controller_btusb")
-    set(APP_TYPE "controller_btusb")
+if(DEFINED EXTRA_CONF_FILE AND EXTRA_CONF_FILE MATCHES "prj_universal")
+    set(APP_TYPE "universal")
 elseif(DEFINED EXTRA_CONF_FILE AND EXTRA_CONF_FILE MATCHES "prj_btusb2usb")
     set(APP_TYPE "btusb2usb")
 elseif(DEFINED EXTRA_CONF_FILE AND EXTRA_CONF_FILE MATCHES "prj_usb2usb")
@@ -386,15 +386,15 @@ elseif(APP_TYPE STREQUAL "btusb2usb")
         CFG_TUSB_CONFIG_FILE="tusb_config_nrf.h"
     )
 
-elseif(APP_TYPE STREQUAL "controller_btusb")
+elseif(APP_TYPE STREQUAL "universal")
     # -----------------------------------------------------------------------
-    # controller_btusb: Sensor inputs → BLE Peripheral + USB Device
+    # universal: Sensor inputs → BLE Peripheral + USB Device
     # BTstack BLE peripheral (HOGP), no USB host, no btstack_host/bthid
     # -----------------------------------------------------------------------
     list(APPEND SRCS
         # --- App ---
         "src/stubs_peripheral.c"
-        "${SHARED_SRC}/apps/controller_btusb/app.c"
+        "${SHARED_SRC}/apps/universal/app.c"
 
         # --- Pad input + config ---
         "${SHARED_SRC}/pad/pad_input.c"
@@ -504,7 +504,7 @@ elseif(APP_TYPE STREQUAL "controller_btusb")
     )
 
     list(APPEND INCLUDE_DIRS
-        "${SHARED_SRC}/apps/controller_btusb"
+        "${SHARED_SRC}/apps/universal"
         "${SHARED_SRC}/pad"
         "${SHARED_SRC}/drivers"
         "${SHARED_SRC}/bt"
@@ -521,7 +521,7 @@ elseif(APP_TYPE STREQUAL "controller_btusb")
     )
 
     target_compile_definitions(app PRIVATE
-        CONFIG_CONTROLLER_BTUSB=1
+        CONFIG_UNIVERSAL=1
         CONFIG_USB=1
         CONFIG_PAD_INPUT=1
         SENSOR_PAD=1
@@ -730,10 +730,10 @@ if("${SRCS}" MATCHES "bthid_registry\\.c")
 endif()
 
 # ============================================================================
-# GATT header generation (peripheral mode — controller_btusb)
+# GATT header generation (peripheral mode — universal)
 # ============================================================================
 
-if(APP_TYPE STREQUAL "controller_btusb")
+if(APP_TYPE STREQUAL "universal")
     set(COMPILE_GATT "${BTSTACK_PATH}/tool/compile_gatt.py")
 
     add_custom_command(
@@ -838,6 +838,6 @@ target_compile_options(app PRIVATE -Wno-error)
 
 # Force-include btstack_config.h so all BTstack headers see ENABLE_BLE etc.
 # BTstack headers check #ifdef ENABLE_BLE but don't include btstack_config.h themselves.
-if(APP_TYPE STREQUAL "controller_btusb" OR APP_TYPE STREQUAL "bt2usb" OR APP_TYPE STREQUAL "btusb2usb")
+if(APP_TYPE STREQUAL "universal" OR APP_TYPE STREQUAL "bt2usb" OR APP_TYPE STREQUAL "btusb2usb")
     target_compile_options(app PRIVATE -include btstack_config.h)
 endif()

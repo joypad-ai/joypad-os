@@ -3,7 +3,7 @@
 # Compiles shared sources from ../../src/ alongside ESP32-specific code.
 # BTstack from pico-sdk submodule, TinyUSB device-only (our own copy, not esp_tinyusb).
 #
-# App selection: pass -DCONFIG_APP=controller_btusb (default: bt2usb)
+# App selection: pass -DCONFIG_APP=universal (default: bt2usb)
 
 set(SHARED_SRC "${CMAKE_CURRENT_LIST_DIR}/../../src")
 set(BTSTACK_PATH "${SHARED_SRC}/lib/pico-sdk/lib/btstack")
@@ -32,13 +32,13 @@ set(ESP32_COMMON_SRCS
 )
 
 # App-specific sources and config
-if(CONFIG_APP STREQUAL "controller_btusb")
+if(CONFIG_APP STREQUAL "universal")
     set(APP_SRCS
         "btstack_hal_esp32.c"
         "stubs_peripheral.c"
         "pad_config_storage_esp32.c"
         "platform_gpio_esp32.c"
-        "${SHARED_SRC}/apps/controller_btusb/app.c"
+        "${SHARED_SRC}/apps/universal/app.c"
         # Pad input + config (runtime GPIO pin config via web config)
         "${SHARED_SRC}/pad/pad_input.c"
         "${SHARED_SRC}/pad/pad_config_flash.c"
@@ -65,7 +65,7 @@ if(CONFIG_APP STREQUAL "controller_btusb")
         # Battery monitoring (I2C fuel gauge)
         "battery_esp32.c"
     )
-    set(APP_INCLUDE_DIR "${SHARED_SRC}/apps/controller_btusb")
+    set(APP_INCLUDE_DIR "${SHARED_SRC}/apps/universal")
     set(APP_NEEDS_BTSTACK ON)
     set(APP_BTSTACK_MODE "peripheral")
 
@@ -399,7 +399,7 @@ if(APP_NEEDS_BTSTACK)
         )
     endif()
 
-    # --- Peripheral mode (controller_btusb): GATT server + HID device ---
+    # --- Peripheral mode (universal): GATT server + HID device ---
     if(APP_BTSTACK_MODE STREQUAL "peripheral")
         list(APPEND SRCS
             # BTstack GATT server (att_server.c is in the BLE common block)
@@ -567,9 +567,9 @@ if(CONFIG_BOARD STREQUAL "lilygo_tdisplay_s3_amoled")
 endif()
 
 # App-specific definitions
-if(CONFIG_APP STREQUAL "controller_btusb")
+if(CONFIG_APP STREQUAL "universal")
     target_compile_definitions(${COMPONENT_LIB} PUBLIC
-        CONFIG_CONTROLLER_BTUSB=1
+        CONFIG_UNIVERSAL=1
         CONFIG_PAD_INPUT=1
         SENSOR_PAD=1
         BTSTACK_USE_ESP32=1

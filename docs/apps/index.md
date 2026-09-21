@@ -96,8 +96,8 @@ These apps read one retro controller and output to a different console.
 | `usb2ble` | USB to BLE peripheral output | KB2040 | `make usb2ble_kb2040` |
 | `nuonserial` | Nuon serial debug tool | KB2040 | `make nuonserial_kb2040` |
 | `controller` | Custom GPIO controller (Fisher Price, Alpakka, etc.) | Various | `make controller_<board>` |
-| `controller_btusb` | Custom GPIO controller with BLE+USB output | Pico W/ESP32-S3/nRF52840 | `make controller_btusb_<board>` |
-| `controller_btusb_rp2040_abb` | ABB GPIO + USB host controller | RP2040 ABB | `make controller_btusb_rp2040_abb` |
+| `universal` | Custom GPIO controller with BLE+USB output | Pico W/ESP32-S3/nRF52840 | `make universal_<board>` |
+| `universal_rp2040_abb` | ABB GPIO + USB host controller | RP2040 ABB | `make universal_rp2040_abb` |
 
 ## Board Variants
 

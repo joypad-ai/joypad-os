@@ -95,9 +95,9 @@ jobs:
           - controller_fisherprice_v1_kb2040
           - controller_fisherprice_v2_kb2040
           - controller_alpakka_pico
-          - controller_btusb_pico_w
-          - controller_btusb_pico2_w
-          - controller_btusb_rp2040_abb
+          - universal_pico_w
+          - universal_pico2_w
+          - universal_rp2040_abb
           - lodgenet2usb_pico
           - lodgenet2usb_pico2
           - lodgenet2n64_pico
@@ -169,11 +169,11 @@ jobs:
             config_app: bt2usb
             bin_name: bt2usb
             uf2_family: "0xc47e5767"
-          - app: controller_btusb_feather_esp32s3
+          - app: universal_feather_esp32s3
             idf_target: esp32s3
             board: feather_esp32s3
-            config_app: controller_btusb
-            bin_name: controller_btusb
+            config_app: universal
+            bin_name: universal
             uf2_family: "0xc47e5767"
 
     steps:
@@ -238,9 +238,9 @@ jobs:
           - app: bt2usb_makerdiary_nrf52840
             board: makerdiary_nrf52840
             app_type: bt2usb
-          - app: controller_btusb_makerdiary_nrf52840
+          - app: universal_makerdiary_nrf52840
             board: makerdiary_nrf52840
-            app_type: controller_btusb
+            app_type: universal
           - app: bt2usb_feather_nrf52840
             board: adafruit_feather_nrf52840
             app_type: bt2usb
@@ -250,12 +250,12 @@ jobs:
           - app: btusb2usb_feather_nrf52840
             board: adafruit_feather_nrf52840
             app_type: btusb2usb
-          - app: controller_btusb_feather_nrf52840
+          - app: universal_feather_nrf52840
             board: adafruit_feather_nrf52840
-            app_type: controller_btusb
-          - app: controller_btusb_seeed_xiao_nrf52840
+            app_type: universal
+          - app: universal_seeed_xiao_nrf52840
             board: xiao_ble
-            app_type: controller_btusb
+            app_type: universal
 
     steps:
       - name: Checkout code with submodules
@@ -620,11 +620,11 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
-      - name: Upload controller_btusb
+      - name: Upload universal
         uses: actions/upload-artifact@v4
         with:
-          name: joypad_${{ steps.commit.outputs.hash }}_controller_btusb
-          path: organized/controller_btusb/*.uf2
+          name: joypad_${{ steps.commit.outputs.hash }}_universal
+          path: organized/universal/*.uf2
           if-no-files-found: ignore
           retention-days: 14
 

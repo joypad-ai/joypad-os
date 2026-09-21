@@ -653,7 +653,7 @@ static int host_att_write_callback(hci_con_handle_t con_handle, uint16_t att_han
 }
 
 // Defined (strong) by ble_output.c when the BLE-peripheral path owns the ATT
-// server with its full GATT profile (e.g. controller_btusb, usb2ble). In that
+// server with its full GATT profile (e.g. universal, usb2ble). In that
 // case we must NOT init a second, minimal server -- it would clobber the rich
 // profile. Central-only builds (bt2usb, mouthpad) don't link ble_output, so the
 // weak default applies and we install the minimal server.
@@ -2301,7 +2301,7 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                     }
 
                     // Only the central role belongs to the host manager. When
-                    // this device is also a BLE peripheral (controller_btusb),
+                    // this device is also a BLE peripheral (universal),
                     // a host connecting to our gamepad output raises the SAME
                     // LE_CONNECTION_COMPLETE event with role=peripheral. Tracking
                     // it here would inflate the host connection/device count,

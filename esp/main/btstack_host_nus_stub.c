@@ -1,4 +1,4 @@
-// btstack_host_nus_send stub for ESP32 BLE-peripheral builds (controller_btusb).
+// btstack_host_nus_send stub for ESP32 BLE-peripheral builds (universal).
 //
 // The real implementation is in bt/btstack/btstack_host.c, which ESP only
 // compiles in central mode (bt2usb). Peripheral builds still compile the shared

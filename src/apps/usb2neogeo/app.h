@@ -4,7 +4,7 @@
 // This manifest is a human-readable summary of what this app uses.
 // It is NOT consumed by the build system. The authoritative per-target
 // configuration lives in src/CMakeLists.txt. Only #ifndef-guarded flags are
-// read by code (see REQUIRE_BT_INPUT / REQUIRE_BLE_OUTPUT in controller_btusb);
+// read by code (see REQUIRE_BT_INPUT / REQUIRE_BLE_OUTPUT in universal);
 // every other flag here is descriptive only and changing it has no effect.
 // See issue #198.
 

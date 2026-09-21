@@ -52,7 +52,7 @@
 // Bluetooth host capability model (mirrors the usb_host present/configurable
 // split used by CAPS.GET). BT is "present" when the stack is compiled in.
 // It is "configurable" only for apps that actually honour the runtime
-// bt_input_enabled flag (controller_btusb, bt2wiiext, which #define
+// bt_input_enabled flag (universal, bt2wiiext, which #define
 // BT_INPUT_CONFIGURABLE). Dedicated BT bridges (bt2usb, bt2gc, bt2nuon, …)
 // always run BT and never read the flag, so their "Enable Bluetooth Host"
 // toggle is always-on / read-only and must report bt_input:true even on a
@@ -2603,7 +2603,7 @@ static void cmd_caps_get(const char* json)
 
     // Track which input sources we've listed so we can backfill any source
     // that routes reference but the input-interface registry doesn't expose
-    // (e.g. BLE Central on controller_btusb — it's routed as input but isn't
+    // (e.g. BLE Central on universal — it's routed as input but isn't
     // a polled InputInterface). A CAPS payload whose routes point at a source
     // missing from inputs[] is internally inconsistent and breaks host tools
     // that map routes back to inputs.
