@@ -323,6 +323,9 @@ static ble_xbox_report_t pending_xbox;
 static sinput_report_t pending_sinput;
 static uint8_t pending_feature[63];       // SInput feature response payload
 static uint16_t pending_feature_len;
+// Input state arrived while a feature response was queued: pending_sinput holds
+// it (the router hands out each event exactly once), send it after the feature.
+static volatile bool sinput_input_after_feature = false;
 
 // Last sent reports (for change detection)
 static ble_gamepad_report_t last_sent_gamepad;
@@ -576,6 +579,7 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
             sm_pairing_active = false;
             ble_connected = false;
             pending_type = PENDING_NONE;
+            sinput_input_after_feature = false;
 
             // Distinguish a deliberate host disconnect from a dropped link:
             //   0x13 = remote user terminated   (host "disconnected")
@@ -694,7 +698,17 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                             default:
                                 break;
                         }
+                        bool sent_feature = (pending_type == PENDING_SINPUT_FEATURE);
                         pending_type = PENDING_NONE;
+                        // Input state consumed while the feature was in flight
+                        // (router hands out each event exactly once — it can't
+                        // be re-read): send it now or it's lost.
+                        if (sent_feature && sinput_input_after_feature) {
+                            sinput_input_after_feature = false;
+                            pending_type = PENDING_SINPUT;
+                            // Already on the BTstack thread: request directly.
+                            hids_device_request_can_send_now_event(con_handle);
+                        }
                     }
                     break;
 
@@ -1054,10 +1068,16 @@ static void ble_output_task_standard(void)
     cdc_commands_send_player_output(0, event->buttons, event->analog);
 
     switch (event->type) {
+        // NOTE (all cases): the router hands out each event exactly once, so a
+        // gated or dropped event is gone forever (stuck buttons). Compare
+        // against what will actually go out — the queued report when one is
+        // still waiting for CAN_SEND_NOW — and overwrite it, never drop.
         case INPUT_TYPE_KEYBOARD: {
             ble_keyboard_report_t report;
             ble_keyboard_report_from_event(event, &report);
-            if (memcmp(&report, &last_sent_keyboard, sizeof(report)) == 0) return;
+            const ble_keyboard_report_t *ref = (pending_type == PENDING_KEYBOARD)
+                ? &pending_keyboard : &last_sent_keyboard;
+            if (memcmp(&report, ref, sizeof(report)) == 0) return;
             pending_keyboard = report;
             pending_type = PENDING_KEYBOARD;
             ble_request_can_send_now(con_handle);
@@ -1067,7 +1087,9 @@ static void ble_output_task_standard(void)
         case INPUT_TYPE_MOUSE: {
             ble_mouse_report_t report;
             ble_mouse_report_from_event(event, &report);
-            if (memcmp(&report, &last_sent_mouse, sizeof(report)) == 0) return;
+            const ble_mouse_report_t *ref = (pending_type == PENDING_MOUSE)
+                ? &pending_mouse : &last_sent_mouse;
+            if (memcmp(&report, ref, sizeof(report)) == 0) return;
             pending_mouse = report;
             pending_type = PENDING_MOUSE;
             ble_request_can_send_now(con_handle);
@@ -1087,7 +1109,9 @@ static void ble_output_task_standard(void)
             report.ry = SCALE_8_TO_16(event->analog[ANALOG_RY]);
             report.lt = SCALE_8_TO_16(event->analog[ANALOG_L2]);
             report.rt = SCALE_8_TO_16(event->analog[ANALOG_R2]);
-            if (memcmp(&report, &last_sent_gamepad, sizeof(report)) == 0) return;
+            const ble_gamepad_report_t *ref = (pending_type == PENDING_GAMEPAD)
+                ? &pending_gamepad : &last_sent_gamepad;
+            if (memcmp(&report, ref, sizeof(report)) == 0) return;
             pending_gamepad = report;
             pending_type = PENDING_GAMEPAD;
             ble_request_can_send_now(con_handle);
@@ -1110,7 +1134,12 @@ static void ble_output_task_xbox(void)
 
     ble_xbox_report_t report;
     ble_xbox_report_from_event(event, &report);
-    if (memcmp(&report, &last_sent_xbox, sizeof(report)) == 0) return;
+    // Router events are consume-once: compare against the queued report (not
+    // just last-sent) and overwrite it, or a press→release inside one
+    // connection interval loses the release (stuck button).
+    const ble_xbox_report_t *ref = (pending_type == PENDING_XBOX)
+        ? &pending_xbox : &last_sent_xbox;
+    if (memcmp(&report, ref, sizeof(report)) == 0) return;
 
     pending_xbox = report;
     pending_type = PENDING_XBOX;
@@ -1129,26 +1158,40 @@ static void ble_output_task_sinput(void)
     // Stream output event to CDC/NUS for web config (if enabled)
     cdc_commands_send_player_output(0, event->buttons, event->analog);
 
-    // Flow-controlled: only one report queued at a time.
-    if (pending_type != PENDING_NONE) return;
-
     // Build the input report; may flag a feature refresh on device change. The
     // host's features request (output report) also sets the pending flag.
+    // Router events are consume-once, so this event can never be dropped:
+    // it either updates the queued report or is stashed to follow a feature.
     sinput_report_t report;
     sinput_report_build_from_event(&report, event);
 
     // Feature response takes priority — SDL blocks on the handshake.
     uint16_t flen;
-    if (sinput_feature_response_take(pending_feature, &flen)) {
+    if (pending_type == PENDING_NONE &&
+        sinput_feature_response_take(pending_feature, &flen)) {
         pending_feature_len = flen;
         pending_type = PENDING_SINPUT_FEATURE;
+        // Don't lose the input state consumed on this call: queue it behind
+        // the feature (CAN_SEND_NOW sends it next).
+        pending_sinput = report;
+        sinput_input_after_feature = true;
         ble_request_can_send_now(con_handle);
         return;
     }
 
-    // Otherwise send the input report when changed (the IMU timestamp advances
-    // each build, so a device with motion streams continuously).
-    if (memcmp(&report, &last_sent_sinput, sizeof(report)) == 0) return;
+    if (pending_type == PENDING_SINPUT_FEATURE) {
+        // Feature in flight: remember the latest input state to send after it.
+        pending_sinput = report;
+        sinput_input_after_feature = true;
+        return;
+    }
+
+    // Send the input report when changed — compared against the queued report
+    // when one is waiting, else the last one sent. (The IMU timestamp advances
+    // each build, so a device with motion streams continuously.)
+    const sinput_report_t *ref = (pending_type == PENDING_SINPUT)
+        ? &pending_sinput : &last_sent_sinput;
+    if (memcmp(&report, ref, sizeof(report)) == 0) return;
     pending_sinput = report;
     pending_type = PENDING_SINPUT;
     bt_diag_mark(0xB1000001u);
