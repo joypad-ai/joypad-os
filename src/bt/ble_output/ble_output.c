@@ -281,14 +281,12 @@ static bool sleep_wake_active_high = false;
 extern bool tud_mounted(void);
 static bool ble_usb_host(void)
 {
-#ifdef CONFIG_BLE_USB_COEXIST
-    // Dedicated face/companion board: its whole job is being a BLE device,
-    // so BT never yields to a USB host (bench power + CDC debug included).
-    return false;
-#else
     // Runtime wireless policy (flash, live-settable over CDC): BT yields to a
     // USB data host only under WIRELESS_POLICY_USB. BOTH (the default) and
-    // BLE keep BT alive alongside USB.
+    // BLE keep BT alive alongside USB. The old CONFIG_BLE_USB_COEXIST guard
+    // (face/companion boards that must never yield) is subsumed by the
+    // default: those boards simply ship with policy BOTH; an explicit USB
+    // selection is honored everywhere.
     const flash_t *settings = flash_get_settings();
     if (!settings || settings->wireless_policy != WIRELESS_POLICY_USB) {
         return false;
@@ -298,7 +296,6 @@ static bool ble_usb_host(void)
     // modes = the USB host owns us as a controller, so BT yields as before.
     if (usbd_get_mode() == USB_OUTPUT_MODE_CDC) return false;
     return platform_usb_powered() && tud_mounted();
-#endif
 }
 
 // Strong override of usbd.c's weak default: under WIRELESS_POLICY_BLE, USB
