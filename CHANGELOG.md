@@ -8,14 +8,148 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
-### Changed
+---
 
-- **`controller_btusb` renamed to `universal`.** The app outgrew its name: it's now the universal configurable adapter — GPIO/sensor/BT inputs, BLE + USB outputs, runtime mode and wireless-policy selection via web config. All build targets follow (`make universal_pico_w`, `universal_rp2040_abb`, nRF/ESP32 `APP_TYPE=universal`, `nrf/prj_universal.conf`); UF2s are now `joypad_<commit>_universal_<board>.uf2`. Historic CHANGELOG entries keep the old name.
+## [2.5.0] — 2026-09-20
+
+Feature release. Three new output frontiers — PlayStation 5 (native USB, dongle-authenticated, and
+over WiFi Remote Play), Nintendo Switch over Bluetooth Classic, and the first radio input source —
+plus the `controller_btusb` app grown up and renamed `universal`, with runtime control over which
+outputs carry input.
 
 ### Added
 
+#### wifi2usb → PS Remote Play (usb2wifi, Pico W / Pico 2 W)
+- **Play a real PS5/PS4 over WiFi — no PC, no phone, no DualSense.** The adapter now runs a
+  Remote Play session engine (ported from the chiaki protocol work) directly on the Pico W:
+  on-device PSN OAuth sign-in, LAN console discovery with auto-filled IPs, on-device pairing
+  (registration handshake), rest-mode wakeup before connecting, and a full streaming session with
+  keep-alive heartbeat and congestion reporting so the console holds the link. Controller input is
+  delivered as Remote Play feedback history — buttons, D-pad, sticks, and the touchpad surface +
+  click all pass through, with edge resends so lossy UDP can't stick a button. The session is
+  strictly opt-in (Start/Stop in web config), tears down with a proper DISCONNECT so the console
+  frees its slot, backs off when the console is busy, and reconnects stickily to the last console
+  across IP changes. Web config grew WiFi and PlayStation cards: network scan with real signal
+  bars, a unified console list with inline link/pair, and live session state.
+
+#### DualSense and native PS5 output
+- **DualSense USB output mode.** Byte-real DualSense descriptors (enumerates as a DualSense on
+  macOS), full input report with motion and touch, and console feedback relayed back to the
+  physical pad: rumble, lightbar RGB, and player-LED-to-player-number. Gyro/accel stream at full
+  rate.
+- **P5General native PS5 output.** A dongle-authenticated PS5 mode that answers the console's
+  auth through a P5General dongle, including on the dual-RP2040 remapper via a cross-chip auth
+  bridge; PS5 rumble, player LED, and lightbar relay back to the connected controller.
+
+#### Switch Pro over Bluetooth Classic (universal, Pico W / Pico 2 W)
+- **The adapter can now BE a Pro Controller.** A clean-room Switch Pro protocol engine (SPI flash
+  emulation included) on BTstack's Classic HID-device role: console sync via the user button,
+  bonds kept across boots, auto-reconnect by paging the console, registers and streams end-to-end
+  on real hardware. Selectable as a wireless output mode alongside SInput BLE and Xbox BLE.
+
 #### 24g2usb
-- **First radio input source: 8BitDo SF30 2.4G wireless receiver over nRF24L01+.** New `24g2usb` app drives an nRF24L01+ over SPI, impersonating the SF30 2.4G's OEM USB dongle closely enough that controllers pair and cold-link directly — no 8BitDo dongle needed. The receiver runs off the radio's IRQ line and a hardware alarm rather than the main polling loop, so other core-0 work (flash writes, LED updates) can't stall a dwell and drop a packet. Supports exactly one controller by design — USB output only ever surfaces a single player (same limitation `bt2usb` already carries), and two controllers hopping the same table at independent phase can starve each other's dwell indefinitely. Hold BOOTSEL ~1.5s to pair a controller. Boards: Pico 2 W, Pico W, Pico, Pico 2. See [24g2usb](docs/apps/24g2usb.md), [24G input](docs/input/24g.md), and the [24G protocol reference](docs/protocols/24g.md) (recovered by logic-analyser capture of the OEM dongle's SPI bus).
+- **First radio input source: 8BitDo SF30 2.4G wireless receiver over nRF24L01+.** New `24g2usb`
+  app drives an nRF24L01+ over SPI, impersonating the SF30 2.4G's OEM USB dongle closely enough
+  that controllers pair and cold-link directly — no 8BitDo dongle needed. The receiver runs off
+  the radio's IRQ line and a hardware alarm rather than the main polling loop, so other core-0
+  work (flash writes, LED updates) can't stall a dwell and drop a packet. Supports exactly one
+  controller by design. Hold BOOTSEL ~1.5s to pair. Boards: Pico 2 W, Pico W, Pico, Pico 2,
+  Waveshare RP2350-Zero — plus nRF24L01+ carrier PCBs for RP2350-Zero and Pico 2 W in the new
+  generated-KiCad `hardware/` tree. See [24g2usb](docs/apps/24g2usb.md), [24G input](docs/input/24g.md),
+  and the [24G protocol reference](docs/protocols/24g.md) (recovered by logic-analyser capture of
+  the OEM dongle's SPI bus).
+
+#### universal (BLE output overhaul)
+- **Runtime USB/BLE output policy.** New `WIRELESS.POLICY` setting (web config: USB / BLE
+  Priority on the BT Output page): **Both** (default) sends input to USB and BLE together; **USB
+  dominant** routes input only to USB while a USB host is connected; **BLE dominant** routes only
+  to BLE while a BLE host is subscribed. Dominance is pure routing — the idle side stays
+  connected/enumerated (web config keeps working), a neutral report is sent on the switch so
+  nothing sticks, and changes apply live with no reboot.
+- **Xbox BLE mode registers as a real controller now.** The mode advertised a Series X identity
+  with a One-S-style report map, and its GATT database declared the wrong input report ID — hosts
+  either rejected the pad or silently dropped every report. It now carries the byte-exact Series X
+  descriptor (input report ID 1, PnP version 0x0509) and SDL/Gamepad-API hosts enumerate it as an
+  Xbox Series X Controller. Descriptor changes require forget + re-pair on previously bonded hosts.
+- **SInput BLE is the default wireless mode; Standard BLE is retired from the selector** (the code
+  remains behind `CONFIG_BLE_STANDARD_MODE` for custom branches). An explicitly chosen BLE mode
+  now persists across reboots instead of being reset to the app default.
+
+#### New hardware and input drivers
+- **Makerdiary nRF52840 MDK USB Dongle** support for `bt2usb` and `universal` (dual UF2
+  bootloaders, static partition layout so settings never land on bootloader flash).
+- **usb2neogeo_te** tournament-edition app (#175), including Pico 2 wiring.
+- **Intel Wireless Series receiver (8086:C013)** USB host driver.
+- **8BitDo SN30/SF30 Pro USB D-Input (2dc8:6001)** dedicated driver — the generic parser dropped
+  a face button on these pads; plus a generic-parser spillover net so a >12th button is never
+  dropped on any controller.
+- **Joy-Con merge with per-event field ownership**, so paired halves stop fighting over axes.
+
+#### Dual-RP2040 remapper (remapper_v7)
+- **Relay-free B-side flashing**: chip A auto-flashes chip B's image over SWD on boot
+  (`combine_uf2` staging, watchdog-guarded, with progress reporting and a `FLASH.B` CDC command);
+  BOOT button mode-switching and full feedback (rumble/LED), touch + motion forwarding, and BT
+  dongle input across the link.
+- **DS4/PS4 auth relayed across the link** — the missing CRC32 on the nonce sent *to* the DS4 was
+  why consoles rejected the signature; initial auth now completes on a real PS4.
+
+#### Core
+- **IMU normalization**: gyro/accel from every motion-capable input are normalized to the SDL
+  canonical sensor frame in core (per-controller transforms, declared ranges), so SInput and
+  DualSense outputs agree on axes.
+- **INPUT.INJECT can drive analog axes**, the web config Input Test row can drive real output,
+  and injected input flushes on release so nothing sticks — the base for CDC-driven assistive
+  input (decode intent in software, emit real USB/BLE HID from the adapter).
+
+### Fixed
+
+#### Router
+- 🔴 **Cross-core output handoff is tear-free.** Core 1 (console protocols) could read a
+  half-written input event from Core 0 — a seqlock now guarantees a coherent snapshot, bounded so
+  the timing-critical core never stalls.
+- **The BLE send paths can no longer lose a consume-once router event.** A press→release inside
+  one connection interval dropped the release forever (stuck button over BLE); every path now
+  coalesces into the queued report instead of dropping.
+- **Cycle-D-pad-mode hotkey covers all four modes** instead of skipping the 4th and mis-wrapping.
+
+#### BLE on nRF52840 / ESP32
+- 🔴 **Pairing or the first HID report could hard-crash the dongle.** BLE sends from the app main
+  loop raced the BTstack thread for the single HCI TX buffer (assert → dead until power cycle);
+  sends are now marshalled onto the BTstack run loop. USB-dominance enforcement also disconnected
+  mid-pairing, hard-resetting the controller — dominance is now routing-only and never touches
+  the link.
+- 🔴 **`ROUTER.GET` over CDC could kill the nRF dongle** — 3 kB of frame buffers on the Zephyr
+  main stack overflowed it; buffers are static now.
+- **macOS 26 stale-persona fix**: a fast USB mode-switch reboot re-enumerated before the host
+  dropped the old device state and CDC-only mode never configured; the device now detaches and
+  dwells 600 ms before rebooting.
+
+#### PlayStation auth
+- **PS4 auth key install verifies flash before reporting success** (a failed write no longer
+  claims the key is installed).
+- **DualSense over BT binds correctly** — PnP SDP is queried on the hid_host path so the DS5 is
+  recognized before the report map is interpreted.
+
+#### Build & platforms
+- **Firmware INFO reports the real commit on CI builds** (was "unknown" on every release).
+- **Waveshare RP2350B boards use the SDK's real package switch** (fixes the B-package 2350).
+- **Controller app display flush is incremental/async**, so OLED updates no longer stall the
+  input loop.
+
+### Changed
+
+- **`controller_btusb` renamed to `universal`.** The app outgrew its name: it's now the universal
+  configurable adapter — GPIO/sensor/BT inputs, BLE + USB outputs, runtime mode and
+  wireless-policy selection via web config. All build targets follow (`make universal_pico_w`,
+  `universal_rp2040_abb`, nRF/ESP32 `APP_TYPE=universal`, `nrf/prj_universal.conf`). Historic
+  CHANGELOG entries keep the old name.
+- **Release UF2s are named `joypad_os_<version>_<app>_<board>.uf2`** (was `joypad_`), and GitHub
+  releases are titled **JoypadOS vX.Y.Z**.
+- **Web config identifies itself**: a build stamp (source commit · date) in the sidebar footer.
+- **CI**: open PRs get build-only runs with per-PR concurrency; every app target must be shipped
+  or explicitly excluded (build-coverage guard); driver-registry check keeps backend source lists
+  in sync; per-app artifact retention bounded to 14 days; the Makerdiary nRF jobs build against
+  the real Zephyr board name.
 
 ---
 
