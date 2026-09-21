@@ -402,6 +402,10 @@ export class InputTestCard {
     }
 
     ensureInputSource(player, addr, name, source) {
+        // The CDC-injected virtual mouse (0xD9) and keyboard (0xDA) are not
+        // gamepads — never list them as input sources (newer firmware already
+        // excludes them from the stream; this guards against older builds).
+        if (addr === 0xD9 || addr === 0xDA) return;
         const key = `${player}:${addr}`;
         if (this.players[player].sources[addr]) {
             // Update name if we have one and it changed

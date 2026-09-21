@@ -97,15 +97,11 @@ static inline bool analog_beyond_threshold(const input_event_t* event) {
 // Get device name based on transport type and device address
 // Returns pointer to static string or device name buffer
 static const char* get_device_name(const input_event_t* event) {
-    // Synthetic CDC-injected devices (web config Input Test, INPUT.INJECT,
-    // MOUSE.INJECT, KEY.INJECT) — name them for the player list instead of
-    // falling through to the bare transport label ("Native (native)").
-    switch (event->dev_addr) {
-        case ROUTER_INJECT_ADDR:       return "Virtual Pad";
-        case ROUTER_INJECT_MOUSE_ADDR: return "Virtual Mouse";
-        case ROUTER_INJECT_KB_ADDR:    return "Virtual Keyboard";
-        default: break;
-    }
+    // The synthetic CDC-injected gamepad (web config Input Test, INPUT.INJECT)
+    // — name it for the player list instead of falling through to the bare
+    // transport label ("Native (native)"). The injected mouse/keyboard never
+    // register as players, so they need no names here.
+    if (event->dev_addr == ROUTER_INJECT_ADDR) return "Virtual Pad";
     switch (event->transport) {
 #ifndef DISABLE_USB_HOST
         case INPUT_TRANSPORT_USB: {
@@ -807,6 +803,15 @@ static uint8_t router_find_routes(const input_event_t* event, route_entry_t* mat
 
 // SIMPLE MODE: Direct 1:1 pass-through (zero overhead, can be inlined)
 static inline void router_simple_mode(const input_event_t* event, output_target_t output) {
+    // CDC-injected mouse/keyboard are report streams, not players — no slot,
+    // no LED, no player-list row. Publish straight to the output.
+    if (event->dev_addr == ROUTER_INJECT_MOUSE_ADDR ||
+        event->dev_addr == ROUTER_INJECT_KB_ADDR) {
+        router_publish(&router_outputs[output][0], event);
+        if (output_taps[output]) output_taps[output](output, 0, event);
+        return;
+    }
+
     // Find or add player (multi-instance devices like Joy-Con Grip share one slot)
     int8_t slot_inst = player_slot_instance(event);
     int player_index = find_player_index(event->dev_addr, slot_inst);
@@ -859,6 +864,15 @@ static inline void router_simple_mode(const input_event_t* event, output_target_
 
 // MERGE MODE: Multiple inputs → single output
 static inline void router_merge_mode(const input_event_t* event, output_target_t output) {
+    // CDC-injected mouse/keyboard are report streams, not players — no slot,
+    // no LED, no player-list row. Publish straight to the output.
+    if (event->dev_addr == ROUTER_INJECT_MOUSE_ADDR ||
+        event->dev_addr == ROUTER_INJECT_KB_ADDR) {
+        router_publish(&router_outputs[output][0], event);
+        if (output_taps[output]) output_taps[output](output, 0, event);
+        return;
+    }
+
     // Register player if not already registered (for LED and rumble support).
     // Multi-instance devices (Joy-Con Grip) share one slot via player_slot_instance.
     int8_t slot_inst = player_slot_instance(event);
@@ -1338,7 +1352,11 @@ void router_submit_input(const input_event_t* event) {
     // the callee returns immediately anyway. Tight per-event loop matters
     // for high-precision input like Melee dash dancing.
 #ifdef CONFIG_USB
-    if (cdc_commands_is_input_streaming()) {
+    // The CDC-injected mouse/keyboard aren't gamepads — keep them out of the
+    // Input Test source list entirely (they're driven FROM that page).
+    if (cdc_commands_is_input_streaming() &&
+        event->dev_addr != ROUTER_INJECT_MOUSE_ADDR &&
+        event->dev_addr != ROUTER_INJECT_KB_ADDR) {
         static const char* transport_names[] = {
             [INPUT_TRANSPORT_NONE]       = "none",
             [INPUT_TRANSPORT_USB]        = "usb",
@@ -1356,7 +1374,11 @@ void router_submit_input(const input_event_t* event) {
         int pi = find_player_index(event->dev_addr, player_slot_instance(event));
         const char* name = get_device_name(event);
         (void)pi;  // pi reserved if needed for future per-player decisions
-        const char* src = (event->transport < sizeof(transport_names)/sizeof(transport_names[0]))
+        // The injected Virtual Pad isn't a native-protocol controller —
+        // "native" means console connectors (joybus, SNES, ...) everywhere
+        // else in the UI, so label the synthetic source "serial" instead.
+        const char* src = (event->dev_addr == ROUTER_INJECT_ADDR) ? "serial"
+                        : (event->transport < sizeof(transport_names)/sizeof(transport_names[0]))
                           ? transport_names[event->transport] : "?";
         // In merge mode, all inputs go to output player 0
         int stream_player = (router_config.mode == ROUTING_MODE_MERGE) ? 0
