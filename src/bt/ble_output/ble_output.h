@@ -40,6 +40,12 @@ static inline bool ble_output_mode_available(ble_output_mode_t m)
 #ifndef CONFIG_BT_CLASSIC_OUTPUT
     if (m == BLE_MODE_SWITCH_BT) return false;   // no Classic radio on this build
 #endif
+#ifndef CONFIG_BLE_STANDARD_MODE
+    // SInput BLE (composite: SInput gamepad + kbd + mouse) supersedes the
+    // legacy Standard composite. The code stays for custom branches; define
+    // CONFIG_BLE_STANDARD_MODE to re-enable it in the selector.
+    if (m == BLE_MODE_STANDARD) return false;
+#endif
     return true;
 }
 

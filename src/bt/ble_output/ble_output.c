@@ -672,7 +672,9 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                                 last_sent_mouse = pending_mouse;
                                 break;
                             case PENDING_XBOX:
-                                hids_device_send_input_report_for_id(con_handle, 3,
+                                // Real Series X pads use INPUT report ID 1
+                                // (rumble OUTPUT is ID 3)
+                                hids_device_send_input_report_for_id(con_handle, 1,
                                     (const uint8_t *)&pending_xbox, sizeof(pending_xbox));
                                 last_sent_xbox = pending_xbox;
                                 break;
@@ -748,6 +750,11 @@ void ble_output_init(void)
     flash_t *settings = flash_get_settings();
     if (settings && settings->ble_output_mode < BLE_MODE_COUNT) {
         current_mode = (ble_output_mode_t)settings->ble_output_mode;
+    }
+    // A persisted mode this build doesn't offer (e.g. Standard BLE hidden by
+    // default, Switch-BT on a BLE-only radio) falls back to SInput.
+    if (!ble_output_mode_available(current_mode)) {
+        current_mode = BLE_MODE_SINPUT;
     }
 
 #ifdef CONFIG_CONTROLLER_BTUSB
@@ -902,8 +909,10 @@ void ble_output_late_init(void)
         device_information_service_server_set_manufacturer_name("Microsoft");
         device_information_service_server_set_model_number("Xbox Wireless Controller");
         device_information_service_server_set_software_revision("1.0.0");
-        // PnP ID: USB IF (0x02), Microsoft VID 0x045E, Xbox Series X PID 0x0B13, version 5.17.0
-        device_information_service_server_set_pnp_id(0x02, 0x045E, 0x0B13, 0x0511);
+        // PnP ID: USB IF (0x02), Microsoft VID 0x045E, Xbox Series X PID
+        // 0x0B13, product version 0x0509 — the identity verified to make
+        // Windows load its own Xbox driver against this report map.
+        device_information_service_server_set_pnp_id(0x02, 0x045E, 0x0B13, 0x0509);
     } else if (current_mode == BLE_MODE_SINPUT) {
         device_information_service_server_set_manufacturer_name(SINPUT_MANUFACTURER);
         device_information_service_server_set_model_number(SINPUT_PRODUCT);
