@@ -91,7 +91,7 @@
 // PS3 REPORT STRUCTURES
 // ============================================================================
 
-// Input Report - 50 bytes (49 + 1 padding byte for WebHID motion alignment)
+// Input Report - 49 bytes, matching a genuine DualShock 3
 typedef struct __attribute__((packed)) {
     uint8_t  report_id;          // 0x01
     uint8_t  reserved0;          // 0x00
@@ -130,17 +130,23 @@ typedef struct __attribute__((packed)) {
     uint8_t  power;              // Power state
     uint8_t  rumble_status;      // 0x10 = wired rumble
 
-    uint8_t  reserved5[10];      // 0x00 (extra byte to align motion at WebHID offset 41)
+    uint8_t  reserved5[9];       // 0x00
 
-    // Sixaxis data (10-bit, big-endian)
-    // After WebHID strips report_id, these are at offsets 41-48
+    // Sixaxis data (10-bit, big-endian).
+    // A real DS3 places accel_x at report offset 41 (bytes 41-48 total).
     uint16_t accel_x;            // Accelerometer X
     uint16_t accel_y;            // Accelerometer Y
     uint16_t accel_z;            // Accelerometer Z
     uint16_t gyro_z;             // Gyroscope Z
 } ps3_in_report_t;
 
-_Static_assert(sizeof(ps3_in_report_t) == 50, "ps3_in_report_t must be 50 bytes");
+// A genuine DualShock 3 input report is 49 bytes including the report ID.
+// Do NOT pad this struct to make a host-side parser line up: the PS3 reads
+// SIXAXIS at fixed offsets 41-48, so any padding shifts motion late by that
+// many bytes and the console gets garbage tilt. Verified against OGX-Mini
+// (Descriptors/PS3.h, static_assert == 49) and GP2040-CE
+// (drivers/ps3/PS3Descriptors.h, "// 49 length").
+_Static_assert(sizeof(ps3_in_report_t) == 49, "ps3_in_report_t must be 49 bytes");
 
 // Output Report - 48 bytes (rumble and LEDs)
 typedef struct __attribute__((packed)) {
@@ -258,8 +264,8 @@ static const tusb_desc_device_t ps3_device_descriptor = {
 static const uint8_t ps3_report_descriptor[] = {
     0x05, 0x01,        // Usage Page (Generic Desktop Ctrls)
     0x09, 0x04,        // Usage (Joystick)
-    0xA1, 0x01,        // Collection (Physical)
-    0xA1, 0x02,        //   Collection (Application)
+    0xA1, 0x01,        // Collection (Application)
+    0xA1, 0x02,        //   Collection (Logical)
     0x85, 0x01,        //     Report ID (1)
     0x75, 0x08,        //     Report Size (8)
     0x95, 0x01,        //     Report Count (1)
@@ -284,7 +290,7 @@ static const uint8_t ps3_report_descriptor[] = {
     0x26, 0xFF, 0x00,  //     Logical Maximum (255)
     0x05, 0x01,        //     Usage Page (Generic Desktop Ctrls)
     0x09, 0x01,        //     Usage (Pointer)
-    0xA1, 0x00,        //     Collection (Undefined)
+    0xA1, 0x00,        //     Collection (Physical)
     0x75, 0x08,        //       Report Size (8)
     0x95, 0x04,        //       Report Count (4)
     0x35, 0x00,        //       Physical Minimum (0)
@@ -297,7 +303,7 @@ static const uint8_t ps3_report_descriptor[] = {
     0xC0,              //     End Collection
     0x05, 0x01,        //     Usage Page (Generic Desktop Ctrls)
     0x75, 0x08,        //     Report Size (8)
-    0x95, 0x28,        //     Report Count (40) - includes padding for motion alignment
+    0x95, 0x27,        //     Report Count (39) - matches the authentic DS3 report
     0x09, 0x01,        //     Usage (Pointer)
     0x81, 0x02,        //     Input (Data,Var,Abs)
     0x75, 0x08,        //     Report Size (8)
@@ -309,21 +315,21 @@ static const uint8_t ps3_report_descriptor[] = {
     0x09, 0x01,        //     Usage (Pointer)
     0xB1, 0x02,        //     Feature (Data,Var,Abs)
     0xC0,              //   End Collection
-    0xA1, 0x02,        //   Collection (Application)
+    0xA1, 0x02,        //   Collection (Logical)
     0x85, 0x02,        //     Report ID (2)
     0x75, 0x08,        //     Report Size (8)
     0x95, 0x30,        //     Report Count (48)
     0x09, 0x01,        //     Usage (Pointer)
     0xB1, 0x02,        //     Feature (Data,Var,Abs)
     0xC0,              //   End Collection
-    0xA1, 0x02,        //   Collection (Application)
+    0xA1, 0x02,        //   Collection (Logical)
     0x85, 0xEE,        //     Report ID (238)
     0x75, 0x08,        //     Report Size (8)
     0x95, 0x30,        //     Report Count (48)
     0x09, 0x01,        //     Usage (Pointer)
     0xB1, 0x02,        //     Feature (Data,Var,Abs)
     0xC0,              //   End Collection
-    0xA1, 0x02,        //   Collection (Application)
+    0xA1, 0x02,        //   Collection (Logical)
     0x85, 0xEF,        //     Report ID (239)
     0x75, 0x08,        //     Report Size (8)
     0x95, 0x30,        //     Report Count (48)
