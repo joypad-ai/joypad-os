@@ -128,3 +128,12 @@
 		zephyr,settings-partition = &storage_partition;
 	};
 };
+
+/* Zephyr open-source link layer instead of Nordic's SoftDevice Controller.
+ * The closed controller refuses the Switch 2's 5 ms connection interval (below
+ * the 7.5 ms spec minimum); the open one is patchable. Selecting it needs the
+ * devicetree chosen node, not just CONFIG_BT_LL_SW_SPLIT.
+ * UNTESTED ON HARDWARE — see .dev/docs/switch2-ble-output-plan.md. */
+&bt_hci_sdc { status = "disabled"; };
+&bt_hci_controller { status = "okay"; };
+/ { chosen { zephyr,bt-hci = &bt_hci_controller; }; };

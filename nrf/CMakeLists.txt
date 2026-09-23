@@ -824,6 +824,12 @@ else()
     set(BOARD_NAME_STR "xiao_ble")
 endif()
 
+# Zephyr's open-source link layer (CONFIG_BT_LL_SW_SPLIT, needed for the
+# Switch 2's sub-spec 5 ms connection interval) puts its controller-side HCI
+# layer in the same image as BTstack, and both define hci_init(). Rename
+# BTstack's copy in the app build; it is the only symbol that collides.
+target_compile_definitions(app PRIVATE hci_init=btstack_hci_init)
+
 target_compile_definitions(app PRIVATE
     JOYPAD_VERSION="${JOYPAD_VERSION}"
     SINPUT_BCD_DEVICE=${JOYPAD_BCD_DEVICE}
