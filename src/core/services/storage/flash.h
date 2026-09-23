@@ -213,7 +213,7 @@ static inline unsigned flash_sanitize_record(flash_t* s)
 
     FLASH_CLAMP_(wiimote_orient_mode, 2);                     // auto/horiz/vert
     FLASH_CLAMP_(custom_profile_count, CUSTOM_PROFILE_MAX_COUNT);
-    FLASH_CLAMP_(ble_output_mode, 3);                         // BLE_MODE_COUNT - 1 (STANDARD/XBOX/SINPUT/SWITCH_BT)
+    FLASH_CLAMP_(ble_output_mode, 4);                         // BLE_MODE_COUNT - 1 (STANDARD/XBOX/SINPUT/SWITCH_BT/SWITCH2)
     FLASH_CLAMP_(routing_mode, 2);                            // simple/merge/broadcast
     FLASH_CLAMP_(merge_mode, 2);                              // priority/blend/all
     FLASH_CLAMP_(dpad_mode, FLASH_DPAD_MODE_MAX);             // incl. Lstick<->Rstick

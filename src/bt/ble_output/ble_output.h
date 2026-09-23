@@ -26,6 +26,10 @@ typedef enum {
     // ble_output_mode_available(). Kept last so mode indices stay stable across
     // builds (the selected mode is persisted to flash by index).
     BLE_MODE_SWITCH_BT,     // Nintendo Switch Pro Controller over BT Classic
+    // Native Switch 2 Pro Controller (proprietary GATT + 0x15 pairing), BLE. Needs a
+    // radio whose link layer accepts the console's 5 ms connection interval, so it is
+    // only compiled where CONFIG_SWITCH2_BLE_OUTPUT is set.
+    BLE_MODE_SWITCH2,
     BLE_MODE_COUNT
 } ble_output_mode_t;
 
@@ -39,6 +43,9 @@ static inline bool ble_output_mode_available(ble_output_mode_t m)
     if ((int)m < 0 || m >= BLE_MODE_COUNT) return false;
 #ifndef CONFIG_BT_CLASSIC_OUTPUT
     if (m == BLE_MODE_SWITCH_BT) return false;   // no Classic radio on this build
+#endif
+#ifndef CONFIG_SWITCH2_BLE_OUTPUT
+    if (m == BLE_MODE_SWITCH2) return false;
 #endif
 #ifndef CONFIG_BLE_STANDARD_MODE
     // SInput BLE (composite: SInput gamepad + kbd + mouse) supersedes the

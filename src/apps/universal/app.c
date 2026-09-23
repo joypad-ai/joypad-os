@@ -39,6 +39,9 @@
 #ifdef CONFIG_BT_CLASSIC_OUTPUT
 #include "bt/switch_bt/switch_bt.h"   // switch_bt_request_sync() / switch_bt_is_connected()
 #endif
+#ifdef CONFIG_SWITCH2_BLE_OUTPUT
+#include "bt/switch2_ble/switch2_ble.h"   // switch2_ble_request_sync()
+#endif
 #include "bt/transport/bt_transport.h"
 
 #ifdef BTSTACK_USE_CYW43
@@ -260,6 +263,17 @@ static void on_button_event(button_event_t event)
                 break;
             }
 #endif
+#if REQUIRE_BLE_OUTPUT && defined(CONFIG_SWITCH2_BLE_OUTPUT)
+            // Switch 2 output: a click is the controller's sync button — forget the
+            // paired console and advertise for pairing (Change Grip/Order finds us).
+            // A button press on the pad itself wakes / reconnects a bonded console.
+            if (ble_output_get_mode() == BLE_MODE_SWITCH2) {
+                printf("[app:universal] Switch 2 SYNC — pairing mode; open Change Grip/Order\n");
+                switch2_ble_request_sync();
+                neopixel_indicate_profile(2);  // visual ack
+                break;
+            }
+#endif
 #if REQUIRE_BT_INPUT
             if (bt_input_enabled) {
                 // If a controller is already connected, scan for 60s then stop.
@@ -331,6 +345,9 @@ static void on_button_event(button_event_t event)
             for (int i = 0; i < le_device_db_max_count(); i++) {
                 le_device_db_remove(i);
             }
+#if REQUIRE_BLE_OUTPUT && defined(CONFIG_SWITCH2_BLE_OUTPUT)
+            if (ble_output_get_mode() == BLE_MODE_SWITCH2) switch2_ble_request_sync();
+#endif
 #if REQUIRE_BLE_OUTPUT
             printf("[app:universal] Bonds cleared, restarting advertising\n");
             gap_advertisements_enable(1);

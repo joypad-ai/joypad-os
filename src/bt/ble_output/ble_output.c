@@ -15,6 +15,9 @@
 #ifdef CONFIG_BT_CLASSIC_OUTPUT
 #include "switch_bt/switch_bt.h"
 #endif
+#ifdef CONFIG_SWITCH2_BLE_OUTPUT
+#include "switch2_ble/switch2_ble.h"
+#endif
 #include "ble_nus.h"
 #include "ble_gamepad.h"  // Generated from ble_gamepad.gatt by compile_gatt.py
 
@@ -352,6 +355,9 @@ static void set_adv(bool on)
 
 bool ble_output_is_connected(void)
 {
+#ifdef CONFIG_SWITCH2_BLE_OUTPUT
+    if (ble_output_get_mode() == BLE_MODE_SWITCH2) return switch2_ble_is_connected();
+#endif
     return ble_connected;
 }
 
@@ -1034,6 +1040,9 @@ void ble_output_init(void)
 #ifdef CONFIG_BT_CLASSIC_OUTPUT
     if (current_mode == BLE_MODE_SWITCH_BT) switch_bt_init();
 #endif
+#ifdef CONFIG_SWITCH2_BLE_OUTPUT
+    if (current_mode == BLE_MODE_SWITCH2) switch2_ble_init();
+#endif
 }
 
 // ATT write callback — debug logging for all GATT writes
@@ -1092,6 +1101,10 @@ void ble_output_late_init(void)
 {
 #ifdef CONFIG_BT_CLASSIC_OUTPUT
     if (current_mode == BLE_MODE_SWITCH_BT) { switch_bt_late_init(); return; }
+#endif
+#ifdef CONFIG_SWITCH2_BLE_OUTPUT
+    // Own GATT table, advertising and pairing — none of the HOGP setup below applies.
+    if (current_mode == BLE_MODE_SWITCH2) { switch2_ble_late_init(); return; }
 #endif
     printf("[ble_output] Setting up BLE GATT services (mode: %s)\n",
            ble_output_get_mode_name(current_mode));
@@ -1490,6 +1503,9 @@ void ble_output_task(void)
 #ifdef CONFIG_BT_CLASSIC_OUTPUT
     if (current_mode == BLE_MODE_SWITCH_BT) { switch_bt_task(); return; }
 #endif
+#ifdef CONFIG_SWITCH2_BLE_OUTPUT
+    if (current_mode == BLE_MODE_SWITCH2) { switch2_ble_task(); return; }
+#endif
     if (!ble_connected || con_handle == HCI_CON_HANDLE_INVALID) return;
 
     if (current_mode == BLE_MODE_XBOX) {
@@ -1554,6 +1570,7 @@ const char* ble_output_get_mode_name(ble_output_mode_t mode)
         case BLE_MODE_XBOX:      return "Xbox BLE";
         case BLE_MODE_SINPUT:    return "SInput BLE";
         case BLE_MODE_SWITCH_BT: return "Switch (BT)";
+        case BLE_MODE_SWITCH2:   return "Switch 2 (BLE)";
         default:                 return "Unknown";
     }
 }
@@ -1565,6 +1582,7 @@ void ble_output_get_mode_color(ble_output_mode_t mode, uint8_t *r, uint8_t *g, u
         case BLE_MODE_XBOX:      *r = 0; *g = 64; *b = 0; break;   // Green
         case BLE_MODE_SINPUT:    *r = 0; *g = 32; *b = 64; break;  // Cyan
         case BLE_MODE_SWITCH_BT: *r = 64; *g = 0; *b = 0; break;   // Red (Switch/Classic)
+        case BLE_MODE_SWITCH2:   *r = 64; *g = 0; *b = 24; break;  // Magenta-red (Switch 2)
         default:                 *r = 64; *g = 64; *b = 64; break;  // White
     }
 }

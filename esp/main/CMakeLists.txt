@@ -53,6 +53,9 @@ if(CONFIG_APP STREQUAL "universal")
         "${SHARED_SRC}/bt/ble_output/ble_output_xbox.c"
         "${SHARED_SRC}/bt/ble_output/ble_nus.c"
         "${SHARED_SRC}/bt/ble_output/ble_xbox_gatt_db.c"
+        # Switch 2 Pro Controller over BLE (CONFIG_SWITCH2_BLE_OUTPUT below)
+        "${SHARED_SRC}/bt/switch2_ble/switch2_proto.c"
+        "${SHARED_SRC}/bt/switch2_ble/switch2_ble.c"
         # BT transport (peripheral mode — no btstack_host, no bthid)
         "${SHARED_SRC}/bt/transport/bt_transport.c"
         "${SHARED_SRC}/bt/transport/bt_transport_esp32.c"
@@ -578,6 +581,9 @@ if(CONFIG_APP STREQUAL "universal")
         USBD_DEFAULT_MODE=1
         OLED_I2C_DISPLAY=1
         DISABLE_DISPLAY_SPI=1
+        # Switch 2 BLE output. The console's 5 ms connection interval needs
+        # ESP-IDF >= 6.1 (CONFIG_BT_CTRL_BLE_MIN_CONN_INTERVAL_ENABLE).
+        CONFIG_SWITCH2_BLE_OUTPUT=1
     )
 elseif(CONFIG_APP STREQUAL "usb2usb")
     target_compile_definitions(${COMPONENT_LIB} PUBLIC
