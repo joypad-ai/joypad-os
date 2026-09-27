@@ -1,0 +1,125 @@
+diff --git a/subsys/bluetooth/controller/ll_sw/ull_conn.c b/subsys/bluetooth/controller/ll_sw/ull_conn.c
+index c53f46a1..2ce293bc 100644
+--- a/subsys/bluetooth/controller/ll_sw/ull_conn.c
++++ b/subsys/bluetooth/controller/ll_sw/ull_conn.c
+@@ -88,6 +88,17 @@ static void tx_demux_sched(struct ll_conn *conn);
+ static void tx_demux(void *param);
+ static struct node_tx *tx_ull_dequeue(struct ll_conn *conn, struct node_tx *tx);
+ 
++
++/* Joypad OS: the Nintendo Switch 2 drives a 5 ms connection interval (4 units
++ * of 1.25 ms), below the 7.5 ms Bluetooth minimum. Zephyr's own low-latency
++ * scheme reinterprets values under 6 as 500 us units, which would misread the
++ * console's 5 ms as 2.5 ms — so lower the threshold instead, keeping standard
++ * 1.25 ms units for 4 and 5. See .dev/docs/switch2-ble-output-plan.md.
++ */
++#ifndef JOYPAD_LE_INTERVAL_MIN
++#define JOYPAD_LE_INTERVAL_MIN 4U
++#endif
++
+ static void ticker_update_conn_op_cb(uint32_t status, void *param);
+ static void ticker_stop_conn_op_cb(uint32_t status, void *param);
+ static void ticker_start_conn_op_cb(uint32_t status, void *param);
+@@ -719,7 +730,7 @@ uint8_t ll_apto_get(uint16_t handle, uint16_t *apto)
+ 		return BT_HCI_ERR_UNKNOWN_CONN_ID;
+ 	}
+ 
+-	if (conn->lll.interval >= BT_HCI_LE_INTERVAL_MIN) {
++	if (conn->lll.interval >= JOYPAD_LE_INTERVAL_MIN) {
+ 		*apto = conn->apto_reload * conn->lll.interval *
+ 			CONN_INT_UNIT_US / (10U * USEC_PER_MSEC);
+ 	} else {
+@@ -745,7 +756,7 @@ uint8_t ll_apto_set(uint16_t handle, uint16_t apto)
+ 		return BT_HCI_ERR_UNKNOWN_CONN_ID;
+ 	}
+ 
+-	if (conn->lll.interval >= BT_HCI_LE_INTERVAL_MIN) {
++	if (conn->lll.interval >= JOYPAD_LE_INTERVAL_MIN) {
+ 		conn->apto_reload =
+ 			RADIO_CONN_EVENTS(apto * 10U * USEC_PER_MSEC,
+ 					  conn->lll.interval *
+@@ -1155,7 +1166,7 @@ void ull_conn_done(struct node_rx_event_done *done)
+ 		if (!conn->supervision_expire) {
+ 			uint32_t conn_interval_us;
+ 
+-			if (conn->lll.interval >= BT_HCI_LE_INTERVAL_MIN) {
++			if (conn->lll.interval >= JOYPAD_LE_INTERVAL_MIN) {
+ 				conn_interval_us = conn->lll.interval *
+ 						   CONN_INT_UNIT_US;
+ 			} else {
+@@ -2296,7 +2307,7 @@ void ull_conn_update_parameters(struct ll_conn *conn, uint8_t is_cu_proc, uint8_
+ #endif
+ 
+ 	/* compensate for instant_latency due to laziness */
+-	if (lll->interval >= BT_HCI_LE_INTERVAL_MIN) {
++	if (lll->interval >= JOYPAD_LE_INTERVAL_MIN) {
+ 		conn_interval_old = instant_latency * lll->interval;
+ 		conn_interval_unit_old = CONN_INT_UNIT_US;
+ 	} else {
+@@ -2304,7 +2315,7 @@ void ull_conn_update_parameters(struct ll_conn *conn, uint8_t is_cu_proc, uint8_
+ 		conn_interval_unit_old = CONN_LOW_LAT_INT_UNIT_US;
+ 	}
+ 
+-	if (interval >= BT_HCI_LE_INTERVAL_MIN) {
++	if (interval >= JOYPAD_LE_INTERVAL_MIN) {
+ 		uint16_t max_tx_time;
+ 		uint16_t max_rx_time;
+ 		uint32_t slot_us;
+@@ -2478,7 +2489,7 @@ void ull_conn_update_peer_sca(struct ll_conn *conn)
+ 	lll = &conn->lll;
+ 
+ 	/* calculate the window widening and interval */
+-	if (lll->interval >= BT_HCI_LE_INTERVAL_MIN) {
++	if (lll->interval >= JOYPAD_LE_INTERVAL_MIN) {
+ 		conn_interval_us = lll->interval *
+ 				   CONN_INT_UNIT_US;
+ 	} else {
+diff --git a/subsys/bluetooth/controller/ll_sw/ull_internal.h b/subsys/bluetooth/controller/ll_sw/ull_internal.h
+index 2f29fc2e..ce1e4d97 100644
+--- a/subsys/bluetooth/controller/ll_sw/ull_internal.h
++++ b/subsys/bluetooth/controller/ll_sw/ull_internal.h
+@@ -11,8 +11,11 @@
+ #if defined(CONFIG_BT_CTLR_CONN_INTERVAL_LOW_LATENCY)
+ #define CONN_INTERVAL_MIN(x) (0U)
+ #else /* !CONFIG_BT_CTLR_CONN_INTERVAL_LOW_LATENCY */
+-/* Bluetooth defined CPR Interval Minimum (7.5ms) */
+-#define CONN_INTERVAL_MIN(x) (6U)
++/* Bluetooth defined CPR Interval Minimum (7.5ms) — lowered by Joypad OS to
++ * 4 units (5 ms) so a Nintendo Switch 2 can move the link to its native
++ * interval. Standard 1.25 ms units are kept; see the note in ull_peripheral.c.
++ */
++#define CONN_INTERVAL_MIN(x) (4U)
+ #endif /* !CONFIG_BT_CTLR_CONN_INTERVAL_LOW_LATENCY */
+ #else /* CONFIG_BT_CTLR_USER_CPR_INTERVAL_MIN */
+ /* Proprietary user defined CPR Interval Minimum */
+diff --git a/subsys/bluetooth/controller/ll_sw/ull_peripheral.c b/subsys/bluetooth/controller/ll_sw/ull_peripheral.c
+index ccc711d0..e47dc990 100644
+--- a/subsys/bluetooth/controller/ll_sw/ull_peripheral.c
++++ b/subsys/bluetooth/controller/ll_sw/ull_peripheral.c
+@@ -62,6 +62,17 @@
+ 
+ static void invalid_release(struct ull_hdr *hdr, struct lll_conn *lll,
+ 			    memq_link_t *link, struct node_rx_pdu *rx);
++
++/* Joypad OS: the Nintendo Switch 2 drives a 5 ms connection interval (4 units
++ * of 1.25 ms), below the 7.5 ms Bluetooth minimum. Zephyr's own low-latency
++ * scheme reinterprets values under 6 as 500 us units, which would misread the
++ * console's 5 ms as 2.5 ms — so lower the threshold instead, keeping standard
++ * 1.25 ms units for 4 and 5. See .dev/docs/switch2-ble-output-plan.md.
++ */
++#ifndef JOYPAD_LE_INTERVAL_MIN
++#define JOYPAD_LE_INTERVAL_MIN 4U
++#endif
++
+ static void ticker_op_stop_adv_cb(uint32_t status, void *param);
+ static void ticker_op_cb(uint32_t status, void *param);
+ static void ticker_update_latency_cancel_op_cb(uint32_t ticker_status,
+@@ -160,7 +171,7 @@ void ull_periph_setup(struct node_rx_pdu *rx, struct node_rx_ftr *ftr,
+ 	if ((lll->data_chan_count < CHM_USED_COUNT_MIN) ||
+ 	    (lll->data_chan_hop < CHM_HOP_COUNT_MIN) ||
+ 	    (lll->data_chan_hop > CHM_HOP_COUNT_MAX) ||
+-	    !IN_RANGE(lll->interval, BT_HCI_LE_INTERVAL_MIN, BT_HCI_LE_INTERVAL_MAX)) {
++	    !IN_RANGE(lll->interval, JOYPAD_LE_INTERVAL_MIN, BT_HCI_LE_INTERVAL_MAX)) {
+ 		invalid_release(&adv->ull, lll, link, rx);
+ 
+ 		return;

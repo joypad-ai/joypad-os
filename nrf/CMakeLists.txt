@@ -414,6 +414,11 @@ elseif(APP_TYPE STREQUAL "universal")
         "${SHARED_SRC}/bt/ble_output/ble_output_xbox.c"
         "${SHARED_SRC}/bt/ble_output/ble_nus.c"
         "${SHARED_SRC}/bt/ble_output/ble_xbox_gatt_db.c"
+        # Native Switch 2 controller output (CONFIG_SWITCH2_BLE_OUTPUT below).
+        # Needs Zephyr's open link layer for the console's 5 ms interval —
+        # see boards/makerdiary_nrf52840.overlay.
+        "${SHARED_SRC}/bt/switch2_ble/switch2_proto.c"
+        "${SHARED_SRC}/bt/switch2_ble/switch2_ble.c"
 
         # --- BT transport ---
         "${SHARED_SRC}/bt/transport/bt_transport.c"
@@ -524,6 +529,10 @@ elseif(APP_TYPE STREQUAL "universal")
         CONFIG_UNIVERSAL=1
         CONFIG_USB=1
         CONFIG_PAD_INPUT=1
+        # Native Switch 2 Pro Controller over BLE. Depends on Zephyr's open
+        # link layer accepting the console's 5 ms connection interval —
+        # UNVERIFIED on this radio, see .dev/docs/switch2-ble-output-plan.md.
+        CONFIG_SWITCH2_BLE_OUTPUT=1
         SENSOR_PAD=1
         WS2812_PIN=16
         WS2812_NUM_PIXELS=1
