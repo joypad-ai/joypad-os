@@ -11,6 +11,7 @@
 #
 # Usage: python3 gen_switch2_gatt.py > switch2_gatt_db.h
 
+import os
 import sys
 
 # BTstack ATT flags (bluetooth.h / att_db.h)
@@ -124,19 +125,37 @@ descriptor(RSP_DESC, 'UNKNOWN_22_DESC', 0x0024)
 characteristic('ab7de9be-89fe-49ad-828f-118f09df7fde', READ | NOTIFY, None, 'UNKNOWN_26', 0x0026)
 descriptor(RATE_DESC, 'UNKNOWN_26_RATE', 0x0028)
 characteristic('ab7de9be-89fe-49ad-828f-118f09df7fdf', WNR, None, 'UNKNOWN_2A', 0x002a)
-# Headset-audio attributes of an updated (fw >= 2.0) Pro Controller 2. Without them the
-# console treats the pad as factory firmware and diverges (espp, HW-verified).
-characteristic('cc483f51-9258-427d-a939-630c31f72b06', WNR, None, 'AUDIO_OUT', 0x002c)
-characteristic('7492866c-ec3e-4619-8258-32755ffcc0f9', READ | NOTIFY, None, 'AUDIO_IN', 0x002e)
-descriptor(RATE_DESC, 'AUDIO_IN_RATE', 0x0030)
-characteristic('3dacbc7e-6955-40b5-8eaf-6f9809e8b380', WNR, None, 'AUDIO_COMMAND', 0x0032)
+# Headset-audio attributes of an updated (fw >= 2.0) Pro Controller 2. espp reports
+# the console treats a pad without them as factory firmware and diverges -- but they
+# also stretch service 2 from the 0x0008-0x002a span in ndeadly's capture of a real
+# pad out to 0x0008-0x0032. A console that discovers our table and then goes silent
+# (MTU exchanged, then not one characteristic write) is the symptom espp describes for
+# a table it does not accept, so make these switchable to test the captured layout.
+#   SWITCH2_AUDIO=0 python3 gen_switch2_gatt.py > switch2_gatt_db.h
+# DEFAULT OFF: read off the user's own Pro Controller 2 over BLE (macOS GATT walk),
+# its vendor table ENDS at 0x002a -- these four attributes are simply not there.
+# Our having them is the "extra attributes" case espp describes, where the console
+# discovers the table and then rejects the controller, which is exactly the observed
+# symptom (MTU 247 exchanged, then not one characteristic write, ever).
+if os.environ.get('SWITCH2_AUDIO', '1') != '0':
+    characteristic('cc483f51-9258-427d-a939-630c31f72b06', WNR, None, 'AUDIO_OUT', 0x002c)
+    characteristic('7492866c-ec3e-4619-8258-32755ffcc0f9', READ | NOTIFY, None, 'AUDIO_IN', 0x002e)
+    descriptor(RATE_DESC, 'AUDIO_IN_RATE', 0x0030)
+    characteristic('3dacbc7e-6955-40b5-8eaf-6f9809e8b380', WNR, None, 'AUDIO_COMMAND', 0x0032)
 
 # --- GAP / GATT last (a real controller has them after the vendor services; the
 # console rejects a layout with them first). GATT service has no children, as on the pad.
-assert service(0x1800) == 0x0033
-characteristic(0x2A00, READ, b'Pro Controller', 'DEVICE_NAME', 0x0035)
-characteristic(0x2A01, READ, (0x03C4).to_bytes(2, 'little'), 'APPEARANCE', 0x0037)
-assert service(0x1801) == 0x0038
+# With the audio attributes present, 0x002b-0x0032 are occupied and GAP falls on
+# 0x0033 by itself, as on a real pad. (Built without them, set handle = 0x0033
+# here so GAP is not pulled down to 0x002b.)
+gap_h = service(0x1800)
+assert gap_h == 0x0033, hex(gap_h)
+# GAP device name. The user's own pad reports "DeviceName" here (CoreBluetooth
+# reads GAP 0x2A00 after connecting), but espp pairs with "Pro Controller", so the
+# value is not a gate -- follow espp.
+characteristic(0x2A00, READ, b'Pro Controller', 'DEVICE_NAME', gap_h + 2)
+characteristic(0x2A01, READ, (0x03C4).to_bytes(2, 'little'), 'APPEARANCE', gap_h + 4)
+service(0x1801)
 
 db.extend(b'\x00\x00')  # end tag
 

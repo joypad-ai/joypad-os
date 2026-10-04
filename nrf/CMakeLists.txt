@@ -563,6 +563,45 @@ elseif(APP_TYPE STREQUAL "universal")
         message(STATUS "BLE/USB coexist bench mode ENABLED")
     endif()
 
+    # Pin the BLE output mode this build boots into (index from ble_output_mode_t,
+    # e.g. 4 = Switch 2). For a bare dongle there is no button to cycle modes, and
+    # macOS does not reliably attach a tty to the CDC interface, which puts
+    # BLE.MODE.SET out of reach -- so the mode has to be chosen at build time.
+    # An explicit selection saved to flash still wins at runtime.
+    # Sysbuild strips custom -D vars, so this comes through the environment:
+    #   BLE_DEFAULT_MODE=4 make universal_makerdiary_nrf52840
+    # Bring-up only: vary the Switch 2 advertising address so the console sees a
+    # new controller (it will not re-attempt an address whose pairing failed).
+    #   SWITCH2_ADDR_SALT=1 make universal_makerdiary_nrf52840
+    # Bring-up: when this build connects to a real Switch 2 pad as a CENTRAL, print
+    # the pad's entire GATT table (services, characteristics, handles) instead of
+    # running the init sequence. Needed because macOS hides GAP/GATT from clients,
+    # so the pad's GAP placement cannot be read any other way.
+    #   SW2_DUMP_GATT=1 BLE_DEFAULT_MODE=2 make universal_makerdiary_nrf52840
+    # Raw ACL/ATT trace for the Switch 2 device side: prints every ATT PDU in both
+    # directions, so "the console sends nothing" can be told from "BTstack rejects
+    # its requests before our handlers see them".
+    #   SWITCH2_ACL_TRACE=1 make universal_makerdiary_nrf52840
+    if(DEFINED ENV{SWITCH2_ACL_TRACE})
+        target_compile_definitions(app PRIVATE CONFIG_SWITCH2_ACL_TRACE=1)
+        message(STATUS "Switch 2 ACL/ATT trace ENABLED")
+    endif()
+
+    if(DEFINED ENV{SW2_DUMP_GATT})
+        target_compile_definitions(app PRIVATE CONFIG_SW2_DUMP_GATT=1)
+        message(STATUS "Switch 2 pad GATT dump ENABLED")
+    endif()
+
+    if(DEFINED ENV{SWITCH2_ADDR_SALT})
+        target_compile_definitions(app PRIVATE CONFIG_SWITCH2_ADDR_SALT=$ENV{SWITCH2_ADDR_SALT})
+        message(STATUS "Switch 2 address salt $ENV{SWITCH2_ADDR_SALT}")
+    endif()
+
+    if(DEFINED ENV{BLE_DEFAULT_MODE})
+        target_compile_definitions(app PRIVATE CONFIG_BLE_DEFAULT_MODE=$ENV{BLE_DEFAULT_MODE})
+        message(STATUS "BLE default output mode pinned to $ENV{BLE_DEFAULT_MODE}")
+    endif()
+
     if(DEFINED JP_RECOVERY_WIPE_ON_BOOT)
         target_compile_definitions(app PRIVATE JP_RECOVERY_WIPE_ON_BOOT=1)
     endif()

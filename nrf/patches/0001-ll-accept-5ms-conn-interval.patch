@@ -93,7 +93,7 @@ index 2f29fc2e..ce1e4d97 100644
  #else /* CONFIG_BT_CTLR_USER_CPR_INTERVAL_MIN */
  /* Proprietary user defined CPR Interval Minimum */
 diff --git a/subsys/bluetooth/controller/ll_sw/ull_peripheral.c b/subsys/bluetooth/controller/ll_sw/ull_peripheral.c
-index ccc711d0..e47dc990 100644
+index ccc711d0..67c8656c 100644
 --- a/subsys/bluetooth/controller/ll_sw/ull_peripheral.c
 +++ b/subsys/bluetooth/controller/ll_sw/ull_peripheral.c
 @@ -62,6 +62,17 @@
@@ -114,7 +114,30 @@ index ccc711d0..e47dc990 100644
  static void ticker_op_stop_adv_cb(uint32_t status, void *param);
  static void ticker_op_cb(uint32_t status, void *param);
  static void ticker_update_latency_cancel_op_cb(uint32_t ticker_status,
-@@ -160,7 +171,7 @@ void ull_periph_setup(struct node_rx_pdu *rx, struct node_rx_ftr *ftr,
+@@ -157,10 +168,30 @@ void ull_periph_setup(struct node_rx_pdu *rx, struct node_rx_ftr *ftr,
+ 			       sizeof(lll->data_chan_map));
+ 	lll->data_chan_hop = pdu_adv->connect_ind.hop;
+ 	lll->interval = sys_le16_to_cpu(pdu_adv->connect_ind.interval);
++	/* Joypad OS: a CONNECT_IND rejected here is dropped below HCI, so the host
++	 * sees nothing at all — indistinguishable from "nobody tried to connect".
++	 * Record both outcomes in the diagnostic ring (read with BT.TRACE):
++	 *   0xA1 00 <interval>  CONNECT_IND received
++	 *   0xA2 rr <interval>  rejected, rr = which check failed
++	 * (0xA*, not 0xC*: bt_diag_mark() printf()s 0xC codes, which is fatal
++	 *  from this context.)
++	 */
++	{
++		extern void bt_diag_mark(uint32_t code);
++		uint8_t why = 0;
++		if (lll->data_chan_count < CHM_USED_COUNT_MIN) why |= 1;
++		if (lll->data_chan_hop < CHM_HOP_COUNT_MIN) why |= 2;
++		if (lll->data_chan_hop > CHM_HOP_COUNT_MAX) why |= 4;
++		if (!IN_RANGE(lll->interval, JOYPAD_LE_INTERVAL_MIN, BT_HCI_LE_INTERVAL_MAX)) why |= 8;
++		bt_diag_mark(0xA1000000u | (lll->interval & 0xFFFFu));
++		if (why) {
++			bt_diag_mark(0xA2000000u | ((uint32_t)why << 16) | (lll->interval & 0xFFFFu));
++		}
++	}
  	if ((lll->data_chan_count < CHM_USED_COUNT_MIN) ||
  	    (lll->data_chan_hop < CHM_HOP_COUNT_MIN) ||
  	    (lll->data_chan_hop > CHM_HOP_COUNT_MAX) ||

@@ -41,8 +41,13 @@
 #define SW2_EVT_PAIRED          0x01   // 0x15/0x03 finalised: persist host_addr + ltk, arm encryption
 #define SW2_EVT_PLAYER_LED      0x02   // console assigned a player (see player_leds)
 
+// Only these three exist on the wire. A fourth, "unbonded + wake flag", was
+// guessed here once by analogy with the Switch 1 "press L and R" step: it is
+// not a thing. The wake flag at 0x0B is only ever set alongside the console's
+// address at 0x0C, so there is no unbonded form of it, and the pairing screen
+// connects to the plain discovery advertisement with no button press at all.
 typedef enum {
-    SW2_ADV_PAIRING = 0,    // no bond: console's Change Grip/Order screen finds us
+    SW2_ADV_PAIRING = 0,    // no bond: the console's pairing screen finds us
     SW2_ADV_RECONNECT,      // bonded: embeds the console address
     SW2_ADV_WAKE,           // bonded + wake flag 0x81: powers a sleeping console on
 } switch2_adv_kind_t;

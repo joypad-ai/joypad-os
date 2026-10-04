@@ -138,12 +138,48 @@ static void test_rumble_and_adv(void)
     switch2_rumble_decode(on, &l, &r);
     CHECK(l == 255 && r == 0, "full lf amplitude -> 255 left");
 
+    // All three advertisements, against the bytes a real Pro Controller 2 puts
+    // on air (ndeadly/switch2_controller_research, captures/nrf52840; console
+    // 48:f1:eb:3a:eb:81, carried in the payload reversed).
     const uint8_t host[6] = {0x81, 0xeb, 0x3a, 0xeb, 0xf1, 0x48};
     uint8_t m[SW2_MFR_DATA_LEN];
-    switch2_build_mfr_data(SW2_ADV_WAKE, host, m);
+
+    // Discovery. This is the one the console's pairing screen acts on, and it
+    // is STATIC: the capture repeats this exact payload 301 times through a
+    // whole pairing, identical to the idle advertisement. No sync-button flag
+    // (0x0B stays 0x00), no host address yet, no counter, no checksum. A test
+    // here because this repo once rotated VID/PID and raised 0x0B while
+    // unbonded, and the console then never sent a connection request.
+    const uint8_t discovery_ref[SW2_MFR_DATA_LEN] = {
+        0x53,0x05,0x01,0x00,0x03,0x7e,0x05,0x69,0x20,0x00,0x01,0x00,
+        0x00,0x00,0x00,0x00,0x00,0x00,0x0f,0,0,0,0,0,0,0};
+    switch2_build_mfr_data(SW2_ADV_PAIRING, host, m);
+    CHECK(memcmp(m, discovery_ref, sizeof(m)) == 0, "discovery advertisement");
+    CHECK(m[0x0b] == 0x00, "discovery must not set the wake flag");
+
+    // ...and it must not depend on whether a host address happens to be known.
+    uint8_t m_nohost[SW2_MFR_DATA_LEN];
+    const uint8_t zero_host[6] = {0};
+    switch2_build_mfr_data(SW2_ADV_PAIRING, zero_host, m_nohost);
+    CHECK(memcmp(m, m_nohost, sizeof(m)) == 0, "discovery ignores the host address");
+
+    // Reconnect: same payload plus the console address, wake flag still clear.
+    const uint8_t reconnect_ref[SW2_MFR_DATA_LEN] = {
+        0x53,0x05,0x01,0x00,0x03,0x7e,0x05,0x69,0x20,0x00,0x01,0x00,
+        0x81,0xeb,0x3a,0xeb,0xf1,0x48,0x0f,0,0,0,0,0,0,0};
+    switch2_build_mfr_data(SW2_ADV_RECONNECT, host, m);
+    CHECK(memcmp(m, reconnect_ref, sizeof(m)) == 0, "reconnect advertisement");
+
+    // Wake: the flag is only ever set alongside that address.
     const uint8_t wake_ref[SW2_MFR_DATA_LEN] = {0x53,0x05,0x01,0x00,0x03,0x7e,0x05,0x69,0x20,0x00,0x01,0x81,
         0x81,0xeb,0x3a,0xeb,0xf1,0x48,0x0f,0,0,0,0,0,0,0};
+    switch2_build_mfr_data(SW2_ADV_WAKE, host, m);
     CHECK(memcmp(m, wake_ref, sizeof(m)) == 0, "wake advertisement");
+
+    // The whole AD payload has to fit legacy advertising exactly: 3 bytes of
+    // Flags, then length+type+26. Overflow would make the controller invisible,
+    // since the console filters on the manufacturer entry being present.
+    CHECK(3 + 2 + SW2_MFR_DATA_LEN == 31, "advertising payload is exactly 31 bytes");
 }
 
 int main(void)

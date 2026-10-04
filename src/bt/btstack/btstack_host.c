@@ -566,6 +566,83 @@ static void hid_host_packet_handler(uint8_t packet_type, uint16_t channel, uint8
 static ble_connection_t* find_connection_by_handle(hci_con_handle_t handle);
 static ble_connection_t* find_connection_by_hids_cid(uint16_t hids_cid);
 static ble_connection_t* find_free_connection(void);
+// ============================================================================
+// Switch 2 pad GATT dump (bring-up tool)
+// ----------------------------------------------------------------------------
+// The device-side emulation in src/bt/switch2_ble must present the SAME attribute
+// table as a real Pro Controller 2 or the console discovers it and silently stops.
+// A macOS GATT client can read the pad's vendor services, but CoreBluetooth hides
+// GAP and GATT (0x1800/0x1801) -- so the pad's GAP contents and handle placement
+// could not be compared. BTstack hides nothing, so walk the pad from here and
+// print every service and characteristic with its handles.
+// ============================================================================
+
+static hci_con_handle_t sw2_dump_handle;
+static gatt_client_service_t sw2_dump_services[12];
+static uint8_t sw2_dump_count, sw2_dump_idx;
+static bool sw2_dump_active;
+
+static void sw2_dump_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size);
+
+static void sw2_dump_next_service(void)
+{
+    if (sw2_dump_idx >= sw2_dump_count) {
+        printf("[SW2_DUMP] ---- end of table (%u services) ----\n", sw2_dump_count);
+        sw2_dump_active = false;
+        return;
+    }
+    gatt_client_service_t *svc = &sw2_dump_services[sw2_dump_idx];
+    printf("[SW2_DUMP] SERVICE 0x%04X-0x%04X uuid16=0x%04X uuid128=", 
+           svc->start_group_handle, svc->end_group_handle, svc->uuid16);
+    for (int i = 0; i < 16; i++) printf("%02x", svc->uuid128[i]);
+    printf("\n");
+    gatt_client_discover_characteristics_for_service(sw2_dump_handler, sw2_dump_handle, svc);
+}
+
+static void sw2_dump_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size)
+{
+    UNUSED(channel); UNUSED(size);
+    if (packet_type != HCI_EVENT_PACKET) return;
+    switch (hci_event_packet_get_type(packet)) {
+    case GATT_EVENT_SERVICE_QUERY_RESULT:
+        if (sw2_dump_count < (uint8_t)(sizeof(sw2_dump_services) / sizeof(sw2_dump_services[0]))) {
+            gatt_event_service_query_result_get_service(packet, &sw2_dump_services[sw2_dump_count++]);
+        }
+        break;
+    case GATT_EVENT_CHARACTERISTIC_QUERY_RESULT: {
+        gatt_client_characteristic_t ch;
+        gatt_event_characteristic_query_result_get_characteristic(packet, &ch);
+        printf("[SW2_DUMP]   CHR decl=0x%04X val=0x%04X end=0x%04X props=0x%02X uuid16=0x%04X uuid128=",
+               ch.start_handle, ch.value_handle, ch.end_handle, ch.properties, ch.uuid16);
+        for (int i = 0; i < 16; i++) printf("%02x", ch.uuid128[i]);
+        printf("\n");
+        break;
+    }
+    case GATT_EVENT_QUERY_COMPLETE:
+        if (!sw2_dump_active) break;
+        if (sw2_dump_idx == 0xFF) {          // services query just finished
+            sw2_dump_idx = 0;
+            sw2_dump_next_service();
+        } else {
+            sw2_dump_idx++;
+            sw2_dump_next_service();
+        }
+        break;
+    default:
+        break;
+    }
+}
+
+void sw2_dump_gatt(hci_con_handle_t con_handle)
+{
+    sw2_dump_handle = con_handle;
+    sw2_dump_count = 0;
+    sw2_dump_idx = 0xFF;                      // marker: discovering services
+    sw2_dump_active = true;
+    printf("[SW2_DUMP] ---- walking the pad's whole GATT table ----\n");
+    gatt_client_discover_primary_services(sw2_dump_handler, con_handle);
+}
+
 static void start_hids_client(ble_connection_t *conn);
 static void register_ble_hid_listener(hci_con_handle_t con_handle);
 static void register_switch2_hid_listener(hci_con_handle_t con_handle);
@@ -692,7 +769,14 @@ static void setup_hid_handlers(void)
     // of 23 caps that at 20, so a 64-byte SInput report (JoypadOS controllers)
     // would never be delivered — the device connects but sends zero input.
     // 247 covers the full report with margin (fits HCI_ACL_PAYLOAD_SIZE).
-    l2cap_set_max_le_mtu(247);
+    //
+    // 512, not 247: this is PROCESS-WIDE and so also caps us as a *peripheral*.
+    // ATT MTU is min(both sides), so a 247 cap here made a Switch 2 console's 512
+    // settle at 247 -- after which it wrote nothing at all and would not pair.
+    // Raising it keeps the original intent (a 64-byte SInput report still fits one
+    // notification, with more headroom) and HCI_ACL_PAYLOAD_SIZE (519) has room, so
+    // there is no reason to make this mode-specific.
+    l2cap_set_max_le_mtu(512);
 
     printf("[BTSTACK_HOST] Init SM...\n");
     sm_init();
@@ -703,6 +787,11 @@ static void setup_hid_handlers(void)
     // is secured with LE Secure Connections. Request SC (peers without SC fall
     // back to legacy automatically, so other controllers are unaffected).
     sm_set_io_capabilities(IO_CAPABILITY_NO_INPUT_NO_OUTPUT);
+    // Left unconditional on purpose. These requirements only go on the wire inside an
+    // SMP Pairing Request/Response, and this build never initiates SMP as a peripheral
+    // (ENABLE_LE_PROACTIVE_AUTHENTICATION is not defined), so a Switch 2 -- which pairs
+    // at the application level over 0x15 and never starts SMP -- never sees them.
+    // MouthPad needs SECURE_CONNECTION to stream HID notifications, so do not weaken it.
     sm_set_authentication_requirements(SM_AUTHREQ_BONDING | SM_AUTHREQ_SECURE_CONNECTION);
     sm_set_encryption_key_size_range(7, 16);
 
@@ -5003,6 +5092,13 @@ static void register_switch2_hid_listener(hci_con_handle_t con_handle)
         &switch2_hid_characteristic);
 
     printf("[SW2_BLE] Notification listeners registered\n");
+
+#ifdef CONFIG_SW2_DUMP_GATT
+    // Bring-up: print the pad's whole attribute table, then stop. Do not start the
+    // init sequence, so the dump is not interleaved with command traffic.
+    sw2_dump_gatt(con_handle);
+    return;
+#endif
 
     // Enable notifications on ACK handle first (0x001B) - wait for confirmation
     static uint8_t ccc_enable[] = { 0x01, 0x00 };

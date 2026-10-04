@@ -75,6 +75,9 @@ __attribute__((weak)) bool btstack_classic_send_report(uint8_t idx, uint8_t id, 
 #include "btstack_tlv.h"
 #include "btstack_tlv_none.h"
 #include "btstack_chipset_zephyr.h"
+#ifdef CONFIG_SWITCH2_BLE_OUTPUT
+#include "bt/ble_output/ble_output.h"
+#endif
 #include "bluetooth_company_id.h"
 #include "hci.h"
 #include "hci_dump.h"
@@ -274,6 +277,71 @@ static void nrf_get_static_random_addr(bd_addr_t addr)
 #endif
 }
 
+
+#ifdef CONFIG_SWITCH2_BLE_OUTPUT
+// ---------------------------------------------------------------------------
+// Switch 2 output: a PUBLIC address, programmed during HCI init.
+//
+// The console stores the controller's address during the 0x15 exchange and
+// matches it on reconnect, and a real Pro Controller 2 is public — the nRF has
+// no factory public address, and the static random one we install for every
+// other mode is what the console appears to ignore.
+//
+// Zephyr's open link layer (which this mode needs anyway for the 5 ms interval)
+// implements the standard vendor command to write one. It has to happen HERE,
+// through BTstack's chipset hook, rather than later from the app: changing the
+// address after the stack has configured advertising leaves the radio silently
+// not transmitting, with every advertising command still reporting success.
+// ---------------------------------------------------------------------------
+#define HCI_OPCODE_VS_WRITE_BD_ADDR 0xFC06
+
+static void switch2_set_bd_addr_command(bd_addr_t addr, uint8_t *hci_cmd_buffer)
+{
+    little_endian_store_16(hci_cmd_buffer, 0, HCI_OPCODE_VS_WRITE_BD_ADDR);
+    hci_cmd_buffer[2] = 6;
+    reverse_bd_addr(addr, &hci_cmd_buffer[3]);
+}
+
+// No init script: the stock zephyr chipset's static-address read is exactly
+// what we are avoiding in this mode.
+static const btstack_chipset_t switch2_chipset = {
+    "zephyr-switch2",
+    NULL,
+    NULL,
+    NULL,
+    switch2_set_bd_addr_command,
+};
+
+// OUI 98:E2:55 — the real Pro Controller 2's, from the capture where it reports
+// its own address in the 0x15/0x01 exchange (tests/switch2_proto pairing_r3:
+// ... 88 16 c2 55 e2 98 -> 98:E2:55:C2:16:88). The console does NOT filter on
+// the prefix (espp pairs from an Espressif MAC); this just matches a real pad.
+// What does matter: the address must be PUBLIC and stable across boots, since
+// the console bonds to it. Suffix from FICR, so it is also unique per dongle.
+static void nrf_get_nintendo_public_addr(bd_addr_t addr)
+{
+    bd_addr_t uniq;
+    nrf_get_static_random_addr(uniq);
+    // OUI 94:8E:6D — taken off the air from the user's own Pro Controller 2
+    // (94:8e:6d:2d:f2:29), which pairs with their console. A sniffer capture put
+    // our advertisement and that pad's side by side: identical payload, identical
+    // ADV_IND header (0x2520, ChSel #2, TxAdd Public), identical length. The
+    // address was the ONLY difference in the whole packet, so match its OUI too.
+    // (98:E2:55 is also a registered Nintendo OUI and came from ndeadly's capture
+    // of a different pad, but it is not the one this console is known to accept.)
+    addr[0] = 0x94; addr[1] = 0x8E; addr[2] = 0x6D;
+    addr[3] = uniq[3]; addr[4] = uniq[4]; addr[5] = uniq[5];
+#ifdef CONFIG_SWITCH2_ADDR_SALT
+    // Bring-up only: present a different controller identity. A console that
+    // connected once and failed to pair will not re-attempt the same address,
+    // so a fresh one is the only way to get another connection attempt out of
+    // it without clearing its side. Bump the salt for each new identity.
+    addr[5] ^= (uint8_t)CONFIG_SWITCH2_ADDR_SALT;
+    addr[4] ^= (uint8_t)(CONFIG_SWITCH2_ADDR_SALT >> 8);
+#endif
+}
+#endif  // CONFIG_SWITCH2_BLE_OUTPUT
+
 // ============================================================================
 // BTSTACK EVENT HANDLER (address + chipset detection)
 // ============================================================================
@@ -291,6 +359,19 @@ static void btstack_event_handler(uint8_t packet_type, uint16_t channel, uint8_t
                     switch (manufacturer) {
                         case BLUETOOTH_COMPANY_ID_NORDIC_SEMICONDUCTOR_ASA:
                         case BLUETOOTH_COMPANY_ID_THE_LINUX_FOUNDATION:
+#ifdef CONFIG_SWITCH2_BLE_OUTPUT
+                            if (ble_output_get_mode() == BLE_MODE_SWITCH2) {
+                                bd_addr_t pub;
+                                nrf_get_nintendo_public_addr(pub);
+                                hci_set_chipset(&switch2_chipset);
+                                hci_set_bd_addr(pub);   // sent during init
+                                // Leave random addressing OFF so advertising
+                                // uses the public address we just claimed.
+                                printf("[BT_NRF] Switch 2 mode: public addr %s\n",
+                                       bd_addr_to_str(pub));
+                                break;
+                            }
+#endif
                             hci_set_chipset(btstack_chipset_zephyr_instance());
                             // The zephyr chipset's static-address read returns
                             // 00:00:00:00:00:00 here, so advertising would go

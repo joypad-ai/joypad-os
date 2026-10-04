@@ -1,0 +1,62 @@
+diff --git a/subsys/bluetooth/controller/ll_sw/nordic/lll/lll_adv.c b/subsys/bluetooth/controller/ll_sw/nordic/lll/lll_adv.c
+index 8334f35e..f269f549 100644
+--- a/subsys/bluetooth/controller/ll_sw/nordic/lll/lll_adv.c
++++ b/subsys/bluetooth/controller/ll_sw/nordic/lll/lll_adv.c
+@@ -67,6 +67,17 @@ static int is_abort_cb(void *next, void *curr,
+ 		       lll_prepare_cb_t *resume_cb);
+ static void abort_cb(struct lll_prepare_param *prepare_param, void *param);
+ static void isr_tx(void *param);
++/* Joypad OS diagnostics: weak so every app links. src/bt/switch2_ble/switch2_ble.c
++ * provides strong definitions where Switch 2 output is built; apps without it
++ * (bt2usb, mouthpad, ...) compile this same file and must still link.
++ */
++__attribute__((weak)) volatile uint32_t joypad_scan_req_count;
++__attribute__((weak)) volatile uint32_t joypad_scan_req_last;
++__attribute__((weak)) volatile uint32_t joypad_conn_req_count;
++__attribute__((weak)) volatile uint32_t joypad_conn_req_last;
++__attribute__((weak)) volatile uint32_t joypad_conn_req_why;
++__attribute__((weak)) volatile uint8_t  joypad_adv_variant;
++
+ static void isr_rx(void *param);
+ static void isr_done(void *param);
+ static void isr_abort(void *param);
+@@ -1547,6 +1558,39 @@ static inline int isr_rx_pdu(struct lll_adv *lll,
+ 	}
+ 	rx_addr = pdu_adv->rx_addr;
+ 
++	/* Joypad OS diagnostics only -- no behaviour change. Who looks at our
++	 * advertisement, and who tries to connect, counted at the radio before any
++	 * acceptance check. Read with SWITCH2.SCAN. Counters (not per-packet log
++	 * marks) because marking every scan request floods the diagnostic ring.
++	 */
++	if (pdu_rx->type == PDU_ADV_TYPE_SCAN_REQ) {
++		const uint8_t *sa = pdu_rx->scan_req.scan_addr;
++		joypad_scan_req_count++;
++		joypad_scan_req_last = ((uint32_t)sa[5] << 16) |
++				       ((uint32_t)sa[4] << 8) | sa[3];
++	}
++#if defined(CONFIG_BT_PERIPHERAL)
++	if (pdu_rx->type == PDU_ADV_TYPE_CONNECT_IND) {
++		extern volatile uint8_t  joypad_adv_variant;
++		const uint8_t *ia = pdu_rx->connect_ind.init_addr;
++		joypad_conn_req_count++;
++		joypad_conn_req_last = ((uint32_t)ia[5] << 16) |
++				       ((uint32_t)ia[4] << 8) | ia[3];
++		/* bits 0-3 which acceptance check passed, bits 8-15 advertised
++		 * variant, bit 16 initiator address type (0 public, 1 random) --
++		 * a real console is public, a stray phone usually is not.
++		 */
++		joypad_conn_req_why =
++			((pdu_rx->len == sizeof(struct pdu_adv_connect_ind)) ? 1U : 0U) |
++			(lll->conn ? 2U : 0U) |
++			((lll->conn && !lll->conn->periph.cancelled) ? 4U : 0U) |
++			(lll_adv_connect_ind_check(lll, pdu_rx, tx_addr, addr,
++						   rx_addr, tgt_addr,
++						   devmatch_ok, &rl_idx) ? 8U : 0U) |
++			((uint32_t)joypad_adv_variant << 8) |
++			((uint32_t)(pdu_rx->tx_addr ? 1U : 0U) << 16);
++	}
++#endif /* CONFIG_BT_PERIPHERAL */
+ 	if ((pdu_rx->type == PDU_ADV_TYPE_SCAN_REQ) &&
+ 	    (pdu_rx->len == sizeof(struct pdu_adv_scan_req)) &&
+ 	    (tgt_addr == NULL) &&

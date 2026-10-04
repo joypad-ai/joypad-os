@@ -40,6 +40,9 @@
 // Optional BLE output support
 #if REQUIRE_BLE_OUTPUT
 #include "bt/ble_output/ble_output.h"
+#ifdef CONFIG_SWITCH2_BLE_OUTPUT
+#include "bt/switch2_ble/switch2_ble.h"
+#endif
 #endif
 
 // PS4 auth flash storage (always compiled with USB device sources)
@@ -873,6 +876,23 @@ static void cmd_ble_pair(const char* json)
     send_ok();
 }
 
+// BT.SCAN — start the BLE central scan. This dongle has no user button, so the
+// button-press path that normally starts scanning is unreachable; needed to walk a
+// real Switch 2 pad's GATT table from here (see sw2_dump_gatt in btstack_host.c).
+static void cmd_bt_scan(const char* json)
+{
+    (void)json;
+#ifdef ENABLE_BTSTACK
+    extern void btstack_host_suppress_scan(bool suppress);
+    extern void btstack_host_start_scan(void);
+    btstack_host_suppress_scan(false);
+    btstack_host_start_scan();
+    send_ok();
+#else
+    send_json("{\"ok\":false,\"error\":\"no bt host in build\"}");
+#endif
+}
+
 // BT.TRACE — dump the live diagnostic mark ring (nRF: noinit ring in main.c;
 // weak no-op elsewhere). Read-only bench tool.
 __attribute__((weak)) void bt_diag_dump(void) { }
@@ -881,6 +901,111 @@ static void cmd_bt_trace(const char* json)
     (void)json;
     bt_diag_dump();
     send_ok();
+}
+
+// SWITCH2.SYNC — re-enter Switch 2 pairing mode (forget the bonded console and
+// advertise the pairing persona). Same as the user-button click, over serial:
+// the dongle's button is awkward to reach, and pairing usually needs a config
+// host connected anyway.
+static void cmd_switch2_sync(const char* json)
+{
+    (void)json;
+#ifdef CONFIG_SWITCH2_BLE_OUTPUT
+    if (ble_output_get_mode() != BLE_MODE_SWITCH2) {
+        send_json("{\"ok\":false,\"error\":\"not in Switch 2 mode\"}");
+        return;
+    }
+    switch2_ble_request_sync();
+    send_ok();
+#else
+    send_json("{\"ok\":false,\"error\":\"build has no Switch 2 output\"}");
+#endif
+}
+
+// SWITCH2.SCAN — how many scan requests our advertisement has drawn, and the
+// address prefix of the most recent scanner. Tells us whether a host is even
+// looking at us, without the per-packet marks that flood the diagnostic ring.
+static void cmd_switch2_scan(const char* json)
+{
+    (void)json;
+#ifdef CONFIG_SWITCH2_BLE_OUTPUT
+    extern volatile uint32_t joypad_scan_req_count;
+    extern volatile uint32_t joypad_scan_req_last;
+    extern volatile uint32_t joypad_conn_req_count;
+    extern volatile uint32_t joypad_conn_req_last;
+    extern volatile uint32_t joypad_conn_req_why;
+    snprintf(response_buf, sizeof(response_buf),
+             "{\"scan_reqs\":%lu,\"last\":\"%02lx:%02lx:%02lx\","
+             "\"conn_reqs\":%lu,\"conn_last\":\"%02lx:%02lx:%02lx\",\"conn_why\":%lu}",
+             (unsigned long)joypad_scan_req_count,
+             (unsigned long)((joypad_scan_req_last >> 16) & 0xff),
+             (unsigned long)((joypad_scan_req_last >> 8) & 0xff),
+             (unsigned long)(joypad_scan_req_last & 0xff),
+             (unsigned long)joypad_conn_req_count,
+             (unsigned long)((joypad_conn_req_last >> 16) & 0xff),
+             (unsigned long)((joypad_conn_req_last >> 8) & 0xff),
+             (unsigned long)(joypad_conn_req_last & 0xff),
+             (unsigned long)joypad_conn_req_why);
+    // Append what is actually being advertised, so the identity and payload can
+    // be checked without a sniffer.
+    {
+        uint8_t a[6], mode, adv[31];
+        uint8_t n = switch2_ble_get_adv_debug(a, &mode, adv, sizeof(adv));
+        size_t pos = strlen(response_buf);
+        if (pos > 0 && response_buf[pos - 1] == '}') pos--;   // reopen the object
+        int w = snprintf(response_buf + pos, sizeof(response_buf) - pos,
+                         ",\"addr\":\"%02x:%02x:%02x:%02x:%02x:%02x\",\"addr_mode\":%u,\"adv\":\"",
+                         a[0], a[1], a[2], a[3], a[4], a[5], mode);
+        if (w > 0) pos += (size_t)w;
+        for (uint8_t i = 0; i < n && pos + 3 < sizeof(response_buf); i++) {
+            pos += (size_t)snprintf(response_buf + pos, sizeof(response_buf) - pos, "%02x", adv[i]);
+        }
+        uint16_t cc, itvl, dc; uint8_t st, role, dr;
+        switch2_ble_get_link_debug(&cc, &st, &role, &itvl, &dc, &dr);
+        snprintf(response_buf + pos, sizeof(response_buf) - pos,
+                 "\",\"cc\":%u,\"cc_status\":%u,\"cc_role\":%u,\"cc_itvl\":%u,"
+                 "\"disc\":%u,\"disc_reason\":%u}",
+                 cc, st, role, itvl, dc, dr);
+        uint16_t ar, aw, alr, alw; uint8_t pstage, enc;
+        switch2_ble_get_att_debug(&ar, &aw, &alr, &alw, &pstage, &enc);
+        size_t p2 = strlen(response_buf);
+        if (p2 > 0 && response_buf[p2 - 1] == '}') p2--;
+        snprintf(response_buf + p2, sizeof(response_buf) - p2,
+                 ",\"att_r\":%u,\"att_w\":%u,\"last_r\":\"0x%04x\",\"last_w\":\"0x%04x\","
+                 "\"pair_stage\":%u,\"enc\":%u}",
+                 ar, aw, alr, alw, pstage, enc);
+        uint16_t aev, amtu;
+        switch2_ble_get_att_events(&aev, &amtu);
+        size_t p3 = strlen(response_buf);
+        if (p3 > 0 && response_buf[p3 - 1] == '}') p3--;
+        snprintf(response_buf + p3, sizeof(response_buf) - p3,
+                 ",\"att_ev\":%u,\"att_mtu\":%u}", aev, amtu);
+    }
+    send_json(response_buf);
+#else
+    send_json("{\"ok\":false,\"error\":\"build has no Switch 2 output\"}");
+#endif
+}
+
+// SWITCH2.PID.SET — advertise a different controller product id and hold it
+// there (0x2069 Pro Controller 2, 0x2066/0x2067 Joy-Con 2 R/L, 0x2073 NSO GC).
+// Steady, unlike the rotating sweep this replaces: a console needs the same
+// advertisement on air for many seconds before it acts on it.
+static void cmd_switch2_pid_set(const char* json)
+{
+#ifdef CONFIG_SWITCH2_BLE_OUTPUT
+    int pid;
+    if (!json_get_int(json, "pid", &pid) || pid < 0 || pid > 0xffff) {
+        send_error("missing or out-of-range pid");
+        return;
+    }
+    switch2_ble_set_pid((uint16_t)pid);
+    snprintf(response_buf, sizeof(response_buf), "{\"ok\":true,\"pid\":%d}", pid);
+    send_json(response_buf);
+#else
+    (void)json;
+    send_json("{\"ok\":false,\"error\":\"build has no Switch 2 output\"}");
+#endif
 }
 
 static void cmd_ble_mode_get(const char* json)
@@ -4341,10 +4466,14 @@ static const cmd_entry_t commands[] = {
 #endif
 #if REQUIRE_BLE_OUTPUT
     {"BLE.MODE.GET", cmd_ble_mode_get},
+    {"SWITCH2.SYNC", cmd_switch2_sync},
+    {"SWITCH2.SCAN", cmd_switch2_scan},
+    {"SWITCH2.PID.SET", cmd_switch2_pid_set},
     {"BLE.MODE.SET", cmd_ble_mode_set},
     {"BLE.MODE.LIST", cmd_ble_mode_list},
     {"BLE.PAIR", cmd_ble_pair},
     {"BT.TRACE", cmd_bt_trace},
+    {"BT.SCAN", cmd_bt_scan},
     {"WIRELESS.POLICY.GET", cmd_wireless_policy_get},
     {"WIRELESS.POLICY.SET", cmd_wireless_policy_set},
 #endif

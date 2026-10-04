@@ -1015,6 +1015,17 @@ void ble_output_init(void)
     }
 #endif
 
+#ifdef CONFIG_BLE_DEFAULT_MODE
+    // A build that pins its own default mode, for a board where the mode can't
+    // be chosen at runtime: a bare dongle has no buttons, and macOS does not
+    // always attach a tty to the CDC interface, which leaves BLE.MODE.SET out
+    // of reach. An explicit user selection still wins.
+    if (!(settings && settings->ble_mode_saved) &&
+        ble_output_mode_available((ble_output_mode_t)CONFIG_BLE_DEFAULT_MODE)) {
+        current_mode = (ble_output_mode_t)CONFIG_BLE_DEFAULT_MODE;
+    }
+#endif
+
     printf("[ble_output] Initializing BLE output (mode: %s)\n",
            ble_output_get_mode_name(current_mode));
 

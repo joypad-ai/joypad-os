@@ -16,6 +16,10 @@ if [ ! -d "$zephyr/subsys/bluetooth/controller" ]; then
     exit 1
 fi
 
+# Only *.patch is applied. A patch parked as *.patch.optional is deliberately
+# not applied -- see README.md (the 5 ms interval patch is not needed to pair,
+# and a hand-modified link layer is the last thing that should be in the path
+# while something else is being diagnosed).
 for patch in "$here"/*.patch; do
     name="$(basename "$patch")"
     if git -C "$zephyr" apply --reverse --check "$patch" >/dev/null 2>&1; then

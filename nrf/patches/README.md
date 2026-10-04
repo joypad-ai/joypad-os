@@ -30,6 +30,26 @@ standard 1.25 ms units and simply accept 4 and 5.
 nrf/patches/apply.sh        # idempotent; re-run after `make init-nrf` or `west update`
 ```
 
-Status: **builds, never run against a real console.** Whether an nRF52840 can
-actually hold a 5 ms link is the open question — see
-`.dev/docs/switch2-ble-output-plan.md`.
+## The interval patch is NOT needed to pair
+
+Decoded captures of a real pairing (2026-09-27) show the console opens a
+first-time connection at **15 ms** (CONNECT_IND interval 12); only a bonded
+reconnect or wake uses 5 ms. So the interval patch buys nothing at the pairing
+stage, while making the link layer a hand-modified component that no working
+Switch 2 emulator uses — the riskiest thing in the stack, in the path of the
+thing that was failing.
+
+It is therefore carried as `0001-ll-accept-5ms-conn-interval.patch.optional`
+and **`apply.sh` does not apply it**. Re-enable it (drop the `.optional`) only
+once pairing is proven, when the console tries to move the link to 5 ms.
+
+`0002-ll-radio-diagnostics.patch` is always applied. It changes no behaviour: it
+counts scan requests and connection requests at the radio, before any acceptance
+check, so "the console never tried" can be told apart from "our link layer turned
+it down". Read them with `SWITCH2.SCAN` over CDC. Counters rather than log marks,
+because marking every scan request floods the small diagnostic ring in a busy
+room, and a printf from the radio ISR hangs the chip outright.
+
+Status: **the advertisement is verified correct on air from the board itself**
+(public Nintendo-OUI address, payload byte-identical to the capture). A completed
+connection has not yet been observed — see `.dev/docs/switch2-ble-output-plan.md`.
