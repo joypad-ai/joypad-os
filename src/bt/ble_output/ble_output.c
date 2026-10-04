@@ -438,6 +438,10 @@ static const uint8_t sinput_kbd_mouse_tail[] = {
 
 // Mode (loaded from flash on init)
 static ble_output_mode_t current_mode = BLE_MODE_STANDARD;
+// True once the BLE/BT *device* role is actually up (advertising or connectable).
+// The LED uses this to decide whether a wireless device colour should dominate the
+// USB output colour; before late_init there is no such role to show.
+static bool device_role_up = false;
 
 static btstack_packet_callback_registration_t hci_event_callback_registration;
 static btstack_packet_callback_registration_t sm_event_callback_registration;
@@ -1111,11 +1115,11 @@ static void usb_dom_timer_handler(btstack_timer_source_t *ts)
 void ble_output_late_init(void)
 {
 #ifdef CONFIG_BT_CLASSIC_OUTPUT
-    if (current_mode == BLE_MODE_SWITCH_BT) { switch_bt_late_init(); return; }
+    if (current_mode == BLE_MODE_SWITCH_BT) { switch_bt_late_init(); device_role_up = true; return; }
 #endif
 #ifdef CONFIG_SWITCH2_BLE_OUTPUT
     // Own GATT table, advertising and pairing — none of the HOGP setup below applies.
-    if (current_mode == BLE_MODE_SWITCH2) { switch2_ble_late_init(); return; }
+    if (current_mode == BLE_MODE_SWITCH2) { switch2_ble_late_init(); device_role_up = true; return; }
 #endif
     printf("[ble_output] Setting up BLE GATT services (mode: %s)\n",
            ble_output_get_mode_name(current_mode));
@@ -1293,6 +1297,7 @@ void ble_output_late_init(void)
     }
 
     printf("[ble_output] BLE advertising as '%s'\n", gap_name);
+    device_role_up = true;
 }
 
 // ============================================================================
@@ -1532,6 +1537,11 @@ void ble_output_task(void)
 // MODE SELECTION
 // ============================================================================
 
+bool ble_output_role_is_device(void)
+{
+    return device_role_up;
+}
+
 ble_output_mode_t ble_output_get_mode(void)
 {
     return current_mode;
@@ -1593,7 +1603,12 @@ void ble_output_get_mode_color(ble_output_mode_t mode, uint8_t *r, uint8_t *g, u
         case BLE_MODE_XBOX:      *r = 0; *g = 64; *b = 0; break;   // Green
         case BLE_MODE_SINPUT:    *r = 0; *g = 32; *b = 64; break;  // Cyan
         case BLE_MODE_SWITCH_BT: *r = 64; *g = 0; *b = 0; break;   // Red (Switch/Classic)
-        case BLE_MODE_SWITCH2:   *r = 64; *g = 0; *b = 24; break;  // Magenta-red (Switch 2)
+        // Switch 2: RED, same family as Switch. Was (64,0,24) to be a distinct
+        // magenta-red on a true NeoPixel, but boards like the Makerdiary MDK drive
+        // three discrete GPIOs where set_color() reduces to (r>0, g>0, b>0) -- so
+        // any non-zero blue became FULL blue and the LED showed purple. Keep every
+        // mode colour on channels that survive that reduction.
+        case BLE_MODE_SWITCH2:   *r = 64; *g = 0; *b = 0; break;   // Red (Switch 2)
         default:                 *r = 64; *g = 64; *b = 64; break;  // White
     }
 }

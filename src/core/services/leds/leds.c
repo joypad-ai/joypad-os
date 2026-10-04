@@ -10,6 +10,11 @@
 
 static int connected_devices = 0;
 static bool pairing_active = false;
+// Wireless "searching" state: advertising and waiting to be paired to as a BLE
+// device, or scanning as a BT host. Forces the blink pattern even when input
+// controllers are connected -- being usable as a controller and being connected to
+// a console are different things, and the LED reports the latter.
+static bool wireless_searching = false;
 
 // ============================================================================
 // PLAIN GPIO LED (fallback when no NeoPixel)
@@ -136,9 +141,16 @@ void leds_set_color(uint8_t r, uint8_t g, uint8_t b)
     neopixel_set_override_color(r, g, b);
 }
 
+void leds_set_searching(bool searching)
+{
+    wireless_searching = searching;
+}
+
 void leds_task(void)
 {
     int count = playersCount > connected_devices ? playersCount : connected_devices;
+    // Searching dominates: blink regardless of how many inputs are attached.
+    if (wireless_searching) count = 0;
 #ifdef BOARD_LED_ENABLED
     board_led_task(count);
 #endif

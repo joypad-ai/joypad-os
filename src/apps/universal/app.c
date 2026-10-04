@@ -929,13 +929,28 @@ void app_task(void)
     // Process BLE transport
     bt_task();
 
-    // NeoPixel: show connection state and active output mode color.
-    // A USB *data host* is dominant (BT is dropped/suppressed while it's
-    // connected), so treat its presence as "connected" — a steady USB color,
-    // not the BT-searching flash. Use the same VBUS+mounted test as the
-    // dominance logic (not usb_gamepad_active(), which is false in CDC mode).
-    bool ble_conn = ble_output_is_connected();
-    bool usb_host = platform_usb_powered() && tud_mounted();
+    // LED policy. Two independent things to show, and this device can be several
+    // roles at once (BLE device to a console, BT host to controllers, USB gamepad):
+    //
+    //   COLOUR = what we are OUTPUTTING as. A wireless device role dominates: when
+    //            we present ourselves to a console/host over BLE or BT Classic, that
+    //            mode's colour wins over the USB output colour, because that link is
+    //            the interesting one. With no device role, show the USB output mode.
+    //   BLINK  = searching. Advertising and waiting to be paired to as a device, or
+    //            scanning as a host. Either one blinks; solid means connected.
+    //
+    // Note this is about the HOST/console link, not about input controllers -- hence
+    // leds_set_searching(), which blinks even with controllers attached.
+    bool ble_conn    = ble_output_is_connected();
+    bool usb_host    = platform_usb_powered() && tud_mounted();
+    bool ble_dev     = ble_output_role_is_device();
+    bool host_scan   = false;
+#if REQUIRE_BT_INPUT
+    host_scan = btstack_host_is_scanning();
+#endif
+    // Advertising-and-unconnected as a device, or scanning as a host.
+    bool searching = (ble_dev && !ble_conn) || host_scan;
+    leds_set_searching(searching);
     leds_set_connected_devices((ble_conn || usb_host) ? 1 : 0);
 
     // Track state changes for LED color updates
@@ -947,15 +962,20 @@ void app_task(void)
     ble_output_mode_t ble_mode = ble_output_get_mode();
     usb_output_mode_t usb_mode = usbd_get_mode();
 
+    static bool last_ble_dev = false;
     if (ble_conn != last_ble_conn || usb_host != last_usb_host ||
+        ble_dev != last_ble_dev ||
         ble_mode != last_ble_mode || usb_mode != last_usb_mode) {
+        last_ble_dev = ble_dev;
         last_ble_conn = ble_conn;
         last_usb_host = usb_host;
         last_ble_mode = ble_mode;
         last_usb_mode = usb_mode;
 
         uint8_t r, g, b;
-        if (ble_conn) {
+        if (ble_dev) {
+            // Wireless device role dominates the colour, connected or not; the
+            // blink above carries the connection state.
             ble_output_get_mode_color(ble_mode, &r, &g, &b);
         } else if (usb_host) {
             usbd_get_mode_color(usb_mode, &r, &g, &b);

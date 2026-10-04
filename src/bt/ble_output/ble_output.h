@@ -69,6 +69,11 @@ void ble_output_task(void);
 // Connection state
 bool ble_output_is_connected(void);
 
+// True once this device is actually presenting itself to a host/console over BLE or
+// BT Classic (advertising or connectable). Used by the LED policy: a wireless device
+// role owns the colour, while blink carries whether that link is connected yet.
+bool ble_output_role_is_device(void);
+
 // Set the GPIO (raw chip pin) to wake from deep sleep on, plus its pressed
 // level (active_high). When set (>=0), a deliberate host disconnect (not a
 // dropped link) powers the device down instead of re-advertising; a press on
