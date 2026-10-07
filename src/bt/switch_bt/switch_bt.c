@@ -296,8 +296,10 @@ void switch_bt_late_init(void)
     // l2cap_init would be silently wiped. Stop the BT-HID host scan here so it
     // doesn't fight for the radio.
     printf("[switch_bt] Switch-BT mode active (device registration deferred to BT init)\n");
-    extern void btstack_host_suppress_scan(bool suppress);
-    btstack_host_suppress_scan(true);
+    // Latched: a plain suppress is cleared again by the host's idle safety net and
+    // by any timed scan, which resumes inquiry behind the live console link.
+    extern void btstack_host_suppress_scan_latched(bool suppress);
+    btstack_host_suppress_scan_latched(true);
 
     // (BD_ADDR is set from apply_gap_identity via the BCM vendor command once HCI is
     // up — hci_set_bd_addr's chipset path is skipped under HAVE_HOST_CONTROLLER_API.)

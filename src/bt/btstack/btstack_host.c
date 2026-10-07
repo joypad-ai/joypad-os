@@ -1129,6 +1129,19 @@ static void btstack_host_restore_last_connected(void)
 static uint32_t scan_timeout_end = 0;  // 0 = no timeout (indefinite scan)
 static bool scan_suppressed = false;   // App can suppress auto-restart (e.g. USB device connected)
 
+// Hard suppression: a wireless *output* mode owns the radio for the whole session
+// (Switch 2 BLE, Switch Pro over Classic). scan_suppressed alone is not enough —
+// it is a transient flag that the BLE.DROP holdoff expiry and every explicit
+// start_timed_scan() clear, so the central quietly resumed scanning + GIAC inquiry
+// behind a live emulated controller and starved its link. Observed on Pico W: the
+// console connects at 15 ms, then never exchanges MTU or writes its pairing command.
+static bool scan_suppressed_hard = false;
+
+bool btstack_host_scan_hard_suppressed(void)
+{
+    return scan_suppressed_hard;
+}
+
 // Pending BLE gamepad: when we see a gamepad appearance or HID UUID but no name in the
 // ADV packet, stash the address and wait for the scan response (which typically contains
 // the name). This prevents connecting to Xbox controllers as "Generic BLE Gamepad".
@@ -1151,7 +1164,7 @@ void btstack_host_start_scan(void)
 #ifdef BTSTACK_DEFER_SCAN
     if (!btstack_host_scan_enabled) return;
 #endif
-    if (scan_suppressed) {
+    if (scan_suppressed || scan_suppressed_hard) {
         return;  // App suppressed scanning (e.g. BT host disabled)
     }
 
@@ -1223,6 +1236,10 @@ void btstack_host_start_timed_scan(uint32_t timeout_ms)
         return;
     }
 
+    if (scan_suppressed_hard) {
+        printf("[BTSTACK_HOST] Timed scan ignored: wireless output mode owns the radio\n");
+        return;
+    }
     scan_suppressed = false;  // Explicit scan request clears suppression
     scan_timeout_end = btstack_run_loop_get_time_ms() + timeout_ms;
     printf("[BTSTACK_HOST] Starting timed scan (%lums)\n", (unsigned long)timeout_ms);
@@ -1234,6 +1251,22 @@ void btstack_host_suppress_scan(bool suppress)
     scan_suppressed = suppress;
     if (suppress && btstack_host_is_scanning()) {
         btstack_host_stop_scan();
+    }
+}
+
+// Latched variant for wireless output modes. Survives the BLE.DROP holdoff and
+// explicit scan requests; only another call with false lifts it.
+void btstack_host_suppress_scan_latched(bool suppress)
+{
+    scan_suppressed_hard = suppress;
+    if (suppress) {
+        scan_suppressed = true;
+        if (btstack_host_is_scanning()) {
+            btstack_host_stop_scan();
+        }
+        if (classic_state.inquiry_active) {
+            btstack_host_stop_scan();
+        }
     }
 }
 
@@ -1272,6 +1305,11 @@ void btstack_host_ble_drop_all(uint32_t holdoff_ms)
 
 void btstack_host_connect_ble(bd_addr_t addr, bd_addr_type_t addr_type)
 {
+    // Single choke point for every central-role BLE connect. A wireless output
+    // mode owns the radio: a doomed 4s gap_connect() to a bonded pad that is not
+    // even powered on will starve the console's link to us.
+    if (scan_suppressed_hard) return;
+
     printf("[BTSTACK_HOST] Connecting to %02X:%02X:%02X:%02X:%02X:%02X\n",
            addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
 
@@ -1453,7 +1491,7 @@ void btstack_host_process(void)
     if (ble_drop_holdoff_until != 0 &&
         (int32_t)(btstack_run_loop_get_time_ms() - ble_drop_holdoff_until) >= 0) {
         ble_drop_holdoff_until = 0;
-        scan_suppressed = false;
+        if (!scan_suppressed_hard) scan_suppressed = false;
         printf("[BTSTACK_HOST] BLE drop holdoff expired, reconnect resumed\n");
     }
 
@@ -1466,7 +1504,7 @@ void btstack_host_process(void)
     //   - Classic connection setup in progress (name request, HID connect pending)
 #ifndef CONFIG_USB2BLE
     if (hid_state.powered_on &&
-        !scan_suppressed &&
+        !scan_suppressed && !scan_suppressed_hard &&
         hid_state.state == BLE_STATE_IDLE &&
         hid_state.reconnect_attempt_time == 0 &&
         !hid_state.scan_active &&
@@ -1515,7 +1553,7 @@ void btstack_host_process(void)
     static uint32_t idle_reconnect_ms;
     if (hid_state.state == BLE_STATE_IDLE &&
         hid_state.powered_on &&
-        !scan_suppressed &&
+        !scan_suppressed && !scan_suppressed_hard &&
         hid_state.has_last_connected &&
         hid_state.reconnect_attempt_time == 0) {
         bool bonded_up = false;

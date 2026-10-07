@@ -51,6 +51,14 @@ void btstack_host_start_timed_scan(uint32_t timeout_ms);
 // Suppress/unsuppress automatic scan restart (e.g. when USB device connected).
 // Explicit start_timed_scan clears suppression.
 void btstack_host_suppress_scan(bool suppress);
+
+// Latched suppression for wireless *output* modes (Switch 2 BLE, Switch Pro over
+// Classic): the emulated controller owns the radio for the whole session. Unlike
+// btstack_host_suppress_scan(), this survives the BLE.DROP holdoff expiry, the idle
+// safety net and explicit start_timed_scan() calls, all of which silently resumed
+// central scanning + GIAC inquiry behind a live link and starved it.
+void btstack_host_suppress_scan_latched(bool suppress);
+bool btstack_host_scan_hard_suppressed(void);
 void btstack_host_ble_drop_all(uint32_t holdoff_ms);
 
 // Connect to a BLE device
