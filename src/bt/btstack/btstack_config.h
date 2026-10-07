@@ -72,9 +72,12 @@
 #endif
 
 // HCI ACL payload size (standard BT is 1021, but we use smaller for memory)
-#ifdef CONFIG_DS5_DROP_SCREAM
+#if defined(CONFIG_DS5_DROP_SCREAM) || defined(CONFIG_SWITCH2_BLE_OUTPUT)
 // DualSense extended output report 0x36 (398 bytes + HID header) must fit a
-// single outgoing ACL buffer: l2cap max payload = HCI_ACL_PAYLOAD_SIZE - 4
+// single outgoing ACL buffer: l2cap max payload = HCI_ACL_PAYLOAD_SIZE - 4.
+// Switch 2 output needs it too: a real Pro Controller 2 negotiates ATT MTU 512 and
+// the console will not write its pairing command at a smaller MTU, so the buffer has
+// to be able to carry 512 (btstack_host.c derives the MTU ceiling from this).
 #define HCI_ACL_PAYLOAD_SIZE (512 + 4 + 3)
 #else
 #define HCI_ACL_PAYLOAD_SIZE 256

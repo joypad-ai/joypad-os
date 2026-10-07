@@ -770,13 +770,20 @@ static void setup_hid_handlers(void)
     // would never be delivered — the device connects but sends zero input.
     // 247 covers the full report with margin (fits HCI_ACL_PAYLOAD_SIZE).
     //
-    // 512, not 247: this is PROCESS-WIDE and so also caps us as a *peripheral*.
-    // ATT MTU is min(both sides), so a 247 cap here made a Switch 2 console's 512
-    // settle at 247 -- after which it wrote nothing at all and would not pair.
-    // Raising it keeps the original intent (a 64-byte SInput report still fits one
-    // notification, with more headroom) and HCI_ACL_PAYLOAD_SIZE (519) has room, so
-    // there is no reason to make this mode-specific.
-    l2cap_set_max_le_mtu(512);
+    // Raise the ATT MTU, but never past what a single outgoing ACL buffer can carry.
+    // This is PROCESS-WIDE and so also caps us as a *peripheral*: ATT MTU is
+    // min(both sides), and a 247 cap here made a Switch 2 console's 512 settle at
+    // 247, after which it wrote nothing and would not pair.
+    //
+    // Derive the ceiling instead of hardcoding it. HCI_ACL_PAYLOAD_SIZE differs per
+    // build -- 512+4+3 on nRF, but only 256 on Pico unless CONFIG_DS5_DROP_SCREAM --
+    // and asking for more than the buffer holds breaks the MTU exchange outright
+    // (observed on Pico W: the console connects, att_mtu stays 0, nothing proceeds).
+    // 512 is the useful maximum; a 64-byte SInput report fits one notification either
+    // way, so lower-buffer builds lose nothing except Switch 2 output, which needs the
+    // console's full 512.
+    #define JP_ATT_MTU_CEILING (HCI_ACL_PAYLOAD_SIZE - 4)
+    l2cap_set_max_le_mtu(JP_ATT_MTU_CEILING < 512 ? JP_ATT_MTU_CEILING : 512);
 
     printf("[BTSTACK_HOST] Init SM...\n");
     sm_init();
