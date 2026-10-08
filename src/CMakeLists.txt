@@ -2251,6 +2251,10 @@ if (PICO_BOARD STREQUAL "pico_w" OR
         # console's 5 ms connection interval — unverified on CYW43, see
         # .dev/docs/switch2-ble-output-plan.md.
         CONFIG_SWITCH2_BLE_OUTPUT=1
+        # Each BLE output mode advertises from its own permanent address, so hosts
+        # treat the modes as separate peers instead of reusing a cached GATT
+        # database across a mode switch (the "forget this device" headache).
+        CONFIG_BLE_PER_MODE_IDENTITY=1
         SENSOR_PAD=1
         SENSOR_JOYWING=1
         PICO_DEFAULT_PIO_USB_DP_PIN=16

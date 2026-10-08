@@ -3160,8 +3160,31 @@ static void cmd_bt_ctrl(const char* json)
     unsigned hci_v = (&bt_cyw43_hci_version != NULL) ? bt_cyw43_hci_version : 0;
     unsigned lmp_v = (&bt_cyw43_lmp_version != NULL) ? bt_cyw43_lmp_version : 0;
     unsigned manuf = (&bt_cyw43_manufacturer != NULL) ? bt_cyw43_manufacturer : 0;
+    // The address we actually advertise from, which is what a host keys its GATT
+    // cache on. gap_local_bd_addr() is the controller's public address and is NOT
+    // it when we advertise from a random-static one, so ask for the address in use.
+    // macOS hides BD_ADDRs behind per-device UUIDs, so this is the only way to read
+    // it back and confirm per-mode identities are distinct and stable.
+#ifdef ENABLE_BTSTACK
+    extern void gap_le_get_own_address(uint8_t * addr_type, uint8_t * addr);
+#endif
+    extern int  bt_nrf_ident_mode  __attribute__((weak));
+    extern bool bt_nrf_ident_permode __attribute__((weak));
+    const int  ident_mode    = (&bt_nrf_ident_mode != NULL) ? bt_nrf_ident_mode : -2;
+    const bool ident_permode = (&bt_nrf_ident_permode != NULL) ? bt_nrf_ident_permode : false;
+    uint8_t own_type = 0xFF;
+    bd_addr_t own;
+    memset(own, 0, sizeof(own));
+#ifdef ENABLE_BTSTACK
+    gap_le_get_own_address(&own_type, own);
+#endif
     snprintf(response_buf, sizeof(response_buf),
-             "{\"hci_ver\":%u,\"lmp_ver\":%u,\"manuf\":%u}", hci_v, lmp_v, manuf);
+             "{\"hci_ver\":%u,\"lmp_ver\":%u,\"manuf\":%u,"
+             "\"own_addr\":\"%02x:%02x:%02x:%02x:%02x:%02x\",\"own_type\":%u,"
+             "\"ident_mode\":%d,\"ident_permode\":%s}",
+             hci_v, lmp_v, manuf,
+             own[0], own[1], own[2], own[3], own[4], own[5], own_type,
+             ident_mode, ident_permode ? "true" : "false");
     send_json(response_buf);
 }
 

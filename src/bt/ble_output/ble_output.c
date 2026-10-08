@@ -1245,6 +1245,24 @@ void ble_output_late_init(void)
     }
 #endif
 
+#ifdef CONFIG_BLE_PER_MODE_IDENTITY
+#ifndef BTSTACK_USE_NRF
+    // Give each mode its own permanent address so hosts never reuse a cached GATT
+    // database across a mode switch. On nRF this is applied by the transport inside
+    // the HCI init sequence instead -- post-init runs before power-on there, so
+    // anything set here would be overwritten (see nrf_apply_local_addr).
+    {
+        bd_addr_t mode_addr;
+        if (ble_output_get_mode_addr(current_mode, mode_addr)) {
+            gap_random_address_set(mode_addr);
+            gap_random_address_set_mode(GAP_RANDOM_ADDRESS_TYPE_STATIC);
+            printf("[ble_output] per-mode static random addr %s (mode %d)\n",
+                   bd_addr_to_str(mode_addr), (int)current_mode);
+        }
+    }
+#endif
+#endif
+
     // Mode-dependent GAP name and advertising
     const char *gap_name;
     const uint8_t *adv_data;
@@ -1611,6 +1629,42 @@ void ble_output_get_mode_color(ble_output_mode_t mode, uint8_t *r, uint8_t *g, u
         case BLE_MODE_SWITCH2:   *r = 64; *g = 0; *b = 0; break;   // Red (Switch 2)
         default:                 *r = 64; *g = 64; *b = 64; break;  // White
     }
+}
+
+// ============================================================================
+// PER-MODE BLE IDENTITY (see ble_output.h for why)
+// ============================================================================
+
+bool ble_output_get_mode_addr(ble_output_mode_t mode, bd_addr_t out)
+{
+    uint8_t nonce;
+    switch (mode) {
+        case BLE_MODE_STANDARD: nonce = BLE_IDENT_STANDARD; break;
+        case BLE_MODE_XBOX:     nonce = BLE_IDENT_XBOX;     break;
+        case BLE_MODE_SINPUT:   nonce = BLE_IDENT_SINPUT;   break;
+        default:
+            // Switch 2 (public Nintendo address) and Switch-BT (Classic) own their
+            // identity; the caller must not override it.
+            return false;
+    }
+
+    uint8_t id[8] = {0};
+    platform_get_unique_id(id, sizeof(id));
+
+    // Spread the nonce over several bytes so two modes can never collide on a
+    // board whose id bytes happen to be sparse, and force the two top bits of the
+    // most significant byte to 0b11, which is what makes it a random STATIC
+    // address rather than a private one.
+    out[0] = (uint8_t)(0xC0 | ((id[0] ^ nonce) & 0x3F));
+    out[1] = (uint8_t)(id[1] ^ (uint8_t)(nonce * 0x55u));
+    out[2] = id[2];
+    out[3] = id[3];
+    out[4] = (uint8_t)(id[4] ^ (uint8_t)(nonce << 3));
+    out[5] = (uint8_t)(id[5] ^ nonce);
+
+    // An all-zero or all-ones static address is not valid.
+    if ((out[1] | out[2] | out[3] | out[4] | out[5]) == 0x00) out[5] = 0x5A;
+    return true;
 }
 
 // ============================================================================

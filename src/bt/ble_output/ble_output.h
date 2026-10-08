@@ -10,6 +10,8 @@
 
 #include "core/output_interface.h"
 #include <stdint.h>
+#include <stdbool.h>
+#include "bluetooth.h"   // bd_addr_t
 
 // ============================================================================
 // OUTPUT MODES
@@ -32,6 +34,33 @@ typedef enum {
     BLE_MODE_SWITCH2,
     BLE_MODE_COUNT
 } ble_output_mode_t;
+
+// Per-mode BLE identity.
+//
+// Hosts cache a bonded peer's GATT database against its ADDRESS. Every mode used
+// to advertise from the same address, so switching modes handed the host a new
+// report map under an identity it already had cached -- the stale-descriptor
+// headache, whose only workaround was "Forget This Device" and a fresh pair.
+//
+// Giving each mode its own address makes them separate peers: one bond per mode,
+// each permanent. The address is DERIVED deterministically from the board id and
+// the nonce below, never stored and never rotated, so a mode's address is the same
+// across reboots, reflashes and mode switches -- its bond keeps working forever.
+//
+// NEVER renumber or reuse a nonce: it invalidates that mode's bond on every host
+// the device has ever paired with. New modes append a new value. Deliberately NOT
+// the ble_output_mode_t index, which is only append-only by convention -- an
+// insertion there would silently shift every address at once.
+#define BLE_IDENT_STANDARD  0x01
+#define BLE_IDENT_XBOX      0x02
+#define BLE_IDENT_SINPUT    0x03
+// Switch 2 is excluded: the console bonds to a PUBLIC Nintendo address which must
+// not move (see switch2_ble_get_public_addr), and Switch-BT is Classic.
+
+// Fills a deterministic random-STATIC address for this mode. Returns false for
+// modes that own their identity by other means (Switch 2, Switch-BT), which the
+// caller must leave alone.
+bool ble_output_get_mode_addr(ble_output_mode_t mode, bd_addr_t out);
 
 // True if this wireless output mode is compiled into the current build. Modes
 // that need a Bluetooth Classic radio are absent on BLE-only targets (ESP32-S3,

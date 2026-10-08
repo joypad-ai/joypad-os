@@ -75,7 +75,7 @@ __attribute__((weak)) bool btstack_classic_send_report(uint8_t idx, uint8_t id, 
 #include "btstack_tlv.h"
 #include "btstack_tlv_none.h"
 #include "btstack_chipset_zephyr.h"
-#ifdef CONFIG_SWITCH2_BLE_OUTPUT
+#if defined(CONFIG_SWITCH2_BLE_OUTPUT) || defined(CONFIG_BLE_PER_MODE_IDENTITY)
 #include "bt/ble_output/ble_output.h"
 #endif
 #include "bluetooth_company_id.h"
@@ -357,6 +357,39 @@ static void nrf_get_nintendo_public_addr(bd_addr_t addr)
 // BTSTACK EVENT HANDLER (address + chipset detection)
 // ============================================================================
 
+// Install our advertising identity. This MUST happen here, inside the HCI init
+// sequence: post_init_callback() (and therefore ble_output_late_init) runs BEFORE
+// hci_power_control(HCI_POWER_ON), so anything the app sets is overwritten by this
+// handler. That is exactly why an earlier per-mode address attempt was dead code --
+// the advertised address never changed no matter what the app did.
+// What the identity decision actually was, readable later over CDC. The decision
+// happens during HCI init, long before a CDC client can attach and arm logging, so
+// the boot log cannot be used to tell the per-mode path from the FICR fallback.
+int  bt_nrf_ident_mode = -1;
+bool bt_nrf_ident_permode = false;
+
+static void nrf_apply_local_addr(bd_addr_t local_addr)
+{
+    bt_nrf_ident_mode = (int)ble_output_get_mode();
+#ifdef CONFIG_BLE_PER_MODE_IDENTITY
+    // Each output mode advertises from its own permanent address so hosts treat the
+    // modes as separate peers and never reuse a cached GATT database across a mode
+    // switch. Deterministic, so a mode's bond survives reboots and reflashes.
+    if (ble_output_get_mode_addr(ble_output_get_mode(), local_addr)) {
+        gap_random_address_set(local_addr);
+        gap_random_address_set_mode(GAP_RANDOM_ADDRESS_TYPE_STATIC);
+        bt_nrf_ident_permode = true;
+        printf("[BT_NRF] per-mode static random addr %s (mode %d)\n",
+               bd_addr_to_str(local_addr), (int)ble_output_get_mode());
+        return;
+    }
+#endif
+    nrf_get_static_random_addr(local_addr);
+    gap_random_address_set(local_addr);
+    gap_random_address_set_mode(GAP_RANDOM_ADDRESS_TYPE_STATIC);
+    printf("[BT_NRF] FICR static random addr %s\n", bd_addr_to_str(local_addr));
+}
+
 static void btstack_event_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size)
 {
     (void)channel;
@@ -390,18 +423,10 @@ static void btstack_event_handler(uint8_t packet_type, uint16_t channel, uint8_t
                             // discoverable. Use the FICR factory static-random
                             // address directly and enable random static
                             // addressing so the BLE peripheral is on air.
-                            nrf_get_static_random_addr(local_addr);
-                            gap_random_address_set(local_addr);
-                            gap_random_address_set_mode(GAP_RANDOM_ADDRESS_TYPE_STATIC);
-                            printf("[BT_NRF] FICR static random addr %s\n",
-                                   bd_addr_to_str(local_addr));
+                            nrf_apply_local_addr(local_addr);
                             break;
                         default:
-                            nrf_get_static_random_addr(local_addr);
-                            gap_random_address_set(local_addr);
-                            gap_random_address_set_mode(GAP_RANDOM_ADDRESS_TYPE_STATIC);
-                            printf("[BT_NRF] FICR static random addr %s\n",
-                                   bd_addr_to_str(local_addr));
+                            nrf_apply_local_addr(local_addr);
                             break;
                     }
                     break;
@@ -413,12 +438,20 @@ static void btstack_event_handler(uint8_t packet_type, uint16_t channel, uint8_t
                     break;
                 }
                 case HCI_OPCODE_HCI_ZEPHYR_READ_STATIC_ADDRESS: {
+                    // This arrives AFTER READ_LOCAL_VERSION_INFORMATION, so it is the
+                    // last writer and wins. When we have installed a per-mode identity
+                    // we must not let the controller's own static address replace it --
+                    // that silently undid the whole per-mode scheme: the decision ran
+                    // with the right mode, then this handler overwrote the result.
+                    if (bt_nrf_ident_permode) break;
+
                     const uint8_t *params = hci_event_command_complete_get_return_parameters(packet);
                     if (params[0] == 0 && size >= 13) {
                         bd_addr_t a;
                         reverse_48(&params[2], a);
-                        // Only apply a non-zero static address; the controller
-                        // returns all-zeros here, which would clobber FICR.
+                        // Only apply a non-zero static address; the controller is
+                        // documented here as returning all-zeros, which would clobber
+                        // FICR -- but it does return a real address on some builds.
                         static const uint8_t zero[6] = {0};
                         if (memcmp(a, zero, 6) != 0) {
                             memcpy(local_addr, a, 6);

@@ -533,6 +533,10 @@ elseif(APP_TYPE STREQUAL "universal")
         # link layer accepting the console's 5 ms connection interval —
         # UNVERIFIED on this radio, see .dev/docs/switch2-ble-output-plan.md.
         CONFIG_SWITCH2_BLE_OUTPUT=1
+        # Each BLE output mode advertises from its own permanent address, so hosts
+        # treat the modes as separate peers instead of reusing a cached GATT
+        # database across a mode switch (the "forget this device" headache).
+        CONFIG_BLE_PER_MODE_IDENTITY=1
         SENSOR_PAD=1
         WS2812_PIN=16
         WS2812_NUM_PIXELS=1
