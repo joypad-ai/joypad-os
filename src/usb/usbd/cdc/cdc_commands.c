@@ -949,13 +949,23 @@ static void cmd_switch2_scan(const char* json)
     // Append what is actually being advertised, so the identity and payload can
     // be checked without a sniffer.
     {
-        uint8_t a[6], mode, adv[31];
+        // A weak extern *variable* resolves to address 0 when undefined, so reading
+        // it on a backend that has no CYW43 transport (nRF, ESP) is a null
+        // dereference, not a benign zero. Take the address and test it instead.
+        extern uint8_t bt_cyw43_addr_claim_status __attribute__((weak));
+        const uint8_t claim_st = (&bt_cyw43_addr_claim_status != NULL)
+                                 ? bt_cyw43_addr_claim_status : 0xFF;
+        uint8_t a[6], mode, adv[31], cl[6];
         uint8_t n = switch2_ble_get_adv_debug(a, &mode, adv, sizeof(adv));
+        switch2_ble_get_claimed_addr(cl);
         size_t pos = strlen(response_buf);
         if (pos > 0 && response_buf[pos - 1] == '}') pos--;   // reopen the object
         int w = snprintf(response_buf + pos, sizeof(response_buf) - pos,
-                         ",\"addr\":\"%02x:%02x:%02x:%02x:%02x:%02x\",\"addr_mode\":%u,\"adv\":\"",
-                         a[0], a[1], a[2], a[3], a[4], a[5], mode);
+                         ",\"addr\":\"%02x:%02x:%02x:%02x:%02x:%02x\",\"addr_mode\":%u,"
+                         "\"claimed\":\"%02x:%02x:%02x:%02x:%02x:%02x\",\"claim_st\":%u,\"adv\":\"",
+                         a[0], a[1], a[2], a[3], a[4], a[5], mode,
+                         cl[0], cl[1], cl[2], cl[3], cl[4], cl[5],
+                         (unsigned)claim_st);
         if (w > 0) pos += (size_t)w;
         for (uint8_t i = 0; i < n && pos + 3 < sizeof(response_buf); i++) {
             pos += (size_t)snprintf(response_buf + pos, sizeof(response_buf) - pos, "%02x", adv[i]);
@@ -971,15 +981,18 @@ static void cmd_switch2_scan(const char* json)
         size_t p2 = strlen(response_buf);
         if (p2 > 0 && response_buf[p2 - 1] == '}') p2--;
         snprintf(response_buf + p2, sizeof(response_buf) - p2,
-                 ",\"att_r\":%u,\"att_w\":%u,\"last_r\":\"0x%04x\",\"last_w\":\"0x%04x\","
+                 ",\"att_r\":%u,\"att_w\":%u,\"att_txn\":%u,\"last_r\":\"0x%04x\",\"last_w\":\"0x%04x\","
                  "\"pair_stage\":%u,\"enc\":%u}",
-                 ar, aw, alr, alw, pstage, enc);
-        uint16_t aev, amtu;
+                 ar, aw, switch2_ble_get_att_txn_count(), alr, alw, pstage, enc);
+        uint16_t aev, amtu, dtx; uint8_t ptx, prx;
         switch2_ble_get_att_events(&aev, &amtu);
+        switch2_ble_get_link_phy(&ptx, &prx, &dtx);
         size_t p3 = strlen(response_buf);
         if (p3 > 0 && response_buf[p3 - 1] == '}') p3--;
         snprintf(response_buf + p3, sizeof(response_buf) - p3,
-                 ",\"att_ev\":%u,\"att_mtu\":%u}", aev, amtu);
+                 ",\"att_ev\":%u,\"att_mtu\":%u,\"stall_drops\":%u,"
+                 "\"phy_tx\":%u,\"phy_rx\":%u,\"dle_tx\":%u}",
+                 aev, amtu, switch2_ble_get_stall_drops(), ptx, prx, dtx);
     }
     send_json(response_buf);
 #else
@@ -3098,7 +3111,29 @@ static void cmd_ble_drop(const char* json)
     json_get_int(json, "ms", &ms);
     if (ms < 1000) ms = 1000;
     btstack_host_ble_drop_all((uint32_t)ms);
+    // btstack_host only tracks central-role links; an emulated controller's own
+    // peripheral link is deliberately ignored by it, so "drop all" used to leave
+    // the console connected and the adapter off air.
+    extern void switch2_ble_drop_link(void) __attribute__((weak));
+    if (switch2_ble_drop_link) switch2_ble_drop_link();
     send_ok();
+}
+
+
+// BT.CTRL — Bluetooth controller identity. HCI/LMP version 8 = BT 4.2, 9 = BT 5.0
+// (where LE 2M PHY was introduced), 10 = 5.1, 11 = 5.2.
+static void cmd_bt_ctrl(const char* json)
+{
+    (void)json;
+    extern uint8_t bt_cyw43_hci_version __attribute__((weak));
+    extern uint8_t bt_cyw43_lmp_version __attribute__((weak));
+    extern uint16_t bt_cyw43_manufacturer __attribute__((weak));
+    unsigned hci_v = (&bt_cyw43_hci_version != NULL) ? bt_cyw43_hci_version : 0;
+    unsigned lmp_v = (&bt_cyw43_lmp_version != NULL) ? bt_cyw43_lmp_version : 0;
+    unsigned manuf = (&bt_cyw43_manufacturer != NULL) ? bt_cyw43_manufacturer : 0;
+    snprintf(response_buf, sizeof(response_buf),
+             "{\"hci_ver\":%u,\"lmp_ver\":%u,\"manuf\":%u}", hci_v, lmp_v, manuf);
+    send_json(response_buf);
 }
 
 static void cmd_bt_status(const char* json)
@@ -4458,6 +4493,7 @@ static const cmd_entry_t commands[] = {
     {"VOICE.STATE", cmd_voice_state},
 #endif
     {"BT.STATUS", cmd_bt_status},
+    {"BT.CTRL", cmd_bt_ctrl},
     {"BLE.DROP", cmd_ble_drop},
     {"BT.BONDS.CLEAR", cmd_bt_bonds_clear},
     {"BT.FORGET", cmd_bt_forget},

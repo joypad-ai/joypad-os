@@ -15,6 +15,7 @@
 // finalising we re-arm that lookup for the live connection.
 
 #include "switch2_ble.h"
+#include "platform/platform.h"
 
 #ifdef CONFIG_SWITCH2_BLE_OUTPUT
 
@@ -35,6 +36,7 @@
 #include <stdarg.h>
 #include "l2cap.h"
 #include "ble/att_db.h"
+#include "ble/gatt_client.h"
 #include "ble/att_server.h"
 #include "ble/le_device_db.h"
 #include "ble/sm.h"
@@ -50,7 +52,7 @@
 extern void feedback_set_rumble(uint8_t player_index, uint8_t left, uint8_t right);
 extern void feedback_set_led_player(uint8_t player_index, uint8_t player_num);
 // Central-side BT host; absent on peripheral-only builds (ESP32 universal).
-extern void btstack_host_suppress_scan(bool suppress) __attribute__((weak));
+extern void btstack_host_suppress_scan_latched(bool suppress) __attribute__((weak));
 
 #define TLV_TAG_SW2_BOND   (((uint32_t)'S' << 24) | ((uint32_t)'W' << 16) | ((uint32_t)'2' << 8) | 'B')
 #define BOND_MAGIC         0xB2
@@ -128,6 +130,30 @@ static const uint8_t k_scan_rsp[] = {
 
 static btstack_packet_callback_registration_t s_hci_cb;
 static btstack_timer_source_t s_input_timer;
+
+// A console that connects and then says nothing used to hold the link open
+// forever: we stop advertising while connected and nothing tears a dead link
+// down (BLE.DROP only walks the central's table, and btstack_host deliberately
+// ignores our peripheral handle). One silent connection therefore made the
+// adapter permanently invisible to the pairing screen. Give up on a link that
+// produces no ATT traffic and no encryption, and go back on air.
+// Liveness must not be judged by our read/write callbacks: BTstack answers
+// service and characteristic discovery out of the static DB without ever calling
+// them, so a central can enumerate our whole table while both counters stay 0.
+// (Proved by connecting from a Mac: discovery was in flight when an earlier
+// 8 s version of this watchdog killed the link.) The negotiated ATT MTU is the
+// honest signal -- it stays at the 23-byte default until a peer actually talks.
+#define SW2_STALL_TIMEOUT_MS 20000
+static uint32_t s_conn_start_ms;
+static uint16_t s_stall_drops;
+static bool     s_drop_requested;
+// Passive observers only: we never request these (see the connect handler), but if a
+// controller negotiates a PHY or data-length change we record what it settled on.
+static uint8_t  s_phy_tx, s_phy_rx;   // 1 = 1M, 2 = 2M; 0 = never negotiated
+static uint16_t s_dle_tx;             // negotiated max tx octets
+static void mtu_cb_handler(uint8_t type, uint16_t channel, uint8_t *packet, uint16_t size);
+static void reset_session(void);
+static void adv_update(void);
 static btstack_context_callback_registration_t s_sync_reg, s_wake_reg;
 static volatile bool s_sync_queued, s_wake_queued;
 
@@ -255,6 +281,7 @@ static uint8_t  s_cc_status, s_cc_role;
 static uint16_t s_disc_count; static uint8_t s_disc_reason;
 // ATT traffic seen from the console: did it discover and use our GATT table?
 static uint16_t s_att_reads, s_att_writes, s_att_last_read, s_att_last_write;
+static uint16_t s_att_txn_cbs;   // prepared-write/transaction callbacks (handle 0)
 // ATT-layer events. The read/write callbacks above only fire for DYNAMIC
 // attribute values, so a console that discovers our whole table generates none
 // of them -- their being zero says nothing about whether ATT is alive. An MTU
@@ -355,6 +382,44 @@ static void queue_response(uint16_t handle, uint16_t prefix, const uint8_t *rsp,
 static void input_timer_handler(btstack_timer_source_t *ts)
 {
     if (s_con == HCI_CON_HANDLE_INVALID) return;
+
+    // Runs in run-loop context, so this is also where an externally requested
+    // drop is executed -- callers only set the flag.
+    if (s_drop_requested) {
+        s_drop_requested = false;
+        printf("[switch2] dropping console link on request\n");
+        gap_disconnect(s_con);
+        btstack_run_loop_set_timer(ts, 15);
+        btstack_run_loop_add_timer(ts);
+        return;
+    }
+    if (!s_encrypted && s_att_writes == 0 && s_att_reads == 0 &&
+        att_server_get_mtu(s_con) <= ATT_DEFAULT_MTU &&
+        (btstack_run_loop_get_time_ms() - s_conn_start_ms) > SW2_STALL_TIMEOUT_MS) {
+        s_stall_drops++;
+        printf("[switch2] console connected but silent for %ums — dropping to re-advertise\n",
+               SW2_STALL_TIMEOUT_MS);
+        gap_disconnect(s_con);
+        // gap_disconnect does not always take: observed stall_drops climbing to 10
+        // while only one DISCONNECTION_COMPLETE ever arrived, leaving s_con pointing
+        // at a link that was already gone. We then believed we were connected, never
+        // re-advertised, and went silent for good. After a couple of ignored
+        // requests, tear the session down locally and get back on air.
+        if ((s_stall_drops % 3) == 0) {
+            printf("[switch2] disconnect ignored — forcing local teardown\n");
+            s_con = HCI_CON_HANDLE_INVALID;
+            btstack_run_loop_remove_timer(ts);
+            reset_session();
+            adv_update();
+            return;
+        }
+        // Push the deadline out so a disconnect that does not complete cannot make
+        // this log line (and the disconnect request) repeat every timer tick.
+        s_conn_start_ms = btstack_run_loop_get_time_ms();
+        btstack_run_loop_set_timer(ts, 15);
+        btstack_run_loop_add_timer(ts);
+        return;
+    }
     if (s_encrypted && s_input_notify && !s_input_due) {
         s_input_due = true;
         request_send();
@@ -429,9 +494,17 @@ static int att_write_cb(hci_con_handle_t con, uint16_t handle, uint16_t mode,
     // from one that is actually talking to our GATT table. Without this, a live
     // link with no pairing progress gives no clue whether the console ever
     // discovered our services or wrote a single command.
+    if (mode != ATT_TRANSACTION_MODE_NONE) {
+        // Prepared-write bookkeeping, not a console write. BTstack uses handle 0 with
+        // VALIDATE/EXECUTE/CANCEL for transaction queues, and it fires CANCEL from
+        // att_clear_transaction_queue() on every disconnect -- counting those as
+        // writes made a console that never touched our GATT look like it had, and
+        // overwrote s_att_last_write with 0. Count them apart.
+        s_att_txn_cbs++;
+        return 0;
+    }
     s_att_writes++;
     s_att_last_write = handle;
-    if (mode != ATT_TRANSACTION_MODE_NONE) return 0;
 
     switch (handle) {
     case SW2_H_VIB_COMMAND:   // [00][L lra 16][R lra 16] + optional command
@@ -559,6 +632,21 @@ static void hci_handler(uint8_t type, uint16_t channel, uint8_t *packet, uint16_
             printf("[switch2] our address %s (type %u — 0 public, 1 random)\n",
                    bd_addr_to_str(own), own_type);
         }
+        s_conn_start_ms = btstack_run_loop_get_time_ms();
+        s_drop_requested = false;
+
+        // Nobody was starting the ATT MTU exchange on this link. The console will
+        // not write its 0x15 pairing command at the default 23-byte MTU -- on nRF
+        // the negotiated MTU reaches 512 and pairing proceeds, while on CYW43 it
+        // stayed at 0 and the console connected, waited, and gave up. We are the
+        // ATT *server* here, and a server never initiates the exchange, so send it
+        // from our GATT client against our own peripheral link.
+        gatt_client_send_mtu_negotiation(&mtu_cb_handler, s_con);
+
+        // No link-layer upgrade requests here on purpose: the CYW43 reports LE 2M
+        // PHY unsupported (feature bit 8 clear) and answers LE Read PHY with
+        // Unknown HCI Command, while Zephyr's controller negotiates PHY and data
+        // length by itself on nRF. See .dev/docs/switch2-ble-pico-w-verdict.md.
         btstack_run_loop_set_timer_handler(&s_input_timer, &input_timer_handler);
         btstack_run_loop_set_timer(&s_input_timer, 15);
         btstack_run_loop_add_timer(&s_input_timer);
@@ -566,6 +654,19 @@ static void hci_handler(uint8_t type, uint16_t channel, uint8_t *packet, uint16_
         break;
 
     case HCI_EVENT_LE_META:
+        if (hci_event_le_meta_get_subevent_code(packet) == HCI_SUBEVENT_LE_PHY_UPDATE_COMPLETE) {
+            s_phy_tx = hci_subevent_le_phy_update_complete_get_tx_phy(packet);
+            s_phy_rx = packet[6];   // no accessor for rx_phy in this BTstack
+            printf("[switch2] PHY now tx=%uM rx=%uM (status 0x%02x)\n", s_phy_tx, s_phy_rx,
+                   hci_subevent_le_phy_update_complete_get_status(packet));
+            break;
+        }
+        if (hci_event_le_meta_get_subevent_code(packet) == HCI_SUBEVENT_LE_DATA_LENGTH_CHANGE) {
+            s_dle_tx = hci_subevent_le_data_length_change_get_max_tx_octets(packet);
+            printf("[switch2] data length tx=%u rx=%u octets\n", s_dle_tx,
+                   hci_subevent_le_data_length_change_get_max_rx_octets(packet));
+            break;
+        }
         if (hci_event_le_meta_get_subevent_code(packet) == HCI_SUBEVENT_LE_CONNECTION_UPDATE_COMPLETE &&
             hci_subevent_le_connection_update_complete_get_connection_handle(packet) == s_con) {
             // Key diagnostic: the console moves the link to 5 ms (interval 4). A radio that
@@ -673,6 +774,18 @@ void switch2_ble_init(void)
 // ATT-layer events, so "the console connected and did nothing" can be told from
 // "the console discovered us and then stopped". An MTU exchange is the first
 // thing a real console does over ATT.
+// Result of the MTU exchange we initiate on connect. GATT_EVENT_MTU carries the
+// negotiated value; record it so SWITCH2.SCAN shows a real number even when the
+// att_server packet handler does not see the exchange.
+static void mtu_cb_handler(uint8_t type, uint16_t channel, uint8_t *packet, uint16_t size)
+{
+    (void)channel; (void)size;
+    if (type != HCI_EVENT_PACKET) return;
+    if (hci_event_packet_get_type(packet) != GATT_EVENT_MTU) return;
+    s_att_mtu = gatt_event_mtu_get_MTU(packet);
+    printf("[switch2] ATT MTU negotiated: %u\n", s_att_mtu);
+}
+
 static void att_event_handler(uint8_t type, uint16_t channel, uint8_t *packet, uint16_t size)
 {
     (void)channel; (void)size;
@@ -694,12 +807,24 @@ static void att_event_handler(uint8_t type, uint16_t channel, uint8_t *packet, u
 // handle 0x0016 without discovering (per esp-cpp/espp, verified against hardware).
 static void acl_trace_packet(uint8_t packet_type, uint8_t in, uint8_t *packet, uint16_t len)
 {
+    // Positive control: prove the dump is wired at all. HCI events always flow, so
+    // if these first lines never appear, the silence is our plumbing, not the console.
+    // Reset per connection: CDC logging is only armed a few seconds after boot, so a
+    // boot-time-only window is always missed.
+    static uint16_t s_dump_gen, s_dump_seen;
+    if (s_dump_gen != s_cc_count) { s_dump_gen = s_cc_count; s_dump_seen = 0; }
+    if (s_dump_seen < 12) {
+        s_dump_seen++;
+        printf("[DUMP%s] type=%u len=%u b0=%02x\n", in ? "<-" : "->", packet_type, len,
+               len ? packet[0] : 0);
+    }
     if (packet_type != HCI_ACL_DATA_PACKET) return;
     if (len < 9) return;
-    // ACL header 4 + L2CAP header 4; CID 0x0004 is ATT.
+    // ACL header 4 + L2CAP header 4; CID 0x0004 is ATT. Print EVERY CID: a trace that
+    // only shows ATT cannot distinguish "the console sent nothing" from "the console
+    // sent something on another channel" (or from the dump not being wired at all).
     uint16_t cid = (uint16_t)packet[6] | ((uint16_t)packet[7] << 8);
-    if (cid != 0x0004) return;
-    printf("[ATT%s] op=0x%02x len=%u:", in ? "<-" : "->", packet[8], len - 8);
+    printf("[ACL%s cid=%04x] op=0x%02x len=%u:", in ? "<-" : "->", cid, packet[8], len - 8);
     uint16_t n = len - 8; if (n > 20) n = 20;
     for (uint16_t i = 0; i < n; i++) printf(" %02x", packet[8 + i]);
     printf("\n");
@@ -715,8 +840,12 @@ void switch2_ble_late_init(void)
     hci_dump_init(&acl_trace);
     printf("[switch2] ACL/ATT trace enabled\n");
 #endif
-    // We are a controller now: stop the BLE-central scan fighting for the radio.
-    if (btstack_host_suppress_scan) btstack_host_suppress_scan(true);
+    // We are a controller now: stop the BLE-central scan and the Classic inquiry
+    // fighting for the radio, and keep them stopped. A plain suppress_scan() is
+    // cleared again by the idle safety net / BLE.DROP holdoff / timed scans, which
+    // is how a Pico W ended up running GIAC inquiry and 4s gap_connect retries to a
+    // bonded pad while the console was trying to pair with us.
+    if (btstack_host_suppress_scan_latched) btstack_host_suppress_scan_latched(true);
 
     l2cap_init();
     sm_init();
@@ -780,6 +909,71 @@ void switch2_ble_task(void)
     if (in.buttons && !s_last_buttons && s_con == HCI_CON_HANDLE_INVALID)
         request_wake();
     s_last_buttons = in.buttons;
+}
+
+// The Pro Controller 2's public address. OUI 94:8E:6D was taken off the air from a
+// real pad that pairs with this console; a sniffer capture put our advertisement and
+// that pad's side by side and the address was the ONLY difference in the whole
+// packet. What provably matters: it must be PUBLIC and stable across boots, because
+// the console bonds to it during 0x15. Suffix from the board id so each dongle is
+// unique. (bt_transport_nrf.c has a twin that derives the suffix from FICR before
+// platform init is available -- keep the OUI in sync.)
+// Set by the transport when it asks the controller to take our public address, so
+// SWITCH2.SCAN can show the requested identity next to the live one. Equal values
+// mean the claim worked; differing values mean the controller refused it; all-zero
+// means the claim never ran at all.
+static bd_addr_t s_claimed_addr;
+
+void switch2_ble_note_claimed_addr(const bd_addr_t addr)
+{
+    memcpy(s_claimed_addr, addr, 6);
+}
+
+void switch2_ble_get_claimed_addr(bd_addr_t addr)
+{
+    memcpy(addr, s_claimed_addr, 6);
+}
+
+void switch2_ble_get_public_addr(bd_addr_t addr)
+{
+    uint8_t id[8] = {0};
+    platform_get_unique_id(id, sizeof(id));
+    addr[0] = 0x94; addr[1] = 0x8E; addr[2] = 0x6D;
+    addr[3] = id[5] ^ id[1];
+    addr[4] = id[6] ^ id[2];
+    addr[5] = id[7] ^ id[3];
+    if ((addr[3] | addr[4] | addr[5]) == 0) {
+        addr[3] = 0x2D; addr[4] = 0xF2; addr[5] = 0x29;
+    }
+#ifdef CONFIG_SWITCH2_ADDR_SALT
+    // Bring-up only: a console that connected once and failed to pair will not
+    // re-attempt the same address, so a fresh identity is the only way to get
+    // another connection attempt without clearing its side.
+    addr[5] ^= (uint8_t)CONFIG_SWITCH2_ADDR_SALT;
+    addr[4] ^= (uint8_t)(CONFIG_SWITCH2_ADDR_SALT >> 8);
+#endif
+}
+
+// Ask for the console link to be torn down. Safe from any context: the actual
+// gap_disconnect happens in the input timer, which runs in run-loop context.
+void switch2_ble_drop_link(void)
+{
+    if (s_con != HCI_CON_HANDLE_INVALID) s_drop_requested = true;
+}
+
+uint16_t switch2_ble_get_stall_drops(void)
+{
+    return s_stall_drops;
+}
+
+uint16_t switch2_ble_get_att_txn_count(void)
+{
+    return s_att_txn_cbs;
+}
+
+void switch2_ble_get_link_phy(uint8_t *tx_phy, uint8_t *rx_phy, uint16_t *dle_tx)
+{
+    *tx_phy = s_phy_tx; *rx_phy = s_phy_rx; *dle_tx = s_dle_tx;
 }
 
 void switch2_ble_set_pid(uint16_t pid)

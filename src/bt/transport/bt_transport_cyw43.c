@@ -62,6 +62,12 @@ __attribute__((weak)) void btstack_host_transport_process(void) {}
 #include "pico/btstack_cyw43.h"
 #include "pico/btstack_hci_transport_cyw43.h"
 #include "pico/async_context.h"
+#ifdef CONFIG_SWITCH2_BLE_OUTPUT
+#include "btstack_event.h"
+#include "pico/btstack_chipset_cyw43.h"
+#include "switch2_ble/switch2_ble.h"
+#include "ble_output/ble_output.h"
+#endif
 
 // ============================================================================
 // CYW43 TRANSPORT STATE
@@ -73,6 +79,73 @@ static bool cyw43_initialized = false;
 // ============================================================================
 // TRANSPORT IMPLEMENTATION
 // ============================================================================
+
+
+#ifdef CONFIG_SWITCH2_BLE_OUTPUT
+// Claiming the Nintendo public address on CYW43.
+//
+// It must be re-asserted from inside BTstack's init sequence, NOT before power-on:
+// pico-sdk's hci_transport_cyw43_open() does its own
+//     cyw43_hal_get_mac(0, &addr); addr[5]++; hci_set_bd_addr(addr);
+// and that open() runs as part of hci_power_control(HCI_POWER_ON), i.e. after any
+// call we make first. It silently overwrote our address with the OTP WiFi MAC + 1,
+// so the 0xFC01 that BTstack sent carried the OTP address -- which is why the
+// command reported success while the address appeared never to change. The chip
+// was always willing; the transport was clobbering us.
+//
+// READ_LOCAL_VERSION_INFORMATION completes early in the init sequence and well
+// before HCI_INIT_SET_BD_ADDR (which follows READ_LOCAL_SUPPORTED_COMMANDS), so
+// setting it here lands in the command BTstack actually sends. This mirrors what
+// bt_transport_nrf.c does on its own controller.
+uint8_t bt_cyw43_addr_claim_status = 0xFF;
+
+// Controller identity, captured at init and readable later over CDC. The boot log
+// cannot be used: HCI init completes before CDC logging can be armed.
+// HCI/LMP version 8 = BT 4.2, 9 = BT 5.0 (where LE 2M PHY was introduced), 11 = 5.2.
+uint8_t  bt_cyw43_hci_version, bt_cyw43_lmp_version;
+uint16_t bt_cyw43_manufacturer;
+
+static void addr_claim_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size)
+{
+    (void)channel; (void)size;
+    if (packet_type != HCI_EVENT_PACKET) return;
+
+    if (hci_event_packet_get_type(packet) == HCI_EVENT_COMMAND_COMPLETE) {
+        uint16_t op = hci_event_command_complete_get_command_opcode(packet);
+        if (op == HCI_OPCODE_HCI_READ_LOCAL_VERSION_INFORMATION) {
+            // Answers "is the missing 2M PHY a firmware limit or the core?":
+            // HCI/LMP version 9 = BT 5.0 (where 2M PHY was introduced), 11 = 5.2.
+            bt_cyw43_hci_version  = packet[6];
+            bt_cyw43_lmp_version  = packet[9];
+            bt_cyw43_manufacturer = little_endian_read_16(packet, 10);
+            printf("[BT_CYW43] HCI ver %u LMP ver %u manuf %u\n",
+                   bt_cyw43_hci_version, bt_cyw43_lmp_version, bt_cyw43_manufacturer);
+            bd_addr_t pub;
+            switch2_ble_get_public_addr(pub);
+            hci_set_bd_addr(pub);          // re-assert: the transport just clobbered it
+            switch2_ble_note_claimed_addr(pub);
+            printf("[BT_CYW43] re-claiming public addr %s after transport open\n",
+                   bd_addr_to_str(pub));
+        } else if (op == 0xFC01) {
+            bt_cyw43_addr_claim_status = packet[5];
+            printf("[BT_CYW43] vendor 0xFC01 set-bd-addr status 0x%02x\n",
+                   bt_cyw43_addr_claim_status);
+        }
+        return;
+    }
+
+    if (hci_event_packet_get_type(packet) == BTSTACK_EVENT_STATE &&
+        btstack_event_state_get_state(packet) == HCI_STATE_WORKING) {
+        bd_addr_t have;
+        gap_local_bd_addr(have);
+        printf("[BT_CYW43] radio up with addr %s\n", bd_addr_to_str(have));
+    }
+}
+
+static btstack_packet_callback_registration_t s_addr_claim_cb = {
+    .callback = &addr_claim_handler,
+};
+#endif
 
 static void cyw43_transport_init(void)
 {
@@ -110,6 +183,26 @@ static void cyw43_transport_init(void)
 
     cyw43_initialized = true;
     printf("[BT_CYW43] Ready for Bluetooth connections\n");
+
+#ifdef CONFIG_SWITCH2_BLE_OUTPUT
+    // Switch 2 mode needs a Nintendo PUBLIC address, like a real pad. The CYW43's
+    // own address is Raspberry Pi's OUI 28:CD:C1, and a console that connected to it
+    // terminated the link (0x13) without sending a single ATT packet; advertising
+    // from a random-static address instead drew no connection at all.
+    //
+    // Contrary to a stale comment in switch_bt.c, this IS possible on CYW43:
+    // HAVE_HOST_CONTROLLER_API is not defined in this build, and the pico-sdk ships a
+    // chipset driver whose set_bd_addr_command is the vendor opcode 0xFC01. Both
+    // calls must land before HCI power-on, since hci.c only sends the address change
+    // as part of its init sequence.
+    if (post_init_callback && ble_output_get_mode() == BLE_MODE_SWITCH2) {
+        // Registration only -- the address itself is set from the handler, because
+        // the transport's open() would overwrite anything set here. The transport
+        // also installs the CYW43 chipset driver, so we no longer do that either.
+        hci_add_event_handler(&s_addr_claim_cb);
+        printf("[BT_CYW43] Switch 2 mode: will claim a Nintendo public address\n");
+    }
+#endif
 
     // Power on Bluetooth
     if (post_init_callback) {

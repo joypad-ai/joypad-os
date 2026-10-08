@@ -329,7 +329,18 @@ static void nrf_get_nintendo_public_addr(bd_addr_t addr)
     // address was the ONLY difference in the whole packet, so match its OUI too.
     // (98:E2:55 is also a registered Nintendo OUI and came from ndeadly's capture
     // of a different pad, but it is not the one this console is known to accept.)
+#ifdef CONFIG_SWITCH2_ADDR_OUI
+    // Bring-up experiment: override the OUI to settle whether the console actually
+    // requires a Nintendo prefix. This is the one variable we cannot change on a
+    // Pico W (CYW43 acks vendor 0xFC01 with status 0x00 and keeps its OTP address),
+    // so the question has to be answered on hardware that can. Build with e.g.
+    //   CONFIG_SWITCH2_ADDR_OUI=0x28CDC1   (Raspberry Pi, same as a Pico W)
+    addr[0] = (uint8_t)((CONFIG_SWITCH2_ADDR_OUI >> 16) & 0xFF);
+    addr[1] = (uint8_t)((CONFIG_SWITCH2_ADDR_OUI >> 8) & 0xFF);
+    addr[2] = (uint8_t)(CONFIG_SWITCH2_ADDR_OUI & 0xFF);
+#else
     addr[0] = 0x94; addr[1] = 0x8E; addr[2] = 0x6D;
+#endif
     addr[3] = uniq[3]; addr[4] = uniq[4]; addr[5] = uniq[5];
 #ifdef CONFIG_SWITCH2_ADDR_SALT
     // Bring-up only: present a different controller identity. A console that

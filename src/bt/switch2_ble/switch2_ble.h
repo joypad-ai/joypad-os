@@ -17,6 +17,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include "bluetooth.h"   // bd_addr_t
 
 // Pre-BTstack init. Safe before the stack is up.
 void switch2_ble_init(void);
@@ -41,6 +42,21 @@ bool switch2_ble_is_connected(void);
 // Advertise a different controller product id (0 = Pro Controller 2 default).
 // Held until changed again -- for trying Joy-Con 2 / NSO GameCube identities.
 void switch2_ble_set_pid(uint16_t pid);
+
+// Tear down the console link (safe from any context) and report how many links
+// were dropped for going silent -- see SW2_STALL_TIMEOUT_MS in switch2_ble.c.
+void switch2_ble_drop_link(void);
+uint16_t switch2_ble_get_stall_drops(void);
+uint16_t switch2_ble_get_att_txn_count(void);
+void switch2_ble_get_link_phy(uint8_t *tx_phy, uint8_t *rx_phy, uint16_t *dle_tx);
+
+// Derive the Pro Controller 2 public BD_ADDR for this board. Transports call this
+// before HCI power-on and claim it with hci_set_bd_addr(); the console bonds to it.
+void switch2_ble_get_public_addr(bd_addr_t addr);
+
+// Diagnostics for the address claim (see switch2_ble.c).
+void switch2_ble_note_claimed_addr(const bd_addr_t addr);
+void switch2_ble_get_claimed_addr(bd_addr_t addr);
 
 // Connection-establishment outcomes: how many LE connection-complete events
 // arrived, the last one's status/role/interval, and how many disconnects with

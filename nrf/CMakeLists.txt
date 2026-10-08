@@ -592,6 +592,14 @@ elseif(APP_TYPE STREQUAL "universal")
         message(STATUS "Switch 2 pad GATT dump ENABLED")
     endif()
 
+    # Bring-up experiment: advertise from a different OUI to test whether the console
+    # requires a Nintendo prefix. A Pico W cannot change its OUI at all, so this is
+    # how that question gets answered -- on hardware that can.
+    #   SWITCH2_ADDR_OUI=0x28CDC1 make universal_makerdiary_nrf52840
+    if(DEFINED ENV{SWITCH2_ADDR_OUI})
+        target_compile_definitions(app PRIVATE CONFIG_SWITCH2_ADDR_OUI=$ENV{SWITCH2_ADDR_OUI})
+        message(STATUS "Switch 2 address OUI override $ENV{SWITCH2_ADDR_OUI}")
+    endif()
     if(DEFINED ENV{SWITCH2_ADDR_SALT})
         target_compile_definitions(app PRIVATE CONFIG_SWITCH2_ADDR_SALT=$ENV{SWITCH2_ADDR_SALT})
         message(STATUS "Switch 2 address salt $ENV{SWITCH2_ADDR_SALT}")

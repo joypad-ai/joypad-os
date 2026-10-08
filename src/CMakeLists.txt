@@ -2299,6 +2299,13 @@ if (PICO_BOARD STREQUAL "pico_w" OR
         ${CMAKE_CURRENT_SOURCE_DIR}/bt/transport/bt_transport_cyw43.c
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/universal/app.c
     )
+    # Opt-in raw ATT/ACL tracer for Switch 2 BLE bring-up. Logs every ATT packet in
+    # both directions, which is the only way to tell "the console sent nothing" apart
+    # from "BTstack rejected what the console sent below our handlers":
+    #   SWITCH2_ACL_TRACE=1 make universal_pico_w
+    if(DEFINED ENV{SWITCH2_ACL_TRACE})
+        target_compile_definitions(joypad_universal PRIVATE CONFIG_SWITCH2_ACL_TRACE=1)
+    endif()
     target_include_directories(joypad_universal PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/apps/universal
         ${CMAKE_CURRENT_SOURCE_DIR}/usb/usbd
