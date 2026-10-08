@@ -14,6 +14,17 @@ export class BtOutputCard {
             <div class="card" id="bleModeCard" style="display:none;">
                 <h2>BLE Device Output Mode</h2>
                 <div class="card-content">
+                    <div class="toggle-row" style="margin-bottom: 4px;">
+                        <label class="toggle">
+                            <input type="checkbox" id="bleOutputEnable">
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <span>Enable BLE device output</span>
+                    </div>
+                    <p class="hint" id="bleOutputHint">Advertise as a Bluetooth controller.
+                        Turn off for a receiver-only setup so the adapter is not a BLE
+                        peripheral and a central at the same time &mdash; with Bluetooth
+                        Host also off, the BT stack is not started at all.</p>
                     <div class="row">
                         <span class="label">Current Mode</span>
                         <select id="bleModeSelect"><option value="">Loading...</option></select>
@@ -68,10 +79,30 @@ export class BtOutputCard {
             this.hasBle = true;
             this.currentModeId = result.current;
             this.log(`Loaded ${result.modes.length} BLE modes, current: ${result.current}`);
-            this.dirty?.snapshot();
         } catch (e) {
             card.style.display = 'none';
         }
+
+        // Enable toggle: value from ROUTER.GET, availability from CAPS.GET. Older
+        // firmware has neither, so default to on and hide the toggle rather than
+        // showing it off while the radio is actually advertising.
+        try {
+            const router = await this.protocol.getRouter();
+            const has = router && router.ble_output !== undefined;
+            this.el.querySelector('#bleOutputEnable').checked = has ? !!router.ble_output : true;
+            this.enableSupported = has;
+            if (!has) this.setEnableVisible(false);
+        } catch (e) {
+            this.enableSupported = false;
+            this.setEnableVisible(false);
+        }
+        try {
+            const caps = await this.protocol.getCapabilities();
+            const bd = caps && caps.bt_device;
+            if (bd && bd.present && !bd.configurable) this.setEnableReadOnly(true);
+        } catch (e) { /* older firmware: leave as-is */ }
+
+        this.dirty?.snapshot();
         await this.loadPolicy();
     }
 
@@ -98,6 +129,11 @@ export class BtOutputCard {
     }
 
     async save() {
+        // The enable toggle lives in this card, so an unchanged mode is no longer a
+        // reason to bail -- that early return used to make a toggle-only edit a
+        // silent no-op.
+        await this.saveEnable();
+
         const id = parseInt(this.el.querySelector('#bleModeSelect').value);
         if (id === this.currentModeId) {
             this.log('BLE mode unchanged', 'success');
@@ -111,6 +147,38 @@ export class BtOutputCard {
         } catch (e) {
             this.log(`Failed to set BLE mode: ${e.message}`, 'error');
         }
+    }
+
+    // ROUTER.SET applies only the keys present in the payload, but it reboots every
+    // time -- so skip the write entirely when the toggle has not moved, otherwise
+    // saving a mode change would also bounce the device twice.
+    async saveEnable() {
+        if (!this.enableSupported || this.enableReadOnly) return;
+        const want = this.el.querySelector('#bleOutputEnable').checked;
+        try {
+            const router = await this.protocol.getRouter();
+            if (!!router.ble_output === want) return;
+            await this.protocol.setRouter({ ble_output: want });
+            this.log(`BLE device output ${want ? 'enabled' : 'disabled'}`, 'success');
+            this.log('Device will reboot...', 'warning');
+        } catch (e) {
+            this.log(`Failed to set BLE device output: ${e.message}`, 'error');
+        }
+    }
+
+    setEnableVisible(v) {
+        const row = this.el.querySelector('#bleOutputEnable')?.closest('.toggle-row');
+        if (row) row.style.display = v ? '' : 'none';
+        const hint = this.el.querySelector('#bleOutputHint');
+        if (hint) hint.style.display = v ? '' : 'none';
+    }
+
+    setEnableReadOnly(ro) {
+        this.enableReadOnly = ro;
+        const cb = this.el.querySelector('#bleOutputEnable');
+        if (cb) { cb.checked = true; cb.disabled = ro; }
+        const hint = this.el.querySelector('#bleOutputHint');
+        if (ro && hint) hint.textContent = 'This build is a BLE device only, so the output is always on.';
     }
 
     isAvailable() { return this.hasBle; }
