@@ -72,6 +72,22 @@
 #endif
 #define BT_INPUT_ALWAYS_ON (BT_HOST_PRESENT && !BT_HOST_CONFIGURABLE)
 
+// Same split for the BLE *device* (peripheral) output. Present when the
+// peripheral is compiled in; configurable only for apps that honour the runtime
+// ble_output flag (universal, which #defines BLE_OUTPUT_CONFIGURABLE). A
+// peripheral-only build such as usb2ble is present-but-not-configurable, so its
+// toggle is read-only always-on and must report ble_output:true on a fresh flash.
+#if REQUIRE_BLE_OUTPUT
+#  define BLE_DEV_PRESENT 1
+#else
+#  define BLE_DEV_PRESENT 0
+#endif
+#if defined(BLE_OUTPUT_CONFIGURABLE) && BLE_OUTPUT_CONFIGURABLE
+#  define BLE_DEV_CONFIGURABLE 1
+#else
+#  define BLE_DEV_CONFIGURABLE 0
+#endif
+
 // ============================================================================
 // STATE
 // ============================================================================
@@ -2745,6 +2761,7 @@ static void cmd_router_get(const char* json)
     // debounced). router_init() has already restored them from flash on boot.
     dm = router_get_dpad_mode();
     uint8_t ss = router_get_shoulder_swap() ? 1 : 0;
+    uint8_t bleo = BLE_DEV_PRESENT;   // default on when present, matching the app
     const flash_t* s = settings_for_read(&scratch);
     if (s && s->router_saved) {
         if (s->routing_mode <= 2) rm = s->routing_mode;
@@ -2752,12 +2769,16 @@ static void cmd_router_get(const char* json)
 #if !BT_INPUT_ALWAYS_ON
         bti = s->bt_input_enabled;   // always-on bridges ignore the persisted flag
 #endif
+#if BLE_DEV_CONFIGURABLE
+        bleo = (s->ble_output_disabled == 0);   // always-on builds ignore the flag
+#endif
     }
     snprintf(response_buf, sizeof(response_buf),
              "{\"ok\":true,\"routing_mode\":%d,\"merge_mode\":%d,\"dpad_mode\":%d,"
-             "\"shoulder_swap\":%s,\"bt_input\":%s,"
+             "\"shoulder_swap\":%s,\"bt_input\":%s,\"ble_output\":%s,"
              "\"default_routing_mode\":%d,\"default_merge_mode\":%d}",
              rm, mm, dm, ss ? "true" : "false", bti ? "true" : "false",
+             bleo ? "true" : "false",
              (int)ROUTING_MODE, (int)MERGE_MODE);
     send_json(response_buf);
 }
@@ -2965,13 +2986,17 @@ static void cmd_caps_get(const char* json)
     // bridges are present-but-not-configurable → read-only always-on page.
     const char* bt_present      = BT_HOST_PRESENT      ? "true" : "false";
     const char* bt_configurable = BT_HOST_CONFIGURABLE ? "true" : "false";
+    const char* bd_present      = BLE_DEV_PRESENT      ? "true" : "false";
+    const char* bd_configurable = BLE_DEV_CONFIGURABLE ? "true" : "false";
     n = snprintf(out, rem,
                  "],\"usb_host\":{\"present\":%s,\"configurable\":%s,\"dp\":%d}"
                  ",\"bt_host\":{\"present\":%s,\"configurable\":%s}"
+                 ",\"bt_device\":{\"present\":%s,\"configurable\":%s}"
                  ",\"native\":{\"in\":%s%s%s,\"in_source_name\":\"%s\""
                  ",\"out\":%s%s%s,\"out_target_name\":\"%s\",\"out_players\":%d}}",
                  uh_present, uh_configurable, uh_dp,
                  bt_present, bt_configurable,
+                 bd_present, bd_configurable,
                  nin  ? "\"" : "null", nin  ? nin  : "", nin  ? "\"" : "", nin_src,
                  nout ? "\"" : "null", nout ? nout : "", nout ? "\"" : "", nout_tgt, nout_players);
     if (n < 0 || n >= rem) goto overflow;
@@ -3000,6 +3025,10 @@ static void cmd_router_set(const char* json)
     if (json_get_int(json, "dpad_mode", &ival)) settings->dpad_mode = (uint8_t)ival;
     bool bval;
     if (json_get_bool(json, "bt_input", &bval)) settings->bt_input_enabled = bval ? 1 : 0;
+#if BLE_DEV_CONFIGURABLE
+    // Stored inverted (0 = enabled) so old flashes keep advertising; see flash.h.
+    if (json_get_bool(json, "ble_output", &bval)) settings->ble_output_disabled = bval ? 0 : 1;
+#endif
     settings->router_saved = 1;
 
     flash_save_force(settings);

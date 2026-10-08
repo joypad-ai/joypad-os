@@ -234,6 +234,29 @@ static const char* oled_transport_str(input_transport_t t) {
 // BUTTON EVENT HANDLER
 // ============================================================================
 
+#if REQUIRE_BLE_OUTPUT
+// BLE device (peripheral) output. Default on: only an explicit ROUTER.SET
+// {"ble_output":false} turns it off, and the flash flag is stored inverted so
+// old flashes keep advertising. Lets a receiver-only board avoid being a BLE
+// peripheral and a central at the same time.
+//
+// Loaded lazily because app_get_output_interfaces() runs before app_init(), so
+// the flag is needed before the app's main flash read happens.
+static bool ble_output_enabled = true;
+static bool ble_output_flag_loaded = false;
+
+static bool ble_output_is_enabled(void)
+{
+    if (!ble_output_flag_loaded) {
+        flash_t f;
+        if (flash_load(&f) && f.router_saved) {
+            ble_output_enabled = (f.ble_output_disabled == 0);
+        }
+        ble_output_flag_loaded = true;
+    }
+    return ble_output_enabled;
+}
+#endif
 #if REQUIRE_BT_INPUT
 static bool bt_input_enabled = false;
 #endif
@@ -370,7 +393,7 @@ static bool sinput_rgb_override = false;
 static void bt_central_post_init(void)
 {
 #if REQUIRE_BLE_OUTPUT
-    ble_output_late_init();
+    if (ble_output_is_enabled()) ble_output_late_init();
 #endif
     // Always init HID handlers so bond management (forget, status) works
     // even when BT scanning is disabled. Only start scanning if enabled.
@@ -417,16 +440,18 @@ const InputInterface** app_get_input_interfaces(uint8_t* count)
 // APP OUTPUT INTERFACES
 // ============================================================================
 
-static const OutputInterface* output_interfaces[] = {
-#if REQUIRE_BLE_OUTPUT
-    &ble_output_interface,
-#endif
-    &usbd_output_interface,
-};
+// Built at runtime: the BLE peripheral is omitted entirely when disabled, so its
+// init/task never run and the router has no BLE output target to feed.
+static const OutputInterface* output_interfaces[2];
 
 const OutputInterface** app_get_output_interfaces(uint8_t* count)
 {
-    *count = sizeof(output_interfaces) / sizeof(output_interfaces[0]);
+    uint8_t n = 0;
+#if REQUIRE_BLE_OUTPUT
+    if (ble_output_is_enabled()) output_interfaces[n++] = &ble_output_interface;
+#endif
+    output_interfaces[n++] = &usbd_output_interface;
+    *count = n;
     return output_interfaces;
 }
 
@@ -652,6 +677,7 @@ void app_init(void)
 #if REQUIRE_BT_INPUT
             bt_input_enabled = flash_data.bt_input_enabled != 0;
 #endif
+
         }
     }
 
@@ -673,7 +699,7 @@ void app_init(void)
 
 #if REQUIRE_BLE_OUTPUT
     // Route: GPIO (sensors) → BLE Peripheral
-    router_add_route(INPUT_SOURCE_GPIO, OUTPUT_TARGET_BLE_PERIPHERAL, 0);
+    if (ble_output_is_enabled()) router_add_route(INPUT_SOURCE_GPIO, OUTPUT_TARGET_BLE_PERIPHERAL, 0);
 #endif
 
     // Route: GPIO (sensors) → USB Device (CDC config + wired gamepad)
@@ -683,7 +709,7 @@ void app_init(void)
     // Route: USB Host controllers → USB Device
     router_add_route(INPUT_SOURCE_USB_HOST, OUTPUT_TARGET_USB_DEVICE, 0);
 #if REQUIRE_BLE_OUTPUT
-    router_add_route(INPUT_SOURCE_USB_HOST, OUTPUT_TARGET_BLE_PERIPHERAL, 0);
+    if (ble_output_is_enabled()) router_add_route(INPUT_SOURCE_USB_HOST, OUTPUT_TARGET_BLE_PERIPHERAL, 0);
 #endif
 #endif
 
@@ -691,7 +717,7 @@ void app_init(void)
     // Route: BLE Central (scanned controllers) → USB Device
     router_add_route(INPUT_SOURCE_BLE_CENTRAL, OUTPUT_TARGET_USB_DEVICE, 0);
 #if REQUIRE_BLE_OUTPUT
-    router_add_route(INPUT_SOURCE_BLE_CENTRAL, OUTPUT_TARGET_BLE_PERIPHERAL, 0);
+    if (ble_output_is_enabled()) router_add_route(INPUT_SOURCE_BLE_CENTRAL, OUTPUT_TARGET_BLE_PERIPHERAL, 0);
 #endif
 #endif
 
@@ -706,8 +732,20 @@ void app_init(void)
 #if REQUIRE_BLE_OUTPUT || REQUIRE_BT_INPUT
     // Initialize BLE transport with post-init callback.
     // Post-init runs in BTstack task context after HCI is ready.
+    // Bring the radio up only if a role wants it. With the central disabled
+    // (bt_input) and the peripheral disabled (ble_output), skip BTstack
+    // entirely so a receiver-only board does not run a BLE stack at all.
+    bool want_radio = false;
+#if REQUIRE_BT_INPUT
+    if (bt_input_enabled) want_radio = true;
+#endif
 #if REQUIRE_BLE_OUTPUT
-    ble_output_init();  // Load BLE mode from flash before BTstack starts
+    if (ble_output_is_enabled()) {
+        ble_output_init();  // Load BLE mode from flash before BTstack starts
+        want_radio = true;
+    } else {
+        printf("[app:universal] BLE device output disabled\n");
+    }
 #endif
 
     // Select post-init callback
@@ -717,16 +755,20 @@ void app_init(void)
     #define BT_POST_INIT ble_output_late_init
 #endif
 
+    if (want_radio) {
 #ifdef BTSTACK_USE_CYW43
-    bt_cyw43_set_post_init(BT_POST_INIT);
-    bt_init(&bt_transport_cyw43);
+        bt_cyw43_set_post_init(BT_POST_INIT);
+        bt_init(&bt_transport_cyw43);
 #elif defined(BTSTACK_USE_ESP32)
-    bt_esp32_set_post_init(BT_POST_INIT);
-    bt_init(&bt_transport_esp32);
+        bt_esp32_set_post_init(BT_POST_INIT);
+        bt_init(&bt_transport_esp32);
 #elif defined(BTSTACK_USE_NRF)
-    bt_nrf_set_post_init(BT_POST_INIT);
-    bt_init(&bt_transport_nrf);
+        bt_nrf_set_post_init(BT_POST_INIT);
+        bt_init(&bt_transport_nrf);
 #endif
+    } else {
+        printf("[app:universal] no wireless role enabled — BT stack not started\n");
+    }
 #endif
 
 #ifdef OLED_I2C_INST

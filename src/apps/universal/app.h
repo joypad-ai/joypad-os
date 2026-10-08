@@ -42,6 +42,11 @@
 #ifndef REQUIRE_BLE_OUTPUT
 #define REQUIRE_BLE_OUTPUT 1
 #endif
+// This app honours the runtime ble_output flag too, so the web-config
+// "BLE device output" toggle is a real control. A receiver-only configuration
+// can turn the peripheral off entirely instead of being a peripheral and a
+// central at once; with bt_input off as well, BTstack is never started.
+#define BLE_OUTPUT_CONFIGURABLE 1
 #define REQUIRE_USB_DEVICE 1
 
 // Services

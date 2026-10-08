@@ -166,8 +166,17 @@ typedef struct {
     // connected). Carved from reserved[] — zero on old flashes = both.
     uint8_t wireless_policy;
 
-    // Reserved for future global settings (5 bytes)
-    uint8_t reserved[5];
+    // Disable the BLE *device* (peripheral) output entirely, so a board
+    // configured purely as a receiver is not also a BLE peripheral alongside
+    // its central role. Stored INVERTED (0 = enabled) so it is carved from
+    // reserved[] with no schema bump: old flashes read 0 and keep advertising,
+    // which is the previous behaviour. Mirrors bt_input_enabled, which gates
+    // the central. WIRELESS_POLICY_* is routing-only and never drops a link,
+    // so it cannot express "do not bring the peripheral up at all".
+    uint8_t ble_output_disabled;
+
+    // Reserved for future global settings (4 bytes)
+    uint8_t reserved[4];
 
     // Custom profiles (4 x 56 = 224 bytes)
     custom_profile_t profiles[CUSTOM_PROFILE_MAX_COUNT];
@@ -218,6 +227,7 @@ static inline unsigned flash_sanitize_record(flash_t* s)
     FLASH_CLAMP_(merge_mode, 2);                              // priority/blend/all
     FLASH_CLAMP_(dpad_mode, FLASH_DPAD_MODE_MAX);             // incl. Lstick<->Rstick
     FLASH_CLAMP_(bt_input_enabled, 1);
+    FLASH_CLAMP_(ble_output_disabled, 1);
     FLASH_CLAMP_(shoulder_swap, 1);
     FLASH_CLAMP_(wireless_policy, WIRELESS_POLICY_MAX);      // both/USB/BLE
     FLASH_CLAMP_(joybus_data_pin, 28);                        // 0=default, 1-28=GPIO
