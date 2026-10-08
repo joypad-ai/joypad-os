@@ -1142,6 +1142,11 @@ bool btstack_host_scan_hard_suppressed(void)
     return scan_suppressed_hard;
 }
 
+bool btstack_host_scan_suppressed(void)
+{
+    return scan_suppressed;
+}
+
 // Pending BLE gamepad: when we see a gamepad appearance or HID UUID but no name in the
 // ADV packet, stash the address and wait for the scan response (which typically contains
 // the name). This prevents connecting to Xbox controllers as "Generic BLE Gamepad".
@@ -1421,6 +1426,20 @@ void btstack_host_process(void)
         printf("[BTSTACK_HOST] BLE connection attempt timed out after %dms\n", BLE_CONNECT_TIMEOUT_MS);
         gap_connect_cancel();
         hid_state.state = BLE_STATE_IDLE;
+        hid_state.reconnect_attempt_time = 0;
+    }
+
+    // Stale connect timestamp recovery. The timeout above only fires while the state
+    // is CONNECTING, and the idle safety net below only fires when this timestamp is
+    // zero. So any path that leaves CONNECTING without clearing it wedges both: the
+    // scan stops for the connect attempt and never resumes, and the central goes
+    // permanently deaf. Observed on a receiver-mode dongle -- scanning went false a
+    // few seconds after boot and stayed false indefinitely, while a manual BT.SCAN
+    // recovered it instantly.
+    if (hid_state.reconnect_attempt_time != 0 &&
+        hid_state.state != BLE_STATE_CONNECTING &&
+        (btstack_run_loop_get_time_ms() - hid_state.reconnect_attempt_time) >= BLE_CONNECT_TIMEOUT_MS) {
+        printf("[BTSTACK_HOST] Clearing stale connect timestamp (state=%d)\n", hid_state.state);
         hid_state.reconnect_attempt_time = 0;
     }
 

@@ -3196,10 +3196,12 @@ static void cmd_bt_status(const char* json)
     btstack_host_get_crash_info(&crash_pc, &crash_lr);
 #endif
     int pos = snprintf(response_buf, sizeof(response_buf),
-             "{\"enabled\":%s,\"scanning\":%s,\"connections\":%d,\"nus\":%d,\"gattfree\":%d,\"transport\":\"%s\","
+             "{\"enabled\":%s,\"scanning\":%s,\"supp\":%s,\"hsupp\":%s,\"connections\":%d,\"nus\":%d,\"gattfree\":%d,\"transport\":\"%s\","
              "\"up_s\":%lu,\"crash_pc\":\"%08lx\",\"crash_lr\":\"%08lx\",\"devices\":[",
              btstack_host_is_initialized() ? "true" : "false",
              btstack_host_is_scanning() ? "true" : "false",
+             btstack_host_scan_suppressed() ? "true" : "false",
+             btstack_host_scan_hard_suppressed() ? "true" : "false",
              btstack_classic_get_connection_count(),
              nus_state, gattfree, transport,
              (unsigned long)(platform_time_ms() / 1000),

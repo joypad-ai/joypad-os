@@ -59,6 +59,7 @@ void btstack_host_suppress_scan(bool suppress);
 // central scanning + GIAC inquiry behind a live link and starved it.
 void btstack_host_suppress_scan_latched(bool suppress);
 bool btstack_host_scan_hard_suppressed(void);
+bool btstack_host_scan_suppressed(void);
 void btstack_host_ble_drop_all(uint32_t holdoff_ms);
 
 // Connect to a BLE device
