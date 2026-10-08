@@ -1,26 +1,21 @@
 diff --git a/subsys/bluetooth/controller/ll_sw/ull_conn.c b/subsys/bluetooth/controller/ll_sw/ull_conn.c
-index c53f46a1..2ce293bc 100644
+index c53f46a1..93506f93 100644
 --- a/subsys/bluetooth/controller/ll_sw/ull_conn.c
 +++ b/subsys/bluetooth/controller/ll_sw/ull_conn.c
-@@ -88,6 +88,17 @@ static void tx_demux_sched(struct ll_conn *conn);
+@@ -88,6 +88,12 @@ static void tx_demux_sched(struct ll_conn *conn);
  static void tx_demux(void *param);
  static struct node_tx *tx_ull_dequeue(struct ll_conn *conn, struct node_tx *tx);
  
-+
-+/* Joypad OS: the Nintendo Switch 2 drives a 5 ms connection interval (4 units
-+ * of 1.25 ms), below the 7.5 ms Bluetooth minimum. Zephyr's own low-latency
-+ * scheme reinterprets values under 6 as 500 us units, which would misread the
-+ * console's 5 ms as 2.5 ms — so lower the threshold instead, keeping standard
-+ * 1.25 ms units for 4 and 5. See .dev/docs/switch2-ble-output-plan.md.
++/* Joypad OS: see ull_internal.h -- the Switch 2's 5 ms interval is only allowed
++ * while that output mode is active. Defined in nrf/src/main.c.
 + */
-+#ifndef JOYPAD_LE_INTERVAL_MIN
-+#define JOYPAD_LE_INTERVAL_MIN 4U
-+#endif
++extern unsigned char joypad_le_interval_min;
++#define JOYPAD_LE_INTERVAL_MIN joypad_le_interval_min
 +
  static void ticker_update_conn_op_cb(uint32_t status, void *param);
  static void ticker_stop_conn_op_cb(uint32_t status, void *param);
  static void ticker_start_conn_op_cb(uint32_t status, void *param);
-@@ -719,7 +730,7 @@ uint8_t ll_apto_get(uint16_t handle, uint16_t *apto)
+@@ -719,7 +725,7 @@ uint8_t ll_apto_get(uint16_t handle, uint16_t *apto)
  		return BT_HCI_ERR_UNKNOWN_CONN_ID;
  	}
  
@@ -29,7 +24,7 @@ index c53f46a1..2ce293bc 100644
  		*apto = conn->apto_reload * conn->lll.interval *
  			CONN_INT_UNIT_US / (10U * USEC_PER_MSEC);
  	} else {
-@@ -745,7 +756,7 @@ uint8_t ll_apto_set(uint16_t handle, uint16_t apto)
+@@ -745,7 +751,7 @@ uint8_t ll_apto_set(uint16_t handle, uint16_t apto)
  		return BT_HCI_ERR_UNKNOWN_CONN_ID;
  	}
  
@@ -38,7 +33,7 @@ index c53f46a1..2ce293bc 100644
  		conn->apto_reload =
  			RADIO_CONN_EVENTS(apto * 10U * USEC_PER_MSEC,
  					  conn->lll.interval *
-@@ -1155,7 +1166,7 @@ void ull_conn_done(struct node_rx_event_done *done)
+@@ -1155,7 +1161,7 @@ void ull_conn_done(struct node_rx_event_done *done)
  		if (!conn->supervision_expire) {
  			uint32_t conn_interval_us;
  
@@ -47,7 +42,7 @@ index c53f46a1..2ce293bc 100644
  				conn_interval_us = conn->lll.interval *
  						   CONN_INT_UNIT_US;
  			} else {
-@@ -2296,7 +2307,7 @@ void ull_conn_update_parameters(struct ll_conn *conn, uint8_t is_cu_proc, uint8_
+@@ -2296,7 +2302,7 @@ void ull_conn_update_parameters(struct ll_conn *conn, uint8_t is_cu_proc, uint8_
  #endif
  
  	/* compensate for instant_latency due to laziness */
@@ -56,7 +51,7 @@ index c53f46a1..2ce293bc 100644
  		conn_interval_old = instant_latency * lll->interval;
  		conn_interval_unit_old = CONN_INT_UNIT_US;
  	} else {
-@@ -2304,7 +2315,7 @@ void ull_conn_update_parameters(struct ll_conn *conn, uint8_t is_cu_proc, uint8_
+@@ -2304,7 +2310,7 @@ void ull_conn_update_parameters(struct ll_conn *conn, uint8_t is_cu_proc, uint8_
  		conn_interval_unit_old = CONN_LOW_LAT_INT_UNIT_US;
  	}
  
@@ -65,7 +60,7 @@ index c53f46a1..2ce293bc 100644
  		uint16_t max_tx_time;
  		uint16_t max_rx_time;
  		uint32_t slot_us;
-@@ -2478,7 +2489,7 @@ void ull_conn_update_peer_sca(struct ll_conn *conn)
+@@ -2478,7 +2484,7 @@ void ull_conn_update_peer_sca(struct ll_conn *conn)
  	lll = &conn->lll;
  
  	/* calculate the window widening and interval */
@@ -75,69 +70,50 @@ index c53f46a1..2ce293bc 100644
  				   CONN_INT_UNIT_US;
  	} else {
 diff --git a/subsys/bluetooth/controller/ll_sw/ull_internal.h b/subsys/bluetooth/controller/ll_sw/ull_internal.h
-index 2f29fc2e..ce1e4d97 100644
+index 2f29fc2e..4c3ad2cf 100644
 --- a/subsys/bluetooth/controller/ll_sw/ull_internal.h
 +++ b/subsys/bluetooth/controller/ll_sw/ull_internal.h
-@@ -11,8 +11,11 @@
+@@ -11,8 +11,20 @@
  #if defined(CONFIG_BT_CTLR_CONN_INTERVAL_LOW_LATENCY)
  #define CONN_INTERVAL_MIN(x) (0U)
  #else /* !CONFIG_BT_CTLR_CONN_INTERVAL_LOW_LATENCY */
 -/* Bluetooth defined CPR Interval Minimum (7.5ms) */
 -#define CONN_INTERVAL_MIN(x) (6U)
-+/* Bluetooth defined CPR Interval Minimum (7.5ms) — lowered by Joypad OS to
-+ * 4 units (5 ms) so a Nintendo Switch 2 can move the link to its native
-+ * interval. Standard 1.25 ms units are kept; see the note in ull_peripheral.c.
++/* Bluetooth defined CPR Interval Minimum (7.5ms).
++ *
++ * Joypad OS: runtime value, not a constant. A Nintendo Switch 2 drives a 5 ms
++ * connection interval (4 units), below the 7.5 ms minimum, so emulating a Pro
++ * Controller 2 needs this lowered -- but this header is shared by BOTH roles,
++ * and lowering it unconditionally also loosened the CENTRAL path. That made the
++ * link layer assert (reason 0xB7 -> NVIC_SystemReset) while connecting to an
++ * ordinary BLE controller. Switch 2 output and the BLE central are never needed
++ * at the same time (switch2_ble_late_init latches the central's scan off), so
++ * only that mode lowers it; every other mode keeps the spec floor.
++ * Defined in nrf/src/main.c.
 + */
-+#define CONN_INTERVAL_MIN(x) (4U)
++extern unsigned char joypad_le_interval_min;
++#define CONN_INTERVAL_MIN(x) (joypad_le_interval_min)
  #endif /* !CONFIG_BT_CTLR_CONN_INTERVAL_LOW_LATENCY */
  #else /* CONFIG_BT_CTLR_USER_CPR_INTERVAL_MIN */
  /* Proprietary user defined CPR Interval Minimum */
 diff --git a/subsys/bluetooth/controller/ll_sw/ull_peripheral.c b/subsys/bluetooth/controller/ll_sw/ull_peripheral.c
-index ccc711d0..67c8656c 100644
+index ccc711d0..f573edda 100644
 --- a/subsys/bluetooth/controller/ll_sw/ull_peripheral.c
 +++ b/subsys/bluetooth/controller/ll_sw/ull_peripheral.c
-@@ -62,6 +62,17 @@
+@@ -62,6 +62,12 @@
  
  static void invalid_release(struct ull_hdr *hdr, struct lll_conn *lll,
  			    memq_link_t *link, struct node_rx_pdu *rx);
-+
-+/* Joypad OS: the Nintendo Switch 2 drives a 5 ms connection interval (4 units
-+ * of 1.25 ms), below the 7.5 ms Bluetooth minimum. Zephyr's own low-latency
-+ * scheme reinterprets values under 6 as 500 us units, which would misread the
-+ * console's 5 ms as 2.5 ms — so lower the threshold instead, keeping standard
-+ * 1.25 ms units for 4 and 5. See .dev/docs/switch2-ble-output-plan.md.
++/* Joypad OS: see ull_internal.h -- the Switch 2's 5 ms interval is only allowed
++ * while that output mode is active. Defined in nrf/src/main.c.
 + */
-+#ifndef JOYPAD_LE_INTERVAL_MIN
-+#define JOYPAD_LE_INTERVAL_MIN 4U
-+#endif
++extern unsigned char joypad_le_interval_min;
++#define JOYPAD_LE_INTERVAL_MIN joypad_le_interval_min
 +
  static void ticker_op_stop_adv_cb(uint32_t status, void *param);
  static void ticker_op_cb(uint32_t status, void *param);
  static void ticker_update_latency_cancel_op_cb(uint32_t ticker_status,
-@@ -157,10 +168,30 @@ void ull_periph_setup(struct node_rx_pdu *rx, struct node_rx_ftr *ftr,
- 			       sizeof(lll->data_chan_map));
- 	lll->data_chan_hop = pdu_adv->connect_ind.hop;
- 	lll->interval = sys_le16_to_cpu(pdu_adv->connect_ind.interval);
-+	/* Joypad OS: a CONNECT_IND rejected here is dropped below HCI, so the host
-+	 * sees nothing at all — indistinguishable from "nobody tried to connect".
-+	 * Record both outcomes in the diagnostic ring (read with BT.TRACE):
-+	 *   0xA1 00 <interval>  CONNECT_IND received
-+	 *   0xA2 rr <interval>  rejected, rr = which check failed
-+	 * (0xA*, not 0xC*: bt_diag_mark() printf()s 0xC codes, which is fatal
-+	 *  from this context.)
-+	 */
-+	{
-+		extern void bt_diag_mark(uint32_t code);
-+		uint8_t why = 0;
-+		if (lll->data_chan_count < CHM_USED_COUNT_MIN) why |= 1;
-+		if (lll->data_chan_hop < CHM_HOP_COUNT_MIN) why |= 2;
-+		if (lll->data_chan_hop > CHM_HOP_COUNT_MAX) why |= 4;
-+		if (!IN_RANGE(lll->interval, JOYPAD_LE_INTERVAL_MIN, BT_HCI_LE_INTERVAL_MAX)) why |= 8;
-+		bt_diag_mark(0xA1000000u | (lll->interval & 0xFFFFu));
-+		if (why) {
-+			bt_diag_mark(0xA2000000u | ((uint32_t)why << 16) | (lll->interval & 0xFFFFu));
-+		}
-+	}
+@@ -160,7 +166,7 @@ void ull_periph_setup(struct node_rx_pdu *rx, struct node_rx_ftr *ftr,
  	if ((lll->data_chan_count < CHM_USED_COUNT_MIN) ||
  	    (lll->data_chan_hop < CHM_HOP_COUNT_MIN) ||
  	    (lll->data_chan_hop > CHM_HOP_COUNT_MAX) ||

@@ -53,6 +53,10 @@ extern void feedback_set_rumble(uint8_t player_index, uint8_t left, uint8_t righ
 extern void feedback_set_led_player(uint8_t player_index, uint8_t player_num);
 // Central-side BT host; absent on peripheral-only builds (ESP32 universal).
 extern void btstack_host_suppress_scan_latched(bool suppress) __attribute__((weak));
+// Defined by the nRF app next to the patched link layer; absent on other
+// platforms, so the address is checked before writing (a weak *variable*
+// resolves to address 0 when undefined, which would be a null store).
+extern unsigned char joypad_le_interval_min __attribute__((weak));
 
 #define TLV_TAG_SW2_BOND   (((uint32_t)'S' << 24) | ((uint32_t)'W' << 16) | ((uint32_t)'2' << 8) | 'B')
 #define BOND_MAGIC         0xB2
@@ -846,6 +850,14 @@ void switch2_ble_late_init(void)
     // is how a Pico W ended up running GIAC inquiry and 4s gap_connect retries to a
     // bonded pad while the console was trying to pair with us.
     if (btstack_host_suppress_scan_latched) btstack_host_suppress_scan_latched(true);
+
+    // The console drives a 5 ms connection interval (4 units), below the 7.5 ms
+    // Bluetooth floor, so the patched link layer has to allow it -- but ONLY for
+    // this mode. Allowing it binary-wide also loosened the central path and the
+    // link layer asserted there while connecting to an ordinary BLE controller.
+    // Safe to scope this way because we just latched the central's scan off: the
+    // two are never active at once.
+    if (&joypad_le_interval_min != NULL) joypad_le_interval_min = 4;
 
     l2cap_init();
     sm_init();

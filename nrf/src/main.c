@@ -86,6 +86,19 @@ __noinit static uint32_t bt_trace_magic;
 __noinit static uint32_t bt_trace_ring[BT_TRACE_N];
 __noinit static uint32_t bt_trace_idx;
 
+/* Link-layer CPR interval minimum, in 1.25 ms units, read by the patched
+ * controller (ull_internal.h / ull_conn.c / ull_peripheral.c).
+ *
+ * 6 = the 7.5 ms Bluetooth floor, which is what every mode should run. Switch 2
+ * output lowers it to 4 (5 ms) because the console drives the link that fast;
+ * see switch2_ble_late_init. It MUST stay at the floor otherwise: lowering it
+ * for the whole binary also loosened the central path, and the link layer then
+ * asserted (reason 0xB7, which force-resets the dongle) while connecting to an
+ * ordinary BLE controller. Switch 2 output and the BLE central are never active
+ * together, so the two needs do not collide.
+ */
+unsigned char joypad_le_interval_min = 6;
+
 void bt_diag_mark(uint32_t code)
 {
     if (bt_trace_magic != BT_TRACE_MAGIC) {

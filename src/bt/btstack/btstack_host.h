@@ -60,6 +60,8 @@ void btstack_host_suppress_scan(bool suppress);
 void btstack_host_suppress_scan_latched(bool suppress);
 bool btstack_host_scan_hard_suppressed(void);
 bool btstack_host_scan_suppressed(void);
+// Which code path last set/cleared suppression (diagnostic; see btstack_host.c).
+const char *btstack_host_scan_supp_src(void);
 void btstack_host_ble_drop_all(uint32_t holdoff_ms);
 
 // Connect to a BLE device

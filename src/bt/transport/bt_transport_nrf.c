@@ -367,6 +367,10 @@ static void nrf_get_nintendo_public_addr(bd_addr_t addr)
 // the boot log cannot be used to tell the per-mode path from the FICR fallback.
 int  bt_nrf_ident_mode = -1;
 bool bt_nrf_ident_permode = false;
+// Set once we have installed an advertising identity of our own -- either a
+// per-mode static random address or the Switch 2 public Nintendo address. The
+// controller's own static address must not replace it afterwards.
+static bool bt_nrf_addr_claimed = false;
 
 static void nrf_apply_local_addr(bd_addr_t local_addr)
 {
@@ -379,6 +383,7 @@ static void nrf_apply_local_addr(bd_addr_t local_addr)
         gap_random_address_set(local_addr);
         gap_random_address_set_mode(GAP_RANDOM_ADDRESS_TYPE_STATIC);
         bt_nrf_ident_permode = true;
+        bt_nrf_addr_claimed = true;
         printf("[BT_NRF] per-mode static random addr %s (mode %d)\n",
                bd_addr_to_str(local_addr), (int)ble_output_get_mode());
         return;
@@ -411,6 +416,7 @@ static void btstack_event_handler(uint8_t packet_type, uint16_t channel, uint8_t
                                 hci_set_bd_addr(pub);   // sent during init
                                 // Leave random addressing OFF so advertising
                                 // uses the public address we just claimed.
+                                bt_nrf_addr_claimed = true;
                                 printf("[BT_NRF] Switch 2 mode: public addr %s\n",
                                        bd_addr_to_str(pub));
                                 break;
@@ -443,7 +449,15 @@ static void btstack_event_handler(uint8_t packet_type, uint16_t channel, uint8_t
                     // we must not let the controller's own static address replace it --
                     // that silently undid the whole per-mode scheme: the decision ran
                     // with the right mode, then this handler overwrote the result.
-                    if (bt_nrf_ident_permode) break;
+                    //
+                    // It also broke Switch 2: that path claims a PUBLIC Nintendo
+                    // address and deliberately leaves random addressing off, but it
+                    // returns before nrf_apply_local_addr(), so the per-mode flag was
+                    // clear and this handler then switched the radio to a random
+                    // static address. The console ignores that, so it never
+                    // connected at all. Gate on "we installed an identity", not on
+                    // which kind.
+                    if (bt_nrf_addr_claimed) break;
 
                     const uint8_t *params = hci_event_command_complete_get_return_parameters(packet);
                     if (params[0] == 0 && size >= 13) {

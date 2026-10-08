@@ -150,6 +150,16 @@ static void switch2_handle_feedback(void);
 #endif
 #ifndef SCAN_WINDOW
 #define SCAN_WINDOW   0x0050  // 50ms (default)
+
+// Scanning at a 50% duty cycle (50 ms window every 100 ms) takes the radio off a
+// live connection half the time, so input arrives in bursts -- seen as analog
+// input going choppy, then smooth, then choppy again as scanning stops and
+// restarts. That was harmless while scanning was a 60 s window at boot; it is not
+// once a receiver scans continuously. Once a controller is connected, drop to a
+// low duty cycle: discovery still works, just slower.
+static bool scan_params_busy;      // duty cycle the active scan was started with
+#define SCAN_INTERVAL_BUSY 0x0200  // 320 ms
+#define SCAN_WINDOW_BUSY   0x0018  // 15 ms  (~4.7% duty vs 50%)
 #endif
 
 // ============================================================================
@@ -1137,6 +1147,11 @@ static bool scan_suppressed = false;   // App can suppress auto-restart (e.g. US
 // console connects at 15 ms, then never exchanges MTU or writes its pairing command.
 static bool scan_suppressed_hard = false;
 
+// Who last touched the suppression flags. Every setter is reachable from several
+// places and "scanning is off" on its own gave no clue which one did it; this is
+// reported by BT.STATUS.
+static const char *scan_supp_src = "none";
+
 bool btstack_host_scan_hard_suppressed(void)
 {
     return scan_suppressed_hard;
@@ -1182,8 +1197,13 @@ void btstack_host_start_scan(void)
         return;  // Already scanning
     }
 
-    printf("[BTSTACK_HOST] Starting BLE scan...\n");
-    gap_set_scan_params(1, SCAN_INTERVAL, SCAN_WINDOW, 0);
+    // Yield the radio to any live connection (see SCAN_*_BUSY above).
+    const bool busy = btstack_classic_get_connection_count() > 0;
+    scan_params_busy = busy;
+    printf("[BTSTACK_HOST] Starting BLE scan...%s\n", busy ? " (low duty, link active)" : "");
+    gap_set_scan_params(1,
+                        busy ? SCAN_INTERVAL_BUSY : SCAN_INTERVAL,
+                        busy ? SCAN_WINDOW_BUSY   : SCAN_WINDOW, 0);
     gap_start_scan();
     hid_state.scan_active = true;
     hid_state.state = BLE_STATE_SCANNING;
@@ -1246,14 +1266,21 @@ void btstack_host_start_timed_scan(uint32_t timeout_ms)
         return;
     }
     scan_suppressed = false;  // Explicit scan request clears suppression
+    scan_supp_src = "timed-scan";
     scan_timeout_end = btstack_run_loop_get_time_ms() + timeout_ms;
     printf("[BTSTACK_HOST] Starting timed scan (%lums)\n", (unsigned long)timeout_ms);
     btstack_host_start_scan();
 }
 
+const char *btstack_host_scan_supp_src(void)
+{
+    return scan_supp_src;
+}
+
 void btstack_host_suppress_scan(bool suppress)
 {
     scan_suppressed = suppress;
+    scan_supp_src = suppress ? "app" : "app-release";
     if (suppress && btstack_host_is_scanning()) {
         btstack_host_stop_scan();
     }
@@ -1264,8 +1291,17 @@ void btstack_host_suppress_scan(bool suppress)
 void btstack_host_suppress_scan_latched(bool suppress)
 {
     scan_suppressed_hard = suppress;
-    if (suppress) {
+    if (!suppress) {
+        // Release the soft flag as well. Clearing only the hard one left
+        // scan_suppressed stuck true and the central permanently deaf, which
+        // reads as supp=true / hsupp=false in BT.STATUS.
+        scan_suppressed = false;
+        scan_supp_src = "latched-release";
+        return;
+    }
+    {
         scan_suppressed = true;
+        scan_supp_src = "latched";
         if (btstack_host_is_scanning()) {
             btstack_host_stop_scan();
         }
@@ -1285,6 +1321,7 @@ void btstack_host_ble_drop_all(uint32_t holdoff_ms)
 {
     ble_drop_holdoff_until = btstack_run_loop_get_time_ms() + holdoff_ms;
     scan_suppressed = true;
+    scan_supp_src = "ble-drop";
     if (btstack_host_is_scanning()) {
         btstack_host_stop_scan();
     }
@@ -1429,6 +1466,16 @@ void btstack_host_process(void)
         hid_state.reconnect_attempt_time = 0;
     }
 
+    // Scan duty cycle follows the link state: a connection that comes up while a
+    // scan is already running would otherwise keep the 50% duty cycle that
+    // starves it, and a scan left at low duty after the last device disconnects
+    // would discover far more slowly than it needs to.
+    if (hid_state.scan_active &&
+        (btstack_classic_get_connection_count() > 0) != scan_params_busy) {
+        btstack_host_stop_scan();
+        btstack_host_start_scan();
+    }
+
     // Stale connect timestamp recovery. The timeout above only fires while the state
     // is CONNECTING, and the idle safety net below only fires when this timestamp is
     // zero. So any path that leaves CONNECTING without clearing it wedges both: the
@@ -1510,7 +1557,7 @@ void btstack_host_process(void)
     if (ble_drop_holdoff_until != 0 &&
         (int32_t)(btstack_run_loop_get_time_ms() - ble_drop_holdoff_until) >= 0) {
         ble_drop_holdoff_until = 0;
-        if (!scan_suppressed_hard) scan_suppressed = false;
+        if (!scan_suppressed_hard) { scan_suppressed = false; scan_supp_src = "holdoff-expired"; }
         printf("[BTSTACK_HOST] BLE drop holdoff expired, reconnect resumed\n");
     }
 
