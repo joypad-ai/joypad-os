@@ -399,8 +399,24 @@ static void bt_central_post_init(void)
     // even when BT scanning is disabled. Only start scanning if enabled.
     btstack_host_init_hid_handlers();
     if (bt_input_enabled) {
-        btstack_host_start_timed_scan(60000);
-        printf("[app:universal] BT Central enabled, scanning...\n");
+#if REQUIRE_BLE_OUTPUT
+        // Concurrent scanning starves our own advertising on the nRF controller, so
+        // in dual mode the scan stays time-boxed and discovery is a user action
+        // (BT.SCAN / the button). With the peripheral disabled there is nothing to
+        // starve, and a time-boxed scan is actively wrong: after it expires the
+        // central only direct-dials the already-bonded address, so a controller put
+        // into pairing mode later is never discovered at all.
+        if (!ble_output_is_enabled()) {
+            btstack_host_start_scan();
+            printf("[app:universal] BT Central enabled, scanning (receiver mode)\n");
+        } else {
+            btstack_host_start_timed_scan(60000);
+            printf("[app:universal] BT Central enabled, scanning...\n");
+        }
+#else
+        btstack_host_start_scan();
+        printf("[app:universal] BT Central enabled, scanning (receiver mode)\n");
+#endif
     } else {
         // Suppress the central's auto-scan. scan_suppressed defaults to
         // false, so the host's state machine would otherwise keep BLE
@@ -987,13 +1003,28 @@ void app_task(void)
     bool usb_host    = platform_usb_powered() && tud_mounted();
     bool ble_dev     = ble_output_role_is_device();
     bool host_scan   = false;
+    int  host_conns  = 0;
 #if REQUIRE_BT_INPUT
-    host_scan = btstack_host_is_scanning();
+    host_scan  = btstack_host_is_scanning();
+    // Combined central count despite the name -- it includes BLE links.
+    host_conns = btstack_classic_get_connection_count();
 #endif
-    // Advertising-and-unconnected as a device, or scanning as a host.
-    bool searching = (ble_dev && !ble_conn) || host_scan;
+    bool searching;
+    int  connected_n;
+    if (ble_dev) {
+        // Advertising-and-unconnected as a device, or scanning as a host.
+        searching   = !ble_conn || host_scan;
+        connected_n = (ble_conn || usb_host) ? 1 : 0;
+    } else {
+        // Receiver (no wireless device role): the interesting link is the controller
+        // side, so the LED tracks the CENTRAL -- solid once a controller is linked,
+        // blinking while hunting for one. Keying "connected" off usb_host here was
+        // wrong: being plugged in is not the same as having a controller.
+        searching   = host_scan && host_conns == 0;
+        connected_n = host_conns;
+    }
     leds_set_searching(searching);
-    leds_set_connected_devices((ble_conn || usb_host) ? 1 : 0);
+    leds_set_connected_devices(connected_n);
 
     // Track state changes for LED color updates
     static bool last_ble_conn = false;
