@@ -9,6 +9,43 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+#### universal — dedicated BLE keyboard, mouse, and keyboard+mouse modes
+- **Three new BLE output modes that declare only what they are:** `Keyboard+Mouse BLE`,
+  `Keyboard BLE`, and `Mouse BLE`. Standard puts keyboard, mouse and gamepad in one HID
+  service, which macOS turns into a single gamepad-primary device that never dispatches its
+  keyboard/pointer collections; SInput works around that with a second HID service, but on
+  **iOS only the keyboard/mouse half dispatches at all** — the gamepad is dead weight there.
+  These modes advertise the correct appearance (keyboard `0x03C1`, mouse `0x03C2`), carry their
+  own PnP ID, and drop any report their descriptor does not declare, so a host never claims the
+  device as a controller when it is being used as a keyboard or a pointer. The web config picks
+  them up automatically.
+
+#### universal — each BLE output mode is its own device to the host
+- **Switching BLE modes no longer needs "Forget This Device".** Hosts cache a bonded peer's
+  GATT database against its address, and every mode used to advertise from the same one — so a
+  mode switch handed the host a new report map under an identity it had already cached. Each
+  mode now advertises from its own address, derived deterministically from the board id, so it
+  is identical across reboots, reflashes and mode switches: one permanent bond per mode, and
+  switching back reconnects to the right one. Switch 2 keeps its public Nintendo address, which
+  the console bonds to.
+- **LED colours are now one per function** and aligned with the USB table (SInput white,
+  keyboard+mouse yellow, Xbox green, Switch red), using all seven combinations the
+  discrete-GPIO boards can actually distinguish.
+
+#### universal — the BLE device output can be turned off
+- **`ROUTER.SET {"ble_output": false}`**, plus a toggle on the web config Bluetooth page, stops
+  the adapter being a BLE peripheral at all — for a board configured purely as a receiver, which
+  previously had no way to avoid being a peripheral and a central at the same time. With the
+  Bluetooth host disabled too, BTstack is never started. `CAPS.GET` reports a `bt_device` block
+  mirroring `bt_host`, so the UI can tell "compiled in" from "user-settable".
+
+#### Diagnostics
+- **`BT.CTRL`** reports the Bluetooth controller's HCI/LMP version and manufacturer plus the
+  address actually being advertised from. HCI init finishes long before a CDC client can attach,
+  so none of this was previously observable.
+- **`BT.STATUS`** gains the two scan-suppression flags, so "not scanning" can be told apart from
+  "suppressed".
+
 
 #### universal — SInput BLE carries gamepad + keyboard + mouse
 - **One BLE device is now a controller, keyboard, and mouse at once.** In SInput BLE mode the
@@ -22,6 +59,48 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
   and a key/modifier panel driving `MOUSE.INJECT`/`KEY.INJECT`.
 
 ### Fixed
+
+#### BLE host (central)
+- 🔴 **The central could go permanently deaf after one failed reconnect.** The BLE connect
+  timeout only fires while the state is `CONNECTING`, and the idle safety net that resumes
+  scanning only fires once the connect timestamp is clear — so any path that left `CONNECTING`
+  without clearing it wedged both, and scanning stopped for good. A bonded controller was then
+  never discovered again: it read as "pairs but never fully connects", and only a manual
+  `BT.SCAN` recovered it. Found with a Stadia controller on a receiver-mode dongle.
+- **A receiver never discovered a controller put into pairing mode later.** Scanning was
+  time-boxed to 60 s at boot, after which only the already-bonded address was dialled. With the
+  BLE peripheral disabled there is nothing for scanning to starve, so receiver mode now scans
+  continuously; dual-role builds keep the time box, because concurrent scanning does starve our
+  own advertising.
+- **The LED ignored the central.** With no wireless device role, "connected" was computed from
+  the output link — so it effectively meant "USB is plugged in" rather than "a controller is
+  linked". It now follows the central: solid once a controller connects, blinking only while
+  scanning with none.
+
+#### nRF52840
+- **Every BLE advertisement did a blocking `printf` from the BTstack thread.** The live btdiag
+  filter matched all `0xE03E` LE meta events as "low-rate", but subevent `0x02` is one report
+  per advertisement seen — so while scanning it buried every useful log line and stalled the
+  cooperative BTstack thread on a polled UART, during exactly the window where connection setup
+  is timing-sensitive. Ring-only now.
+
+#### Switch 2 BLE output
+- **The Nintendo public address could not be claimed on a Pico W.** pico-sdk's CYW43 transport
+  sets its own BD_ADDR from inside `hci_power_control(HCI_POWER_ON)`, overwriting anything set
+  beforehand — so the vendor command went out carrying the OTP address and succeeded, making it
+  look as though the radio had refused it. It is claimed from the init sequence instead. On nRF a
+  fourth writer (`ZEPHYR_READ_STATIC_ADDRESS`) arrives last and installed the controller's own
+  static address over ours; it now yields.
+- **A console that connected and then went silent made the adapter invisible forever.** We stop
+  advertising while connected, and nothing tore down a dead peripheral link — `BLE.DROP` walks
+  only the central's table. A stall watchdog now drops such a link and goes back on air, and
+  self-heals when the disconnect request is ignored.
+- **`att_w` counted disconnect cleanup as a console write**, which made a console that never
+  touched our GATT look as though it had.
+- **Pico W cannot act as a Switch 2 controller** — its CYW43 reports LE 2M PHY unsupported while
+  the nRF52840 that pairs has it. Documented in `.dev/docs/switch2-ble-pico-w-verdict.md` with
+  everything that was ruled out, so it does not get re-litigated.
+
 
 #### BLE output (universal)
 - 🔴 **BLE keyboard/mouse reports arrived but did nothing on macOS.** With the keyboard and mouse
