@@ -32,6 +32,16 @@ typedef enum {
     // radio whose link layer accepts the console's 5 ms connection interval, so it is
     // only compiled where CONFIG_SWITCH2_BLE_OUTPUT is set.
     BLE_MODE_SWITCH2,
+    // Dedicated keyboard + mouse, no gamepad collection. Hosts (macOS in
+    // particular) never dispatch typed input from a gamepad-primary HID device,
+    // and claiming the device as a controller is wrong when it is being used as
+    // a keyboard/pointer. Appended last so persisted mode indices stay stable.
+    BLE_MODE_KBM,
+    // Dedicated keyboard only / mouse only. Same reasoning as KBM, for hosts (or
+    // uses) where even a pointer or a keyboard alongside is unwanted. Appended
+    // last so persisted mode indices stay stable.
+    BLE_MODE_KBD,
+    BLE_MODE_MOUSE,
     BLE_MODE_COUNT
 } ble_output_mode_t;
 
@@ -54,6 +64,9 @@ typedef enum {
 #define BLE_IDENT_STANDARD  0x01
 #define BLE_IDENT_XBOX      0x02
 #define BLE_IDENT_SINPUT    0x03
+#define BLE_IDENT_KBM       0x04
+#define BLE_IDENT_KBD       0x05
+#define BLE_IDENT_MOUSE     0x06
 // Switch 2 is excluded: the console bonds to a PUBLIC Nintendo address which must
 // not move (see switch2_ble_get_public_addr), and Switch-BT is Classic.
 

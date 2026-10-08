@@ -59,94 +59,121 @@ extern void feedback_set_rumble(uint8_t player_index, uint8_t left, uint8_t righ
 // HID REPORT DESCRIPTOR — Standard Composite: Keyboard + Mouse + Gamepad
 // ============================================================================
 
+// The keyboard (report ID 1) and mouse (report ID 2) collections are shared: the
+// composite Standard map is these two plus a gamepad, and the dedicated
+// keyboard+mouse mode is these two alone. Kept as one macro so the two maps
+// cannot drift apart -- a mismatch between them would be invisible until a host
+// mis-parsed a report.
+// One source of truth for each collection, so the four maps that use them cannot
+// drift apart: keyboard-only, mouse-only, keyboard+mouse, and the composite
+// Standard map (these two plus a gamepad). Block comments, not //: a // comment
+// followed by a line-continuation swallows the next line.
+#define HID_KBD_COLLECTION \
+      /* ---- Keyboard (Report ID 1) ---- */ \
+    0x05, 0x01,  /* Usage Page (Generic Desktop) */ \
+    0x09, 0x06,  /* Usage (Keyboard) */ \
+    0xA1, 0x01,  /* Collection (Application) */ \
+    0x85, 0x01,  /* Report ID (1) */ \
+ \
+      /* Modifier keys (8 bits) */ \
+    0x05, 0x07,  /* Usage Page (Key Codes) */ \
+    0x19, 0xE0,  /* Usage Minimum (224 - Left Control) */ \
+    0x29, 0xE7,  /* Usage Maximum (231 - Right GUI) */ \
+    0x15, 0x00,  /* Logical Minimum (0) */ \
+    0x25, 0x01,  /* Logical Maximum (1) */ \
+    0x75, 0x01,  /* Report Size (1) */ \
+    0x95, 0x08,  /* Report Count (8) */ \
+    0x81, 0x02,  /* Input (Data, Variable, Absolute) */ \
+ \
+      /* Reserved byte */ \
+    0x95, 0x01,  /* Report Count (1) */ \
+    0x75, 0x08,  /* Report Size (8) */ \
+    0x81, 0x01,  /* Input (Constant) */ \
+ \
+      /* LED output report (Caps/Num/Scroll Lock) */ \
+    0x95, 0x05,  /* Report Count (5) */ \
+    0x75, 0x01,  /* Report Size (1) */ \
+    0x05, 0x08,  /* Usage Page (LEDs) */ \
+    0x19, 0x01,  /* Usage Minimum (1 - Num Lock) */ \
+    0x29, 0x05,  /* Usage Maximum (5 - Kana) */ \
+    0x91, 0x02,  /* Output (Data, Variable, Absolute) */ \
+    0x95, 0x01,  /* Report Count (1) */ \
+    0x75, 0x03,  /* Report Size (3) */ \
+    0x91, 0x01,  /* Output (Constant) - padding */ \
+ \
+      /* Keycodes (6 keys) */ \
+    0x95, 0x06,  /* Report Count (6) */ \
+    0x75, 0x08,  /* Report Size (8) */ \
+    0x15, 0x00,  /* Logical Minimum (0) */ \
+    0x25, 0x65,  /* Logical Maximum (101) */ \
+    0x05, 0x07,  /* Usage Page (Key Codes) */ \
+    0x19, 0x00,  /* Usage Minimum (0) */ \
+    0x29, 0x65,  /* Usage Maximum (101) */ \
+    0x81, 0x00,  /* Input (Data, Array) */ \
+ \
+    0xC0,  /* End Collection */
+
+#define HID_MOUSE_COLLECTION \
+      /* ---- Mouse (Report ID 2) ---- */ \
+    0x05, 0x01,  /* Usage Page (Generic Desktop) */ \
+    0x09, 0x02,  /* Usage (Mouse) */ \
+    0xA1, 0x01,  /* Collection (Application) */ \
+    0x85, 0x02,  /* Report ID (2) */ \
+    0x09, 0x01,  /* Usage (Pointer) */ \
+    0xA1, 0x00,  /* Collection (Physical) */ \
+ \
+      /* 5 Buttons */ \
+    0x05, 0x09,  /* Usage Page (Button) */ \
+    0x19, 0x01,  /* Usage Minimum (1) */ \
+    0x29, 0x05,  /* Usage Maximum (5) */ \
+    0x15, 0x00,  /* Logical Minimum (0) */ \
+    0x25, 0x01,  /* Logical Maximum (1) */ \
+    0x95, 0x05,  /* Report Count (5) */ \
+    0x75, 0x01,  /* Report Size (1) */ \
+    0x81, 0x02,  /* Input (Data, Variable, Absolute) */ \
+ \
+      /* 3 bits padding */ \
+    0x95, 0x01,  /* Report Count (1) */ \
+    0x75, 0x03,  /* Report Size (3) */ \
+    0x81, 0x01,  /* Input (Constant) */ \
+ \
+      /* X, Y movement (-127 to 127) */ \
+    0x05, 0x01,  /* Usage Page (Generic Desktop) */ \
+    0x09, 0x30,  /* Usage (X) */ \
+    0x09, 0x31,  /* Usage (Y) */ \
+    0x15, 0x81,  /* Logical Minimum (-127) */ \
+    0x25, 0x7F,  /* Logical Maximum (127) */ \
+    0x75, 0x08,  /* Report Size (8) */ \
+    0x95, 0x02,  /* Report Count (2) */ \
+    0x81, 0x06,  /* Input (Data, Variable, Relative) */ \
+ \
+      /* Vertical wheel (-127 to 127) */ \
+    0x09, 0x38,  /* Usage (Wheel) */ \
+    0x15, 0x81,  /* Logical Minimum (-127) */ \
+    0x25, 0x7F,  /* Logical Maximum (127) */ \
+    0x75, 0x08,  /* Report Size (8) */ \
+    0x95, 0x01,  /* Report Count (1) */ \
+    0x81, 0x06,  /* Input (Data, Variable, Relative) */ \
+ \
+    0xC0,  /* End Collection (Physical) */ \
+    0xC0,  /* End Collection (Mouse) */
+
+#define HID_KBD_MOUSE_COLLECTIONS HID_KBD_COLLECTION HID_MOUSE_COLLECTION
+
+// Dedicated keyboard only: a host enumerates this purely as a keyboard.
+static const uint8_t kbd_hid_descriptor[] = { HID_KBD_COLLECTION };
+
+// Dedicated mouse only: a host enumerates this purely as a pointer.
+static const uint8_t mouse_hid_descriptor[] = { HID_MOUSE_COLLECTION };
+
+// Dedicated keyboard + mouse: no gamepad collection at all, so a host enumerates
+// this as a keyboard/pointer rather than claiming it as a controller.
+static const uint8_t kbm_hid_descriptor[] = {
+    HID_KBD_MOUSE_COLLECTIONS
+};
+
 static const uint8_t standard_hid_descriptor[] = {
-    // ---- Keyboard (Report ID 1) ----
-    0x05, 0x01,        // Usage Page (Generic Desktop)
-    0x09, 0x06,        // Usage (Keyboard)
-    0xA1, 0x01,        // Collection (Application)
-    0x85, 0x01,        //   Report ID (1)
-
-    // Modifier keys (8 bits)
-    0x05, 0x07,        //   Usage Page (Key Codes)
-    0x19, 0xE0,        //   Usage Minimum (224 - Left Control)
-    0x29, 0xE7,        //   Usage Maximum (231 - Right GUI)
-    0x15, 0x00,        //   Logical Minimum (0)
-    0x25, 0x01,        //   Logical Maximum (1)
-    0x75, 0x01,        //   Report Size (1)
-    0x95, 0x08,        //   Report Count (8)
-    0x81, 0x02,        //   Input (Data, Variable, Absolute)
-
-    // Reserved byte
-    0x95, 0x01,        //   Report Count (1)
-    0x75, 0x08,        //   Report Size (8)
-    0x81, 0x01,        //   Input (Constant)
-
-    // LED output report (Caps/Num/Scroll Lock)
-    0x95, 0x05,        //   Report Count (5)
-    0x75, 0x01,        //   Report Size (1)
-    0x05, 0x08,        //   Usage Page (LEDs)
-    0x19, 0x01,        //   Usage Minimum (1 - Num Lock)
-    0x29, 0x05,        //   Usage Maximum (5 - Kana)
-    0x91, 0x02,        //   Output (Data, Variable, Absolute)
-    0x95, 0x01,        //   Report Count (1)
-    0x75, 0x03,        //   Report Size (3)
-    0x91, 0x01,        //   Output (Constant) - padding
-
-    // Keycodes (6 keys)
-    0x95, 0x06,        //   Report Count (6)
-    0x75, 0x08,        //   Report Size (8)
-    0x15, 0x00,        //   Logical Minimum (0)
-    0x25, 0x65,        //   Logical Maximum (101)
-    0x05, 0x07,        //   Usage Page (Key Codes)
-    0x19, 0x00,        //   Usage Minimum (0)
-    0x29, 0x65,        //   Usage Maximum (101)
-    0x81, 0x00,        //   Input (Data, Array)
-
-    0xC0,              // End Collection
-
-    // ---- Mouse (Report ID 2) ----
-    0x05, 0x01,        // Usage Page (Generic Desktop)
-    0x09, 0x02,        // Usage (Mouse)
-    0xA1, 0x01,        // Collection (Application)
-    0x85, 0x02,        //   Report ID (2)
-    0x09, 0x01,        //   Usage (Pointer)
-    0xA1, 0x00,        //   Collection (Physical)
-
-    // 5 Buttons
-    0x05, 0x09,        //     Usage Page (Button)
-    0x19, 0x01,        //     Usage Minimum (1)
-    0x29, 0x05,        //     Usage Maximum (5)
-    0x15, 0x00,        //     Logical Minimum (0)
-    0x25, 0x01,        //     Logical Maximum (1)
-    0x95, 0x05,        //     Report Count (5)
-    0x75, 0x01,        //     Report Size (1)
-    0x81, 0x02,        //     Input (Data, Variable, Absolute)
-
-    // 3 bits padding
-    0x95, 0x01,        //     Report Count (1)
-    0x75, 0x03,        //     Report Size (3)
-    0x81, 0x01,        //     Input (Constant)
-
-    // X, Y movement (-127 to 127)
-    0x05, 0x01,        //     Usage Page (Generic Desktop)
-    0x09, 0x30,        //     Usage (X)
-    0x09, 0x31,        //     Usage (Y)
-    0x15, 0x81,        //     Logical Minimum (-127)
-    0x25, 0x7F,        //     Logical Maximum (127)
-    0x75, 0x08,        //     Report Size (8)
-    0x95, 0x02,        //     Report Count (2)
-    0x81, 0x06,        //     Input (Data, Variable, Relative)
-
-    // Vertical wheel (-127 to 127)
-    0x09, 0x38,        //     Usage (Wheel)
-    0x15, 0x81,        //     Logical Minimum (-127)
-    0x25, 0x7F,        //     Logical Maximum (127)
-    0x75, 0x08,        //     Report Size (8)
-    0x95, 0x01,        //     Report Count (1)
-    0x81, 0x06,        //     Input (Data, Variable, Relative)
-
-    0xC0,              //   End Collection (Physical)
-    0xC0,              // End Collection (Mouse)
+    HID_KBD_MOUSE_COLLECTIONS
 
     // ---- Gamepad (Report ID 3) ----
     0x05, 0x01,        // Usage Page (Generic Desktop Ctrls)
@@ -724,6 +751,48 @@ static const uint8_t scan_resp_standard[] = {
     'C', 'o', 'n', 't', 'r', 'o', 'l', 'l', 'e', 'r',
 };
 
+static const uint8_t adv_data_kbd[] = {
+    0x02, BLUETOOTH_DATA_TYPE_FLAGS, 0x06,
+    // Complete local name: "Joypad Keyboard"
+    0x10, BLUETOOTH_DATA_TYPE_COMPLETE_LOCAL_NAME,
+    'J', 'o', 'y', 'p', 'a', 'd', ' ',
+    'K', 'e', 'y', 'b', 'o', 'a', 'r', 'd',
+    0x03, BLUETOOTH_DATA_TYPE_COMPLETE_LIST_OF_16_BIT_SERVICE_CLASS_UUIDS,
+    ORG_BLUETOOTH_SERVICE_HUMAN_INTERFACE_DEVICE & 0xFF,
+    ORG_BLUETOOTH_SERVICE_HUMAN_INTERFACE_DEVICE >> 8,
+    // Appearance: Keyboard (0x03C1)
+    0x03, BLUETOOTH_DATA_TYPE_APPEARANCE, 0xC1, 0x03,
+};
+
+static const uint8_t adv_data_mouse[] = {
+    0x02, BLUETOOTH_DATA_TYPE_FLAGS, 0x06,
+    // Complete local name: "Joypad Mouse"
+    0x0D, BLUETOOTH_DATA_TYPE_COMPLETE_LOCAL_NAME,
+    'J', 'o', 'y', 'p', 'a', 'd', ' ',
+    'M', 'o', 'u', 's', 'e',
+    0x03, BLUETOOTH_DATA_TYPE_COMPLETE_LIST_OF_16_BIT_SERVICE_CLASS_UUIDS,
+    ORG_BLUETOOTH_SERVICE_HUMAN_INTERFACE_DEVICE & 0xFF,
+    ORG_BLUETOOTH_SERVICE_HUMAN_INTERFACE_DEVICE >> 8,
+    // Appearance: Mouse (0x03C2)
+    0x03, BLUETOOTH_DATA_TYPE_APPEARANCE, 0xC2, 0x03,
+};
+
+static const uint8_t adv_data_kbm[] = {
+    // Flags: general discoverable, BR/EDR not supported
+    0x02, BLUETOOTH_DATA_TYPE_FLAGS, 0x06,
+    // Complete local name: "Joypad KB+Mouse"
+    0x10, BLUETOOTH_DATA_TYPE_COMPLETE_LOCAL_NAME,
+    'J', 'o', 'y', 'p', 'a', 'd', ' ',
+    'K', 'B', '+', 'M', 'o', 'u', 's', 'e',
+    // 16-bit Service UUIDs: HID Service
+    0x03, BLUETOOTH_DATA_TYPE_COMPLETE_LIST_OF_16_BIT_SERVICE_CLASS_UUIDS,
+    ORG_BLUETOOTH_SERVICE_HUMAN_INTERFACE_DEVICE & 0xFF,
+    ORG_BLUETOOTH_SERVICE_HUMAN_INTERFACE_DEVICE >> 8,
+    // Appearance: Keyboard (0x03C1) — a gamepad appearance here makes hosts claim
+    // the device as a controller and stop dispatching keystrokes.
+    0x03, BLUETOOTH_DATA_TYPE_APPEARANCE, 0xC1, 0x03,
+};
+
 static const uint8_t adv_data_xbox[] = {
     // Flags: general discoverable, BR/EDR not supported
     0x02, BLUETOOTH_DATA_TYPE_FLAGS, 0x06,
@@ -1180,6 +1249,18 @@ void ble_output_late_init(void)
         // 0x0B13, product version 0x0509 — the identity verified to make
         // Windows load its own Xbox driver against this report map.
         device_information_service_server_set_pnp_id(0x02, 0x045E, 0x0B13, 0x0509);
+    } else if (current_mode == BLE_MODE_KBM || current_mode == BLE_MODE_KBD ||
+               current_mode == BLE_MODE_MOUSE) {
+        device_information_service_server_set_manufacturer_name("Joypad");
+        device_information_service_server_set_model_number(
+            current_mode == BLE_MODE_KBD   ? "Joypad Keyboard" :
+            current_mode == BLE_MODE_MOUSE ? "Joypad Mouse"    : "Joypad KB+Mouse");
+        device_information_service_server_set_software_revision("1.0.0");
+        // PnP ID: Bluetooth SIG (0x01), a distinct PID per mode so hosts do not
+        // confuse these with the composite gamepad identity or each other.
+        device_information_service_server_set_pnp_id(0x01, 0xe502,
+            current_mode == BLE_MODE_KBD ? 0xbbad :
+            current_mode == BLE_MODE_MOUSE ? 0xbbae : 0xbbac, 0x0100);
     } else if (current_mode == BLE_MODE_SINPUT) {
         device_information_service_server_set_manufacturer_name(SINPUT_MANUFACTURER);
         device_information_service_server_set_model_number(SINPUT_PRODUCT);
@@ -1200,6 +1281,17 @@ void ble_output_late_init(void)
     if (current_mode == BLE_MODE_XBOX) {
         hid_desc = ble_xbox_get_descriptor();
         hid_desc_size = ble_xbox_get_descriptor_size();
+    } else if (current_mode == BLE_MODE_KBM) {
+        // Keyboard (ID 1) + mouse (ID 2) only, no gamepad collection. Same report
+        // IDs as the composite, so the existing send path needs no special casing.
+        hid_desc = kbm_hid_descriptor;
+        hid_desc_size = sizeof(kbm_hid_descriptor);
+    } else if (current_mode == BLE_MODE_KBD) {
+        hid_desc = kbd_hid_descriptor;
+        hid_desc_size = sizeof(kbd_hid_descriptor);
+    } else if (current_mode == BLE_MODE_MOUSE) {
+        hid_desc = mouse_hid_descriptor;
+        hid_desc_size = sizeof(mouse_hid_descriptor);
     } else if (current_mode == BLE_MODE_SINPUT) {
         // Pure SInput gamepad map on HID service #1. The composite's keyboard
         // and mouse live on HID service #2 (sinput_kbd_mouse_tail) — see the
@@ -1271,6 +1363,18 @@ void ble_output_late_init(void)
         gap_name = "Joypad Xinput";
         adv_data = adv_data_xbox;
         adv_data_len = sizeof(adv_data_xbox);
+    } else if (current_mode == BLE_MODE_KBM) {
+        gap_name = "Joypad KB+Mouse";
+        adv_data = adv_data_kbm;
+        adv_data_len = sizeof(adv_data_kbm);
+    } else if (current_mode == BLE_MODE_KBD) {
+        gap_name = "Joypad Keyboard";
+        adv_data = adv_data_kbd;
+        adv_data_len = sizeof(adv_data_kbd);
+    } else if (current_mode == BLE_MODE_MOUSE) {
+        gap_name = "Joypad Mouse";
+        adv_data = adv_data_mouse;
+        adv_data_len = sizeof(adv_data_mouse);
     } else if (current_mode == BLE_MODE_SINPUT) {
         gap_name = "Joypad SInput";
         adv_data = adv_data_standard;  // generic HID adv (appearance = gamepad)
@@ -1310,7 +1414,9 @@ void ble_output_late_init(void)
     // SInput modes share the composite GATT (which includes NUS); Xbox mode uses
     // a different GATT profile without NUS. SDL matches SInput by VID/PID + HID,
     // so the extra NUS service is inert to it.
-    if (current_mode == BLE_MODE_STANDARD || current_mode == BLE_MODE_SINPUT) {
+    if (current_mode == BLE_MODE_STANDARD || current_mode == BLE_MODE_SINPUT ||
+        current_mode == BLE_MODE_KBM || current_mode == BLE_MODE_KBD ||
+        current_mode == BLE_MODE_MOUSE) {
         ble_nus_init();
     }
 
@@ -1340,6 +1446,8 @@ static void ble_output_task_standard(void)
         // against what will actually go out — the queued report when one is
         // still waiting for CAN_SEND_NOW — and overwrite it, never drop.
         case INPUT_TYPE_KEYBOARD: {
+            // Mouse-only map has no keyboard collection.
+            if (current_mode == BLE_MODE_MOUSE) return;
             ble_keyboard_report_t report;
             ble_keyboard_report_from_event(event, &report);
             const ble_keyboard_report_t *ref = (pending_type == PENDING_KEYBOARD)
@@ -1352,6 +1460,8 @@ static void ble_output_task_standard(void)
         }
 
         case INPUT_TYPE_MOUSE: {
+            // Keyboard-only map has no mouse collection.
+            if (current_mode == BLE_MODE_KBD) return;
             ble_mouse_report_t report;
             ble_mouse_report_from_event(event, &report);
             const ble_mouse_report_t *ref = (pending_type == PENDING_MOUSE)
@@ -1364,6 +1474,11 @@ static void ble_output_task_standard(void)
         }
 
         default: {
+            // None of the dedicated maps carry a gamepad collection, so a gamepad
+            // event has no report to go out on -- sending one would be a report ID
+            // the host never agreed to.
+            if (current_mode == BLE_MODE_KBM || current_mode == BLE_MODE_KBD ||
+                current_mode == BLE_MODE_MOUSE) return;
             #define SCALE_8_TO_16(v) ((int16_t)((uint32_t)(v) * 32767 / 255))
             ble_gamepad_report_t report;
             uint16_t buttons = convert_buttons(event->buttons);
@@ -1610,6 +1725,9 @@ const char* ble_output_get_mode_name(ble_output_mode_t mode)
         case BLE_MODE_SINPUT:    return "SInput BLE";
         case BLE_MODE_SWITCH_BT: return "Switch (BT)";
         case BLE_MODE_SWITCH2:   return "Switch 2 (BLE)";
+        case BLE_MODE_KBM:       return "Keyboard+Mouse BLE";
+        case BLE_MODE_KBD:       return "Keyboard BLE";
+        case BLE_MODE_MOUSE:     return "Mouse BLE";
         default:                 return "Unknown";
     }
 }
@@ -1617,9 +1735,20 @@ const char* ble_output_get_mode_name(ble_output_mode_t mode)
 void ble_output_get_mode_color(ble_output_mode_t mode, uint8_t *r, uint8_t *g, uint8_t *b)
 {
     switch (mode) {
+        // Boards like the Makerdiary MDK drive three discrete GPIOs, so set_color()
+        // reduces every colour to (r>0, g>0, b>0) -- only the 7 non-black on/off
+        // combinations are distinguishable, and these use all 7. Keep them aligned
+        // with usbd_get_mode_color() so a function means the same colour on either
+        // transport (SInput white, keyboard+mouse yellow, Xbox green, Switch red).
         case BLE_MODE_STANDARD:  *r = 0; *g = 0; *b = 64; break;   // Blue
         case BLE_MODE_XBOX:      *r = 0; *g = 64; *b = 0; break;   // Green
-        case BLE_MODE_SINPUT:    *r = 0; *g = 32; *b = 64; break;  // Cyan
+        case BLE_MODE_KBD:       *r = 0; *g = 64; *b = 64; break;  // Cyan
+        case BLE_MODE_MOUSE:     *r = 64; *g = 0; *b = 64; break;  // Magenta
+        case BLE_MODE_KBM:       *r = 64; *g = 64; *b = 0; break;  // Yellow
+        // White, matching USB_OUTPUT_MODE_SINPUT. Per-channel kept low because
+        // white stacks all three, so the total brightness matches the
+        // single-channel colours instead of swamping them.
+        case BLE_MODE_SINPUT:    *r = 10; *g = 10; *b = 10; break; // White
         case BLE_MODE_SWITCH_BT: *r = 64; *g = 0; *b = 0; break;   // Red (Switch/Classic)
         // Switch 2: RED, same family as Switch. Was (64,0,24) to be a distinct
         // magenta-red on a true NeoPixel, but boards like the Makerdiary MDK drive
@@ -1642,6 +1771,9 @@ bool ble_output_get_mode_addr(ble_output_mode_t mode, bd_addr_t out)
         case BLE_MODE_STANDARD: nonce = BLE_IDENT_STANDARD; break;
         case BLE_MODE_XBOX:     nonce = BLE_IDENT_XBOX;     break;
         case BLE_MODE_SINPUT:   nonce = BLE_IDENT_SINPUT;   break;
+        case BLE_MODE_KBM:      nonce = BLE_IDENT_KBM;      break;
+        case BLE_MODE_KBD:      nonce = BLE_IDENT_KBD;      break;
+        case BLE_MODE_MOUSE:    nonce = BLE_IDENT_MOUSE;    break;
         default:
             // Switch 2 (public Nintendo address) and Switch-BT (Classic) own their
             // identity; the caller must not override it.
