@@ -99,7 +99,13 @@ void bt_diag_mark(uint32_t code)
     // (0xE03E: connection complete, param/PHY updates). Per-packet marks
     // (other HCI events, ACL 0xACC0) stay ring-only — printf in the
     // cooperative BTstack thread is a polled-UART stall.
-    if ((code >> 28) == 0xC || (code >> 16) == 0xE03E) {
+    // Subevent 0x02 is LE Advertising Report — one per advertisement seen, so it
+    // is emphatically NOT low-rate while scanning. Printing it floods the CDC log
+    // (burying every useful host/HID line) and, per the note above, stalls the
+    // cooperative BTstack thread on a polled UART for each report — during exactly
+    // the window where connection setup is timing-sensitive. Ring-only.
+    if ((code >> 28) == 0xC ||
+        ((code >> 16) == 0xE03E && (code & 0xFFFF) != 0x0002)) {
         printf("[btdiag] mark %08x\n", (unsigned)code);
     }
 }
