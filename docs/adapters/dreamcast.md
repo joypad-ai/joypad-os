@@ -59,10 +59,10 @@ Looking at the controller plug (male, from controller cable):
 | B2 | B |
 | B3 | X |
 | B4 | Y |
-| L1 | L Trigger (digital) |
-| R1 | R Trigger (digital) |
-| L2 | D button |
-| R2 | R Trigger (analog) |
+| L1 | *(unmapped)* |
+| R1 | D button |
+| L2 | L Trigger (analog; full when the pad's trigger is digital-only) |
+| R2 | R Trigger (analog; full when the pad's trigger is digital-only) |
 | L3 | Z |
 | R3 | C |
 | S1 | D (2nd Start) |

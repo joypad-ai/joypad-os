@@ -74,10 +74,10 @@ Dreamcast buttons are active-low in hardware (0 = pressed), handled internally b
 | `JP_BUTTON_B2` | B | Right face button |
 | `JP_BUTTON_B3` | X | Left face button |
 | `JP_BUTTON_B4` | Y | Top face button |
-| `JP_BUTTON_L1` | L Trigger (digital) | Left shoulder |
-| `JP_BUTTON_R1` | R Trigger (digital) | Right shoulder |
-| `JP_BUTTON_L2` | D button | Distinct from L, useful for N64-to-DC |
-| `JP_BUTTON_R2` | R Trigger (analog) | Analog trigger |
+| `JP_BUTTON_L1` | *(unmapped)* | Left bumper has no DC equivalent |
+| `JP_BUTTON_R1` | D button | N64/GC Z, Sega 6-button C |
+| `JP_BUTTON_L2` | L Trigger (analog) | Forced to full if the pad reports the button but no analog level |
+| `JP_BUTTON_R2` | R Trigger (analog) | Same rule as L2 |
 | `JP_BUTTON_L3` | Z | Extra face button |
 | `JP_BUTTON_R3` | C | Extra face button |
 | `JP_BUTTON_S1` | D (2nd Start) | Arcade stick second start |

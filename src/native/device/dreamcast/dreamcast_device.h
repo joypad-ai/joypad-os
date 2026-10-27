@@ -116,10 +116,10 @@ typedef struct {
 //
 // JP -> DC mapping:
 //   B1-B4      -> A, B, X, Y (face buttons)
-//   L1         -> L trigger (digital)
-//   R1         -> R trigger (digital)
-//   L2         -> D button (N64 Z, distinct from L for in-game remapping)
-//   R2         -> R trigger (analog)
+//   L1         -> (unmapped)
+//   R1         -> D button (N64 Z, GC Z)
+//   L2         -> L trigger (analog; 255 if digital-only)
+//   R2         -> R trigger (analog; 255 if digital-only)
 //   L3/R3      -> Z, C (extra face buttons)
 //   S1         -> D (arcade stick 2nd start)
 //   S2         -> Start
@@ -127,8 +127,8 @@ typedef struct {
 //   A1 (guide) -> Start
 //
 // This allows:
-//   - N64: L (L1) -> DC L trigger, Z (L2) -> DC D, C-Up/C-Right (L3/R3) -> DC Z/C
-//   - USB: Bumpers (L1/R1) -> DC triggers, Triggers (L2/R2 analog) -> DC triggers
+//   - N64: L/R (L2/R2) -> DC triggers, Z (R1) -> DC D, C-Up/C-Right (L3/R3) -> DC Z/C
+//   - USB: Triggers (L2/R2) -> DC triggers, RB (R1) -> DC D, LB (L1) unused
 //
 
 // ============================================================================
