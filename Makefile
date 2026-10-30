@@ -151,6 +151,8 @@ CONSOLE_universal_fisherprice_v1 := joypad_universal_fisherprice_v1
 CONSOLE_universal_fisherprice_v2 := joypad_universal_fisherprice_v2
 CONSOLE_universal_alpakka := joypad_universal_alpakka
 CONSOLE_universal_rp2040zero := joypad_universal_rp2040zero
+CONSOLE_usb2wiiext := joypad_usb2wiiext
+CONSOLE_usb2wiiext_pico := joypad_usb2wiiext_pico
 
 
 # App definitions: APP_name = board target output_name input output
@@ -216,6 +218,8 @@ APP_bt2n64_pico2_w := pico2_w bt2n64 bt2n64_pico2_w Bluetooth N64
 APP_bt2gc_pico_w := pico_w bt2gc bt2gc_pico_w Bluetooth GameCube
 APP_bt2gc_pico2_w := pico2_w bt2gc bt2gc_pico2_w Bluetooth GameCube
 APP_bt2wiiext_pico_w := pico_w bt2wiiext bt2wiiext_pico_w Bluetooth Wii extension
+APP_usb2wiiext_kb2040 := kb2040 usb2wiiext usb2wiiext_kb2040 USB Wii extension
+APP_usb2wiiext_pico := pico usb2wiiext_pico usb2wiiext_pico USB Wii extension
 APP_btusb2usb_pico_w := pico_w btusb2usb btusb2usb_pico_w USB/BT+CYW43 USB
 APP_btusb2usb_pico2_w := pico2_w btusb2usb btusb2usb_pico2_w USB/BT+CYW43 USB
 APP_usb2ble_pico_w := pico_w usb2ble usb2ble_pico_w USB BLE
@@ -335,6 +339,8 @@ APPS += 24g2usb_pico_w
 APPS += 24g2usb_pico
 APPS += 24g2usb_pico2
 APPS += 24g2usb_rp2350zero
+APPS += usb2wiiext_kb2040
+APPS += usb2wiiext_pico
 APPS := $(strip $(APPS))
 
 # Stable apps for release
@@ -835,6 +841,14 @@ bt2n64_pico2_w:
 .PHONY: bt2wiiext_pico_w
 bt2wiiext_pico_w:
 	$(call build_app,bt2wiiext_pico_w)
+
+.PHONY: usb2wiiext_kb2040
+usb2wiiext_kb2040:
+	$(call build_app,usb2wiiext_kb2040)
+
+.PHONY: usb2wiiext_pico
+usb2wiiext_pico:
+	$(call build_app,usb2wiiext_pico)
 
 .PHONY: bt2gc_pico_w
 bt2gc_pico_w:
