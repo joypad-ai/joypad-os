@@ -33,6 +33,7 @@ const char* dpad_str[] = { "N", "NE", "E", "SE", "S", "SW", "W", "NW", "none" };
 bool is_sony_ds5(uint16_t vid, uint16_t pid) {
   return (
     (vid == 0x054c && pid == 0x0ce6) // Sony DualSense
+    || (vid == 0x054c && pid == 0x0df2) // Sony DualSense Edge
     || (vid == 0x0e6f && pid == 0x0209) // Victrix Pro FS for PS5
   );
 }
