@@ -61,6 +61,7 @@ static const uint8_t SWITCH2_CMD_0A_02[] = {
 static const uint8_t SWITCH2_LED_PATTERNS[] = { 0x01, 0x03, 0x07, 0x0F };
 
 #define SWITCH2_INIT_CMD_COUNT 18  // 17 commands + extra ENABLE_HAPTICS at end
+#define SWITCH2_INIT_CMD_RETRIES 3  // Attempts per command before giving up on init
 
 // Stick calibration data
 typedef struct {
@@ -83,6 +84,8 @@ typedef struct {
   uint8_t itf_num;
   bool xfer_pending;
   bool cmd_sent;            // True if current cmd_index has been sent
+  bool xfer_failed;         // Last bulk transfer completed with an error
+  uint8_t cmd_retries;      // Failed attempts at the current cmd_index
   uint8_t rumble_left;
   uint8_t rumble_right;
   uint8_t player_led;
@@ -236,13 +239,22 @@ static bool find_bulk_endpoint(uint8_t dev_addr, uint8_t* ep_out, uint8_t* itf_n
   tusb_desc_configuration_t* cfg = (tusb_desc_configuration_t*)switch2_config_buf;
 
   // Safety: validate wTotalLength
-  if (cfg->wTotalLength > sizeof(switch2_config_buf) || cfg->wTotalLength < sizeof(tusb_desc_configuration_t)) {
+  if (cfg->wTotalLength < sizeof(tusb_desc_configuration_t)) {
     printf("[SWITCH2] Invalid config descriptor length: %d\r\n", cfg->wTotalLength);
     return false;
   }
 
+  // A longer descriptor arrives truncated. Interface 1 may still be in what we
+  // got, and without it init never runs, so walk what fits rather than bail.
+  uint16_t walk_len = cfg->wTotalLength;
+  if (walk_len > sizeof(switch2_config_buf)) {
+    printf("[SWITCH2] Config descriptor is %d bytes, reading first %d\r\n",
+            cfg->wTotalLength, (int)sizeof(switch2_config_buf));
+    walk_len = sizeof(switch2_config_buf);
+  }
+
   uint8_t const* p_desc = switch2_config_buf;
-  uint8_t const* end = switch2_config_buf + cfg->wTotalLength;
+  uint8_t const* end = switch2_config_buf + walk_len;
 
   bool found_interface = false;
   while (p_desc < end) {
@@ -268,6 +280,9 @@ static bool find_bulk_endpoint(uint8_t dev_addr, uint8_t* ep_out, uint8_t* itf_n
       }
     }
 
+    if (tu_desc_len(p_desc) == 0) {
+      break;
+    }
     p_desc = tu_desc_next(p_desc);
   }
 
@@ -282,15 +297,12 @@ static void bulk_xfer_complete_cb(tuh_xfer_t* xfer) {
   uint8_t dev_addr = (uint8_t)(xfer->user_data & 0xFF);
   uint8_t instance = (uint8_t)((xfer->user_data >> 8) & 0xFF);
 
-  // Safety: ignore callback if transfer failed (device likely disconnected)
-  if (xfer->result != XFER_RESULT_SUCCESS) {
-    return;
-  }
-
   if (dev_addr < MAX_DEVICES && instance < CFG_TUH_HID) {
     // Safety: check if device is still valid (ep_out != 0 means initialized)
     switch2_instance_t* inst = &switch2_devices[dev_addr].instances[instance];
     if (inst->ep_out != 0) {
+      // A failed transfer must clear pending too, or the init sequence waits forever
+      inst->xfer_failed = (xfer->result != XFER_RESULT_SUCCESS);
       inst->xfer_pending = false;
     }
   }
@@ -555,6 +567,8 @@ static void reinit_on_player_assign(uint8_t dev_addr, uint8_t instance) {
   inst->cmd_index = 0;
   inst->cmd_sent = false;
   inst->xfer_pending = false;
+  inst->xfer_failed = false;
+  inst->cmd_retries = 0;
   inst->haptics_enabled = true;  // Mark so we don't do this again
 }
 
@@ -686,7 +700,18 @@ void task_switch2_pro(uint8_t dev_addr, uint8_t instance, device_output_config_t
   // If we sent the current command and transfer completed, advance
   if (inst->cmd_sent) {
     inst->cmd_sent = false;
-    inst->cmd_index++;
+    if (inst->xfer_failed) {
+      inst->xfer_failed = false;
+      if (++inst->cmd_retries >= SWITCH2_INIT_CMD_RETRIES) {
+        printf("[SWITCH2] Cmd %d failed %d times, abandoning init\r\n", inst->cmd_index + 1, inst->cmd_retries);
+        inst->state = SWITCH2_STATE_READY;
+        return;
+      }
+      printf("[SWITCH2] Cmd %d failed, retrying\r\n", inst->cmd_index + 1);
+    } else {
+      inst->cmd_retries = 0;
+      inst->cmd_index++;
+    }
   }
 
   // Check if done
