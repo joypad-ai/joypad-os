@@ -18,6 +18,7 @@
 #include "hardware/structs/bus_ctrl.h"
 #include "hardware/gpio.h"
 #include "hardware/irq.h"
+#include "hardware/sync.h"
 #include "pico/multicore.h"
 #include <string.h>
 
@@ -601,10 +602,43 @@ void update_3do_joystick(_3do_joystick_report report, uint8_t instance) {
   max_usb_controller = (max_usb_controller < (instance + 1)) ? (instance + 1) : max_usb_controller;
 }
 
+// Sign-extend a 10-bit 3DO mouse delta.
+static inline int16_t mouse_delta_from_10bit(uint16_t value) {
+  return (value & 0x200) ? (int16_t)(value | 0xFC00) : (int16_t)value;
+}
+
+// Add the motion the console hasn't read yet to a new report, clamped to the
+// 10-bit range. USB mice report faster than PBUS polls, so overwriting the
+// pending report would lose motion.
+static void mouse_add_pending(_3do_mouse_report* report, const _3do_mouse_report* pending) {
+  int32_t dx = mouse_delta_from_10bit((uint16_t)((report->dx_up << 8) | report->dx_low)) +
+               mouse_delta_from_10bit((uint16_t)((pending->dx_up << 8) | pending->dx_low));
+  int32_t dy = mouse_delta_from_10bit((uint16_t)((report->dy_up << 6) | report->dy_low)) +
+               mouse_delta_from_10bit((uint16_t)((pending->dy_up << 6) | pending->dy_low));
+
+  if (dx > 511) dx = 511;
+  if (dx < -512) dx = -512;
+  if (dy > 511) dy = 511;
+  if (dy < -512) dy = -512;
+
+  report->dx_low = (uint8_t)dx;
+  report->dx_up  = ((uint16_t)dx >> 8) & 0x03;
+  report->dy_low = (uint16_t)dy & 0x3F;
+  report->dy_up  = ((uint16_t)dy >> 6) & 0x0F;
+}
+
 void update_3do_mouse(_3do_mouse_report report, uint8_t instance) {
   if (instance >= MAX_PLAYERS) return;
 
+  // on_pio0_irq() reads and clears this slot, so merge and store with it held off.
+  uint32_t irq_state = save_and_disable_interrupts();
+  if (current_reports[instance][0] == 0x49) {
+    _3do_mouse_report pending;
+    memcpy(&pending, &current_reports[instance][0], sizeof(pending));
+    mouse_add_pending(&report, &pending);
+  }
   memcpy(&current_reports[instance][0], &report, sizeof(_3do_mouse_report));
+  restore_interrupts(irq_state);
   report_sizes[instance] = 4;
   device_attached[instance] = true;
 
