@@ -3186,7 +3186,7 @@ joypad_target_common(joypad_controller_fisherprice_v2)
 # --- Alpakka ---
 add_executable(joypad_controller_alpakka)
 target_compile_definitions(joypad_controller_alpakka PRIVATE
-    CONFIG_CONTROLLER=1 CONFIG_USB=1 CONFIG_PAD_INPUT=1 CONTROLLER_TYPE_ALPAKKA=1 DISABLE_USB_HOST=1 BUTTON_USER_GPIO=${BOARD_BUTTON_GPIO}
+    CONFIG_CONTROLLER=1 CONFIG_USB=1 CONFIG_PAD_INPUT=1 CONTROLLER_TYPE_ALPAKKA=1 DISABLE_USB_HOST=1 USE_BOOTSEL_BUTTON=1
 )
 target_sources(joypad_controller_alpakka PUBLIC ${CORE_SOURCES} ${USB_DEVICE_SOURCES} ${CONTROLLER_SOURCES}
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/controller/app.c
