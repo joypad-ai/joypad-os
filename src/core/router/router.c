@@ -825,7 +825,10 @@ static inline void router_simple_mode(const input_event_t* event, output_target_
         bool analog_active = analog_beyond_threshold(event);
         bool physically_attached = (event->transport == INPUT_TRANSPORT_NATIVE ||
                                     event->transport == INPUT_TRANSPORT_GPIO);
-        if (buttons_pressed || analog_active || physically_attached) {
+        // A mouse moves without buttons or analog, so gate on the type as merge
+        // mode does — otherwise it gets no slot and no output until its first click.
+        if (buttons_pressed || analog_active || physically_attached ||
+            event->type == INPUT_TYPE_MOUSE) {
             const char* device_name = get_device_name(event);
             player_index = add_player(event->dev_addr, slot_inst, event->transport, device_name);
             if (player_index >= 0) {
