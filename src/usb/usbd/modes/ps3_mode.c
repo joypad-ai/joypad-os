@@ -22,6 +22,47 @@ static bool ps3_output_available = false;
 static uint8_t ps3_ef_byte = 0;  // Mode byte echoed from SET_REPORT(0xEF)
 static ps3_pairing_info_t ps3_pairing = {0};  // Pairing info with BT addresses
 
+// Stretch circular stick travel out to the square a DS3 reports. Set to 0 to
+// pass sticks through untouched.
+#ifndef PS3_SQUARE_STICKS
+#define PS3_SQUARE_STICKS 1
+#endif
+
+#if PS3_SQUARE_STICKS
+static uint32_t isqrt_u32(uint32_t n)
+{
+    uint32_t r = 0, bit = 1u << 30;
+    while (bit > n) bit >>= 2;
+    while (bit) {
+        if (n >= r + bit) { n -= r + bit; r = (r >> 1) + bit; }
+        else r >>= 1;
+        bit >>= 2;
+    }
+    return r;
+}
+
+// Scale (x, y) by radius / max(|x|, |y|): cardinals are unchanged, a point on
+// the unit circle lands on the square's edge, and the centre stays put.
+static void ps3_stick_circle_to_square(uint8_t* px, uint8_t* py)
+{
+    int32_t x = (int32_t)*px - 128;
+    int32_t y = (int32_t)*py - 128;
+    int32_t ax = x < 0 ? -x : x;
+    int32_t ay = y < 0 ? -y : y;
+    int32_t m = ax > ay ? ax : ay;
+    if (m == 0) return;
+
+    int32_t r = (int32_t)isqrt_u32((uint32_t)(x * x + y * y));
+    x = (x * r + (x < 0 ? -m / 2 : m / 2)) / m;
+    y = (y * r + (y < 0 ? -m / 2 : m / 2)) / m;
+
+    if (x < -128) x = -128; else if (x > 127) x = 127;
+    if (y < -128) y = -128; else if (y > 127) y = 127;
+    *px = (uint8_t)(x + 128);
+    *py = (uint8_t)(y + 128);
+}
+#endif
+
 // ============================================================================
 // MODE INTERFACE IMPLEMENTATION
 // ============================================================================
@@ -95,6 +136,16 @@ static bool ps3_mode_send_report(uint8_t player_index,
     ps3_report.ly = profile_out->left_y;
     ps3_report.rx = profile_out->right_x;
     ps3_report.ry = profile_out->right_y;
+#if PS3_SQUARE_STICKS
+    // A DS3 reaches both axes' extremes on a full diagonal; modern pads stop
+    // at the circle (~0.71 per axis), so PS3 games read diagonals as slow.
+    // Sources carrying DS-family pressure data (DS3/DS2) already report
+    // square, so leave them alone rather than inflate their diagonals. (#143)
+    if (!profile_out->has_pressure) {
+        ps3_stick_circle_to_square(&ps3_report.lx, &ps3_report.ly);
+        ps3_stick_circle_to_square(&ps3_report.rx, &ps3_report.ry);
+    }
+#endif
 
     // Pressure-sensitive buttons - use actual pressure data if available
     if (profile_out->has_pressure) {
