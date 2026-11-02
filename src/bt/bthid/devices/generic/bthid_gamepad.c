@@ -14,6 +14,7 @@
 #include "core/buttons.h"
 #include "core/services/players/manager.h"
 #include "core/services/players/feedback.h"
+#include "platform/platform.h"
 #include "usb/usbh/hid/devices/generic/hid_parser.h"
 #include <string.h>
 #include <stdio.h>
@@ -57,6 +58,8 @@ typedef struct {
     ble_report_map_t map;       // cached field locations from descriptor
     uint8_t rumble_left;        // Last sent rumble values (for change detection)
     uint8_t rumble_right;
+    bool rumble_retrying;       // Last rumble send was rejected, retrying
+    uint32_t rumble_retry_start_ms;
 } bthid_gamepad_data_t;
 
 static bthid_gamepad_data_t gamepad_data[BTHID_MAX_DEVICES];
@@ -651,6 +654,7 @@ static void gamepad_process_report(bthid_device_t* device, const uint8_t* data, 
 // Xbox rumble output report constants
 #define XBOX_RUMBLE_REPORT_ID   0x03
 #define XBOX_RUMBLE_MOTORS      0x03  // Enable strong (bit 1) + weak (bit 0) main motors
+#define RUMBLE_RETRY_TIMEOUT_MS 500   // Give up on a rejected send after this long
 
 static void gamepad_task(bthid_device_t* device)
 {
@@ -680,7 +684,20 @@ static void gamepad_task(bthid_device_t* device)
             buf[5] = 0xFF;                           // Duration: continuous
             buf[6] = 0x00;                           // Delay: none
             buf[7] = 0x00;                           // Repeat: none
-            bthid_send_output_report(device->conn_index, XBOX_RUMBLE_REPORT_ID, buf, sizeof(buf));
+            if (!bthid_send_output_report(device->conn_index, XBOX_RUMBLE_REPORT_ID, buf, sizeof(buf))) {
+                // BLE rejects a write while the previous one is in flight. Dropping
+                // a stop here leaves the motor running for the full duration above,
+                // so stay dirty and retry with the latest values.
+                uint32_t now = platform_time_ms();
+                if (!gp->rumble_retrying) {
+                    gp->rumble_retrying = true;
+                    gp->rumble_retry_start_ms = now;
+                }
+                if ((uint32_t)(now - gp->rumble_retry_start_ms) < RUMBLE_RETRY_TIMEOUT_MS) {
+                    return;
+                }
+            }
+            gp->rumble_retrying = false;
         }
 
         gp->rumble_left = left;
