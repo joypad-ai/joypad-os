@@ -1037,7 +1037,7 @@ void profile_apply(const profile_t* profile,
 
 uint32_t profile_apply_button_map(const profile_t* profile, uint32_t input_buttons)
 {
-    profile_output_t output;
+    profile_output_t output = {0};  // one-shot: autofire timing starts fresh
     profile_apply(profile, input_buttons, 128, 128, 128, 128, 0, 0, 0, &output);
     return output.buttons;
 }

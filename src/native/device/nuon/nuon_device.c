@@ -608,7 +608,8 @@ void __not_in_flash_func(update_output)(void)
 
   // Apply profile remapping
   const profile_t* profile = profile_get_active(OUTPUT_TARGET_NUON);
-  profile_output_t mapped;
+  // static: profile_apply() keeps autofire timing in autofire_start_ms[] across calls.
+  static profile_output_t mapped;
   profile_apply(profile, event->buttons,
                 event->analog[ANALOG_LX], event->analog[ANALOG_LY],
                 event->analog[ANALOG_RX], event->analog[ANALOG_RY],

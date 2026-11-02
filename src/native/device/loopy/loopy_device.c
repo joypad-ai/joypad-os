@@ -103,7 +103,8 @@ void __not_in_flash_func(core1_task)(void)
 
     // Apply profile mapping to each player's input
     const profile_t* profile = profile_get_active(OUTPUT_TARGET_LOOPY);
-    profile_output_t mapped1, mapped2, mapped3, mapped4;
+    // static: profile_apply() keeps autofire timing in autofire_start_ms[] across calls.
+    static profile_output_t mapped1, mapped2, mapped3, mapped4;
 
     if (event1 && playersCount >= 1) {
       profile_apply(profile, event1->buttons,
