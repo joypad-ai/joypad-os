@@ -334,9 +334,38 @@ uint8_t furthest_from_center(uint8_t a, uint8_t b, uint8_t center)
 //
 // Analog A/B only existed on pre-production controllers; a retail pad reports
 // zero for both, which is also what our origin reply already claims
-// (gc_origin_t.reserved0 / reserved1).
-#define GC_ANALOG_A 0
-#define GC_ANALOG_B 0
+// (gc_origin_t.reserved0 / reserved1). We do the same unless the input has
+// pressure-sensitive buttons (DS3, DS2, OG Xbox), in which case the pressure of
+// whatever the profile maps onto GC A/B goes out (#114). Mode 3 has no A/B
+// bytes, so the default poll is unaffected either way.
+static uint8_t gc_analog_a = 0;
+static uint8_t gc_analog_b = 0;
+
+// input_event_t.pressure[] slot for each pressure-capable JP button
+static const struct { uint32_t button; uint8_t index; } gc_pressure_slots[] = {
+  { JP_BUTTON_DU, 0 }, { JP_BUTTON_DR, 1 }, { JP_BUTTON_DD, 2 }, { JP_BUTTON_DL, 3 },
+  { JP_BUTTON_L2, 4 }, { JP_BUTTON_R2, 5 }, { JP_BUTTON_L1, 6 }, { JP_BUTTON_R1, 7 },
+  { JP_BUTTON_B4, 8 }, { JP_BUTTON_B2, 9 }, { JP_BUTTON_B1, 10 }, { JP_BUTTON_B3, 11 },
+};
+
+// Strongest pressure among the inputs the profile routes to gc_button. If the
+// digital bit is set with no pressure behind it (a combo, a button without a
+// pressure slot), report full press so analog never contradicts digital.
+static uint8_t gc_button_pressure(const profile_t* profile, const input_event_t* event,
+                                  uint32_t gc_button, bool pressed)
+{
+  uint32_t sources = profile_inputs_for_output(profile, gc_button);
+  uint8_t value = 0;
+
+  for (size_t i = 0; i < sizeof(gc_pressure_slots) / sizeof(gc_pressure_slots[0]); i++) {
+    if ((sources & gc_pressure_slots[i].button) &&
+        event->pressure[gc_pressure_slots[i].index] > value) {
+      value = event->pressure[gc_pressure_slots[i].index];
+    }
+  }
+
+  return (pressed && value == 0) ? 0xFF : value;
+}
 
 static void __not_in_flash_func(gc_pack_analog_mode)(gc_report_t* dest,
                                                      const gc_report_t* src,
@@ -348,8 +377,8 @@ static void __not_in_flash_func(gc_pack_analog_mode)(gc_report_t* dest,
   const uint8_t cy = src->cstick_y;
   const uint8_t l  = src->l_analog;
   const uint8_t r  = src->r_analog;
-  const uint8_t a  = GC_ANALOG_A;
-  const uint8_t b  = GC_ANALOG_B;
+  const uint8_t a  = gc_analog_a;
+  const uint8_t b  = gc_analog_b;
 
   switch (mode)
   {
@@ -489,6 +518,8 @@ void __not_in_flash_func(update_output)(void)
 
   // Build report locally to avoid Core 1 reading partial updates
   gc_report_t new_report;
+  uint8_t new_analog_a = 0;
+  uint8_t new_analog_b = 0;
 
   if (gc_state.button_mode == BUTTON_MODE_KB)
   {
@@ -552,6 +583,12 @@ void __not_in_flash_func(update_output)(void)
     // Map profile output to GameCube report
     map_usbr_to_gc_report(&output, &new_report);
 
+    // Analog A/B (#114): only a pressure-sensitive source has anything to say
+    if (event->has_pressure) {
+      new_analog_a = gc_button_pressure(profile, event, GC_BUTTON_A, new_report.a);
+      new_analog_b = gc_button_pressure(profile, event, GC_BUTTON_B, new_report.b);
+    }
+
     // Keyboard-specific transforms for GameCube
     if (event->type == INPUT_TYPE_KEYBOARD) {
       // Scale keyboard analog values to GameCube's smaller range
@@ -604,6 +641,8 @@ void __not_in_flash_func(update_output)(void)
 
   // Atomically update global report
   gc_report = new_report;
+  gc_analog_a = new_analog_a;
+  gc_analog_b = new_analog_b;
 }
 
 // ============================================================================

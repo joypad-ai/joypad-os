@@ -1041,3 +1041,22 @@ uint32_t profile_apply_button_map(const profile_t* profile, uint32_t input_butto
     profile_apply(profile, input_buttons, 128, 128, 128, 128, 0, 0, 0, &output);
     return output.buttons;
 }
+
+uint32_t profile_inputs_for_output(const profile_t* profile, uint32_t output_mask)
+{
+    uint32_t sources = 0;
+    uint32_t mapped_inputs = 0;
+
+    if (profile && profile->button_map) {
+        for (uint8_t i = 0; i < profile->button_map_count; i++) {
+            const button_map_entry_t* entry = &profile->button_map[i];
+            if (entry->output & output_mask) {
+                sources |= entry->input;
+            }
+            mapped_inputs |= entry->input;
+        }
+    }
+
+    // Unmapped buttons pass through to themselves
+    return sources | (output_mask & ~mapped_inputs);
+}
