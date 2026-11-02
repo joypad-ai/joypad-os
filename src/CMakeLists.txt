@@ -694,7 +694,8 @@ pico_generate_pio_header(joypad_nuonserial ${CMAKE_CURRENT_LIST_DIR}/native/devi
 
 # --- Nuon ---
 add_executable(joypad_nuon)
-target_compile_definitions(joypad_nuon PRIVATE CONFIG_NUON=1 CONFIG_NO_NEOPIXEL=1)
+# NeoPixel on PIO1 SM3: polyface owns PIO0. No PIO-USB or CYW43 here, so PIO1 is free (#257).
+target_compile_definitions(joypad_nuon PRIVATE CONFIG_NUON=1 CONFIG_NEOPIXEL_USE_PIO1=1)
 target_sources(joypad_nuon PUBLIC ${COMMON_SOURCES}
     ${CMAKE_CURRENT_SOURCE_DIR}/native/device/nuon/nuon_device.c
     ${CMAKE_CURRENT_SOURCE_DIR}/apps/usb2nuon/app.c
