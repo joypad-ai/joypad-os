@@ -48,7 +48,6 @@ static socd_state_t socd_state[MAX_PLAYERS] = {0};
 static uint8_t (*get_player_count)(void) = NULL;
 static profile_switch_callback_t on_switch_callback = NULL;
 static profile_player_switch_callback_t on_player_switch_callback = NULL;
-static output_mode_callback_t on_output_mode_callback = NULL;
 
 // ============================================================================
 // INTERNAL HELPERS
@@ -166,11 +165,6 @@ void profile_set_switch_callback(profile_switch_callback_t callback)
 void profile_set_player_switch_callback(profile_player_switch_callback_t callback)
 {
     on_player_switch_callback = callback;
-}
-
-void profile_set_output_mode_callback(output_mode_callback_t callback)
-{
-    on_output_mode_callback = callback;
 }
 
 const profile_t* profile_get_active(output_target_t output)

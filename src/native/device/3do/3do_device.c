@@ -66,7 +66,6 @@ uint8_t controller_buffer[201];
 static uint8_t extension_controller_count = 0;
 
 // Output mode (normal vs silly pad for arcade)
-static tdo_output_mode_t output_mode = TDO_MODE_NORMAL;
 
 // Extension mode (passthrough vs managed)
 static tdo_extension_mode_t extension_mode = TDO_EXT_PASSTHROUGH;
@@ -289,39 +288,11 @@ _3do_silly_report new_3do_silly_report(void) {
 // Mode Management
 //-----------------------------------------------------------------------------
 
+// Output mode comes from the active profile's output_mode (selectable per
+// profile in the web config), same as the PCEngine driver's button mode.
 tdo_output_mode_t tdo_get_output_mode(void) {
-  return output_mode;
-}
-
-void tdo_set_output_mode(tdo_output_mode_t mode) {
-  output_mode = mode;
-  #if CFG_TUSB_DEBUG >= 1
-  printf("[3DO] Output mode set to: %s\n", mode == TDO_MODE_SILLY ? "SILLY" : "NORMAL");
-  #endif
-}
-
-void tdo_toggle_output_mode(void) {
-  if (output_mode == TDO_MODE_NORMAL) {
-    tdo_set_output_mode(TDO_MODE_SILLY);
-  } else {
-    tdo_set_output_mode(TDO_MODE_NORMAL);
-  }
-}
-
-// Callback for D-pad Left/Right output mode switching
-// direction: -1 = left (previous), +1 = right (next)
-// Returns true if mode changed
-static bool tdo_output_mode_switch_callback(int8_t direction) {
-  (void)direction;  // Only 2 modes, direction doesn't matter
-  tdo_toggle_output_mode();
-
-  // Trigger feedback (mode 1 = silly, mode 0 = normal)
-  uint8_t mode_index = (output_mode == TDO_MODE_SILLY) ? 1 : 0;
-  uint8_t player_count = router_get_player_count(OUTPUT_TARGET_3DO);
-  profile_indicator_trigger(mode_index, player_count);
-  leds_indicate_profile(mode_index);
-
-  return true;
+  return profile_get_active_output_mode(OUTPUT_TARGET_3DO) == TDO_MODE_SILLY
+             ? TDO_MODE_SILLY : TDO_MODE_NORMAL;
 }
 
 //-----------------------------------------------------------------------------
@@ -687,7 +658,6 @@ void _3do_init(void) {
 
   // Profile system is initialized by app_init() - we just set up the callbacks
   profile_set_player_count_callback(tdo_get_player_count_for_profile);
-  profile_set_output_mode_callback(tdo_output_mode_switch_callback);
 
   #if CFG_TUSB_DEBUG >= 1
   printf("3DO protocol initialized successfully.\n");
@@ -917,7 +887,7 @@ void __not_in_flash_func(update_3do_report)(uint8_t player_index) {
   profile_apply(profile, buttons, ax, ay, az, at, l2, r2, event->analog[ANALOG_RZ], &mapped);
 
   // Check if silly pad mode is enabled
-  if (output_mode == TDO_MODE_SILLY) {
+  if (tdo_get_output_mode() == TDO_MODE_SILLY) {
     // Silly control pad mode for arcade JAMMA integration
     _3do_silly_report report = new_3do_silly_report();
 

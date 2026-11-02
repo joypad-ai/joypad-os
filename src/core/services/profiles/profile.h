@@ -354,12 +354,6 @@ void profile_set_player_switch_callback(profile_player_switch_callback_t callbac
 // Set player count callback (for feedback)
 void profile_set_player_count_callback(uint8_t (*callback)(void));
 
-// Set callback for output mode switching (D-pad Left/Right)
-// direction: -1 = left (previous), +1 = right (next)
-// Callback should return true if mode was changed (to trigger feedback)
-typedef bool (*output_mode_callback_t)(int8_t direction);
-void profile_set_output_mode_callback(output_mode_callback_t callback);
-
 // Load/save profile index from flash
 uint8_t profile_load_from_flash(output_target_t output, uint8_t default_index);
 void profile_save_to_flash(output_target_t output);
