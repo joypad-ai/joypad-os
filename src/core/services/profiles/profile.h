@@ -381,6 +381,11 @@ void profile_apply(const profile_t* profile,
 // Simple button-only mapping (for basic use cases)
 uint32_t profile_apply_button_map(const profile_t* profile, uint32_t input_buttons);
 
+// Input buttons whose button_map routes to any bit of output_mask (unmapped
+// buttons pass through, so they count for their own bit). Combos are ignored.
+// Stateless: unlike profile_apply_button_map it touches no autofire/SOCD state.
+uint32_t profile_inputs_for_output(const profile_t* profile, uint32_t output_mask);
+
 // ============================================================================
 // HELPER MACROS FOR PROFILE DEFINITIONS
 // ============================================================================
