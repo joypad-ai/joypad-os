@@ -540,7 +540,8 @@ void __not_in_flash_func(update_output)(void)
     // Get active profile and apply it
     const profile_t* profile = profile_get_active(OUTPUT_TARGET_GAMECUBE);
 
-    profile_output_t output;
+    // static: profile_apply() keeps autofire timing in autofire_start_ms[] across calls.
+    static profile_output_t output;
     profile_apply(profile,
                   event->buttons,
                   event->analog[ANALOG_LX], event->analog[ANALOG_LY],  // left stick
