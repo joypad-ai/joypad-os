@@ -91,7 +91,7 @@ The adapter supports two extension port modes:
 | Normal | `TDO_MODE_NORMAL` | Standard joypad/joystick output |
 | Silly | `TDO_MODE_SILLY` | Arcade JAMMA silly pad (Orbatak, etc.) |
 
-Selected per profile in the web config (the profile's output mode). Built-in profiles default to Normal.
+Selected by the active profile's output mode. On usb23do, cycle to the built-in `arcade` profile for Silly; the other built-ins are Normal.
 
 ## Button Mapping
 

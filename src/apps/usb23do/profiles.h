@@ -18,6 +18,7 @@
 
 #include "core/services/profiles/profile.h"
 #include "native/device/3do/3do_buttons.h"
+#include "native/device/3do/3do_device.h"
 
 // ============================================================================
 // PROFILE: Default - Standard 3DO Layout
@@ -137,6 +138,31 @@ static const profile_t tdo_profile_shooter = {
 };
 
 // ============================================================================
+// PROFILE: Arcade - Silly Control Pad (JAMMA)
+// ============================================================================
+// Outputs the 3DO arcade "silly" pad instead of a joypad. No button map: the
+// silly report reads the raw buttons (Select/Start = P1 coin/start, L1/R1 =
+// P2 coin/start, L2+R2 = service), and a map that folds L2 onto L would break
+// the service combo. Last in the cycle so it's never the default.
+
+static const profile_t tdo_profile_arcade = {
+    .name = "arcade",
+    .description = "Silly control pad (arcade JAMMA)",
+    .button_map = NULL,
+    .button_map_count = 0,
+    .l2_behavior = TRIGGER_PASSTHROUGH,
+    .r2_behavior = TRIGGER_PASSTHROUGH,
+    .l2_threshold = 128,
+    .r2_threshold = 128,
+    .l2_analog_value = 0,
+    .r2_analog_value = 0,
+    .left_stick_sensitivity = 1.0f,
+    .right_stick_sensitivity = 1.0f,
+    .adaptive_triggers = false,
+    .output_mode = TDO_MODE_SILLY,
+};
+
+// ============================================================================
 // PROFILE SET
 // ============================================================================
 
@@ -144,6 +170,7 @@ static const profile_t tdo_profiles[] = {
     tdo_profile_default,
     tdo_profile_fighting,
     tdo_profile_shooter,
+    tdo_profile_arcade,
 };
 
 static const profile_set_t tdo_profile_set = {
