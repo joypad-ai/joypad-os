@@ -198,8 +198,6 @@ void update_3do_silly(_3do_silly_report report, uint8_t instance);
 
 // Mode management
 tdo_output_mode_t tdo_get_output_mode(void);
-void tdo_set_output_mode(tdo_output_mode_t mode);
-void tdo_toggle_output_mode(void);
 
 // Extension mode management
 tdo_extension_mode_t tdo_get_extension_mode(void);

@@ -91,7 +91,7 @@ The adapter supports two extension port modes:
 | Normal | `TDO_MODE_NORMAL` | Standard joypad/joystick output |
 | Silly | `TDO_MODE_SILLY` | Arcade JAMMA silly pad (Orbatak, etc.) |
 
-Toggled via hotkey.
+Selected per profile in the web config (the profile's output mode). Built-in profiles default to Normal.
 
 ## Button Mapping
 

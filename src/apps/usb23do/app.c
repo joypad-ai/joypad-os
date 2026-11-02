@@ -19,11 +19,20 @@
 // APP PROFILE CONFIGURATION
 // ============================================================================
 
+// 3DO output modes (index = custom_profile_t.output_mode, and the built-in
+// profiles' output_mode). Kept in sync with 3do_device.h tdo_output_mode_t.
+static const char* const usb23do_output_modes[] = {
+    "Normal", "Silly Pad (Arcade)",
+};
+
 static const profile_config_t app_profile_config = {
     .output_profiles = {
         [OUTPUT_TARGET_3DO] = &tdo_profile_set,
     },
     .shared_profiles = NULL,
+    .output_type_name = "3DO",
+    .output_mode_names = usb23do_output_modes,
+    .output_mode_count = sizeof(usb23do_output_modes) / sizeof(usb23do_output_modes[0]),
 };
 
 // ============================================================================
