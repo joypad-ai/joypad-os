@@ -6406,10 +6406,17 @@ bool btstack_classic_send_report(uint8_t conn_index, uint8_t report_id,
         ble_connection_t* conn = &hid_state.connections[ble_index];
         if (conn->handle == HCI_CON_HANDLE_INVALID || !conn->hid_ready) return false;
         if (conn->hids_cid == 0) return false;
+        // hids_client keeps this pointer until the ATT write goes out, which can
+        // be after we return. Callers pass stack buffers, so copy it.
+        static uint8_t ble_report_buf[MAX_BLE_CONNECTIONS][80];
+        if (len > sizeof(ble_report_buf[0])) return false;
+        memcpy(ble_report_buf[ble_index], data, len);
+
         uint8_t status = hids_client_send_write_report(conn->hids_cid, report_id,
                                                         HID_REPORT_TYPE_OUTPUT,
-                                                        data, len);
-        if (status != ERROR_CODE_SUCCESS) {
+                                                        ble_report_buf[ble_index], len);
+        // COMMAND_DISALLOWED just means a write is in flight; callers may retry
+        if (status != ERROR_CODE_SUCCESS && status != ERROR_CODE_COMMAND_DISALLOWED) {
             printf("[BTSTACK_HOST] BLE send_write_report failed: report_id=0x%02X status=0x%02X\n",
                    report_id, status);
         }
