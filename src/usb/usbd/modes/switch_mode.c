@@ -66,6 +66,16 @@ static bool switch_mode_send_report(uint8_t player_index,
     (void)player_index;
     (void)event;
 
+    // Capture combo: SELECT+START (Minus+Plus) -> Capture, for pads with no
+    // capture/share button (X360, older pads). Same per-mode approach as the
+    // PS4 touchpad combo. Minus/Plus are dropped while the combo is held and
+    // Capture follows the hold, so tap = screenshot, hold = video clip.
+    // SELECT+START alone is not a hotkey on the USB device path (router
+    // defaults are SELECT/START + D-pad, runtime profile is SELECT + B3/B4). (#99)
+    if ((buttons & (JP_BUTTON_S1 | JP_BUTTON_S2)) == (JP_BUTTON_S1 | JP_BUTTON_S2)) {
+        buttons = (buttons & ~(JP_BUTTON_S1 | JP_BUTTON_S2)) | JP_BUTTON_A2;
+    }
+
     // Buttons (16-bit) - position-based mapping (matches GP2040-CE)
     switch_report.buttons = 0;
     if (buttons & JP_BUTTON_B1) switch_report.buttons |= SWITCH_MASK_B;     // B1 (bottom) -> B
