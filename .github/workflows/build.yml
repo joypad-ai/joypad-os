@@ -227,7 +227,10 @@ jobs:
     needs: check-version
     permissions:
       contents: read
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest is now 26.04 with CMake 4.x, which NCS v3.1.0's
+    # Zephyr can't configure (FindZephyr-sdk.cmake "Unknown arguments").
+    # Unpin when the NCS version is bumped.
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
