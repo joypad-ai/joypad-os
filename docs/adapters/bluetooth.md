@@ -26,6 +26,7 @@ BT2USB turns a Raspberry Pi Pico W, Pico 2 W, ESP32-S3, or nRF52840 board into a
 | Xbox One / Series (BLE mode) | Supported |
 | 8BitDo controllers (BLE mode) | Supported |
 | Switch 2 Pro (BLE) | Supported |
+| Google Stadia | Supported |
 | Generic BLE HID gamepads | Supported |
 
 ### nRF52840 (BLE only)
@@ -35,6 +36,7 @@ BT2USB turns a Raspberry Pi Pico W, Pico 2 W, ESP32-S3, or nRF52840 board into a
 | Xbox One / Series (BLE mode) | Supported |
 | 8BitDo controllers (BLE mode) | Supported |
 | Switch 2 Pro (BLE) | Supported |
+| Google Stadia | Supported |
 | Generic BLE HID gamepads | Supported |
 
 Classic BT controllers (DS3, DS4, DS5, Switch Pro, Wii U Pro) are not supported on ESP32-S3 or nRF52840. See [ESP32 docs](../platforms/esp32.md) and [nRF52840 docs](../platforms/nrf52840.md) for details.
