@@ -382,6 +382,9 @@ static void set_adv(bool on)
 
 bool ble_output_is_connected(void)
 {
+#ifdef CONFIG_BT_CLASSIC_OUTPUT
+    if (ble_output_get_mode() == BLE_MODE_SWITCH_BT) return switch_bt_is_connected();
+#endif
 #ifdef CONFIG_SWITCH2_BLE_OUTPUT
     if (ble_output_get_mode() == BLE_MODE_SWITCH2) return switch2_ble_is_connected();
 #endif

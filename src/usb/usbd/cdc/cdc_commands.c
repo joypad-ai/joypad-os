@@ -40,6 +40,9 @@
 // Optional BLE output support
 #if REQUIRE_BLE_OUTPUT
 #include "bt/ble_output/ble_output.h"
+#ifdef CONFIG_BT_CLASSIC_OUTPUT
+#include "bt/switch_bt/switch_bt.h"
+#endif
 #ifdef CONFIG_SWITCH2_BLE_OUTPUT
 #include "bt/switch2_ble/switch2_ble.h"
 #endif
@@ -884,13 +887,36 @@ static void cmd_mode_list(const char* json)
 
 #if REQUIRE_BLE_OUTPUT
 
-// BLE.PAIR — bench tool: send an SM Security Request on the current BLE
-// peripheral link so the connected central initiates pairing. Lets a script
-// exercise the pairing path without a GUI (e.g. macOS pairs just-works
-// silently). Safe threading: over NUS this runs in the BTstack thread.
+// BLE.PAIR — start pairing on the active wireless output.
+//   Switch (BT) / Switch 2: the controller's sync button, the same as a click of
+//   the board button — drop the bonded console and advertise so a console's
+//   Change Grip/Order screen finds it. Unlike the button, this also re-pairs
+//   while connected, since a host asking for it is unambiguous intent.
+//   Other BLE modes: send an SM Security Request on the current peripheral link
+//   so the connected central initiates pairing (scripted pairing without a GUI;
+//   macOS pairs just-works silently).
+// Safe threading: over NUS this runs in the BTstack thread.
 static void cmd_ble_pair(const char* json)
 {
     (void)json;
+#ifdef CONFIG_BT_CLASSIC_OUTPUT
+    if (ble_output_get_mode() == BLE_MODE_SWITCH_BT) {
+        bool was_connected = switch_bt_is_connected();
+        switch_bt_request_sync();
+        snprintf(response_buf, sizeof(response_buf),
+                 "{\"ok\":true,\"sync\":\"switch_bt\",\"was_connected\":%s}",
+                 was_connected ? "true" : "false");
+        send_json(response_buf);
+        return;
+    }
+#endif
+#ifdef CONFIG_SWITCH2_BLE_OUTPUT
+    if (ble_output_get_mode() == BLE_MODE_SWITCH2) {
+        switch2_ble_request_sync();
+        send_json("{\"ok\":true,\"sync\":\"switch2\"}");
+        return;
+    }
+#endif
     extern void ble_output_request_pairing(void);
     ble_output_request_pairing();
     send_ok();

@@ -1361,9 +1361,10 @@ void app_task(void)
             bool any_connected = false;
             bool any_searching = false;
             bool any_host_enabled = false;
+            bool output_connected = false;
 
 #if REQUIRE_BLE_OUTPUT
-            if (ble_output_is_connected()) any_connected = true;
+            if (ble_output_is_connected()) any_connected = output_connected = true;
 #endif
 #if REQUIRE_BT_INPUT
             if (bt_input_enabled) {
@@ -1402,8 +1403,11 @@ void app_task(void)
                     cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 0);
                     cyw43_led_state = false;
                 }
-            } else if (any_connected && !any_searching) {
-                // Solid — device(s) connected, not searching
+            } else if (output_connected || (any_connected && !any_searching)) {
+                // Solid — linked to a console/host over the wireless output (an
+                // empty USB-host port waiting for a pad shouldn't make a live
+                // console link look like it is still searching), or input
+                // device(s) connected and nothing left to search for
                 if (!cyw43_led_state) {
                     cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
                     cyw43_led_state = true;
