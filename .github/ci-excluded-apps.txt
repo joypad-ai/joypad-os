@@ -55,7 +55,6 @@ wifi2usb_pico_w                           # announced in CHANGELOG (JOCP WiFi co
 wifi2usb_pico2_w                          # WiFi/JOCP sibling of an announced target
 
 # --- Never added, never announced, no recorded decision.
-gc2dc_kb2040                              # no recorded decision
 gc2usb_feather_usbhost                    # no recorded decision
 usb2neogeo_retrofrog                      # no recorded decision
 n642nuon_aries64                          # no recorded decision
@@ -85,7 +84,6 @@ bt2usb_aprbrother_nrf52840                # no recorded decision
 # starts from the Makefile. Added 2026-08-10.
 #
 joypad_flash_b_side                       # SWD flashing utility, not an adapter app; never a release artifact
-joypad_gc2dc                              # real app (GameCube -> Dreamcast) with no make target; unshippable, same class as the 41 above. Needs a product call (#212)
 joypad_gc2usb_rp2040zero                  # redundant: APP_gc2usb_rp2040zero builds the generic joypad_gc2usb, which already gets WS2812_PIN=16 from PICO_BOARD=waveshare_rp2040_zero. Dead duplicate, not a coverage gap
 
 # ---------------------------------------------------------------------------
