@@ -5,6 +5,7 @@
 
 #include "profile.h"
 #include "runtime_profile.h"
+#include "stick_scale.h"
 #include "platform/platform.h"
 #include <stdio.h>
 #include <stddef.h>
@@ -937,24 +938,20 @@ void profile_apply(const profile_t* profile,
     // Apply left stick sensitivity scaling
     if (left_sens != 1.0f) {
         if (!output->left_x_override) {
-            int16_t rel_x = (int16_t)output->left_x - 128;
-            output->left_x = (uint8_t)(128 + (int16_t)(rel_x * left_sens));
+            output->left_x = stick_scale_axis(output->left_x, left_sens);
         }
         if (!output->left_y_override) {
-            int16_t rel_y = (int16_t)output->left_y - 128;
-            output->left_y = (uint8_t)(128 + (int16_t)(rel_y * left_sens));
+            output->left_y = stick_scale_axis(output->left_y, left_sens);
         }
     }
 
     // Apply right stick sensitivity scaling
     if (right_sens != 1.0f) {
         if (!output->right_x_override) {
-            int16_t rel_x = (int16_t)output->right_x - 128;
-            output->right_x = (uint8_t)(128 + (int16_t)(rel_x * right_sens));
+            output->right_x = stick_scale_axis(output->right_x, right_sens);
         }
         if (!output->right_y_override) {
-            int16_t rel_y = (int16_t)output->right_y - 128;
-            output->right_y = (uint8_t)(128 + (int16_t)(rel_y * right_sens));
+            output->right_y = stick_scale_axis(output->right_y, right_sens);
         }
     }
 
