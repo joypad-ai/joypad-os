@@ -30,7 +30,8 @@ bool diff_report_gamecube_adapter(gamecube_adapter_report_t const* rpt1, gamecub
 void input_gamecube_adapter(uint8_t dev_addr, uint8_t instance, uint8_t const* report, uint16_t len) {
   uint32_t buttons;
   // previous report used to compare for changes
-  static gamecube_adapter_report_t prev_report[MAX_DEVICES][4];
+  // Indexed [instance + port]: instance runs 0..CFG_TUH_HID-1, port 0..3.
+  static gamecube_adapter_report_t prev_report[MAX_DEVICES][CFG_TUH_HID + 3];
 
   gamecube_adapter_report_t gamecube_report;
   memcpy(&gamecube_report, report, sizeof(gamecube_report));
