@@ -983,6 +983,13 @@ static inline void router_merge_mode(const input_event_t* event, output_target_t
                 }
             }
 
+            // Every blend slot is taken by other devices: ignore this one and
+            // keep the current output. Falling through would publish `merged`
+            // without ever writing it.
+            if (slot < 0) {
+                return;
+            }
+
             if (slot >= 0) {
                 // Update this device's state
                 blend_devices[output][slot].state = *final_event;
