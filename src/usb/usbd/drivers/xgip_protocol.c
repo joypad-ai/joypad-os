@@ -64,6 +64,10 @@ bool xgip_parse(xgip_t* xgip, const uint8_t* buffer, uint16_t len)
 
         if (xgip->header.length == 0) {
             // End of chunk marker
+            if (len < 6) {
+                xgip->is_valid = false;
+                return false;
+            }
             uint16_t end_chunk_size = (buffer[4] | (buffer[5] << 8));
             if (xgip->total_chunk_length != end_chunk_size) {
                 xgip->is_valid = false;
@@ -72,6 +76,19 @@ bool xgip_parse(xgip_t* xgip, const uint8_t* buffer, uint16_t len)
             xgip->chunk_ended = true;
             xgip->is_valid = true;
             return true;
+        }
+
+        // Every chunk carries a 2-byte length/offset after the header, then data.
+        // The header's length byte comes from the device: never read past
+        // what was actually received.
+        uint16_t copy_len = xgip->header.length;
+        if (copy_len > GIP_MAX_CHUNK_SIZE) {
+            copy_len ^= 0x80;  // Remove encoding
+        }
+        if (len < 6 || copy_len > len - 6) {
+            xgip_reset(xgip);
+            xgip->is_valid = false;
+            return false;
         }
 
         if (xgip->header.chunk_start) {
@@ -110,12 +127,7 @@ bool xgip_parse(xgip_t* xgip, const uint8_t* buffer, uint16_t len)
             xgip->total_chunk_received += xgip->header.length;
         }
 
-        // Copy data
-        uint16_t copy_len = xgip->header.length;
-        if (copy_len > GIP_MAX_CHUNK_SIZE) {
-            copy_len ^= 0x80;  // Remove encoding
-        }
-
+        // Copy data (copy_len checked against len above)
         if (xgip->data && (xgip->actual_data_received + copy_len) <= xgip->data_length) {
             memcpy(&xgip->data[xgip->actual_data_received], &buffer[6], copy_len);
             xgip->actual_data_received += copy_len;
@@ -134,6 +146,14 @@ bool xgip_parse(xgip_t* xgip, const uint8_t* buffer, uint16_t len)
         // Non-chunked data
         xgip_reset(xgip);
         memcpy(&xgip->header, buffer, sizeof(gip_header_t));
+
+        // The header's length byte comes from the device: never read past
+        // what was actually received.
+        if (xgip->header.length > len - 4) {
+            xgip_reset(xgip);
+            xgip->is_valid = false;
+            return false;
+        }
 
         if (xgip->header.length > 0) {
             xgip->data = (uint8_t*)malloc(xgip->header.length);
