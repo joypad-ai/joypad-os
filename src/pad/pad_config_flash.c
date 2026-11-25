@@ -247,11 +247,21 @@ static bool pin_ok(int16_t pin) {
     return pin == -1 || (pin >= 0 && pin <= PAD_MAX_GPIO);
 }
 
+// Button inputs may also live on an I2C expander: 100-115 (expander 0) and
+// 200-215 (expander 1), as pad_read_button() reads them. Without this a saved
+// config for an expander board (Alpakka) fails validation on every boot and
+// silently reverts to defaults.
+static bool button_pin_ok(int16_t pin) {
+    return pin_ok(pin) ||
+           (pin >= PAD_I2C_EXPANDER_0_BASE && pin <= PAD_I2C_EXPANDER_0_BASE + 15) ||
+           (pin >= PAD_I2C_EXPANDER_1_BASE && pin <= PAD_I2C_EXPANDER_1_BASE + 15);
+}
+
 static bool pad_config_flash_valid(const pad_config_flash_t* f) {
     if (f->magic != PAD_CONFIG_MAGIC) return false;
     if (!pin_ok(f->i2c_sda) || !pin_ok(f->i2c_scl)) return false;
     for (int i = 0; i < 22; i++) {
-        if (!pin_ok(f->buttons[i])) return false;
+        if (!button_pin_ok(f->buttons[i])) return false;
     }
     if (!pin_ok(f->led_pin)) return false;
     if (!pin_ok(f->speaker_pin) || !pin_ok(f->speaker_enable_pin)) return false;
@@ -259,9 +269,9 @@ static bool pad_config_flash_valid(const pad_config_flash_t* f) {
         || !pin_ok(f->display_cs) || !pin_ok(f->display_dc) || !pin_ok(f->display_rst)) return false;
     if (!pin_ok(f->qwiic_tx) || !pin_ok(f->qwiic_rx)) return false;
     if (!pin_ok(f->usb_host_dp)) return false;
-    if (!pin_ok(f->f1_pin) || !pin_ok(f->f2_pin)) return false;
-    if (!pin_ok(f->rhat_up) || !pin_ok(f->rhat_down)
-        || !pin_ok(f->rhat_left) || !pin_ok(f->rhat_right)) return false;
+    if (!button_pin_ok(f->f1_pin) || !button_pin_ok(f->f2_pin)) return false;
+    if (!button_pin_ok(f->rhat_up) || !button_pin_ok(f->rhat_down)
+        || !button_pin_ok(f->rhat_left) || !button_pin_ok(f->rhat_right)) return false;
     for (int i = 0; i < 2; i++) {
         if (!pin_ok(f->toggle[i].pin)) return false;
         if (!pin_ok(f->joywing[i].sda) || !pin_ok(f->joywing[i].scl)) return false;
