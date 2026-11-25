@@ -143,6 +143,21 @@ uint8_t USB_ProcessHIDReport(uint8_t dev_addr,
 		ReportData++;
 		ReportSize--;
 
+		// An item whose data would run past the end of the descriptor means the
+		// descriptor is truncated: stop and keep what parsed cleanly. Reading it
+		// anyway runs off the buffer, and the uint16_t ReportSize then wraps, so
+		// the loop carries on for up to 64 KB of whatever follows in memory.
+		uint8_t ItemDataBytes = 0;
+		switch (HIDReportItem & HID_RI_DATA_SIZE_MASK)
+		{
+			case HID_RI_DATA_BITS_32: ItemDataBytes = 4; break;
+			case HID_RI_DATA_BITS_16: ItemDataBytes = 2; break;
+			case HID_RI_DATA_BITS_8:  ItemDataBytes = 1; break;
+			default: break;
+		}
+		if (ItemDataBytes > ReportSize)
+			break;
+
 		switch (HIDReportItem & HID_RI_DATA_SIZE_MASK)
 		{
 			case HID_RI_DATA_BITS_32:
