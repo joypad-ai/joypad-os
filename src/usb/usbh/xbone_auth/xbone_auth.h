@@ -38,6 +38,10 @@ void xbone_auth_unregister(uint8_t dev_addr);
 void xbone_auth_report_received(uint8_t dev_addr, uint8_t instance,
                                 uint8_t const* report, uint16_t len);
 
+// Called for each input report from an Xbox One source: the first one marks
+// the source powered on and ready to carry auth
+void xbone_auth_source_input(uint8_t dev_addr, uint8_t instance);
+
 // Called on xinput mount to check for Xbox One dongle
 void xbone_auth_xmount(uint8_t dev_addr, uint8_t instance,
                        uint8_t controller_type, uint8_t subtype);

@@ -117,7 +117,7 @@ void xbone_auth_task(void)
     xbone_auth_state_t state = xbone_auth_get_state();
 
     // dongle_ready is set ONLY after the real announce → descriptor → POWER_ON
-    // handshake completes (see xbone_auth_report_received). We deliberately do
+    // handshake completes (see xbone_auth_source_input). We deliberately do
     // NOT mark the source ready on a timeout: forwarding auth to a source that
     // hasn't been powered on fails (and a real controller never recovers).
     if (!dongle_ready) {
@@ -197,6 +197,21 @@ void xbone_auth_register(uint8_t dev_addr, uint8_t instance)
     // completes (matches GP2040-CE). The source drives this at its own pace.
     dongle_ready = false;
     printf("[xbone_auth] Controller mounted, waiting for ANNOUNCE handshake...\n");
+}
+
+// Called by the XInput host for every input report from an Xbox One source.
+// The XInput host driver answers the source's ANNOUNCE itself (xboxone_init
+// sends the power-on), and only GIP_AUTH / GIP_FINAL_AUTH reports are passed
+// to xbone_auth_report_received(), so the ANNOUNCE -> descriptor -> POWER_ON
+// branch there never sees its packets. A GIP source only sends input after it
+// has been powered on, so the first input report is the handshake completing.
+void xbone_auth_source_input(uint8_t dev_addr, uint8_t instance)
+{
+    if (dongle_ready || dev_addr != xbone_dev_addr || instance != xbone_instance) {
+        return;
+    }
+    dongle_ready = true;
+    printf("[xbone_auth] Source powered on (first input report), ready for auth\n");
 }
 
 void xbone_auth_unregister(uint8_t dev_addr)
