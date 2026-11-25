@@ -359,8 +359,8 @@ static uint8_t scale_axis(const dinput_usage_t *loc, uint16_t raw)
 void process_hid_gamepad(uint8_t dev_addr, uint8_t instance, uint8_t const* report, uint16_t len)
 {
   uint32_t buttons = 0;
-  static dinput_gamepad_t previous[MAX_DEVICES][5];
-  static uint32_t previous_aux[MAX_DEVICES][5];   // spillover buttons (usages 13..24)
+  static dinput_gamepad_t previous[MAX_DEVICES][CFG_TUH_HID];
+  static uint32_t previous_aux[MAX_DEVICES][CFG_TUH_HID];   // spillover buttons (usages 13..24)
   dinput_gamepad_t current = {0};
   current.value = 0;
 
