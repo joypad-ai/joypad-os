@@ -26,6 +26,14 @@
 #include "pico/stdlib.h"
 #include <stdio.h>
 
+// Log every button change to stdio. Off by default: with UART stdio the line
+// is 3.2 ms of characters at 115200 baud and the write blocks the main loop
+// once the TX FIFO is full, and the loop is what reads the next input.
+// Build with -DCONTROLLER_DEBUG_BUTTONS=1 to turn it back on.
+#ifndef CONTROLLER_DEBUG_BUTTONS
+#define CONTROLLER_DEBUG_BUTTONS 0
+#endif
+
 // Active pad config (points to flash or compile-time default)
 static const pad_device_config_t* pad_config = NULL;
 
@@ -486,7 +494,9 @@ void app_task(void)
     // Get current button state from router output (read ONCE, share with all consumers)
     // Persist across frames since router_get_output returns NULL when no new data
     static uint32_t buttons = 0;
+#if CONTROLLER_DEBUG_BUTTONS
     static uint32_t prev_buttons = 0;
+#endif
     const input_event_t* event = router_get_output(OUTPUT_TARGET_USB_DEVICE, 0);
     if (event) {
         buttons = event->buttons;
@@ -496,10 +506,12 @@ void app_task(void)
             uart_device_queue_input(event, 0);
         }
     }
+#if CONTROLLER_DEBUG_BUTTONS
     if (buttons != prev_buttons) {
         printf("[app:controller] buttons=0x%08lx\n", (unsigned long)buttons);
         prev_buttons = buttons;
     }
+#endif
 
     // Process codes detection (Konami code, etc.)
     codes_process_raw(buttons);
