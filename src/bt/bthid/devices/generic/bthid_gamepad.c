@@ -248,8 +248,9 @@ void bthid_gamepad_set_descriptor(bthid_device_t* device, const uint8_t* desc, u
         uint16_t bitMask = ((0xFFFF >> (16 - bitSize)) << (bitOffset % 8));
         uint8_t byteIndex = bitOffset / 8;
 
-        uint8_t report[1] = {0};
-        if (USB_GetHIDReportItemInfo(item->ReportID, report, item)) {
+        // No report data exists yet while the descriptor is being parsed, so
+        // there is nothing to read here: only the item's position and usage.
+        {
             switch (item->Attributes.Usage.Page) {
                 case 0x01:  // Generic Desktop
                     switch (item->Attributes.Usage.Usage) {

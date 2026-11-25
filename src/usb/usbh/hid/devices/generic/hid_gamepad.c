@@ -44,20 +44,6 @@ HID_ReportInfo_t *info;
 //(hat format, 8 is released, 0=N, 1=NE, 2=E, 3=SE, 4=S, 5=SW, 6=W, 7=NW)
 static const uint8_t HAT_SWITCH_TO_DIRECTION_BUTTONS[] = {0b0001, 0b0011, 0b0010, 0b0110, 0b0100, 0b1100, 0b1000, 0b1001, 0b0000};
 
-// Gets HID descriptor report item for specific ReportID
-static inline bool USB_GetHIDReportItemInfoWithReportId(const uint8_t *ReportData, HID_ReportItem_t *const ReportItem)
-{
-  if (HID_DEBUG) TU_LOG1("ReportID: %d ", ReportItem->ReportID);
-  if (ReportItem->ReportID)
-  {
-    // if (ReportItem->ReportID != ReportData[0])
-    //   return false;
-
-    ReportData++;
-  }
-  return USB_GetHIDReportItemInfo(ReportItem->ReportID, ReportData, ReportItem);
-}
-
 // Parses HID descriptor into byteIndex/buttonMasks
 void parse_descriptor(uint8_t dev_addr, uint8_t instance)
 {
@@ -95,8 +81,8 @@ void parse_descriptor(uint8_t dev_addr, uint8_t instance)
     // Also helpful if multiple reportId maps can be saved per instance and report as individual
     // players for single instance HID reports that contain multiple reportIds.
     //
-    uint8_t report[1] = {0}; // reportId = 0; original ex maps report to descriptor data structure
-    if (USB_GetHIDReportItemInfoWithReportId(report, item))
+    // No report data exists yet while the descriptor is being parsed, so there
+    // is nothing to read here: only the item's position and usage are needed.
     {
       if (HID_DEBUG) TU_LOG1("PAGE: %d ", item->Attributes.Usage.Page);
       hid_devices[dev_addr].instances[instance].type = HID_GAMEPAD;
