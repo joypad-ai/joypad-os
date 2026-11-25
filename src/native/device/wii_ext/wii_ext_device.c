@@ -251,6 +251,14 @@ static volatile uint16_t wii_log_tail = 0;
 static volatile uint16_t wii_log_dropped = 0;
 static volatile bool    tx_first_read = true;
 
+// The input report (0x00-0x07) is served one byte per I2C_SLAVE_REQUEST, so a
+// new report packed between two bytes of the same read would mix two reports.
+// In format 0x01 RX and LT are split across bytes, so a mixed read can turn a
+// tiny change into a large one. Each read transaction serves the report from a
+// copy taken at its first byte.
+#define REPORT_SNAP_SIZE 8
+static uint8_t read_snap[REPORT_SNAP_SIZE];
+
 static inline void wii_log_push(uint8_t kind, uint8_t reg, uint8_t val) {
     uint16_t next = (uint16_t)((wii_log_head + 1) % WII_LOG_BUF_SIZE);
     if (next == wii_log_tail) {
@@ -371,7 +379,15 @@ static void __isr wii_slave_handler(i2c_inst_t *i2c, i2c_slave_event_t ev)
         case I2C_SLAVE_REQUEST: {
             // Master wants to read. Encrypt if encryption is active.
             uint8_t out_byte;
-            if (cursor < REG_FILE_SIZE) {
+            if (tx_first_read) {
+                for (int i = 0; i < REPORT_SNAP_SIZE; i++) read_snap[i] = reg_file[i];
+            }
+            if (cursor < REPORT_SNAP_SIZE) {
+                out_byte = read_snap[cursor];
+                if (wii_ext_crypto_enabled) {
+                    wii_ext_crypto_encrypt(&out_byte, (uint8_t)cursor, 1);
+                }
+            } else if (cursor < REG_FILE_SIZE) {
                 out_byte = reg_file[cursor];
                 if (wii_ext_crypto_enabled) {
                     wii_ext_crypto_encrypt(&out_byte, (uint8_t)cursor, 1);
