@@ -28,6 +28,7 @@ typedef struct {
     uint8_t byteIndex;
     uint16_t bitMask;
     uint32_t max;
+    int32_t min;                // Logical Minimum; < 0 marks a signed, centred axis
 } ble_usage_loc_t;
 
 typedef struct {
@@ -171,6 +172,23 @@ static uint8_t scale_analog(uint16_t value, uint32_t max_value)
     return (uint8_t)((uint32_t)value * 255 / max_value);
 }
 
+// Scale an axis to 0-255. A signed axis (Logical Minimum < 0) is sign-extended
+// from its field width and mapped [min,max] -> [0,255] so its centre 0 lands
+// near 128, the same idea as the USB driver's scale_axis().
+static uint8_t scale_axis(uint16_t raw, const ble_usage_loc_t* loc)
+{
+    if (loc->min < 0) {
+        int bits = __builtin_popcount(loc->bitMask);
+        int32_t sval = raw;
+        if (bits > 0 && (raw & (1u << (bits - 1)))) sval -= (int32_t)1 << bits;
+        int32_t span = (int32_t)loc->max - loc->min;
+        if (span <= 0) return 128;
+        int32_t out = (sval - loc->min) * 255 / span;
+        return out < 0 ? 0 : (out > 255 ? 255 : (uint8_t)out);
+    }
+    return scale_analog(raw, loc->max);
+}
+
 // ============================================================================
 // HID DESCRIPTOR PARSING
 // ============================================================================
@@ -257,31 +275,37 @@ void bthid_gamepad_set_descriptor(bthid_device_t* device, const uint8_t* desc, u
                             gp->map.xLoc.byteIndex = byteIndex;
                             gp->map.xLoc.bitMask = bitMask;
                             gp->map.xLoc.max = item->Attributes.Logical.Maximum;
+                            gp->map.xLoc.min = (int32_t)item->Attributes.Logical.Minimum;
                             break;
                         case 0x31:  // Y - Left Analog Y
                             gp->map.yLoc.byteIndex = byteIndex;
                             gp->map.yLoc.bitMask = bitMask;
                             gp->map.yLoc.max = item->Attributes.Logical.Maximum;
+                            gp->map.yLoc.min = (int32_t)item->Attributes.Logical.Minimum;
                             break;
                         case 0x32:  // Z - Right Analog X
                             gp->map.zLoc.byteIndex = byteIndex;
                             gp->map.zLoc.bitMask = bitMask;
                             gp->map.zLoc.max = item->Attributes.Logical.Maximum;
+                            gp->map.zLoc.min = (int32_t)item->Attributes.Logical.Minimum;
                             break;
                         case 0x35:  // RZ - Right Analog Y
                             gp->map.rzLoc.byteIndex = byteIndex;
                             gp->map.rzLoc.bitMask = bitMask;
                             gp->map.rzLoc.max = item->Attributes.Logical.Maximum;
+                            gp->map.rzLoc.min = (int32_t)item->Attributes.Logical.Minimum;
                             break;
                         case 0x33:  // RX - Left Trigger
                             gp->map.rxLoc.byteIndex = byteIndex;
                             gp->map.rxLoc.bitMask = bitMask;
                             gp->map.rxLoc.max = item->Attributes.Logical.Maximum;
+                            gp->map.rxLoc.min = (int32_t)item->Attributes.Logical.Minimum;
                             break;
                         case 0x34:  // RY - Right Trigger
                             gp->map.ryLoc.byteIndex = byteIndex;
                             gp->map.ryLoc.bitMask = bitMask;
                             gp->map.ryLoc.max = item->Attributes.Logical.Maximum;
+                            gp->map.ryLoc.min = (int32_t)item->Attributes.Logical.Minimum;
                             break;
                         case 0x39:  // Hat switch
                             gp->map.hatLoc.byteIndex = byteIndex;
@@ -296,12 +320,14 @@ void bthid_gamepad_set_descriptor(bthid_device_t* device, const uint8_t* desc, u
                             gp->map.rxLoc.byteIndex = byteIndex;
                             gp->map.rxLoc.bitMask = bitMask;
                             gp->map.rxLoc.max = item->Attributes.Logical.Maximum;
+                            gp->map.rxLoc.min = (int32_t)item->Attributes.Logical.Minimum;
                             gp->map.has_sim_triggers = true;
                             break;
                         case 0xC4:  // Accelerator → Right Trigger
                             gp->map.ryLoc.byteIndex = byteIndex;
                             gp->map.ryLoc.bitMask = bitMask;
                             gp->map.ryLoc.max = item->Attributes.Logical.Maximum;
+                            gp->map.ryLoc.min = (int32_t)item->Attributes.Logical.Minimum;
                             gp->map.has_sim_triggers = true;
                             break;
                     }
@@ -406,22 +432,22 @@ static void process_report_dynamic(bthid_gamepad_data_t* gp, const uint8_t* data
     uint8_t l2 = 0, r2 = 0;
 
     if (map->xLoc.max) {
-        lx = scale_analog(extract_field(data, len, &map->xLoc), map->xLoc.max);
+        lx = scale_axis(extract_field(data, len, &map->xLoc), &map->xLoc);
     }
     if (map->yLoc.max) {
-        ly = scale_analog(extract_field(data, len, &map->yLoc), map->yLoc.max);
+        ly = scale_axis(extract_field(data, len, &map->yLoc), &map->yLoc);
     }
     if (map->zLoc.max) {
-        rx = scale_analog(extract_field(data, len, &map->zLoc), map->zLoc.max);
+        rx = scale_axis(extract_field(data, len, &map->zLoc), &map->zLoc);
     }
     if (map->rzLoc.max) {
-        ry = scale_analog(extract_field(data, len, &map->rzLoc), map->rzLoc.max);
+        ry = scale_axis(extract_field(data, len, &map->rzLoc), &map->rzLoc);
     }
     if (map->rxLoc.max) {
-        l2 = scale_analog(extract_field(data, len, &map->rxLoc), map->rxLoc.max);
+        l2 = scale_axis(extract_field(data, len, &map->rxLoc), &map->rxLoc);
     }
     if (map->ryLoc.max) {
-        r2 = scale_analog(extract_field(data, len, &map->ryLoc), map->ryLoc.max);
+        r2 = scale_axis(extract_field(data, len, &map->ryLoc), &map->ryLoc);
     }
 
     // Controllers whose "triggers" are really digital shoulder buttons (M30):
