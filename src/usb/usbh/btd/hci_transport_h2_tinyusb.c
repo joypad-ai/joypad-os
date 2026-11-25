@@ -994,6 +994,14 @@ void btstack_driver_close(uint8_t dev_addr)
     usb_state.acl_in_pending = false;
     usb_state.cmd_pending = false;
     usb_state.acl_out_pending = false;
+
+    // Forget the endpoints. A replugged dongle usually gets the same address,
+    // and the double-open guard in btstack_driver_open() would otherwise treat
+    // it as already open and never parse or open its endpoints again.
+    usb_state.dev_addr = 0;
+    usb_state.ep_evt_in = 0;
+    usb_state.ep_acl_in = 0;
+    usb_state.ep_acl_out = 0;
 }
 
 // ============================================================================
