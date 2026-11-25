@@ -77,6 +77,8 @@ static bool trigger_rest_init = false;
 static struct {
     uint8_t min;
     uint8_t max;
+    uint8_t centre;     // stick rest position, taken from the first report after connect
+    bool    centre_set;
 } stick_range[GC_MAX_PORTS][4];  // [port][0=LX, 1=LY, 2=RX, 3=RY]
 static bool stick_range_init = false;
 
@@ -86,6 +88,7 @@ static void stick_range_reset(void)
         for (int a = 0; a < 4; a++) {
             stick_range[p][a].min = GC_STICK_INIT_MIN;
             stick_range[p][a].max = GC_STICK_INIT_MAX;
+            stick_range[p][a].centre_set = false;
         }
     }
     stick_range_init = true;
@@ -116,11 +119,21 @@ static uint8_t trigger_scale(uint8_t raw, uint8_t port, uint8_t which)
     return (uint8_t)(((uint16_t)(raw - floor) * 255) / span);
 }
 
-// Scale raw value using tracked min/max → 0-255 with 128 center preserved
+// Scale raw value using tracked min/max to 0-255 with the stick's rest position
+// mapped to 128. Each side of the rest position is scaled on its own, so a
+// controller that rests off 128, or travels further one way than the other,
+// still reads 128 at rest. The rest position is the first report after connect,
+// which is what a console takes as the controller's origin.
 static uint8_t stick_scale(uint8_t raw, uint8_t port, uint8_t axis)
 {
+    if (!stick_range[port][axis].centre_set) {
+        stick_range[port][axis].centre = raw;
+        stick_range[port][axis].centre_set = true;
+    }
+    uint8_t c = stick_range[port][axis].centre;
+
     // Update tracked range (ignore values near center — stick rest noise)
-    if (raw < 128 - GC_STICK_DEADZONE || raw > 128 + GC_STICK_DEADZONE) {
+    if (raw + GC_STICK_DEADZONE < c || raw > c + GC_STICK_DEADZONE) {
         if (raw < stick_range[port][axis].min) stick_range[port][axis].min = raw;
         if (raw > stick_range[port][axis].max) stick_range[port][axis].max = raw;
     }
@@ -129,12 +142,13 @@ static uint8_t stick_scale(uint8_t raw, uint8_t port, uint8_t axis)
     uint8_t hi = stick_range[port][axis].max;
 
     // Avoid division by zero or degenerate range
-    if (hi <= lo || hi - lo < 20) return raw;
+    if (hi <= lo || hi - lo < 20 || c <= lo || c >= hi) return raw;
 
-    // Scale: map [lo..hi] → [0..255]
+    // Scale: map [lo..c] -> [0..128] and [c..hi] -> [128..255]
     if (raw <= lo) return 0;
     if (raw >= hi) return 255;
-    return (uint8_t)(((uint16_t)(raw - lo) * 255) / (hi - lo));
+    if (raw <= c) return (uint8_t)(((uint16_t)(raw - lo) * 128) / (c - lo));
+    return (uint8_t)(128 + ((uint16_t)(raw - c) * 127) / (hi - c));
 }
 
 // ============================================================================
@@ -462,6 +476,7 @@ void gc_host_task(void)
                 for (int a = 0; a < 4; a++) {
                     stick_range[port][a].min = GC_STICK_INIT_MIN;
                     stick_range[port][a].max = GC_STICK_INIT_MAX;
+                    stick_range[port][a].centre_set = false;
                 }
                 // Reset trigger rest bias for this port on fresh connect
                 trigger_rest[port][0] = GC_TRIGGER_INIT_REST;
