@@ -7,6 +7,7 @@
 #include "tusb.h"
 #include "intel/intel_wireless_series.h"
 #include "core/services/players/manager.h"
+#include "core/router/router.h"
 #include "core/services/codes/codes.h"
 #include <stdio.h>
 
@@ -253,6 +254,15 @@ void tuh_umount_cb(uint8_t dev_addr)
     // until the receiver has cleared every RF slot's routed output.
     intel_wireless_series_disconnect(dev_addr);
 #endif
+    // Clear the router state of every player this device owned before the
+    // player slots are freed. Bluetooth drivers do this on disconnect; without
+    // it a USB pad pulled mid-press leaves its last frame in the output (and in
+    // the MERGE_BLEND blend set) for as long as any other controller stays on.
+    for (int i = 0; i < MAX_PLAYERS; i++) {
+        if (players[i].dev_addr == dev_addr) {
+            router_device_disconnected(dev_addr, (int8_t)players[i].instance);
+        }
+    }
     remove_players_by_address(dev_addr, -1);
 
     // Reset test mode when device disconnects
