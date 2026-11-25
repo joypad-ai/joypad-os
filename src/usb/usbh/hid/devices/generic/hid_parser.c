@@ -99,6 +99,18 @@ void USB_FreeReportInfo(HID_ReportInfo_t *ReportInfo)
 	}
 }
 
+// Logical Minimum and Maximum are signed in the HID spec, stored in as few bytes
+// as the device chose. Widen a 1 or 2 byte value to 32 bits with its sign, so a
+// minimum of -127 sent as the single byte 0x81 is kept as -127, not 129.
+static uint32_t hid_sign_extend(uint32_t value, uint8_t size_code)
+{
+	if (size_code == HID_RI_DATA_BITS_8)
+		return (uint32_t)(int32_t)(int8_t)value;
+	if (size_code == HID_RI_DATA_BITS_16)
+		return (uint32_t)(int32_t)(int16_t)value;
+	return value;
+}
+
 uint8_t USB_ProcessHIDReport(uint8_t dev_addr,
 							 uint8_t instance,
 							 const uint8_t *ReportData,
@@ -200,11 +212,17 @@ uint8_t USB_ProcessHIDReport(uint8_t dev_addr,
 				break;
 
 			case HID_RI_LOGICAL_MINIMUM(0):
-				CurrStateTable->Attributes.Logical.Minimum = ReportItemData;
+				CurrStateTable->Attributes.Logical.Minimum =
+					hid_sign_extend(ReportItemData, HIDReportItem & HID_RI_DATA_SIZE_MASK);
 				break;
 
 			case HID_RI_LOGICAL_MAXIMUM(0):
-				CurrStateTable->Attributes.Logical.Maximum = ReportItemData;
+				// Read the maximum as signed only when the minimum is negative, so a
+				// one-byte maximum of 0xFF on an unsigned field still means 255.
+				CurrStateTable->Attributes.Logical.Maximum =
+					((int32_t)CurrStateTable->Attributes.Logical.Minimum < 0)
+						? hid_sign_extend(ReportItemData, HIDReportItem & HID_RI_DATA_SIZE_MASK)
+						: ReportItemData;
 				break;
 
 			case HID_RI_PHYSICAL_MINIMUM(0):
