@@ -186,6 +186,14 @@ static uint32_t apply_usbd_profile_player(const input_event_t* event, profile_ou
 {
     const profile_t* profile = profile_get_active(OUTPUT_TARGET_USB_DEVICE);
 
+    // Every caller passes a fresh stack profile_output_t, but profile_apply()
+    // reads autofire_start_ms[] as timing carried over from the last call.
+    // Keep that timing here, per player, so autofire starts from zero and
+    // keeps its phase between reports.
+    static uint32_t autofire_start_ms[USB_MAX_PLAYERS][AUTOFIRE_BUTTON_COUNT];
+    uint8_t af = player_index < USB_MAX_PLAYERS ? player_index : 0;
+    memcpy(profile_out->autofire_start_ms, autofire_start_ms[af], sizeof(autofire_start_ms[af]));
+
     profile_apply(profile,
                   event->buttons,
                   event->analog[ANALOG_LX], event->analog[ANALOG_LY],
@@ -193,6 +201,8 @@ static uint32_t apply_usbd_profile_player(const input_event_t* event, profile_ou
                   event->analog[ANALOG_L2], event->analog[ANALOG_R2],
                   event->analog[ANALOG_RZ],
                   profile_out);
+
+    memcpy(autofire_start_ms[af], profile_out->autofire_start_ms, sizeof(autofire_start_ms[af]));
 
     // Custom profile (button remap, stick sensitivity, SOCD, axis inversion,
     // thresholds) is applied in router_submit_input() so it works uniformly

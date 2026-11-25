@@ -913,8 +913,12 @@ void __not_in_flash_func(update_3do_report)(uint8_t player_index) {
 
   // Apply profile remapping
   const profile_t* profile = profile_get_active(OUTPUT_TARGET_3DO);
-  profile_output_t mapped;
-  profile_apply(profile, buttons, ax, ay, az, at, l2, r2, event->analog[ANALOG_RZ], &mapped);
+  // One per player and static: profile_apply() keeps autofire timing in this
+  // struct between calls.
+  static profile_output_t mapped_state[MAX_PLAYERS];
+  profile_output_t* const mp = &mapped_state[player_index];
+  profile_apply(profile, buttons, ax, ay, az, at, l2, r2, event->analog[ANALOG_RZ], mp);
+  profile_output_t mapped = *mp;
 
   // Check if silly pad mode is enabled
   if (output_mode == TDO_MODE_SILLY) {
