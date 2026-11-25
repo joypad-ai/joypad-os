@@ -59,6 +59,8 @@ typedef struct {
     // Received packet info (for deferred processing)
     bool     evt_ready;         // Event packet ready for processing
     uint16_t evt_len;           // Event packet length
+    uint16_t evt_fill;          // Bytes of the current event received so far
+    uint16_t evt_mps;           // Event endpoint wMaxPacketSize
     bool     acl_ready;         // ACL packet ready for processing
     uint16_t acl_len;           // ACL packet length
 
@@ -133,6 +135,7 @@ static void hci_transport_h2_init(const void* transport_config)
     uint8_t saved_ep_evt_in = usb_state.ep_evt_in;
     uint8_t saved_ep_acl_in = usb_state.ep_acl_in;
     uint8_t saved_ep_acl_out = usb_state.ep_acl_out;
+    uint16_t saved_evt_mps = usb_state.evt_mps;
     bool was_connected = usb_state.connected;
     void (*saved_packet_handler)(uint8_t, uint8_t*, uint16_t) = usb_state.packet_handler;
 
@@ -144,6 +147,7 @@ static void hci_transport_h2_init(const void* transport_config)
     usb_state.ep_evt_in = saved_ep_evt_in;
     usb_state.ep_acl_in = saved_ep_acl_in;
     usb_state.ep_acl_out = saved_ep_acl_out;
+    usb_state.evt_mps = saved_evt_mps;
     usb_state.connected = was_connected;
     usb_state.packet_handler = saved_packet_handler;
 
@@ -722,11 +726,26 @@ static void usb_submit_event_transfer(void)
         return;
     }
 
+    // Read one packet at a time and reassemble the event from its own length
+    // field (as Linux btusb does). A transfer sized to the whole buffer only
+    // ends on a short packet, so an event whose length is an exact multiple of
+    // the packet size would run on into the next event.
+    uint16_t room = (uint16_t)(sizeof(usb_state.evt_buf) - usb_state.evt_fill);
+    uint16_t want = usb_state.evt_mps ? usb_state.evt_mps : room;
+    if (want > room) {
+        // Event longer than the buffer: drop it and start over
+        usb_state.evt_fill = 0;
+        room = sizeof(usb_state.evt_buf);
+        if (want > room) want = room;
+    }
+
     usb_state.evt_pending = true;
-    memset(usb_state.evt_buf, 0, sizeof(usb_state.evt_buf));
+    if (usb_state.evt_fill == 0) {
+        memset(usb_state.evt_buf, 0, sizeof(usb_state.evt_buf));
+    }
 
     bool ok = usbh_edpt_xfer(usb_state.dev_addr, usb_state.ep_evt_in,
-                             usb_state.evt_buf, sizeof(usb_state.evt_buf));
+                             usb_state.evt_buf + usb_state.evt_fill, want);
     // printf("[HCI_USB] Submit event xfer: %s\n", ok ? "OK" : "FAIL");
     if (!ok) {
         usb_state.evt_pending = false;
@@ -819,6 +838,8 @@ bool btstack_driver_open(uint8_t rhport, uint8_t dev_addr,
                 // Interrupt IN = HCI Events
                 if (tu_edpt_dir(ep->bEndpointAddress) == TUSB_DIR_IN) {
                     usb_state.ep_evt_in = ep->bEndpointAddress;
+                    usb_state.evt_mps = tu_edpt_packet_size(ep);
+                    usb_state.evt_fill = 0;
                     printf("[HCI_USB] Event IN EP: 0x%02X\n", usb_state.ep_evt_in);
 
                     if (!tuh_edpt_open(dev_addr, ep)) {
@@ -930,7 +951,17 @@ bool btstack_driver_xfer_cb(uint8_t dev_addr, uint8_t ep_addr,
         // HCI Event received
         // printf("[HCI_USB] HCI Event: %d bytes\n", (int)xferred_bytes);
         usb_state.evt_pending = false;
-        usb_state.evt_len = (uint16_t)xferred_bytes;
+        usb_state.evt_fill = (uint16_t)(usb_state.evt_fill + xferred_bytes);
+
+        // Complete once we hold the 2-byte header plus its parameter length
+        uint16_t need = (usb_state.evt_fill >= 2) ? (uint16_t)(2 + usb_state.evt_buf[1]) : 0;
+        if (need == 0 || usb_state.evt_fill < need) {
+            usb_submit_event_transfer();  // fetch the rest of this event
+            return true;
+        }
+
+        usb_state.evt_len = need;
+        usb_state.evt_fill = 0;
         usb_state.evt_ready = true;
 
 #if USE_BTSTACK
