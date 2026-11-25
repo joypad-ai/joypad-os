@@ -4,9 +4,10 @@
 ;   - idles with CLK, ATT high (DAT released/input)
 ;   - blocks on `pull` until the CPU pushes a 32-bit command word (trigger)
 ;   - drops ATT, then clocks 21 bytes LSB-first:
-;       * first 4 bytes shift CMD out from the 32-bit word: 0x01, 0x42, then the
-;         small-motor (on/off) and large-motor (PWM) rumble bytes
-;       * remaining 17 bytes just clock to read DAT (CMD idles low = 0x00)
+;       * first 5 bytes shift CMD out: 0x01, 0x42, 0x00, then the small-motor
+;         (on/off) and large-motor (PWM) rumble bytes. The first four come from
+;         the trigger word, the fifth from a second word (autopull)
+;       * remaining 16 bytes just clock to read DAT
 ;   - ACTIVE PULL-UP: each bit, DAT is briefly DRIVEN high (weak 2mA) then released
 ;     to input before sampling. The 2mA charge wins on a released '1' bit (fast rise
 ;     despite the weak internal pull-up + cable capacitance) but loses to the
@@ -28,7 +29,7 @@
 .side_set 2
 
 .wrap_target
-    set y, 3         side 0b11 [7]      ; 4 command bytes (0x01,0x42,smallMotor,largeMotor); idle CLK=1 ATT=1
+    set y, 4         side 0b11 [7]      ; 5 command bytes (0x01,0x42,0x00,smallMotor,largeMotor); idle CLK=1 ATT=1
     pull             side 0b11 [7]      ; wait for CPU trigger word (idle high)
     nop              side 0b01 [7]      ; ATT low -> select (CLK stays high)
 
@@ -42,7 +43,7 @@ cmd_bit:
     in pins, 1       side 0b00          ; sample DAT (CLK still low)
     jmp x-- cmd_bit  side 0b01          ; CLK=1 (rising edge)
     jmp y-- cmd_byte side 0b01
-    set y, 16        side 0b01          ; 17 more data bytes (4 cmd + 17 = 21 = PSX_HW_BYTES)
+    set y, 15        side 0b01          ; 16 more data bytes (5 cmd + 16 = 21 = PSX_HW_BYTES)
 
 data_byte:
     set x, 7         side 0b01 [7]
