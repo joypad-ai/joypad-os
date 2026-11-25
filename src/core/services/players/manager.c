@@ -168,11 +168,17 @@ int add_player(int dev_addr, int instance, input_transport_t transport, const ch
     playersCount++;
   } else {
     // FIXED MODE: Find first empty slot
+    player_index = -1;
     for (int i = 0; i < MAX_PLAYERS; i++) {
       if (players[i].dev_addr == -1) {
         player_index = i;
         break;
       }
+    }
+    // All slots taken: refuse, as SHIFT mode does. Falling through with
+    // index 0 would overwrite player 1 with the new device.
+    if (player_index < 0) {
+      return -1;
     }
     // Update playersCount for LED indication
     if (player_index >= playersCount) {
