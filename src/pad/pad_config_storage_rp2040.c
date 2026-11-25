@@ -65,6 +65,12 @@ static void flush_output(void) {
 #endif
 }
 
+// How long to wait for the other core to park before a flash operation. Was
+// UINT32_MAX (about 49 days): if the other core never answers, the save hung
+// the device. On a timeout the other core may still be running from flash, so
+// the operation is skipped rather than done without it parked.
+#define PAD_FLASH_SAFE_TIMEOUT_MS 500
+
 typedef struct { uint32_t offset; const uint8_t* data; } page_params_t;
 typedef struct { uint32_t offset; } erase_params_t;
 
@@ -83,22 +89,30 @@ static void write_page(uint8_t slot, const pad_config_flash_t* config) {
     memcpy(&buf, config, sizeof(buf));
     uint32_t offset = PAD_CONFIG_SECTOR_OFFSET + (slot * PAD_SLOT_SIZE);
     page_params_t params = { .offset = offset, .data = (const uint8_t*)&buf };
-    if (flash_safe_execute(page_worker, &params, UINT32_MAX) != PICO_OK) {
+    int rc = flash_safe_execute(page_worker, &params, PAD_FLASH_SAFE_TIMEOUT_MS);
+    if (rc == PICO_ERROR_TIMEOUT) {
+        printf("[pad_config] Write skipped: other core did not park\n");
+    } else if (rc != PICO_OK) {
         uint32_t ints = save_and_disable_interrupts();
         flash_range_program(offset, (const uint8_t*)&buf, FLASH_PAGE_SIZE);
         restore_interrupts(ints);
     }
 }
 
-static void erase_sector(void) {
+static bool erase_sector(void) {
     printf("[pad_config] Erasing sector at 0x%lX\n", (unsigned long)PAD_CONFIG_SECTOR_OFFSET);
     flush_output();
     erase_params_t params = { .offset = PAD_CONFIG_SECTOR_OFFSET };
-    if (flash_safe_execute(erase_worker, &params, UINT32_MAX) != PICO_OK) {
+    int rc = flash_safe_execute(erase_worker, &params, PAD_FLASH_SAFE_TIMEOUT_MS);
+    if (rc == PICO_ERROR_TIMEOUT) {
+        printf("[pad_config] Erase skipped: other core did not park\n");
+        return false;
+    } else if (rc != PICO_OK) {
         uint32_t ints = save_and_disable_interrupts();
         flash_range_erase(PAD_CONFIG_SECTOR_OFFSET, FLASH_SECTOR_SIZE);
         restore_interrupts(ints);
     }
+    return true;
 }
 
 // ============================================================================
@@ -133,7 +147,7 @@ void pad_config_storage_save(const pad_config_flash_t* config) {
 
     int slot = find_empty_slot();
     if (slot < 0) {
-        erase_sector();
+        if (!erase_sector()) return;   // never write over a sector that was not erased
         slot = 0;
     }
 
@@ -143,7 +157,7 @@ void pad_config_storage_save(const pad_config_flash_t* config) {
 }
 
 void pad_config_storage_erase(void) {
-    erase_sector();
+    if (!erase_sector()) return;
     pad_sequence = 0;
     printf("[pad_config] Config erased\n");
 }
