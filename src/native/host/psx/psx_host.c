@@ -116,8 +116,8 @@ static bool      last_submitted = false;
 // DualShock rumble motor levels sent in each poll's command bytes (small = on/off,
 // large = PWM). Only take effect after enable_rumble (0x4D) maps them; set from the
 // output's feedback state in psx_host_task.
-static uint8_t psx_rumble_small = 0;   // command byte 2: small motor, 0 off / nonzero on
-static uint8_t psx_rumble_large = 0;   // command byte 3: large motor, 0-255 PWM
+static uint8_t psx_rumble_small = 0;   // command byte 3: small motor, 0 off / nonzero on
+static uint8_t psx_rumble_large = 0;   // command byte 4: large motor, 0-255 PWM
 
 // Arm the DMA for one transaction and trigger the PIO. Non-blocking.
 // Always reads the full 21-byte frame (4 command + 17 data). At 500 kHz the
@@ -126,11 +126,13 @@ static void psx_start_xfer(void) {
     psx_busy = true;
     dma_channel_set_write_addr(psx_dma, psx_rx, false);
     dma_channel_set_trans_count(psx_dma, PSX_HW_BYTES, true);   // arm + start
-    // Command word, shifted LSB-first by the PIO: byte0=0x01, byte1=0x42,
-    // byte2=small motor, byte3=large motor (the rumble control bytes).
+    // Command bytes, shifted LSB-first by the PIO: byte0=0x01, byte1=0x42,
+    // byte2=0x00, byte3=small motor, byte4=large motor. The 0x4D mapping below
+    // addresses poll bytes 3 onward, so the motors live at 3 and 4. The fifth
+    // byte comes from a second word (autopull); only its low 8 bits are sent.
     pio_sm_put(psx_pio, psx_sm,
-               0x01u | (0x42u << 8) |
-               ((uint32_t)psx_rumble_small << 16) | ((uint32_t)psx_rumble_large << 24));
+               0x01u | (0x42u << 8) | ((uint32_t)psx_rumble_small << 24));
+    pio_sm_put(psx_pio, psx_sm, (uint32_t)psx_rumble_large);
 }
 
 // ---------------------------------------------------------------------------
@@ -180,8 +182,8 @@ static void psx_send_config(void) {
     // (e.g. mid-boot on hot-swap) latch the pad in 0x73 and reject re-config, so
     // it gets stuck without pressure. Unlocked, a later retry can still upgrade it.
     static const uint8_t set_mode[]        = {0x01, 0x44, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00};
-    // Map poll command byte 2 -> small motor (0x00), byte 3 -> large motor (0x01),
-    // so the rumble bytes in psx_start_xfer's command word actually drive the motors.
+    // Map poll command byte 3 -> small motor (0x00), byte 4 -> large motor (0x01),
+    // so the rumble bytes psx_start_xfer sends actually drive the motors.
     static const uint8_t enable_rumble[]   = {0x01, 0x4D, 0x00, 0x00, 0x01};
     static const uint8_t set_bytes_large[] = {0x01, 0x4F, 0x00, 0xFF, 0xFF, 0x03, 0x00, 0x00, 0x00};
     static const uint8_t exit_config[]     = {0x01, 0x43, 0x00, 0x00, 0x5A, 0x5A, 0x5A, 0x5A, 0x5A};
@@ -307,7 +309,7 @@ void psx_host_init_pins(uint8_t cmd, uint8_t clk, uint8_t att, uint8_t dat) {
     sm_config_set_set_pins(&c, pin_dat, 1);         // set = DAT (driven each bit)
     sm_config_set_out_pins(&c, pin_cmd, 1);
     sm_config_set_in_pins(&c, pin_dat);
-    sm_config_set_out_shift(&c, true, false, 32);   // shift right (LSB first), manual pull
+    sm_config_set_out_shift(&c, true, true, 32);    // shift right (LSB first); autopull feeds the 5th command byte
     sm_config_set_in_shift(&c, true, true, 8);      // shift right, autopush every byte
 
     pio_gpio_init(psx_pio, pin_clk);
