@@ -629,6 +629,24 @@ static void psx_process(const uint8_t* buf) {
         connected = false;
         last_id = 0xFF;
         last_real_id = 0xFF;
+
+        // Send cleared input so buttons held at the moment of unplug do not
+        // stay pressed, and make the next pad report from scratch.
+        if (last_submitted) {
+            input_event_t e;
+            init_input_event(&e);
+            e.dev_addr  = PSX_DEV_ADDR;
+            e.instance  = 0;
+            e.type      = INPUT_TYPE_GAMEPAD;
+            e.transport = INPUT_TRANSPORT_NATIVE;
+            e.buttons   = 0;
+            e.analog[ANALOG_LX] = 128; e.analog[ANALOG_LY] = 128;
+            e.analog[ANALOG_RX] = 128; e.analog[ANALOG_RY] = 128;
+            router_submit_input(&e);
+        }
+        last_submitted = false;
+        last_buttons = 0;
+        last_lx = 128; last_ly = 128; last_rx = 128; last_ry = 128;
         pad_has_analog_btn = false;   // re-evaluate analog capability for the next pad
         config_attempts = 0;   // reconfigure on the next controller
     }

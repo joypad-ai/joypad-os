@@ -146,8 +146,24 @@ void snes_host_task(void)
         // Poll the controller
         snespad_poll(pad);
 
-        // Skip if no device connected
+        // No device: if this port last reported a state, send cleared input
+        // once so buttons held at the moment of unplug do not stay pressed.
         if (pad->type == SNESPAD_NONE) {
+            if (prev_buttons[port] != 0xFFFFFFFF) {
+                input_event_t event;
+                init_input_event(&event);
+                event.dev_addr = 0xF0 + port;
+                event.instance = 0;
+                event.type = INPUT_TYPE_GAMEPAD;
+                event.buttons = 0;
+                event.analog[ANALOG_LX] = 128;
+                event.analog[ANALOG_LY] = 128;
+                event.analog[ANALOG_RX] = 128;
+                event.analog[ANALOG_RY] = 128;
+                router_submit_input(&event);
+                prev_buttons[port] = 0xFFFFFFFF;   // next pad reports from scratch
+                prev_analog[port] = 0;
+            }
             continue;
         }
 
