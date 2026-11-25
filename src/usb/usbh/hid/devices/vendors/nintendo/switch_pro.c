@@ -155,6 +155,9 @@ void unmount_switch_pro(uint8_t dev_addr, uint8_t instance)
   switch_devices[dev_addr].instances[instance].rumble_left = 0;
   switch_devices[dev_addr].instances[instance].rumble_right = 0;
   switch_devices[dev_addr].instances[instance].player_led_set = 0xff;
+  // Recalibrate on the next mount: the next controller on this address may be
+  // a different unit, or the same one with its sticks somewhere else.
+  switch_devices[dev_addr].instances[instance].cal_samples = 0;
   switch_devices[dev_addr].is_pro = false;
 
   if (switch_devices[dev_addr].instance_count > 1) {
