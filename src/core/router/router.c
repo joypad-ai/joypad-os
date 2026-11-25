@@ -1330,8 +1330,28 @@ void router_submit_input(const input_event_t* event) {
     runtime_profile_check_combo(event->buttons,
                                 event->analog[ANALOG_L2], event->analog[ANALOG_R2]);
     // Freeze output only while a live remap is being entered; rapid-fire set mode
-    // stays live so you feel each rate as you cycle it.
-    if (runtime_profile_is_mapping()) return;
+    // stays live so you feel each rate as you cycle it. Freeze at neutral, not
+    // on the last frame: that frame still holds SELECT (the gesture) and
+    // whatever else was pressed, and the game would see them held for the
+    // whole remap.
+    static bool s_mapping_frozen = false;
+    if (runtime_profile_is_mapping()) {
+        if (!s_mapping_frozen) {
+            s_mapping_frozen = true;
+            input_event_t neutral;
+            init_input_event(&neutral);
+            for (uint8_t output = 0; output < MAX_OUTPUTS; output++) {
+                for (uint8_t player = 0; player < MAX_PLAYERS_PER_OUTPUT; player++) {
+                    router_publish(&router_outputs[output][player], &neutral);
+                    if (output_taps[output]) {
+                        output_taps[output]((output_target_t)output, player, &neutral);
+                    }
+                }
+            }
+        }
+        return;
+    }
+    s_mapping_frozen = false;
 
     // Track activity for idle-sleep: any button, or a stick off-center.
     if (event->buttons != 0) {
