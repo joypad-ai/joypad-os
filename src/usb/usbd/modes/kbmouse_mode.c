@@ -18,6 +18,28 @@
 static kbmouse_keyboard_report_t kbmouse_kb_report;
 static kbmouse_mouse_report_t kbmouse_mouse_report;
 
+// The host sees sinput_keyboard_report_descriptor and
+// sinput_mouse_report_descriptor on these interfaces (tud_hid_descriptor_report_cb
+// serves them for KB/Mouse mode too), so reports go out in their layout:
+// keyboard with report ID 1, mouse as the 7-byte 16-bit X/Y report.
+static bool kbmouse_send_keyboard(void)
+{
+    return tud_hid_n_report(ITF_NUM_HID_KEYBOARD, SINPUT_KB_REPORT_ID_KEYBOARD,
+                            &kbmouse_kb_report, sizeof(kbmouse_kb_report));
+}
+
+static bool kbmouse_send_mouse(void)
+{
+    sinput_mouse_report_t mr = {
+        .buttons = kbmouse_mouse_report.buttons,
+        .x       = kbmouse_mouse_report.x,
+        .y       = kbmouse_mouse_report.y,
+        .wheel   = kbmouse_mouse_report.wheel,
+        .pan     = kbmouse_mouse_report.pan,
+    };
+    return tud_hid_n_report(ITF_NUM_HID_MOUSE, 0, &mr, sizeof(mr));
+}
+
 // ============================================================================
 // MODE INTERFACE IMPLEMENTATION
 // ============================================================================
@@ -47,16 +69,9 @@ static bool kbmouse_mode_send_report(uint8_t player_index,
     // Convert gamepad to keyboard/mouse reports
     kbmouse_convert(buttons, profile_out, &kbmouse_kb_report, &kbmouse_mouse_report);
 
-    // Send keyboard and mouse on separate interfaces (no report IDs needed)
-    bool kb_ok = tud_hid_n_keyboard_report(ITF_NUM_HID_KEYBOARD, 0,
-                                            kbmouse_kb_report.modifier,
-                                            kbmouse_kb_report.keycode);
-    bool mouse_ok = tud_hid_n_mouse_report(ITF_NUM_HID_MOUSE, 0,
-                                            kbmouse_mouse_report.buttons,
-                                            kbmouse_mouse_report.x,
-                                            kbmouse_mouse_report.y,
-                                            kbmouse_mouse_report.wheel,
-                                            kbmouse_mouse_report.pan);
+    // Send keyboard and mouse on separate interfaces
+    bool kb_ok = kbmouse_send_keyboard();
+    bool mouse_ok = kbmouse_send_mouse();
 
     return kb_ok || mouse_ok;
 }
@@ -66,19 +81,14 @@ bool kbmouse_mode_send_idle_mouse(void)
 {
     if (!tud_hid_n_ready(ITF_NUM_HID_MOUSE)) return false;
 
-    return tud_hid_n_mouse_report(ITF_NUM_HID_MOUSE, 0,
-                                   kbmouse_mouse_report.buttons,
-                                   kbmouse_mouse_report.x,
-                                   kbmouse_mouse_report.y,
-                                   kbmouse_mouse_report.wheel,
-                                   kbmouse_mouse_report.pan);
+    return kbmouse_send_mouse();
 }
 
 static void kbmouse_mode_handle_output(uint8_t report_id, const uint8_t* data, uint16_t len)
 {
     // Keyboard LED output report (1 byte)
     // bit 0 = NumLock, bit 1 = CapsLock, bit 2 = ScrollLock
-    // In composite mode, report_id is 0 (no report IDs in standalone descriptors)
+    // The keyboard descriptor uses report IDs; TinyUSB strips the ID byte
     (void)report_id;
     if (len >= 1) {
         kbmouse_set_led_state(data[0]);
