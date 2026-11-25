@@ -11,6 +11,7 @@
 #include "pico/bootrom.h"
 #include "pico/stdlib.h"
 #include "pico/flash.h"
+#include "pico/critical_section.h"
 #include "tusb.h"
 #include "core/services/storage/flash.h"
 #include "core/services/profiles/profile.h"
@@ -22,6 +23,11 @@
 // Declaration of global variables
 GamecubeConsole gc;
 gc_report_t gc_report;
+
+// gc_report is built on Core 0 (gc_task) and sent from Core 1 (core1_task).
+// Both sides hold this for the few instructions it takes to copy the 8 bytes,
+// so Core 1 never sends half of one report and half of the next.
+static critical_section_t gc_report_lock;
 PIO pio = pio0;
 
 // Config mode flag - set by app when GC 3.3V not detected
@@ -288,6 +294,7 @@ void ngc_init()
   GamecubeConsole_init(&gc, data_pin, pio, sm, offset);
   gc._reading_mode = GamecubeMode_3;  // every poll overwrites this; 3 is the sane default
   gc_report = default_gc_report;
+  critical_section_init(&gc_report_lock);  // before main.c starts core1_task
 
   const profile_t* profile = profile_get_active(OUTPUT_TARGET_GAMECUBE);
   if (profile) {
@@ -398,26 +405,42 @@ void __not_in_flash_func(core1_task)(void)
     // Wait for GameCube console to poll controller
     gc_rumble = GamecubeConsole_WaitForPoll(&gc) ? 255 : 0;
 
+    // Take the report as it stands at this poll. Core 0 keeps gc_report
+    // current (gc_task), and joybus_send_bytes reads the bytes one at a time
+    // while it clocks them out, so send from a private copy.
+    gc_report_t poll_report;
+    critical_section_enter_blocking(&gc_report_lock);
+    poll_report = gc_report;
+    critical_section_exit(&gc_report_lock);
+
     // Send the report packed for the analog mode the console actually asked
     // for. Mode 3 is what every production game but Luigi's Mansion uses and
     // goes out untouched; a keyboard poll (0x54) reuses the same argument byte
     // for something that is not an analog mode, so it is excluded.
     if (gc_state.button_mode == BUTTON_MODE_KB || gc._reading_mode == GamecubeMode_3)
     {
-      GamecubeConsole_SendReport(&gc, &gc_report);
+      GamecubeConsole_SendReport(&gc, &poll_report);
     }
     else
     {
       gc_report_t packed_report;
-      gc_pack_analog_mode(&packed_report, &gc_report, gc._reading_mode);
+      gc_pack_analog_mode(&packed_report, &poll_report, gc._reading_mode);
       GamecubeConsole_SendReport(&gc, &packed_report);
     }
 
     gc_kb_counter++;
     gc_kb_counter &= 15;
-
-    update_output();
   }
+}
+
+// Core 0 task: rebuild gc_report from the router as input arrives, so the
+// report Core 1 sends at a poll is the newest one. When this ran on Core 1
+// after each reply, the report sent at a poll had been built straight after
+// the PREVIOUS poll: input landing in between waited one extra poll interval.
+// Same split as the N64 device (n64_task).
+static void gc_task(void)
+{
+  update_output();
 }
 
 // ============================================================================
@@ -602,8 +625,10 @@ void __not_in_flash_func(update_output)(void)
 
   codes_task_for_output(OUTPUT_TARGET_GAMECUBE);
 
-  // Atomically update global report
+  // Atomically update global report (Core 1 copies it under the same lock)
+  critical_section_enter_blocking(&gc_report_lock);
   gc_report = new_report;
+  critical_section_exit(&gc_report_lock);
 }
 
 // ============================================================================
@@ -766,7 +791,7 @@ const OutputInterface gamecube_output_interface = {
     .target = OUTPUT_TARGET_GAMECUBE,
     .init = ngc_init,
     .core1_task = core1_task,
-    .task = NULL,
+    .task = gc_task,
     .get_rumble = gc_get_rumble,
     .get_player_led = gc_get_kb_led,
     .get_profile_count = gc_get_profile_count,
