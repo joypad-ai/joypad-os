@@ -20,6 +20,7 @@ __attribute__((weak)) void xbone_auth_task(void) {}
 __attribute__((weak)) void xbone_auth_register(uint8_t dev_addr, uint8_t instance) { (void)dev_addr; (void)instance; }
 __attribute__((weak)) void xbone_auth_unregister(uint8_t dev_addr) { (void)dev_addr; }
 __attribute__((weak)) void xbone_auth_report_received(uint8_t dev_addr, uint8_t instance, uint8_t const* report, uint16_t len) { (void)dev_addr; (void)instance; (void)report; (void)len; }
+__attribute__((weak)) void xbone_auth_source_input(uint8_t dev_addr, uint8_t instance) { (void)dev_addr; (void)instance; }
 
 // USB device mode lookup — weak stub for builds without USB device sources.
 // Strong implementation lives in usbd.c. When USB device is not linked
@@ -105,6 +106,10 @@ void tuh_xinput_report_received_cb(uint8_t dev_addr, uint8_t instance, xinputh_i
 
     if (xid_itf->connected && xid_itf->new_pad_data)
     {
+      // An Xbox One source only sends input once it is powered on, which is
+      // what auth passthrough waits for before forwarding a challenge.
+      if (xid_itf->type == XBOXONE) xbone_auth_source_input(dev_addr, instance);
+
       // TU_LOG1("[%02x, %02x], Type: %s, Buttons %04x, LT: %02x RT: %02x, LX: %d, LY: %d, RX: %d, RY: %d\n",
       //   dev_addr, instance, type_str, p->wButtons, p->bLeftTrigger, p->bRightTrigger, p->sThumbLX, p->sThumbLY, p->sThumbRX, p->sThumbRY);
 
