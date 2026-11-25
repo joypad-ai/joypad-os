@@ -35,6 +35,17 @@ static int16_t convert_axis_to_s16(uint8_t value)
     return (int16_t)scaled;
 }
 
+// Convert and invert axis (for Y-axis where convention differs). Negating the
+// converted value instead would turn -32768 (full travel) into -32768 again,
+// the opposite direction, because +32768 does not fit in int16_t.
+static int16_t convert_axis_to_s16_inverted(uint8_t value)
+{
+    int32_t scaled = -((int32_t)value - 128) * 256;
+    if (scaled < -32768) scaled = -32768;
+    if (scaled > 32767) scaled = 32767;
+    return (int16_t)scaled;
+}
+
 // ============================================================================
 // MODE INTERFACE IMPLEMENTATION
 // ============================================================================
@@ -106,9 +117,9 @@ static bool xbone_mode_send_report(uint8_t player_index,
     // Analog sticks (signed 16-bit, -32768 to +32767)
     // Y-axis inverted: input 0=down, output positive=up
     xbone_report.left_stick_x = convert_axis_to_s16(profile_out->left_x);
-    xbone_report.left_stick_y = -convert_axis_to_s16(profile_out->left_y);
+    xbone_report.left_stick_y = convert_axis_to_s16_inverted(profile_out->left_y);
     xbone_report.right_stick_x = convert_axis_to_s16(profile_out->right_x);
-    xbone_report.right_stick_y = -convert_axis_to_s16(profile_out->right_y);
+    xbone_report.right_stick_y = convert_axis_to_s16_inverted(profile_out->right_y);
 
     return tud_xbone_send_report(&xbone_report);
 }
