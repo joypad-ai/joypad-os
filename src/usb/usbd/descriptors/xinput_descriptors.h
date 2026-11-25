@@ -136,6 +136,19 @@ static const tusb_desc_device_t xinput_device_descriptor = {
 //            https://github.com/OpenStickCommunity/GP2040-CE
 #define XINPUT_CONFIG_TOTAL_LEN  153
 
+// Gamepad IN endpoint (0x81) polling interval. A real wired 360 pad declares 4,
+// which at full speed is one poll every 4 ms (250 Hz): a change can wait up to
+// two intervals, 8 ms, before the host sees it. Full-speed targets declare 1 ms
+// instead. At high speed (CH32 USBHS) the value means 2^(n-1) microframes, so 4
+// is already 1 ms there and is kept.
+#ifndef XINPUT_EP_IN_INTERVAL
+  #ifdef PLATFORM_CH32
+    #define XINPUT_EP_IN_INTERVAL  0x04
+  #else
+    #define XINPUT_EP_IN_INTERVAL  0x01
+  #endif
+#endif
+
 static const uint8_t xinput_config_descriptor[] = {
     // Configuration descriptor (9 bytes)
     0x09, 0x02,                         // bLength, bDescriptorType
@@ -151,8 +164,8 @@ static const uint8_t xinput_config_descriptor[] = {
     // Gamepad vendor descriptor (type 0x21, 17 bytes)
     0x11, 0x21, 0x00, 0x01, 0x01, 0x25, 0x81, 0x14,
     0x00, 0x00, 0x00, 0x00, 0x13, 0x02, 0x08, 0x00, 0x00,
-    // EP 0x81 IN - Interrupt, 32 bytes, 4ms
-    0x07, 0x05, 0x81, 0x03, 0x20, 0x00, 0x04,
+    // EP 0x81 IN - Interrupt, 32 bytes, 1ms (see XINPUT_EP_IN_INTERVAL)
+    0x07, 0x05, 0x81, 0x03, 0x20, 0x00, XINPUT_EP_IN_INTERVAL,
     // EP 0x02 OUT - Interrupt, 32 bytes, 8ms
     0x07, 0x05, 0x02, 0x03, 0x20, 0x00, 0x08,
 
