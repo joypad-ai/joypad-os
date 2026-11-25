@@ -144,13 +144,15 @@ static bool ds5_mode_send_report(uint8_t player_index,
         }
     }
 
-    // Battery/status at data offset 53 (past sony_ds5_report_t). Low nibble =
+    // Battery/status at data offset 52 (past sony_ds5_report_t), which is
+    // ds5_report_buffer[53] because [0] holds the report id. Same offset our
+    // own DualSense host drivers read (sony_ds5.c, ds5_bt.c). Low nibble =
     // level/10 (0-10), bit 4 = charging.
     if (event->battery_level > 0) {
         uint8_t lvl = event->battery_level / 10; if (lvl > 10) lvl = 10;
-        ds5_report_buffer[54] = lvl | (event->battery_charging ? 0x10 : 0x00);
+        ds5_report_buffer[53] = lvl | (event->battery_charging ? 0x10 : 0x00);
     } else {
-        ds5_report_buffer[54] = 0x0A | 0x10;  // full + charging fallback
+        ds5_report_buffer[53] = 0x0A | 0x10;  // full + charging fallback
     }
 
     return tud_hid_report(0x01, &ds5_report_buffer[1], 63);
