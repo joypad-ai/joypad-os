@@ -567,6 +567,7 @@ bool tud_xbone_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage,
 
     if (request->bmRequestType_bit.direction == TUSB_DIR_IN) {
         uint16_t len = request->wLength;
+        if (len > sizeof(buf)) len = sizeof(buf);
 
         // Handle Windows OS descriptor request
         if (request->bmRequestType == (USB_SETUP_DEVICE_TO_HOST | USB_SETUP_RECIPIENT_DEVICE | USB_SETUP_TYPE_VENDOR) &&
@@ -581,6 +582,8 @@ bool tud_xbone_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage,
 
         tud_control_xfer(rhport, request, buf, len);
     } else {
+        // Stall a data stage that would not fit in buf
+        if (request->wLength > sizeof(buf)) return false;
         tud_control_xfer(rhport, request, buf, request->wLength);
     }
 
