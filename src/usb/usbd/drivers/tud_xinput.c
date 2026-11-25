@@ -271,6 +271,8 @@ bool tud_xinput_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage, tusb_contr
     } else {
         // Host-to-device: accept data on SETUP, process on DATA stage
         if (stage == CONTROL_STAGE_SETUP) {
+            // Stall a data stage that would not fit in the receive buffer
+            if (request->wLength > sizeof(_auth_buffer)) return false;
             // Accept the data phase
             tud_control_xfer(rhport, request, _auth_buffer, request->wLength);
             return true;
