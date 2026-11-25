@@ -145,9 +145,11 @@ dev_type_t get_dev_type(uint8_t dev_addr, uint8_t instance, uint8_t const* desc_
   }
 
   // Interface protocol (hid_interface_protocol_enum_t)
+  // bInterfaceProtocol comes from the device and is not limited to 0-2.
   const char* protocol_str[] = { "None", "Keyboard", "Mouse" };
   uint8_t const itf_protocol = tuh_hid_interface_protocol(dev_addr, instance);
-  printf("HID Interface Protocol = %s\r\n", protocol_str[itf_protocol]);
+  printf("HID Interface Protocol = %s\r\n",
+         itf_protocol < TU_ARRAY_SIZE(protocol_str) ? protocol_str[itf_protocol] : "Unknown");
 
   switch (itf_protocol)
   {
