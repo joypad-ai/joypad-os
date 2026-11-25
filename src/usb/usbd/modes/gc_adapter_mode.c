@@ -30,6 +30,13 @@
 #define GC_TX_BUFSIZE  37  // Input report size (report ID + 36 bytes data)
 #define GC_RX_BUFSIZE  6   // Output report size (matches HOJA)
 
+// Digital L/R from an analog-only trigger (Xbox style, no click). On a real
+// GameCube pad the digital bit is the click at the end of travel, so this is
+// near full pull, the same default gamecube_device.c uses, not the low
+// USBD_TRIGGER_DIGITAL_THRESHOLD the other modes use (that would turn every
+// light press into a full click).
+#define GC_ADAPTER_TRIGGER_DIGITAL_THRESHOLD 250
+
 // ============================================================================
 // CUSTOM CLASS DRIVER INTERFACE STATE
 // ============================================================================
@@ -281,8 +288,10 @@ static bool gc_adapter_mode_send_report(uint8_t player_index,
     gc_adapter_report.port[port].x = (buttons & JP_BUTTON_B4) ? 1 : 0;
     gc_adapter_report.port[port].y = (buttons & JP_BUTTON_B3) ? 1 : 0;
     gc_adapter_report.port[port].z = (buttons & JP_BUTTON_R1) ? 1 : 0;
-    gc_adapter_report.port[port].l = (buttons & JP_BUTTON_L2) ? 1 : 0;
-    gc_adapter_report.port[port].r = (buttons & JP_BUTTON_R2) ? 1 : 0;
+    gc_adapter_report.port[port].l = ((buttons & JP_BUTTON_L2) ||
+        profile_out->l2_analog >= GC_ADAPTER_TRIGGER_DIGITAL_THRESHOLD) ? 1 : 0;
+    gc_adapter_report.port[port].r = ((buttons & JP_BUTTON_R2) ||
+        profile_out->r2_analog >= GC_ADAPTER_TRIGGER_DIGITAL_THRESHOLD) ? 1 : 0;
     gc_adapter_report.port[port].start = (buttons & JP_BUTTON_S2) ? 1 : 0;
     gc_adapter_report.port[port].dpad_up = (buttons & JP_BUTTON_DU) ? 1 : 0;
     gc_adapter_report.port[port].dpad_down = (buttons & JP_BUTTON_DD) ? 1 : 0;
