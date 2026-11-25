@@ -3,7 +3,8 @@
 // Stores RSA-2048 key components and Sony device identity data in a dedicated
 // 4KB flash sector, separate from the main settings journal.
 //
-// The data persists across firmware updates and factory resets (different sector).
+// The data persists across firmware updates and factory resets (its own sector,
+// see flash_layout.h).
 // Use PS4AUTH.CLEAR CDC command or ps4_auth_flash_erase() to remove.
 //
 // SPDX-License-Identifier: Apache-2.0

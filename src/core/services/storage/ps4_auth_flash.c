@@ -1,12 +1,9 @@
 // ps4_auth_flash.c - Flash storage for PS4 local authentication key material
 //
 // Flash layout (from end of flash):
-//   [... firmware ...]
-//   [PS4 auth sector — 4KB]   <-- this module
-//   [Settings Sector B — 4KB]
-//   [Settings Sector A — 4KB]
-//   [BTstack — 8KB]
-//   [end of flash]
+//   see flash_layout.h: the PS4 auth sector is its own sector, below the
+//   Remote Play and pad config sectors. It used to share the pad config
+//   sector, so saving a pad config erased the keys and the reverse.
 //
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2024 Robert Dale Smith
@@ -15,27 +12,16 @@
 #include "hardware/flash.h"
 #include "hardware/sync.h"
 #include "pico/flash.h"
+#include "core/services/storage/flash_layout.h"
 #include <string.h>
 #include <stdio.h>
 
 // ============================================================================
-// FLASH OFFSET
-// Must stay in sync with flash.c layout. The PS4 auth sector is placed
-// immediately before Settings Sector B (one extra sector from the base).
+// FLASH OFFSET (flash_layout.h owns every sector)
 // ============================================================================
 
-#define BTSTACK_FLASH_SIZE  (FLASH_SECTOR_SIZE * 2)   // 8KB for BTstack
-
-#if PICO_RP2350 && PICO_RP2350_A2_SUPPORTED
-// RP2350 layout: [... | PS4 auth | Sector B | Sector A | BTstack (2) | reserved (1)]
-#define _SECTOR_A_OFFSET (PICO_FLASH_SIZE_BYTES - FLASH_SECTOR_SIZE - BTSTACK_FLASH_SIZE - FLASH_SECTOR_SIZE)
-#else
-// RP2040 layout: [... | PS4 auth | Sector B | Sector A | BTstack (2)]
-#define _SECTOR_A_OFFSET (PICO_FLASH_SIZE_BYTES - BTSTACK_FLASH_SIZE - FLASH_SECTOR_SIZE)
-#endif
-
-#define _SECTOR_B_OFFSET  (_SECTOR_A_OFFSET - FLASH_SECTOR_SIZE)
-#define FLASH_PS4_AUTH_OFFSET (_SECTOR_B_OFFSET - FLASH_SECTOR_SIZE)
+#define FLASH_PS4_AUTH_OFFSET     FLASH_LAYOUT_PS4_AUTH_OFFSET
+#define FLASH_PS4_AUTH_OLD_OFFSET FLASH_LAYOUT_PS4_AUTH_OLD_OFFSET
 
 // ============================================================================
 // CRC-32
@@ -111,6 +97,25 @@ bool ps4_auth_flash_load(ps4_auth_data_t *out)
 
     const ps4_auth_data_t *flash_ptr =
         (const ps4_auth_data_t *)(XIP_BASE + FLASH_PS4_AUTH_OFFSET);
+
+    // One-time carry-forward: keys saved by older firmware live in the sector
+    // now owned by pad config. If the new sector is empty and a complete,
+    // CRC-valid record is still at the old offset, copy it across once. The
+    // old sector is left alone (it belongs to pad config now).
+    if (flash_ptr->magic != PS4_AUTH_FLASH_MAGIC) {
+        const ps4_auth_data_t *old_ptr =
+            (const ps4_auth_data_t *)(XIP_BASE + FLASH_PS4_AUTH_OLD_OFFSET);
+        if (ps4_auth_flash_is_valid(old_ptr)) {
+            static ps4_auth_data_t carry;
+            memcpy(&carry, old_ptr, sizeof(carry));
+            printf("[ps4_auth] Moving auth data from the old shared sector\n");
+            if (!ps4_auth_flash_save(&carry)) {
+                // Could not write the new sector: still use the keys this boot.
+                memcpy(out, &carry, sizeof(ps4_auth_data_t));
+                return true;
+            }
+        }
+    }
 
     // Quick magic check before copying
     if (flash_ptr->magic != PS4_AUTH_FLASH_MAGIC) {
