@@ -395,7 +395,11 @@ static void pad_init_device_pins(const pad_device_config_t* config) {
 
     // Initialize capacitive touch sensor → F1
 #if !defined(PLATFORM_ESP32) && !defined(PLATFORM_NRF)
-    if (config->touch_out >= 0 && config->touch_in >= 0) {
+    // A sensor needs two different pins. Configs that never set these fields
+    // (zero-initialised static configs, and every config loaded from flash,
+    // which has no touch fields) arrive here as 0/0 and must not claim GPIO 0.
+    if (config->touch_out >= 0 && config->touch_in >= 0 &&
+        config->touch_out != config->touch_in) {
         touch_init(config->touch_out, config->touch_in);
         printf("[pad] Touch sensor: out=GP%d, in=GP%d → F1\n",
                config->touch_out, config->touch_in);
