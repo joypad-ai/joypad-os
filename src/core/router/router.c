@@ -1443,17 +1443,13 @@ void router_submit_input(const input_event_t* event) {
             // Stick sensitivity
             if (cp->left_stick_sens != 100) {
                 float sens = cp->left_stick_sens / 100.0f;
-                int16_t rx = (int16_t)remapped.analog[ANALOG_LX] - 128;
-                int16_t ry = (int16_t)remapped.analog[ANALOG_LY] - 128;
-                remapped.analog[ANALOG_LX] = (uint8_t)(128 + (int16_t)(rx * sens));
-                remapped.analog[ANALOG_LY] = (uint8_t)(128 + (int16_t)(ry * sens));
+                remapped.analog[ANALOG_LX] = profile_scale_axis(remapped.analog[ANALOG_LX], sens);
+                remapped.analog[ANALOG_LY] = profile_scale_axis(remapped.analog[ANALOG_LY], sens);
             }
             if (cp->right_stick_sens != 100) {
                 float sens = cp->right_stick_sens / 100.0f;
-                int16_t rx = (int16_t)remapped.analog[ANALOG_RX] - 128;
-                int16_t ry = (int16_t)remapped.analog[ANALOG_RY] - 128;
-                remapped.analog[ANALOG_RX] = (uint8_t)(128 + (int16_t)(rx * sens));
-                remapped.analog[ANALOG_RY] = (uint8_t)(128 + (int16_t)(ry * sens));
+                remapped.analog[ANALOG_RX] = profile_scale_axis(remapped.analog[ANALOG_RX], sens);
+                remapped.analog[ANALOG_RY] = profile_scale_axis(remapped.analog[ANALOG_RY], sens);
             }
 
             // Swap sticks
@@ -1519,17 +1515,13 @@ void router_submit_input(const input_event_t* event) {
             // Stick sensitivity (replace if non-zero)
             if (ov->left_stick_sens != 0 && ov->left_stick_sens != 100) {
                 float sens = ov->left_stick_sens / 100.0f;
-                int16_t rx = (int16_t)remapped.analog[ANALOG_LX] - 128;
-                int16_t ry = (int16_t)remapped.analog[ANALOG_LY] - 128;
-                remapped.analog[ANALOG_LX] = (uint8_t)(128 + (int16_t)(rx * sens));
-                remapped.analog[ANALOG_LY] = (uint8_t)(128 + (int16_t)(ry * sens));
+                remapped.analog[ANALOG_LX] = profile_scale_axis(remapped.analog[ANALOG_LX], sens);
+                remapped.analog[ANALOG_LY] = profile_scale_axis(remapped.analog[ANALOG_LY], sens);
             }
             if (ov->right_stick_sens != 0 && ov->right_stick_sens != 100) {
                 float sens = ov->right_stick_sens / 100.0f;
-                int16_t rx = (int16_t)remapped.analog[ANALOG_RX] - 128;
-                int16_t ry = (int16_t)remapped.analog[ANALOG_RY] - 128;
-                remapped.analog[ANALOG_RX] = (uint8_t)(128 + (int16_t)(rx * sens));
-                remapped.analog[ANALOG_RY] = (uint8_t)(128 + (int16_t)(ry * sens));
+                remapped.analog[ANALOG_RX] = profile_scale_axis(remapped.analog[ANALOG_RX], sens);
+                remapped.analog[ANALOG_RY] = profile_scale_axis(remapped.analog[ANALOG_RY], sens);
             }
             // Swap sticks
             if (ov->flags & PROFILE_FLAG_SWAP_STICKS) {

@@ -469,6 +469,22 @@ uint32_t profile_apply_button_map(const profile_t* profile, uint32_t input_butto
 }
 
 // ============================================================================
+// STICK SENSITIVITY
+// ============================================================================
+
+// Scale a stick axis (0-255, 128 = centre) about its centre, saturating at
+// the ends of the range. Without the clamp any sensitivity above 1.0 pushes a
+// full deflection past 255 (or below 0) and the uint8_t cast wraps it round to
+// the opposite side of the stick.
+static inline uint8_t profile_scale_axis(uint8_t value, float sens)
+{
+    int32_t v = 128 + (int32_t)(((int32_t)value - 128) * sens);
+    if (v < 0) v = 0;
+    if (v > 255) v = 255;
+    return (uint8_t)v;
+}
+
+// ============================================================================
 // SOCD API (for use by custom profile path in usbd.c)
 // ============================================================================
 
