@@ -10,6 +10,7 @@
 #include "core/services/storage/flash.h"
 #include "pico/stdlib.h"
 #include "hardware/flash.h"
+#include "core/services/storage/flash_layout.h"
 #include "hardware/sync.h"
 #include "pico/multicore.h"
 #include "pico/flash.h"
@@ -51,15 +52,9 @@ static void flush_output(void)
 #define SETTINGS_MAGIC 0x47435052  // "GCPR" - GameCube Profile
 #define BTSTACK_FLASH_SIZE (FLASH_SECTOR_SIZE * 2)  // 8KB for BTstack
 
-#if PICO_RP2350 && PICO_RP2350_A2_SUPPORTED
-// RP2350 layout: [... | sector B | sector A | btstack (2 sectors) | reserved (1 sector)]
-#define FLASH_SECTOR_A_OFFSET (PICO_FLASH_SIZE_BYTES - FLASH_SECTOR_SIZE - BTSTACK_FLASH_SIZE - FLASH_SECTOR_SIZE)
-#define FLASH_SECTOR_B_OFFSET (FLASH_SECTOR_A_OFFSET - FLASH_SECTOR_SIZE)
-#else
-// RP2040 layout: [... | sector B | sector A | btstack (2 sectors)]
-#define FLASH_SECTOR_A_OFFSET (PICO_FLASH_SIZE_BYTES - BTSTACK_FLASH_SIZE - FLASH_SECTOR_SIZE)
-#define FLASH_SECTOR_B_OFFSET (FLASH_SECTOR_A_OFFSET - FLASH_SECTOR_SIZE)
-#endif
+// Offsets come from flash_layout.h (unchanged values on both platforms).
+#define FLASH_SECTOR_A_OFFSET FLASH_LAYOUT_SETTINGS_A_OFFSET
+#define FLASH_SECTOR_B_OFFSET FLASH_LAYOUT_SETTINGS_B_OFFSET
 
 // Journal configuration
 #define JOURNAL_SLOT_SIZE FLASH_PAGE_SIZE  // 256 bytes per slot
@@ -191,6 +186,12 @@ void flash_init(void)
     if (runtime_settings_loaded) return;
 
     save_pending = false;
+
+    if (!flash_layout_image_fits()) {
+        printf("[flash] WARNING: firmware image reaches the settings area (ends at 0x%lX, stores start at 0x%lX)\n",
+               (unsigned long)((uintptr_t)&__flash_binary_end - XIP_BASE),
+               (unsigned long)FLASH_LAYOUT_LOWEST_OFFSET);
+    }
 
     // Find current sequence number from flash (searches both sectors)
     int newest = find_newest_slot();

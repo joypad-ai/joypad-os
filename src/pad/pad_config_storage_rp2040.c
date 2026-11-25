@@ -9,22 +9,14 @@
 #include "hardware/flash.h"
 #include "hardware/sync.h"
 #include "pico/flash.h"
+#include "core/services/storage/flash_layout.h"
 #include "tusb.h"
 #include <string.h>
 #include <stdio.h>
 
 // Flash layout: pad config sector sits before the settings sectors
-#define BTSTACK_FLASH_SIZE (FLASH_SECTOR_SIZE * 2)
-
-#if PICO_RP2350 && PICO_RP2350_A2_SUPPORTED
-#define SETTINGS_SECTOR_A_OFFSET (PICO_FLASH_SIZE_BYTES - FLASH_SECTOR_SIZE - BTSTACK_FLASH_SIZE - FLASH_SECTOR_SIZE)
-#define SETTINGS_SECTOR_B_OFFSET (SETTINGS_SECTOR_A_OFFSET - FLASH_SECTOR_SIZE)
-#define PAD_CONFIG_SECTOR_OFFSET (SETTINGS_SECTOR_B_OFFSET - FLASH_SECTOR_SIZE)
-#else
-#define SETTINGS_SECTOR_A_OFFSET (PICO_FLASH_SIZE_BYTES - BTSTACK_FLASH_SIZE - FLASH_SECTOR_SIZE)
-#define SETTINGS_SECTOR_B_OFFSET (SETTINGS_SECTOR_A_OFFSET - FLASH_SECTOR_SIZE)
-#define PAD_CONFIG_SECTOR_OFFSET (SETTINGS_SECTOR_B_OFFSET - FLASH_SECTOR_SIZE)
-#endif
+// (offset unchanged; see flash_layout.h).
+#define PAD_CONFIG_SECTOR_OFFSET FLASH_LAYOUT_PAD_CONFIG_OFFSET
 
 #define PAD_SLOT_SIZE   FLASH_PAGE_SIZE
 #define PAD_SLOTS       (FLASH_SECTOR_SIZE / PAD_SLOT_SIZE)

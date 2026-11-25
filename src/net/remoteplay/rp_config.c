@@ -6,15 +6,19 @@
 
 #include "hardware/flash.h"
 #include "hardware/sync.h"
+#include "core/services/storage/flash_layout.h"
 
 #include <string.h>
 #include <stdio.h>
 #include <stddef.h>
 
-// Dedicated store: one 4KB sector placed below everything the shared settings
-// journal uses (flash.c reserves down to PICO_FLASH_SIZE - 20KB on RP2350).
-// -24KB is clear on both RP2350 and RP2040. XIP-mapped at XIP_BASE + offset.
-#define RP_CFG_FLASH_OFFSET  (PICO_FLASH_SIZE_BYTES - (6 * FLASH_SECTOR_SIZE))
+// Dedicated store: one 4KB sector from flash_layout.h. On RP2040 this is the
+// same -24KB as before. On RP2350 the old -24KB landed on the sector the PS4
+// auth store (and, on controller builds, pad config) also used, so it moves
+// one sector down and the old copy is carried forward once at init.
+// XIP-mapped at XIP_BASE + offset.
+#define RP_CFG_FLASH_OFFSET     FLASH_LAYOUT_RP_CONFIG_OFFSET
+#define RP_CFG_FLASH_OLD_OFFSET FLASH_LAYOUT_RP_CONFIG_OLD_OFFSET
 #define RP_CFG_MAGIC         0x52504346u   // "RPCF"
 #define RP_CFG_VERSION       2u            // v2 added auto_connect (appended field)
 
@@ -57,6 +61,11 @@ void rp_config_init(void)
 {
     memset(&cfg, 0, sizeof(cfg));
     const rp_persist_t* p = (const rp_persist_t*)(XIP_BASE + RP_CFG_FLASH_OFFSET);
+    bool moved = false;
+    if (RP_CFG_FLASH_OLD_OFFSET != RP_CFG_FLASH_OFFSET && p->magic != RP_CFG_MAGIC) {
+        const rp_persist_t* old = (const rp_persist_t*)(XIP_BASE + RP_CFG_FLASH_OLD_OFFSET);
+        if (old->magic == RP_CFG_MAGIC) { p = old; moved = true; }
+    }
     if (p->magic == RP_CFG_MAGIC && p->version == RP_CFG_VERSION &&
         p->crc == crc32((const uint8_t*)&p->cfg, sizeof(rp_config_t))) {
         memcpy(&cfg, &p->cfg, sizeof(cfg));
@@ -74,6 +83,11 @@ void rp_config_init(void)
         printf("[rp_config] migrated v1->v2 (auto_connect=off)\n");
     } else {
         printf("[rp_config] no saved config (blank flash)\n");
+        moved = false;
+    }
+    if (moved) {
+        printf("[rp_config] moved from the old shared sector\n");
+        rp_config_save();
     }
 }
 
