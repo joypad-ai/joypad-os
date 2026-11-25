@@ -28,6 +28,8 @@ typedef struct TU_ATTR_PACKED
   uint8_t buttonCnt;
   uint8_t type;
   bool xbox_axes;  // Xbox HID convention: Rx/Ry=right stick, Z=triggers
+  uint8_t report_id; // gamepad input report ID (0 = device uses no report IDs)
+  uint8_t hat_min;   // hat Logical Minimum: 0 means 0=N, 1 means 1=N and 0=centre
 } dinput_instance_t;
 
 // Cached device report properties on mount
@@ -66,15 +68,37 @@ void parse_descriptor(uint8_t dev_addr, uint8_t instance)
   uint8_t btns_count = 0;
   uint8_t idOffset = 0;
 
-  // check if reportID exists within input report
-  if (item->ReportID)
+  // The gamepad report is the one that carries Generic Desktop X. Devices with
+  // several report IDs (consumer keys, vendor reports) put other fields at the
+  // same offsets, so only items from this one report are mapped. Same rule as
+  // the Bluetooth driver (bthid_gamepad.c).
+  uint8_t gamepad_report_id = item ? item->ReportID : 0;
+  for (HID_ReportItem_t *scan = item; scan; scan = scan->Next)
   {
-    TU_LOG1("ReportID in report = %04x\r\n", item->ReportID);
+    if (scan->Attributes.Usage.Page == HID_USAGE_PAGE_DESKTOP &&
+        scan->Attributes.Usage.Usage == HID_USAGE_DESKTOP_X)
+    {
+      gamepad_report_id = scan->ReportID;
+      break;
+    }
+  }
+  hid_devices[dev_addr].instances[instance].report_id = gamepad_report_id;
+
+  // check if reportID exists within input report
+  if (gamepad_report_id)
+  {
+    TU_LOG1("ReportID in report = %04x\r\n", gamepad_report_id);
     idOffset = 8;
   }
 
   while (item)
   {
+    if (item->ReportID != gamepad_report_id)
+    {
+      item = item->Next;
+      continue;
+    }
+
     uint8_t midValue = (item->Attributes.Logical.Maximum - item->Attributes.Logical.Minimum) / 2;
     uint8_t bitSize = item->Attributes.BitSize ? item->Attributes.BitSize : 0; // bits per usage
     uint8_t bitOffset = (item->BitOffset ? item->BitOffset : 0) + idOffset; // bits offset from start
@@ -183,6 +207,7 @@ void parse_descriptor(uint8_t dev_addr, uint8_t instance)
           {
             if (HID_DEBUG) TU_LOG1(" HID_USAGE_DESKTOP_HAT_SWITCH ");
             hid_devices[dev_addr].instances[instance].hatLoc.byteIndex = byteIndex;
+            hid_devices[dev_addr].instances[instance].hat_min = (uint8_t)item->Attributes.Logical.Minimum;
             hid_devices[dev_addr].instances[instance].hatLoc.bitMask = bitMask;
             break;
           }
@@ -366,6 +391,9 @@ void process_hid_gamepad(uint8_t dev_addr, uint8_t instance, uint8_t const* repo
 
   dinput_instance_t *inst = &hid_devices[dev_addr].instances[instance];
 
+  // Reports with another ID (consumer keys, vendor data) are not gamepad input.
+  if (inst->report_id && (len == 0 || report[0] != inst->report_id)) return;
+
   uint16_t xValue = read_axis_value(report, &inst->xLoc);
   uint16_t yValue = read_axis_value(report, &inst->yLoc);
   uint16_t zValue = read_axis_value(report, &inst->zLoc);
@@ -373,11 +401,21 @@ void process_hid_gamepad(uint8_t dev_addr, uint8_t instance, uint8_t const* repo
   uint16_t rxValue = read_axis_value(report, &inst->rxLoc);
   uint16_t ryValue = read_axis_value(report, &inst->ryLoc);
 
-  uint8_t hatValue = report[inst->hatLoc.byteIndex] & inst->hatLoc.bitMask;
+  // Shifted down to bit 0, so a hat in the upper nibble decodes too.
+  uint8_t hatValue = inst->hatLoc.bitMask
+      ? (uint8_t)((report[inst->hatLoc.byteIndex] & inst->hatLoc.bitMask) >> __builtin_ctz(inst->hatLoc.bitMask))
+      : 0;
 
   // parse hat from report
   if (inst->hatLoc.bitMask) {
-    uint8_t direction = hatValue <= 8 ? hatValue : 8; // fix for hats with pressed state greater than 8
+    uint8_t direction;
+    if (inst->hat_min > 0) {
+      // 1-based hat (1=N ... 8=NW): 0 and anything past 8 is centre
+      direction = (hatValue >= inst->hat_min && hatValue <= inst->hat_min + 7)
+                  ? (uint8_t)(hatValue - inst->hat_min) : 8;
+    } else {
+      direction = hatValue <= 8 ? hatValue : 8; // fix for hats with pressed state greater than 8
+    }
     current.all_direction |= HAT_SWITCH_TO_DIRECTION_BUTTONS[direction];
   } else {
     hatValue = 8;
