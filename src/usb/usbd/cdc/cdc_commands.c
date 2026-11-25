@@ -1484,6 +1484,8 @@ static int json_get_int_array(const char* json, const char* key,
     int count = 0;
 
     while (*start && count < max_count) {
+        const char* before = start;
+
         // Skip whitespace
         while (*start == ' ' || *start == '\t') start++;
 
@@ -1499,6 +1501,10 @@ static int json_get_int_array(const char* json, const char* key,
         // Skip comma
         while (*start == ' ' || *start == '\t') start++;
         if (*start == ',') start++;
+
+        // Anything else (a letter, a quote, a newline) is not consumed by
+        // any branch above: stop here instead of spinning on it forever.
+        if (start == before) break;
     }
 
     return count;
@@ -3718,6 +3724,8 @@ static int json_get_int16_array(const char* json, const char* key,
     int count = 0;
 
     while (*start && count < max_count) {
+        const char* before = start;
+
         while (*start == ' ' || *start == '\t') start++;
         if (*start == ']') break;
 
@@ -3728,6 +3736,9 @@ static int json_get_int16_array(const char* json, const char* key,
 
         while (*start == ' ' || *start == '\t') start++;
         if (*start == ',') start++;
+
+        // Unconsumed character: stop instead of spinning on it forever.
+        if (start == before) break;
     }
 
     return count;
