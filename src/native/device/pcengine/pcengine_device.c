@@ -211,15 +211,24 @@ void __not_in_flash_func(core1_task)(void)
     // wait for CLK rising edge (from clock.pio via sm2)
     rx_bit = pio_sm_get_blocking(pio, sm2);
 
+    // If this core was held up (e.g. during a flash write), several clock
+    // edges can be waiting. Answering each one would queue several output
+    // pairs, and since the PIO takes one pair per scan the console would then
+    // read data that many scans old from then on. Act on the newest edge only.
+    while (!pio_sm_is_rx_fifo_empty(pio, sm2)) {
+      rx_bit = pio_sm_get(pio, sm2);
+    }
+
     // Lock output values during scan (like PCEMouse)
     output_exclude = true;
 
     // Assemble output for CURRENT state using cached button values
     assemble_output();
     
-    // Push to PIO and advance state ONLY when FIFO has room
+    // Push to PIO and advance state ONLY when the previous pair has been taken.
     // This synchronizes state with actual console reads (critical for 6-button!)
-    if (!pio_sm_is_tx_fifo_full(pio, sm1)) {
+    // and keeps at most one pair queued, so the output is never scans behind.
+    if (pio_sm_get_tx_fifo_level(pio, sm1) == 0) {
       pio_sm_put(pio, sm1, output_word_1);
       pio_sm_put(pio, sm1, output_word_0);
       
