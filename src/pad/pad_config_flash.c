@@ -122,6 +122,11 @@ const pad_device_config_t* pad_config_from_flash(const pad_config_flash_t* flash
 {
     memset(&runtime_config, 0, sizeof(pad_device_config_t));
 
+    // The flash format has no capacitive touch fields: say "no sensor"
+    // explicitly, because the zero left by the memset is a valid GPIO.
+    runtime_config.touch_out = PAD_PIN_DISABLED;
+    runtime_config.touch_in  = PAD_PIN_DISABLED;
+
     strncpy(runtime_name, flash->name, PAD_CONFIG_NAME_LEN - 1);
     runtime_name[PAD_CONFIG_NAME_LEN - 1] = '\0';
     runtime_config.name = runtime_name;
