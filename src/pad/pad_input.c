@@ -43,6 +43,7 @@ static input_event_t pad_events[PAD_MAX_DEVICES];
 
 // Debounce state (simple: require 2 consecutive reads)
 static uint32_t pad_prev_buttons[PAD_MAX_DEVICES];
+static uint32_t pad_debounced[PAD_MAX_DEVICES];   // last raw state two scans agreed on
 
 // D-pad mode (software, set via S1+S2+direction hotkeys)
 typedef enum {
@@ -494,9 +495,15 @@ static void pad_poll_device(uint8_t device_index) {
     // Simple debounce: only update if same as previous read
     // (This filters out single-sample glitches)
     if (buttons == pad_prev_buttons[device_index]) {
-        event->buttons = buttons;
+        pad_debounced[device_index] = buttons;
     }
     pad_prev_buttons[device_index] = buttons;
+
+    // Start every scan from the debounced RAW state. The combo and d-pad
+    // code below rewrites event->buttons (injects Home, strips the d-pad), so
+    // on a scan that fails the debounce check it must not be fed its own
+    // output from the previous scan.
+    event->buttons = pad_debounced[device_index];
 
     // =================================================================
     // S1+S2 combo detection (Home button + d-pad mode switching)
@@ -722,6 +729,7 @@ int pad_input_add_device(const pad_device_config_t* config) {
     pad_events[index].transport = INPUT_TRANSPORT_GPIO;
 
     pad_prev_buttons[index] = 0;
+    pad_debounced[index] = 0;
 
     pad_device_count++;
 
